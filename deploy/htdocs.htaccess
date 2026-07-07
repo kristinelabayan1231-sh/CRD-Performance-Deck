@@ -22,7 +22,12 @@
 # Re-allow only the public entry point and static assets Laravel needs to
 # serve directly. The build/ folder (compiled CSS/JS/fonts) is re-opened by
 # its own deploy/build.htaccess placed inside it — see deploy/README.md.
-<FilesMatch "^(index\.php|favicon\.ico|robots\.txt|\.htaccess)$">
+# migrate.php is here too: the deploy workflow hits it once over HTTP right
+# after upload, then deletes it via FTP in the same run (see
+# .github/workflows/deploy.yml) — it's harmless to allow at the .htaccess
+# level because the file itself requires a secret token and won't exist
+# once that step finishes.
+<FilesMatch "^(index\.php|migrate\.php|favicon\.ico|robots\.txt|\.htaccess)$">
     <IfModule mod_authz_core.c>
         Require all granted
     </IfModule>
