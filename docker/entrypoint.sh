@@ -8,9 +8,12 @@ if [ -n "$PORT" ]; then
 fi
 
 # Render's free tier has no Pre-Deploy Command hook (paid-plan only), so
-# migrations run here instead, on every container start. "migrate --force"
-# only applies pending migrations, so this is safe to repeat across restarts
-# and free-tier spin-down/spin-up cycles.
+# migrations (and the seeder, which upserts the allowed-emails admin row)
+# run here instead, on every container start. Both are idempotent —
+# "migrate --force" only applies pending migrations, and the seeder uses
+# updateOrCreate — so this is safe to repeat across restarts and
+# free-tier spin-down/spin-up cycles.
 php artisan migrate --force
+php artisan db:seed --force
 
 exec apache2-foreground
