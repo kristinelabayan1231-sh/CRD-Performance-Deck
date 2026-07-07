@@ -33,7 +33,14 @@
             class="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700">
             Apply
         </button>
-        <p class="text-xs text-slate-400">Applies to both sections below. Pick a seller inside "Seller Performance".</p>
+        @if (!$error && $isComparisonMode)
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                Comparing {{ count($days) }} days
+            </span>
+        @else
+            <p class="text-xs text-slate-400">Applies to both sections below. Pick a seller inside "Seller Performance". Pick a 2&ndash;3 day range to compare days side by side.</p>
+        @endif
     </form>
 
     <div id="deck-content">
@@ -68,23 +75,43 @@
                 </div>
             </div>
 
-            <div data-breakdown-grid class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                <x-breakdown-card title="By Product" :items="$productBreakdown">
-                    <x-slot:icon>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
-                    </x-slot:icon>
-                </x-breakdown-card>
-                <x-breakdown-card title="By Region" :items="$regionBreakdown">
-                    <x-slot:icon>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                    </x-slot:icon>
-                </x-breakdown-card>
-                <x-breakdown-card title="By Status" :items="$statusBreakdown">
-                    <x-slot:icon>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    </x-slot:icon>
-                </x-breakdown-card>
-            </div>
+            @if ($isComparisonMode)
+                <div data-breakdown-grid class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <x-trend-card title="By Product" :series="$productTrend" :days="$days">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+                        </x-slot:icon>
+                    </x-trend-card>
+                    <x-trend-card title="By Region" :series="$regionTrend" :days="$days">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </x-slot:icon>
+                    </x-trend-card>
+                    <x-trend-card title="By Status" :series="$statusTrend" :days="$days">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </x-slot:icon>
+                    </x-trend-card>
+                </div>
+            @else
+                <div data-breakdown-grid class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <x-breakdown-card title="By Product" :items="$productBreakdown">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+                        </x-slot:icon>
+                    </x-breakdown-card>
+                    <x-breakdown-card title="By Region" :items="$regionBreakdown">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </x-slot:icon>
+                    </x-breakdown-card>
+                    <x-breakdown-card title="By Status" :items="$statusBreakdown">
+                        <x-slot:icon>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </x-slot:icon>
+                    </x-breakdown-card>
+                </div>
+            @endif
         </div>
 
         {{-- Seller performance: scoped to the seller picker below, independent of the date-range form above. --}}
@@ -118,36 +145,71 @@
             </form>
         </div>
 
-        <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center gap-2 text-slate-400">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"/><path d="M7 4h6a4 4 0 0 1 0 8H7"/><path d="M3 10h10"/><path d="M3 14h10"/></svg>
-                    <p class="text-xs font-medium uppercase tracking-wide">Sales Value</p>
-                </div>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['sales_value'], 2) }}</p>
+        @if ($isComparisonMode)
+            @php
+                $salesByDay = array_map(fn ($d) => $d['sales_value'], $kpiByDay);
+                $qtyByDay = array_map(fn ($d) => $d['parcel_qty'], $kpiByDay);
+                $costByDay = array_map(fn ($d) => $d['product_cost'], $kpiByDay);
+                $marginByDay = array_map(fn ($d) => $d['sales_value'] - $d['product_cost'], $kpiByDay);
+            @endphp
+            <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <x-kpi-sparkline-card label="Sales Value" :values="$salesByDay" :days="$days">
+                    <x-slot:icon>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"/><path d="M7 4h6a4 4 0 0 1 0 8H7"/><path d="M3 10h10"/><path d="M3 14h10"/></svg>
+                    </x-slot:icon>
+                </x-kpi-sparkline-card>
+                <x-kpi-sparkline-card label="Parcel Qty." :values="$qtyByDay" :days="$days" :is-currency="false">
+                    <x-slot:icon>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+                    </x-slot:icon>
+                </x-kpi-sparkline-card>
+                <x-kpi-sparkline-card label="Product Cost" :values="$costByDay" :days="$days">
+                    <x-slot:icon>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83 3.83 11l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+                    </x-slot:icon>
+                </x-kpi-sparkline-card>
+                <x-kpi-sparkline-card label="Est. Margin" :values="$marginByDay" :days="$days" :diverging="true">
+                    <x-slot:icon>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    </x-slot:icon>
+                </x-kpi-sparkline-card>
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center gap-2 text-slate-400">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
-                    <p class="text-xs font-medium uppercase tracking-wide">Parcel Qty.</p>
-                </div>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($totals['parcel_qty']) }}</p>
+
+            <div class="mb-8">
+                <x-seller-day-comparison :series="$sellerTrend" :days="$days" />
             </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center gap-2 text-slate-400">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83 3.83 11l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
-                    <p class="text-xs font-medium uppercase tracking-wide">Product Cost</p>
+        @else
+            <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-center gap-2 text-slate-400">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"/><path d="M7 4h6a4 4 0 0 1 0 8H7"/><path d="M3 10h10"/><path d="M3 14h10"/></svg>
+                        <p class="text-xs font-medium uppercase tracking-wide">Sales Value</p>
+                    </div>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['sales_value'], 2) }}</p>
                 </div>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['product_cost'], 2) }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center gap-2 text-slate-400">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                    <p class="text-xs font-medium uppercase tracking-wide">Est. Margin</p>
+                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-center gap-2 text-slate-400">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+                        <p class="text-xs font-medium uppercase tracking-wide">Parcel Qty.</p>
+                    </div>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($totals['parcel_qty']) }}</p>
                 </div>
-                <p class="mt-2 text-2xl font-semibold {{ $margin >= 0 ? 'text-teal-600' : 'text-red-600' }}">₱{{ number_format($margin, 2) }}</p>
+                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-center gap-2 text-slate-400">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83 3.83 11l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
+                        <p class="text-xs font-medium uppercase tracking-wide">Product Cost</p>
+                    </div>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['product_cost'], 2) }}</p>
+                </div>
+                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex items-center gap-2 text-slate-400">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                        <p class="text-xs font-medium uppercase tracking-wide">Est. Margin</p>
+                    </div>
+                    <p class="mt-2 text-2xl font-semibold {{ $margin >= 0 ? 'text-teal-600' : 'text-red-600' }}">₱{{ number_format($margin, 2) }}</p>
+                </div>
             </div>
-        </div>
+        @endif
 
         <div class="space-y-6">
             @forelse ($report as $seller => $products)
