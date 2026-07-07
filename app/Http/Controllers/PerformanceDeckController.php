@@ -36,17 +36,18 @@ class PerformanceDeckController extends Controller
                 $selectedSeller = null;
             }
 
-            $filteredRows = $posReport->filterRows(
-                $rows,
-                Carbon::parse($startDate),
-                Carbon::parse($endDate),
-                $selectedSeller,
-            );
+            $start = Carbon::parse($startDate);
+            $end = Carbon::parse($endDate);
 
+            $filteredRows = $posReport->filterRows($rows, $start, $end, $selectedSeller);
             $report = $posReport->buildSellerReport($filteredRows);
-            $productBreakdown = $posReport->aggregateBy($filteredRows, 'PRODUCT NAME');
-            $regionBreakdown = $posReport->aggregateBy($filteredRows, 'By region');
-            $statusBreakdown = $posReport->aggregateBy($filteredRows, 'Status');
+
+            // Breakdowns are the department-wide picture for the date range —
+            // they ignore the seller dropdown on purpose.
+            $dateFilteredRows = $posReport->filterRows($rows, $start, $end);
+            $productBreakdown = $posReport->aggregateBy($dateFilteredRows, 'PRODUCT NAME');
+            $regionBreakdown = $posReport->aggregateBy($dateFilteredRows, 'By region');
+            $statusBreakdown = $posReport->aggregateBy($dateFilteredRows, 'Status');
         } catch (\Throwable $e) {
             $error = 'Could not load POS data: '.$e->getMessage();
         }
