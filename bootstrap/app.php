@@ -15,6 +15,18 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
         ]);
+
+        // Render (and most PaaS hosts) terminate TLS at their edge and
+        // forward to the container over plain HTTP — without this, Laravel
+        // thinks every request is HTTP and generates http:// asset/redirect
+        // URLs, which browsers then block as mixed content on an https:// page.
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
