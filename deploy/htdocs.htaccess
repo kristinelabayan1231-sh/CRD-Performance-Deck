@@ -1,0 +1,59 @@
+# For InfinityFree (or any host that only exposes a single web-root
+# folder). This file goes at the ROOT of htdocs/ — i.e. next to index.php,
+# vendor/, app/, etc. once the app has been flattened per deploy/README.md.
+#
+# It combines Laravel's normal front-controller rewrite rules with a
+# deny-by-default policy: everything is blocked from direct HTTP access
+# except the specific public entry points listed below. This matters here
+# specifically because, unlike normal Laravel hosting (where vendor/, app/,
+# .env etc. live outside the web root and Apache simply can't reach them),
+# flattening puts all of that INSIDE the web-servable folder — so without
+# this, https://yourdomain.com/.env would be downloadable by anyone.
+
+# Deny everything by default.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
+
+# Re-allow only the public entry point and static assets Laravel needs to
+# serve directly. The build/ folder (compiled CSS/JS/fonts) is re-opened by
+# its own deploy/build.htaccess placed inside it — see deploy/README.md.
+<FilesMatch "^(index\.php|favicon\.ico|robots\.txt|\.htaccess)$">
+    <IfModule mod_authz_core.c>
+        Require all granted
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Allow from all
+    </IfModule>
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
+
+    RewriteEngine On
+
+    # Handle Authorization Header
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # Handle X-XSRF-Token Header
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect Trailing Slashes If Not A Folder...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Send Requests To Front Controller...
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^ index.php [L]
+</IfModule>

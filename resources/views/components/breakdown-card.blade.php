@@ -1,34 +1,24 @@
-@props(['title', 'items'])
+@props(['title', 'items', 'icon' => null])
 
 @php
     $total = array_sum(array_column($items, 'sales_value'));
-    $max = ! empty($items) ? max(array_column($items, 'sales_value')) : 0;
 @endphp
 
 <section class="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-    <div class="border-b border-slate-200 bg-slate-50 px-5 py-3">
+    <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-5 py-3">
+        @if ($icon)
+            <span class="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">
+                {{ $icon }}
+            </span>
+        @endif
         <h3 class="text-sm font-semibold text-slate-900">{{ $title }}</h3>
     </div>
 
     @if (empty($items))
         <p class="px-5 py-6 text-sm text-slate-400">No data in this date range.</p>
     @else
-        <div data-chart-view class="space-y-3 px-5 py-4">
-            @foreach ($items as $item)
-                @php
-                    $pct = $total > 0 ? $item['sales_value'] / $total * 100 : 0;
-                    $barWidth = $max > 0 ? max(2, round($item['sales_value'] / $max * 100)) : 0;
-                @endphp
-                <div class="flex items-center gap-3">
-                    <span class="w-28 shrink-0 truncate text-xs text-slate-600" title="{{ $item['label'] }}">{{ $item['label'] }}</span>
-                    <div class="h-5 min-w-0 flex-1 rounded-r bg-slate-100">
-                        <div class="h-5 rounded-r bg-teal-500" style="width: {{ $barWidth }}%"></div>
-                    </div>
-                    <span class="w-32 shrink-0 text-right text-xs tabular-nums text-slate-600">
-                        ₱{{ number_format($item['sales_value'], 0) }} &middot; {{ number_format($pct, 1) }}%
-                    </span>
-                </div>
-            @endforeach
+        <div data-chart-view>
+            <x-donut-chart :items="$items" :total="$total" />
         </div>
 
         <div data-table-view class="hidden overflow-x-auto">

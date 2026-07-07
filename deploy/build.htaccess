@@ -1,0 +1,11 @@
+# Re-opens the compiled Vite assets (CSS/JS/fonts) that deploy/htdocs.htaccess
+# denies by default. Place this file at htdocs/build/.htaccess once deployed
+# — see deploy/README.md.
+
+<IfModule mod_authz_core.c>
+    Require all granted
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Allow from all
+</IfModule>
