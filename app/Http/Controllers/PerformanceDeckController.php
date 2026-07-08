@@ -14,12 +14,14 @@ class PerformanceDeckController extends Controller
         $validated = $request->validate([
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date'],
-            'seller' => ['nullable', 'string'],
+            'seller' => ['nullable', 'array'],
+            'seller.*' => ['string'],
         ]);
 
-        $startDate = $validated['start_date'] ?? now()->startOfMonth()->toDateString();
+        $startDate = $validated['start_date'] ?? now()->toDateString();
         $endDate = $validated['end_date'] ?? now()->toDateString();
-        $selectedSeller = $validated['seller'] ?? null;
+        
+        $selectedSellers = $validated['seller'] ?? [];
 
         $report = [];
         $sellers = [];
@@ -38,9 +40,7 @@ class PerformanceDeckController extends Controller
             $rows = $posReport->loadSellerRows();
             $sellers = $posReport->sellerNames($rows);
 
-            if ($selectedSeller !== null && ! in_array($selectedSeller, $sellers, true)) {
-                $selectedSeller = null;
-            }
+            $selectedSellers = array_values(array_intersect($selectedSellers, $sellers));
 
             $start = Carbon::parse($startDate);
             $end = Carbon::parse($endDate);
@@ -56,16 +56,11 @@ class PerformanceDeckController extends Controller
                 $cursor->addDay();
             }
 
-            // A short range (2–3 days) switches Department Overview and
-            // Seller Performance into a day-by-day comparison view instead
-            // of blending everything into one combined total.
             $isComparisonMode = count($days) >= 2 && count($days) <= 3;
 
-            $filteredRows = $posReport->filterRows($rows, $start, $end, $selectedSeller);
+            $filteredRows = $posReport->filterRows($rows, $start, $end, $selectedSellers ?: null);
             $report = $posReport->buildSellerReport($filteredRows);
 
-            // Breakdowns are the department-wide picture for the date range —
-            // they ignore the seller dropdown on purpose.
             $dateFilteredRows = $posReport->filterRows($rows, $start, $end);
 
             if ($isComparisonMode) {
@@ -88,16 +83,26 @@ class PerformanceDeckController extends Controller
             'product_cost' => 0.0,
         ];
 
-        foreach ($report as $products) {
-            foreach ($products as $product) {
-                $totals['sales_value'] += $product['sales_value'];
-                $totals['parcel_qty'] += $product['parcel_qty'];
-                $totals['product_cost'] += $product['product_cost'];
-            }
+        // Per-seller totals — used for the multi-seller comparison cards
+        // when 2+ sellers are picked outside day-comparison mode.
+        $sellerTotals = [];
+
+        foreach ($report as $sellerName => $products) {
+            $sellerSales = array_sum(array_column($products, 'sales_value'));
+            $sellerQty = array_sum(array_column($products, 'parcel_qty'));
+            $sellerCost = array_sum(array_column($products, 'product_cost'));
+
+            $sellerTotals[$sellerName] = [
+                'sales_value' => $sellerSales,
+                'parcel_qty' => $sellerQty,
+                'product_cost' => $sellerCost,
+            ];
+
+            $totals['sales_value'] += $sellerSales;
+            $totals['parcel_qty'] += $sellerQty;
+            $totals['product_cost'] += $sellerCost;
         }
 
-        // Per-day KPI totals for the comparison sparkline cards — summed
-        // across sellers (or the single selected seller) at each day index.
         $kpiByDay = [];
         if ($isComparisonMode) {
             $kpiByDay = array_fill(0, count($days), ['sales_value' => 0.0, 'parcel_qty' => 0, 'product_cost' => 0.0]);
@@ -114,10 +119,11 @@ class PerformanceDeckController extends Controller
         return view('deck', [
             'report' => $report,
             'sellers' => $sellers,
-            'selectedSeller' => $selectedSeller,
+            'selectedSellers' => $selectedSellers,
             'startDate' => $startDate,
             'endDate' => $endDate,
             'totals' => $totals,
+            'sellerTotals' => $sellerTotals,
             'productBreakdown' => $productBreakdown,
             'regionBreakdown' => $regionBreakdown,
             'statusBreakdown' => $statusBreakdown,

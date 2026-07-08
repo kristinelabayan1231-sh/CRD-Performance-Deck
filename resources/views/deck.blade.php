@@ -16,9 +16,9 @@
 
     <form method="GET" action="{{ route('deck.index') }}"
         class="mb-8 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        @if ($selectedSeller)
-            <input type="hidden" name="seller" value="{{ $selectedSeller }}">
-        @endif
+        @foreach ($selectedSellers as $s)
+            <input type="hidden" name="seller[]" value="{{ $s }}">
+        @endforeach
         <div>
             <label for="start_date" class="block text-xs font-medium text-slate-500">Start date</label>
             <input type="date" id="start_date" name="start_date" value="{{ $startDate }}"
@@ -39,7 +39,7 @@
                 Comparing {{ count($days) }} days
             </span>
         @else
-            <p class="text-xs text-slate-400">Applies to both sections below. Pick a seller inside "Seller Performance". Pick a 2&ndash;3 day range to compare days side by side.</p>
+            <p class="text-xs text-slate-400">Applies to both sections below. Pick sellers inside "Seller Performance". Pick a 2&ndash;3 day range to compare days side by side.</p>
         @endif
     </form>
 
@@ -120,29 +120,67 @@
                 <h2 class="text-lg font-semibold tracking-tight text-slate-900">Seller Performance</h2>
                 <span class="inline-flex items-center gap-1 rounded-full bg-teal-100 px-2.5 py-0.5 text-[11px] font-medium text-teal-700">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"/></svg>
-                    {{ $selectedSeller ?: 'All CRD Sellers' }}
+                    {{ $selectedSellers ? implode(', ', $selectedSellers) : 'All CRD Sellers' }}
                 </span>
             </div>
 
             <form method="GET" action="{{ route('deck.index') }}" class="flex items-center gap-3">
                 <input type="hidden" name="start_date" value="{{ $startDate }}">
                 <input type="hidden" name="end_date" value="{{ $endDate }}">
-                <label for="seller" class="sr-only">Filter by CRD seller</label>
-                <select id="seller" name="seller" onchange="this.form.submit()"
-                    class="w-56 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
-                    <option value="">All CRD Sellers</option>
-                    @foreach ($sellers as $name)
-                        <option value="{{ $name }}" @selected($selectedSeller === $name)>{{ $name }}</option>
-                    @endforeach
-                </select>
 
-                @if ($selectedSeller)
+                <details class="relative" data-seller-dropdown>
+                    <summary class="flex w-56 cursor-pointer list-none items-center justify-between rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                        <span data-seller-dropdown-label class="truncate">
+                            {{ $selectedSellers ? implode(', ', $selectedSellers) : 'All CRD Sellers' }}
+                        </span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-slate-400"><polyline points="6 9 12 15 18 9"/></svg>
+                    </summary>
+
+                    <div class="absolute z-10 mt-1 max-h-64 w-72 overflow-y-auto rounded-md border border-slate-200 bg-white p-2 shadow-lg">
+                        @foreach ($sellers as $name)
+                            <label class="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                                <input type="checkbox" name="seller[]" value="{{ $name }}"
+                                    @checked(in_array($name, $selectedSellers, true))
+                                    data-seller-checkbox
+                                    class="rounded border-slate-300 text-teal-600 focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
+                                {{ $name }}
+                            </label>
+                        @endforeach
+                    </div>
+                </details>
+
+                <button type="submit"
+                    class="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">
+                    Apply
+                </button>
+
+                @if ($selectedSellers)
                     <a href="{{ route('deck.index', ['start_date' => $startDate, 'end_date' => $endDate]) }}"
                         class="text-xs font-medium text-slate-400 hover:text-slate-600">
                         Clear
                     </a>
                 @endif
             </form>
+
+            <script>
+                document.querySelectorAll('[data-seller-dropdown]').forEach((details) => {
+                    const label = details.querySelector('[data-seller-dropdown-label]');
+                    const checkboxes = details.querySelectorAll('[data-seller-checkbox]');
+
+                    const updateLabel = () => {
+                        const checked = Array.from(checkboxes).filter((cb) => cb.checked).map((cb) => cb.value);
+                        label.textContent = checked.length ? checked.join(', ') : 'All CRD Sellers';
+                    };
+
+                    checkboxes.forEach((cb) => cb.addEventListener('change', updateLabel));
+
+                    document.addEventListener('click', (e) => {
+                        if (details.open && !details.contains(e.target)) {
+                            details.open = false;
+                        }
+                    });
+                });
+            </script>
         </div>
 
         @if ($isComparisonMode)
@@ -209,6 +247,25 @@
                     <p class="mt-2 text-2xl font-semibold {{ $margin >= 0 ? 'text-teal-600' : 'text-red-600' }}">₱{{ number_format($margin, 2) }}</p>
                 </div>
             </div>
+
+            {{-- Side-by-side per-seller totals when 2+ sellers are selected but the date
+                 range is too long/short to trigger the day-by-day comparison view above. --}}
+            @if (count($selectedSellers) > 1)
+                <div class="mb-8">
+                    <p class="mb-3 text-xs font-medium uppercase tracking-wide text-slate-500">Selected sellers compared</p>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-{{ min(count($selectedSellers), 4) }}">
+                        @foreach ($sellerTotals as $name => $t)
+                            @if (in_array($name, $selectedSellers, true))
+                                <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                    <p class="text-xs font-medium text-slate-500">{{ $name }}</p>
+                                    <p class="mt-1 text-lg font-semibold text-slate-900">₱{{ number_format($t['sales_value'], 2) }}</p>
+                                    <p class="text-xs text-slate-400">{{ number_format($t['parcel_qty']) }} parcels &middot; ₱{{ number_format($t['product_cost'], 2) }} cost</p>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                </div>
+            @endif
         @endif
 
         <div class="space-y-6">
@@ -217,67 +274,77 @@
                     $sellerSalesValue = array_sum(array_column($products, 'sales_value'));
                     $sellerQty = array_sum(array_column($products, 'parcel_qty'));
                     $sellerCost = array_sum(array_column($products, 'product_cost'));
+                    $sellerCollapseId = 'seller-collapse-'.md5($seller);
                 @endphp
                 <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
+                    <button type="button"
+                        class="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3 text-left"
+                        onclick="document.getElementById('{{ $sellerCollapseId }}').dispatchEvent(new Event('seller-toggle'))">
                         <div class="flex items-center gap-2.5">
                             <span class="flex h-6 w-6 items-center justify-center rounded-full bg-teal-100 text-[11px] font-semibold text-teal-700">
                                 {{ strtoupper(substr(trim(str_replace('CRD', '', $seller)), 0, 1) ?: 'C') }}
                             </span>
                             <h2 class="text-sm font-semibold text-slate-900">{{ $seller }}</h2>
                         </div>
-                        <span class="text-xs text-slate-500">{{ count($products) }} products</span>
-                    </div>
-
-                    @if (empty($products))
-                        <p class="px-5 py-6 text-sm text-slate-400">No orders in this date range.</p>
-                    @else
-                        @php $pageCount = (int) ceil(count($products) / 10); @endphp
-                        <div data-paginated-table class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead>
-                                    <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                                        <th class="px-5 py-2 font-medium">Product</th>
-                                        <th class="px-5 py-2 font-medium text-right">Sales Value</th>
-                                        <th class="px-5 py-2 font-medium text-right">Parcel Qty.</th>
-                                        <th class="px-5 py-2 font-medium text-right">Product Cost</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach ($products as $row)
-                                        <tr data-page="{{ intdiv($loop->index, 10) + 1 }}" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                                            <td class="px-5 py-2 text-slate-700">{{ $row['product'] }}</td>
-                                            <td class="px-5 py-2 text-right tabular-nums text-slate-700">₱{{ number_format($row['sales_value'], 2) }}</td>
-                                            <td class="px-5 py-2 text-right tabular-nums text-slate-700">{{ number_format($row['parcel_qty']) }}</td>
-                                            <td class="px-5 py-2 text-right tabular-nums text-slate-700">₱{{ number_format($row['product_cost'], 2) }}</td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                                <tfoot>
-                                    <tr class="bg-slate-50 font-semibold">
-                                        <td class="px-5 py-2">Total</td>
-                                        <td class="px-5 py-2 text-right tabular-nums">₱{{ number_format($sellerSalesValue, 2) }}</td>
-                                        <td class="px-5 py-2 text-right tabular-nums">{{ number_format($sellerQty) }}</td>
-                                        <td class="px-5 py-2 text-right tabular-nums">₱{{ number_format($sellerCost, 2) }}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
-
-                            @if ($pageCount > 1)
-                                <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-2.5">
-                                    <button type="button" data-page-prev
-                                        class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                    </button>
-                                    <span data-page-indicator class="text-xs tabular-nums text-slate-500">Page 1 of {{ $pageCount }}</span>
-                                    <button type="button" data-page-next
-                                        class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                                    </button>
-                                </div>
-                            @endif
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-slate-500">{{ count($products) }} products</span>
+                            <svg data-seller-chevron width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-slate-400 transition-transform duration-200">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
                         </div>
-                    @endif
+                    </button>
+
+                    <div id="{{ $sellerCollapseId }}" data-seller-body>
+                        @if (empty($products))
+                            <p class="px-5 py-6 text-sm text-slate-400">No orders in this date range.</p>
+                        @else
+                            @php $pageCount = (int) ceil(count($products) / 10); @endphp
+                            <div data-paginated-table class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                                            <th class="px-5 py-2 font-medium">Product</th>
+                                            <th class="px-5 py-2 font-medium text-right">Sales Value</th>
+                                            <th class="px-5 py-2 font-medium text-right">Parcel Qty.</th>
+                                            <th class="px-5 py-2 font-medium text-right">Product Cost</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach ($products as $row)
+                                            <tr data-page="{{ intdiv($loop->index, 10) + 1 }}" class="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                                <td class="px-5 py-2 text-slate-700">{{ $row['product'] }}</td>
+                                                <td class="px-5 py-2 text-right tabular-nums text-slate-700">₱{{ number_format($row['sales_value'], 2) }}</td>
+                                                <td class="px-5 py-2 text-right tabular-nums text-slate-700">{{ number_format($row['parcel_qty']) }}</td>
+                                                <td class="px-5 py-2 text-right tabular-nums text-slate-700">₱{{ number_format($row['product_cost'], 2) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                    <tfoot>
+                                        <tr class="bg-slate-50 font-semibold">
+                                            <td class="px-5 py-2">Total</td>
+                                            <td class="px-5 py-2 text-right tabular-nums">₱{{ number_format($sellerSalesValue, 2) }}</td>
+                                            <td class="px-5 py-2 text-right tabular-nums">{{ number_format($sellerQty) }}</td>
+                                            <td class="px-5 py-2 text-right tabular-nums">₱{{ number_format($sellerCost, 2) }}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+
+                                @if ($pageCount > 1)
+                                    <div class="flex items-center justify-end gap-3 border-t border-slate-100 px-5 py-2.5">
+                                        <button type="button" data-page-prev
+                                            class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                        </button>
+                                        <span data-page-indicator class="text-xs tabular-nums text-slate-500">Page 1 of {{ $pageCount }}</span>
+                                        <button type="button" data-page-next
+                                            class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:pointer-events-none disabled:opacity-30">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                        </button>
+                                    </div>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
                 </section>
             @empty
                 <div class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
@@ -287,4 +354,21 @@
         </div>
     @endif
     </div>
+
+    <script>
+        document.querySelectorAll('[data-seller-body]').forEach((body) => {
+            if (body.dataset.sellerBound) {
+                return;
+            }
+            body.dataset.sellerBound = 'true';
+
+            const section = body.closest('section');
+            const chevron = section.querySelector('[data-seller-chevron]');
+
+            body.addEventListener('seller-toggle', () => {
+                const collapsed = body.classList.toggle('hidden');
+                chevron.style.transform = collapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+            });
+        });
+    </script>
 @endsection
