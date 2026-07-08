@@ -141,6 +141,63 @@ class PosReportService
     }
 
     /**
+     * Aggregate already-filtered rows into per-category trend series across
+     * a small set of days — one point per day per category, for a line
+     * chart comparing e.g. products, regions, statuses, or sellers day by
+     * day. Categories are sorted by their total across all days descending.
+     *
+     * @param  array<int, array<string, string>>  $filteredRows
+     * @param  array<int, \Carbon\Carbon>  $days
+     * @return array<int, array{label: string, total: float, points: array<int, array{date: string, sales_value: float, parcel_qty: int, product_cost: float}>}>
+     */
+    public function aggregateByDay(array $filteredRows, array $days, string $column): array
+    {
+        $dayKeys = array_map(fn (Carbon $day) => $day->toDateString(), $days);
+
+        $grouped = [];
+
+        foreach ($filteredRows as $row) {
+            $salesDate = $this->parseDate($row['Sales Date'] ?? null);
+
+            if (! $salesDate) {
+                continue;
+            }
+
+            $dayKey = $salesDate->toDateString();
+
+            if (! in_array($dayKey, $dayKeys, true)) {
+                continue;
+            }
+
+            $label = trim($row[$column] ?? '') ?: 'Unknown';
+
+            $grouped[$label][$dayKey] ??= ['sales_value' => 0.0, 'parcel_qty' => 0, 'product_cost' => 0.0];
+            $grouped[$label][$dayKey]['sales_value'] += $this->parseNumber($row['Unit price'] ?? '0');
+            $grouped[$label][$dayKey]['parcel_qty'] += 1;
+            $grouped[$label][$dayKey]['product_cost'] += $this->parseNumber($row['P.COST'] ?? '0');
+        }
+
+        $series = [];
+
+        foreach ($grouped as $label => $byDay) {
+            $points = [];
+            $total = 0.0;
+
+            foreach ($dayKeys as $dayKey) {
+                $point = $byDay[$dayKey] ?? ['sales_value' => 0.0, 'parcel_qty' => 0, 'product_cost' => 0.0];
+                $points[] = array_merge(['date' => $dayKey], $point);
+                $total += $point['sales_value'];
+            }
+
+            $series[] = ['label' => $label, 'total' => $total, 'points' => $points];
+        }
+
+        usort($series, fn ($a, $b) => $b['total'] <=> $a['total']);
+
+        return $series;
+    }
+
+    /**
      * @return array<int, array<string, string>>
      */
     protected function parseCsv(string $csv): array
