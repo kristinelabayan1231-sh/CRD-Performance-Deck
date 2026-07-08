@@ -48,13 +48,13 @@ class PosReportService
      * @param  array<int, array<string, string>>  $rows
      * @return array<int, array<string, string>>
      */
-    public function filterRows(array $rows, Carbon $start, Carbon $end, ?string $sellerName = null): array
+    public function filterRows(array $rows, Carbon $start, Carbon $end, ?array $sellerNames = null): array
     {
         $startOfRange = $start->copy()->startOfDay();
         $endOfRange = $end->copy()->endOfDay();
 
-        return array_values(array_filter($rows, function (array $row) use ($startOfRange, $endOfRange, $sellerName) {
-            if ($sellerName !== null && trim($row['Assigning seller'] ?? '') !== $sellerName) {
+        return array_values(array_filter($rows, function (array $row) use ($startOfRange, $endOfRange, $sellerNames) {
+            if ($sellerNames !== null && $sellerNames !== [] && ! in_array(trim($row['Assigning seller'] ?? ''), $sellerNames, true)) {
                 return false;
             }
 
