@@ -4,7 +4,7 @@
     $total = array_sum(array_column($items, 'sales_value'));
 @endphp
 
-<section class="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+<section class="min-w-0 overflow-hidden rounded-xl bg-white shadow-sm">
     <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-5 py-3">
         @if ($icon)
             <span class="flex h-6 w-6 items-center justify-center rounded-md bg-white text-slate-400 shadow-sm ring-1 ring-slate-200">

@@ -3,45 +3,52 @@
 @section('title', 'Performance Deck — ' . config('app.name'))
 
 @section('content')
-    <div class="mb-8 flex flex-wrap items-end justify-between gap-2">
-        <div>
-            <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Performance Deck</h1>
-            <p class="mt-1 text-sm text-slate-500">Customer Retention Department &mdash; seller performance, sourced from Pancake POS.</p>
-        </div>
-        <span id="last-updated" class="flex items-center gap-1.5 text-xs text-slate-400">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            Updated just now
-        </span>
-    </div>
-
-    <form method="GET" action="{{ route('deck.index') }}"
-        class="mb-8 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        @foreach ($selectedSellers as $s)
-            <input type="hidden" name="seller[]" value="{{ $s }}">
-        @endforeach
-        <div>
-            <label for="start_date" class="block text-xs font-medium text-slate-500">Start date</label>
-            <input type="date" id="start_date" name="start_date" value="{{ $startDate }}"
-                class="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
-        </div>
-        <div>
-            <label for="end_date" class="block text-xs font-medium text-slate-500">End date</label>
-            <input type="date" id="end_date" name="end_date" value="{{ $endDate }}"
-                class="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
-        </div>
-        <button type="submit"
-            class="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700">
-            Apply
-        </button>
-        @if (!$error && $isComparisonMode)
-            <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                Comparing {{ count($days) }} days
+    <x-page-header title="CRD Dashboard" subtitle="Customer Retention Department — seller performance, sourced from Pancake POS.">
+        <x-slot:titleMeta>
+            <span id="last-updated" class="flex items-center gap-1.5 text-xs text-slate-400">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Updated just now
             </span>
-        @else
-            <p class="text-xs text-slate-400">Applies to both sections below. Pick sellers inside "Seller Performance". Pick a 2&ndash;3 day range to compare days side by side.</p>
-        @endif
-    </form>
+        </x-slot:titleMeta>
+        <x-slot:actions>
+            <div class="group relative inline-flex self-center">
+                <button type="button" aria-label="More info about this filter"
+                    class="flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] font-semibold text-slate-400 transition hover:border-slate-400 hover:text-slate-600">
+                    i
+                </button>
+                <div class="pointer-events-none absolute left-0 top-full z-30 mt-2 w-64 rounded-md border border-slate-200 bg-white p-2.5 text-xs leading-relaxed text-slate-500 opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                    Applies to both sections below. Pick sellers inside "Seller Performance". Pick a 2&ndash;3 day range to compare days side by side.
+                </div>
+            </div>
+
+            <form method="GET" action="{{ route('deck.index') }}" class="flex flex-wrap items-end gap-4">
+                @foreach ($selectedSellers as $s)
+                    <input type="hidden" name="seller[]" value="{{ $s }}">
+                @endforeach
+                <div>
+                    <label for="start_date" class="block text-xs font-medium text-slate-500">Start date</label>
+                    <input type="date" id="start_date" name="start_date" value="{{ $startDate }}"
+                        class="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                </div>
+                <div>
+                    <label for="end_date" class="block text-xs font-medium text-slate-500">End date</label>
+                    <input type="date" id="end_date" name="end_date" value="{{ $endDate }}"
+                        class="mt-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                </div>
+                <button type="submit"
+                    class="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-slate-700">
+                    Apply
+                </button>
+            </form>
+
+            @if (!$error && $isComparisonMode)
+                <span class="inline-flex items-center gap-1.5 self-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                    Comparing {{ count($days) }} days
+                </span>
+            @endif
+        </x-slot:actions>
+    </x-page-header>
 
     <div id="deck-content">
     @if ($error)
@@ -54,7 +61,7 @@
         @endphp
 
         {{-- Department-wide overview: always ALL CRD sellers, unaffected by the seller filter above. --}}
-        <div class="mb-10 rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+        <div class="mb-10 rounded-xl bg-slate-50/70 p-5">
             <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                     <h2 class="text-lg font-semibold tracking-tight text-slate-900">Department Overview</h2>
@@ -218,28 +225,28 @@
             </div>
         @else
             <div class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-white p-5 shadow-sm">
                     <div class="flex items-center gap-2 text-slate-400">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16"/><path d="M7 4h6a4 4 0 0 1 0 8H7"/><path d="M3 10h10"/><path d="M3 14h10"/></svg>
                         <p class="text-xs font-medium uppercase tracking-wide">Sales Value</p>
                     </div>
                     <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['sales_value'], 2) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-white p-5 shadow-sm">
                     <div class="flex items-center gap-2 text-slate-400">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
                         <p class="text-xs font-medium uppercase tracking-wide">Parcel Qty.</p>
                     </div>
                     <p class="mt-2 text-2xl font-semibold text-slate-900">{{ number_format($totals['parcel_qty']) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-white p-5 shadow-sm">
                     <div class="flex items-center gap-2 text-slate-400">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 11 3.83 3.83 11l9.58 9.58a2 2 0 0 0 2.83 0l4.35-4.35a2 2 0 0 0 0-2.82Z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg>
                         <p class="text-xs font-medium uppercase tracking-wide">Product Cost</p>
                     </div>
                     <p class="mt-2 text-2xl font-semibold text-slate-900">₱{{ number_format($totals['product_cost'], 2) }}</p>
                 </div>
-                <div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="rounded-xl bg-white p-5 shadow-sm">
                     <div class="flex items-center gap-2 text-slate-400">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                         <p class="text-xs font-medium uppercase tracking-wide">Est. Margin</p>
@@ -256,7 +263,7 @@
                     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-{{ min(count($selectedSellers), 4) }}">
                         @foreach ($sellerTotals as $name => $t)
                             @if (in_array($name, $selectedSellers, true))
-                                <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div class="rounded-xl bg-white p-4 shadow-sm">
                                     <p class="text-xs font-medium text-slate-500">{{ $name }}</p>
                                     <p class="mt-1 text-lg font-semibold text-slate-900">₱{{ number_format($t['sales_value'], 2) }}</p>
                                     <p class="text-xs text-slate-400">{{ number_format($t['parcel_qty']) }} parcels &middot; ₱{{ number_format($t['product_cost'], 2) }} cost</p>
@@ -276,7 +283,7 @@
                     $sellerCost = array_sum(array_column($products, 'product_cost'));
                     $sellerCollapseId = 'seller-collapse-'.md5($seller);
                 @endphp
-                <section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                <section class="overflow-hidden rounded-xl bg-white shadow-sm">
                     <button type="button"
                         class="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3 text-left"
                         onclick="document.getElementById('{{ $sellerCollapseId }}').dispatchEvent(new Event('seller-toggle'))">
@@ -347,7 +354,7 @@
                     </div>
                 </section>
             @empty
-                <div class="rounded-xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
+                <div class="rounded-xl bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
                     No CRD sales data in this date range.
                 </div>
             @endforelse
