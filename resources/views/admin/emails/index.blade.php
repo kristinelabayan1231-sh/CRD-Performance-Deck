@@ -3,8 +3,9 @@
 @section('title', 'Admin — ' . config('app.name'))
 
 @section('content')
+    @include('admin.partials.nav')
     <div class="mb-8">
-        <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Access Control</h1>
+        <h1 class="text-3xl font-bold tracking-tight text-slate-900">Access Control</h1>
         <p class="mt-1 text-sm text-slate-500">Manage who can sign in to the Performance Deck with Google.</p>
     </div>
 
@@ -21,7 +22,7 @@
     @endif
 
     <form method="POST" action="{{ route('admin.emails.store') }}"
-        class="mb-8 flex flex-wrap items-end gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        class="mb-8 flex flex-wrap items-end gap-4 rounded-xl bg-white p-5 shadow-sm">
         @csrf
         <div class="flex-1 min-w-[220px]">
             <label for="email" class="block text-xs font-medium text-slate-500">Email address</label>
@@ -38,7 +39,7 @@
         </button>
     </form>
 
-    <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div class="overflow-hidden rounded-xl bg-white shadow-sm">
         <table class="w-full text-sm">
             <thead>
                 <tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">

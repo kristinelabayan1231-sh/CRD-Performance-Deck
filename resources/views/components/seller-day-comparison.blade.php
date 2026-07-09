@@ -33,7 +33,7 @@
     }
 @endphp
 
-<section class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+<section class="overflow-hidden rounded-xl bg-white shadow-sm">
     <div class="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-3">
         <h3 class="text-sm font-semibold text-slate-900">Seller Performance by Day</h3>
         <ul class="flex items-center gap-3">

@@ -5,7 +5,7 @@
 @section('content')
     <div class="flex flex-1 items-center justify-center">
         <div class="w-full max-w-sm">
-            <div class="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <div class="rounded-2xl bg-white p-8 text-center shadow-sm">
                 <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-teal-400 text-base font-bold text-slate-900">
                     CRD
                 </span>

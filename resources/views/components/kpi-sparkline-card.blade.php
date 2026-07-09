@@ -6,7 +6,7 @@
     $totalColorClass = $diverging ? ($total >= 0 ? 'text-teal-600' : 'text-red-600') : 'text-slate-900';
 @endphp
 
-<div class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+<div class="rounded-xl bg-white p-5 shadow-sm">
     <div class="flex items-center gap-2 text-slate-400">
         {{ $icon }}
         <p class="text-xs font-medium uppercase tracking-wide">{{ $label }}</p>
