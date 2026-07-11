@@ -16,4 +16,11 @@ fi
 php artisan migrate --force
 php artisan db:seed --force
 
+# Render's free tier has no separate Cron Job/Background Worker service, so
+# the Laravel scheduler (routes/console.php — pancake:sync-cra-stats,
+# pancake:sync-customer-dashboard) runs as a background loop in this same
+# container rather than via system cron. schedule:work wakes up once a
+# minute and only actually invokes a command when its own schedule says to.
+php artisan schedule:work &
+
 exec apache2-foreground
