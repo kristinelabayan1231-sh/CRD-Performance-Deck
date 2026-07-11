@@ -21,6 +21,41 @@
         </div>
     @endif
 
+    <div class="mb-8 rounded-xl bg-white p-5 shadow-sm">
+        <h2 class="text-sm font-semibold text-slate-900">POS Order Status Credentials</h2>
+        <p class="mt-1 text-xs text-slate-400">Separate from the page access tokens above — one Pancake POS shop covers every page and is used only to check whether a conversation's order reached "Delivered".</p>
+
+        @if ($posCredential)
+            <p class="mt-2 text-xs text-slate-500">Current shop: <span class="font-medium text-slate-900">{{ $posCredential->shop_id }}</span> · key ••••{{ substr($posCredential->api_key, -4) }}</p>
+        @endif
+
+        <form method="POST" action="{{ route('admin.pos-credentials.store') }}" class="mt-3 flex flex-wrap items-end gap-3">
+            @csrf
+            <div class="flex-1 min-w-[160px]">
+                <label for="shop_id" class="block text-xs font-medium text-slate-500">Shop ID</label>
+                <input type="text" id="shop_id" name="shop_id" required placeholder="e.g. 12345678" value="{{ old('shop_id') }}"
+                    class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+            </div>
+            <div class="flex-1 min-w-[260px]">
+                <label for="api_key" class="block text-xs font-medium text-slate-500">API Key</label>
+                <input type="text" id="api_key" name="api_key" required placeholder="e.g. 32-character API key"
+                    class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm font-mono focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+            </div>
+            <button type="submit"
+                class="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-slate-700">
+                Save
+            </button>
+        </form>
+
+        @if ($posCredential)
+            <form method="POST" action="{{ route('admin.pos-credentials.destroy', $posCredential) }}" class="mt-2">
+                @csrf
+                @method('DELETE')
+                <button type="submit" class="text-xs font-medium text-red-500 hover:text-red-700">Remove POS credentials</button>
+            </form>
+        @endif
+    </div>
+
     <form method="POST" action="{{ route('admin.facebook-pages.store') }}"
         class="mb-8 flex flex-wrap items-end gap-4 rounded-xl bg-white p-5 shadow-sm">
         @csrf

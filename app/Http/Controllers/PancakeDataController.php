@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cra;
+use App\Models\CraPcDayStat;
 use App\Models\FacebookPage;
+use App\Models\PcDayStat;
 use App\Services\PancakeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -13,7 +15,7 @@ class PancakeDataController extends Controller
     public function index(Request $request, PancakeService $pancake)
     {
         $pages = FacebookPage::orderBy('page_name')->get();
-        $cras = Cra::with('assignments.facebookPage')->orderBy('name')->get();
+        $cras = Cra::with('pcAssignments.pc.facebookPage')->orderBy('name')->get();
 
         if ($pages->isEmpty()) {
             return view('pancake.index', [
@@ -28,7 +30,7 @@ class PancakeDataController extends Controller
                 'previousEngagement' => null,
                 'change' => null,
                 'compareRangeLabel' => null,
-                'dailyRows' => null,
+                'dayTables' => null,
                 'error' => null,
             ]);
         }
@@ -36,7 +38,7 @@ class PancakeDataController extends Controller
         $view = $request->query('view') === 'cra' ? 'cra' : 'page';
 
         return $view === 'cra'
-            ? $this->indexByCra($request, $pancake, $pages, $cras)
+            ? $this->indexByCra($request, $pages, $cras)
             : $this->indexByPage($request, $pancake, $pages, $cras);
     }
 
@@ -82,16 +84,19 @@ class PancakeDataController extends Controller
             'previousEngagement' => $previousEngagement,
             'change' => $change,
             'compareRangeLabel' => $compareRangeLabel,
-            'dailyRows' => null,
+            'dayTables' => null,
             'error' => $error,
         ]);
     }
 
-    protected function indexByCra(Request $request, PancakeService $pancake, $pages, $cras)
+    protected function indexByCra(Request $request, $pages, $cras)
     {
+        $startDate = $request->query('start_date', now()->subDays(6)->format('Y-m-d'));
+        $endDate = $request->query('end_date', now()->format('Y-m-d'));
+
         $error = null;
-        $dailyRows = null;
         $activeCra = null;
+        $dayTables = [];
 
         if ($cras->isEmpty()) {
             $error = 'No CRAs configured yet. Add one under Admin → CRAs.';
@@ -99,54 +104,74 @@ class PancakeDataController extends Controller
             $activeCraId = (int) $request->query('cra', $cras->first()->id);
             $activeCra = $cras->firstWhere('id', $activeCraId) ?? $cras->first();
 
-            if ($activeCra->assignments->isEmpty()) {
-                $error = 'This CRA has no assigned Facebook pages / months yet.';
+            $start = Carbon::parse($startDate)->startOfDay();
+            $end = Carbon::parse($endDate)->startOfDay();
+
+            if ($end->lt($start)) {
+                [$start, $end] = [$end, $start];
+            }
+
+            // Keep the day-by-day layout manageable.
+            if ($start->diffInDays($end) > 30) {
+                $start = $end->copy()->subDays(30);
+            }
+
+            if ($activeCra->pcAssignments->isEmpty()) {
+                $error = 'This CRA has no cohorts set yet. Set one under Admin → CRAs.';
             } else {
-                // Data is attributed to the whole calendar month, not just the
-                // assigned week — so multiple week-rows for the same page/month
-                // must collapse into a single fetch, or totals would multiply.
-                $uniqueMonths = $activeCra->assignments
-                    ->unique(fn ($assignment) => "{$assignment->facebook_page_id}:{$assignment->year}:{$assignment->month}");
+                $pcIds = $activeCra->pcAssignments->pluck('pc_id')->unique();
 
-                $byDate = [];
-                $hadSuccess = false;
+                $pcStats = PcDayStat::whereIn('pc_id', $pcIds)
+                    ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+                    ->get()
+                    ->keyBy(fn ($stat) => $stat->pc_id . ':' . $stat->date);
 
-                try {
-                    foreach ($uniqueMonths as $assignment) {
-                        $monthEngagement = $pancake->getEngagement(
-                            $assignment->facebookPage,
-                            $assignment->monthStart()->toDateString(),
-                            $assignment->monthEnd()->toDateString(),
-                        );
+                $craStats = CraPcDayStat::where('cra_id', $activeCra->id)
+                    ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+                    ->get()
+                    ->keyBy(fn ($stat) => $stat->pc_id . ':' . $stat->date);
 
-                        if (! $monthEngagement) {
-                            continue;
-                        }
+                $cursor = $start->copy();
+                while ($cursor->lte($end)) {
+                    $assignments = $activeCra->assignmentsForWeek($cursor);
 
-                        $hadSuccess = true;
+                    $rows = [];
+                    $totals = ['inquiries' => 0, 'engagement' => 0, 'orders' => 0, 'amount' => 0.0];
 
-                        $series = collect($monthEngagement['series'] ?? [])->keyBy('name');
-                        $inboxData = $series['inbox']['data'] ?? [];
-                        $totalData = $series['total']['data'] ?? [];
-                        $orderData = $series['order_count']['data'] ?? [];
+                    foreach ($assignments as $assignment) {
+                        $key = $assignment->pc_id . ':' . $cursor->toDateString();
+                        $pcStat = $pcStats->get($key);
+                        $craStat = $craStats->get($key);
 
-                        foreach ($monthEngagement['categories'] ?? [] as $i => $dateLabel) {
-                            $date = Carbon::createFromFormat('d/m/Y', $dateLabel)->startOfDay();
-                            $key = $date->toDateString();
+                        // Engagement: manual override wins over the synced
+                        // PC-level number (Pancake's UI metric differs from
+                        // what its public API exposes).
+                        $engagement = $craStat?->engagement ?? $pcStat?->engagement;
 
-                            $byDate[$key] ??= ['date' => $date, 'inquiries' => 0, 'total_engagement' => 0, 'orders' => 0];
-                            $byDate[$key]['inquiries'] += $inboxData[$i] ?? 0;
-                            $byDate[$key]['total_engagement'] += $totalData[$i] ?? 0;
-                            $byDate[$key]['orders'] += $orderData[$i] ?? 0;
-                        }
+                        $rows[] = [
+                            'assignment' => $assignment,
+                            'inquiries' => $craStat?->inquiries,
+                            'engagement' => $engagement,
+                            'orders' => $pcStat?->orders,
+                            'amount' => $craStat?->amount,
+                            'tagging' => $craStat?->tagging,
+                        ];
+
+                        $totals['inquiries'] += $craStat?->inquiries ?? 0;
+                        $totals['engagement'] += $engagement ?? 0;
+                        $totals['orders'] += $pcStat?->orders ?? 0;
+                        $totals['amount'] += $craStat?->amount ?? 0.0;
                     }
 
-                    if ($hadSuccess) {
-                        ksort($byDate);
-                        $dailyRows = array_values($byDate);
+                    if ($rows !== []) {
+                        $dayTables[] = [
+                            'date' => $cursor->copy(),
+                            'rows' => $rows,
+                            'totals' => $totals,
+                        ];
                     }
-                } catch (\Throwable $e) {
-                    $error = 'Could not load engagement data from Pancake: ' . $e->getMessage();
+
+                    $cursor->addDay();
                 }
             }
         }
@@ -157,15 +182,43 @@ class PancakeDataController extends Controller
             'view' => 'cra',
             'activePage' => null,
             'activeCra' => $activeCra,
-            'startDate' => null,
-            'endDate' => null,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
             'engagement' => null,
             'previousEngagement' => null,
             'change' => null,
             'compareRangeLabel' => null,
-            'dailyRows' => $dailyRows,
+            'dayTables' => $dayTables,
             'error' => $error,
         ]);
+    }
+
+    public function updateEntry(Request $request)
+    {
+        $validated = $request->validate([
+            'cra_id' => 'required|exists:cras,id',
+            'pc_id' => 'required|exists:pcs,id',
+            'date' => 'required|date',
+            'engagement' => 'nullable|integer|min:0',
+            'amount' => 'nullable|numeric|min:0',
+            'tagging' => 'nullable|string|max:255',
+        ]);
+
+        // Only touch the manual fields — inquiries belongs to the sync.
+        CraPcDayStat::updateOrCreate(
+            [
+                'cra_id' => $validated['cra_id'],
+                'pc_id' => $validated['pc_id'],
+                'date' => $validated['date'],
+            ],
+            [
+                'engagement' => $validated['engagement'] ?? null,
+                'amount' => $validated['amount'] !== null && $validated['amount'] !== '' ? $validated['amount'] : null,
+                'tagging' => $validated['tagging'] ?: null,
+            ],
+        );
+
+        return back()->with('status', 'Entry saved.');
     }
 
     protected function computeChange(array $current, array $previous): array

@@ -20,12 +20,23 @@ class PosReportService
 
         $rows = $this->parseCsv($response->body());
         $filterTerm = strtolower(config('pos_report.seller_filter'));
+        $aliases = config('pos_report.seller_aliases', []);
 
-        return array_values(array_filter($rows, function (array $row) use ($filterTerm) {
+        $filtered = array_filter($rows, function (array $row) use ($filterTerm) {
             $sellerName = trim($row['Assigning seller'] ?? '');
 
             return $sellerName !== '' && str_contains(strtolower($sellerName), $filterTerm);
-        }));
+        });
+
+        return array_values(array_map(function (array $row) use ($aliases) {
+            // The CSV has inconsistent internal whitespace (e.g. double
+            // spaces after "CRD"), which would otherwise defeat both alias
+            // matching and exact-name grouping elsewhere.
+            $sellerName = preg_replace('/\s+/', ' ', trim($row['Assigning seller'] ?? ''));
+            $row['Assigning seller'] = $aliases[$sellerName] ?? $sellerName;
+
+            return $row;
+        }, $filtered));
     }
 
     /**
