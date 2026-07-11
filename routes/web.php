@@ -46,6 +46,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/pcs', [PcController::class, 'index'])->name('pcs.index');
         Route::post('/pcs', [PcController::class, 'store'])->name('pcs.store');
         Route::post('/pcs/{pc}/assign-page', [PcController::class, 'assignPage'])->name('pcs.assign-page');
+        Route::get('/pcs/page-accounts/{facebookPage}', [PcController::class, 'accounts'])->name('pcs.page-accounts');
         Route::delete('/pcs/{pc}', [PcController::class, 'destroy'])->name('pcs.destroy');
 
         Route::get('/cras', [CraController::class, 'index'])->name('cras.index');

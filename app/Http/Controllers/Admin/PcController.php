@@ -10,38 +10,37 @@ use Illuminate\Http\Request;
 
 class PcController extends Controller
 {
-    public function index(Request $request, PancakeService $pancake)
+    public function index()
     {
         $pcs = Pc::with('facebookPage')->orderBy('label')->get();
         $pages = FacebookPage::orderBy('page_name')->get();
 
-        // "Assign page" flow: ?pc_id opens the panel for that PC; adding
-        // &page_id loads that page's Pancake accounts (seen in the last 30
-        // days of engagement stats) to pick from.
-        $assigningPc = $request->query('pc_id') ? $pcs->firstWhere('id', (int) $request->query('pc_id')) : null;
-        $selectedPage = $request->query('page_id') ? $pages->firstWhere('id', (int) $request->query('page_id')) : null;
-        $accountOptions = [];
-        $accountsError = null;
+        return view('admin.pcs.index', compact('pcs', 'pages'));
+    }
 
-        if ($assigningPc && $selectedPage) {
-            try {
-                $engagement = $pancake->getEngagement(
-                    $selectedPage,
-                    now()->subDays(30)->toDateString(),
-                    now()->toDateString(),
-                );
+    /**
+     * JSON list of Pancake accounts active on the given page in the last 30
+     * days, for the "Assign page" modal's account dropdown to fetch without
+     * a full page reload.
+     */
+    public function accounts(FacebookPage $facebookPage, PancakeService $pancake)
+    {
+        try {
+            $engagement = $pancake->getEngagement(
+                $facebookPage,
+                now()->subDays(30)->toDateString(),
+                now()->toDateString(),
+            );
 
-                $accountOptions = collect($engagement['users_engagements'] ?? [])
-                    ->map(fn ($user) => ['id' => $user['user_id'], 'name' => $user['name'] ?? $user['user_id']])
-                    ->sortBy('name')
-                    ->values()
-                    ->all();
-            } catch (\Throwable $e) {
-                $accountsError = 'Could not load Pancake accounts: ' . $e->getMessage();
-            }
+            $accounts = collect($engagement['users_engagements'] ?? [])
+                ->map(fn ($user) => ['id' => $user['user_id'], 'name' => $user['name'] ?? $user['user_id']])
+                ->sortBy('name')
+                ->values();
+
+            return response()->json(['accounts' => $accounts]);
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Could not load Pancake accounts: ' . $e->getMessage()], 422);
         }
-
-        return view('admin.pcs.index', compact('pcs', 'pages', 'assigningPc', 'selectedPage', 'accountOptions', 'accountsError'));
     }
 
     public function store(Request $request)
