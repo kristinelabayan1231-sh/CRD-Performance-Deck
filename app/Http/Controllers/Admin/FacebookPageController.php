@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\FacebookPage;
+use App\Models\PosCredential;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -12,8 +13,9 @@ class FacebookPageController extends Controller
     public function index()
     {
         $pages = FacebookPage::latest()->get();
+        $posCredential = PosCredential::current();
 
-        return view('admin.facebook-pages.index', compact('pages'));
+        return view('admin.facebook-pages.index', compact('pages', 'posCredential'));
     }
 
     public function store(Request $request)
