@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\GoogleAuthController;
 use App\Http\Controllers\Auth\SessionController;
 use App\Http\Controllers\CraCallStatController;
 use App\Http\Controllers\CraCohortController;
+use App\Http\Controllers\CraDayFinalizationController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\PerformanceDeckController;
 use App\Http\Controllers\SegmentationReportController;
@@ -28,6 +29,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/pancake-data/entry', [PancakeDataController::class, 'updateEntry'])->name('pancake.entry');
     Route::post('/my-cohorts', [CraCohortController::class, 'store'])->name('cra.cohorts.store');
     Route::post('/my-call-stats', [CraCallStatController::class, 'store'])->name('cra.call-stats.store');
+    Route::post('/cra-day-finalizations', [CraDayFinalizationController::class, 'store'])->name('cra-day-finalizations.store');
+    Route::delete('/cra-day-finalizations/{craDayFinalization}', [CraDayFinalizationController::class, 'destroy'])->name('cra-day-finalizations.destroy');
+    Route::post('/customers/build-dashboard', [CustomerController::class, 'buildDashboard'])->name('customers.build-dashboard');
 
     Route::get('/segmentation-report', [SegmentationReportController::class, 'index'])->name('segmentation.index');
 

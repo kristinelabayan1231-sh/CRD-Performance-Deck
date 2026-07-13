@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cra;
+use App\Models\CraDayFinalization;
 use App\Models\CraPcDayStat;
 use App\Models\FacebookPage;
 use App\Models\PcDayStat;
@@ -131,6 +132,11 @@ class PancakeDataController extends Controller
                     ->get()
                     ->keyBy(fn ($stat) => $stat->pc_id . ':' . $stat->date);
 
+                $finalizations = CraDayFinalization::where('cra_id', $activeCra->id)
+                    ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+                    ->get()
+                    ->keyBy('date');
+
                 $cursor = $start->copy();
                 while ($cursor->lte($end)) {
                     // PCs explicitly saved as "no cohort this week" don't
@@ -172,6 +178,7 @@ class PancakeDataController extends Controller
                             'date' => $cursor->copy(),
                             'rows' => $rows,
                             'totals' => $totals,
+                            'finalization' => $finalizations->get($cursor->toDateString()),
                         ];
                     }
 
@@ -180,12 +187,18 @@ class PancakeDataController extends Controller
             }
         }
 
+        $canFinalize = $activeCra && (
+            $request->user()->is_admin
+            || ($activeCra->email && strcasecmp($request->user()->email, $activeCra->email) === 0)
+        );
+
         return view('pancake.index', [
             'pages' => $pages,
             'cras' => $cras,
             'view' => 'cra',
             'activePage' => null,
             'activeCra' => $activeCra,
+            'canFinalize' => $canFinalize,
             'startDate' => $startDate,
             'endDate' => $endDate,
             'engagement' => null,
@@ -207,6 +220,14 @@ class PancakeDataController extends Controller
             'amount' => 'nullable|numeric|min:0',
             'tagging' => 'nullable|string|max:255',
         ]);
+
+        $finalized = CraDayFinalization::where('cra_id', $validated['cra_id'])
+            ->where('date', Carbon::parse($validated['date'])->toDateString())
+            ->exists();
+
+        if ($finalized) {
+            return back()->with('status', 'That day is finalized — reopen it first to edit entries.');
+        }
 
         // Only touch the manual fields — inquiries belongs to the sync.
         CraPcDayStat::updateOrCreate(
