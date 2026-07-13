@@ -131,9 +131,27 @@
         @endif
 
         @if ($mode === 'pending')
-            <div class="rounded-xl bg-white p-10 text-center text-sm text-slate-400 shadow-sm">
-                {{ $periodLabels[$period] }} data for {{ $periodLabel }} hasn't been computed yet — it refreshes hourly in the background.
-                <br>Run <code class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">php artisan pancake:sync-customer-dashboard</code> to build it now.
+            <div class="rounded-xl bg-white p-10 text-center shadow-sm">
+                @if (session('status'))
+                    <p class="mb-3 text-sm font-medium text-teal-700">{{ session('status') }}</p>
+                @endif
+                <p class="text-sm text-slate-400">
+                    {{ $periodLabels[$period] }} data for {{ $periodLabel }} hasn't been computed yet — it refreshes hourly in the background.
+                </p>
+                @if ($building ?? false)
+                    <p class="mt-4 inline-flex items-center gap-2 text-sm font-medium text-slate-600">
+                        <span class="h-2 w-2 animate-pulse rounded-full bg-amber-400"></span>
+                        Building now — the weekly view fills in first (a minute or two). Refresh to check.
+                    </p>
+                @else
+                    <form method="POST" action="{{ route('customers.build-dashboard') }}" class="mt-4">
+                        @csrf
+                        <button type="submit"
+                            class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700">
+                            Build now
+                        </button>
+                    </form>
+                @endif
             </div>
         @endif
 
