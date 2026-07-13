@@ -52,6 +52,20 @@ class CraPcAssignment extends Model
         return WeekBlocks::label($this->weekStartDate());
     }
 
+    /**
+     * A row saved with all cohort fields NULL means the CRA explicitly
+     * works this PC without a cohort this week — it counts as "set" (no
+     * weekly prompt nag) but is skipped by inquiry syncing and the CRA
+     * Performance day tables.
+     */
+    public function hasCohort(): bool
+    {
+        return $this->cohort_from_year !== null
+            && $this->cohort_from_month !== null
+            && $this->cohort_to_year !== null
+            && $this->cohort_to_month !== null;
+    }
+
     public function cohortStart(): Carbon
     {
         return Carbon::create($this->cohort_from_year, $this->cohort_from_month, 1)->startOfMonth();
@@ -64,6 +78,10 @@ class CraPcAssignment extends Model
 
     public function cohortLabel(): string
     {
+        if (! $this->hasCohort()) {
+            return '—';
+        }
+
         $start = $this->cohortStart();
         $end = $this->cohortEnd();
 

@@ -133,7 +133,11 @@ class PancakeDataController extends Controller
 
                 $cursor = $start->copy();
                 while ($cursor->lte($end)) {
-                    $assignments = $activeCra->assignmentsForWeek($cursor);
+                    // PCs explicitly saved as "no cohort this week" don't
+                    // appear in the day tables at all.
+                    $assignments = $activeCra->assignmentsForWeek($cursor)
+                        ->filter(fn ($assignment) => $assignment->hasCohort())
+                        ->values();
 
                     $rows = [];
                     $totals = ['inquiries' => 0, 'engagement' => 0, 'orders' => 0, 'amount' => 0.0];

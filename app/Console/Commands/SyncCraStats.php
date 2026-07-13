@@ -97,6 +97,12 @@ class SyncCraStats extends Command
         $buckets = [];
         foreach ($cras as $cra) {
             foreach ($cra->assignmentsForWeek($date) as $assignment) {
+                // "No cohort this week" rows are an explicit opt-out — no
+                // creation window to bucket inquiries into.
+                if (! $assignment->hasCohort()) {
+                    continue;
+                }
+
                 if ($pagePcs->contains('id', $assignment->pc_id)) {
                     $buckets[] = [
                         'assignment' => $assignment,

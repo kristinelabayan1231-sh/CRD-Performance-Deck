@@ -96,23 +96,29 @@
                         @foreach ($pagePcs as $pc)
                             @php
                                 $row = $existing->get($pc->id);
+                                $noCohort = $row !== null && ! $row->hasCohort();
                                 $i = $fieldIndex++;
                             @endphp
-                            <tr class="border-b border-slate-50 last:border-0">
+                            <tr class="border-b border-slate-50 last:border-0" data-cohort-row>
                                 <td class="px-3 py-2 align-top">
                                     <input type="hidden" name="pcs[{{ $i }}][pc_id]" value="{{ $pc->id }}">
                                     <span class="block font-medium text-slate-700">{{ $pc->label }}</span>
+                                    <label class="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-xs text-slate-400">
+                                        <input type="checkbox" name="pcs[{{ $i }}][no_cohort]" value="1" data-no-cohort @checked($noCohort)
+                                            class="rounded border-slate-300 text-teal-600 focus:border-teal-500 focus:ring-1 focus:ring-teal-500">
+                                        No cohort this week
+                                    </label>
                                 </td>
                                 <td class="px-3 py-2">
                                     <div class="flex gap-1">
-                                        <select name="pcs[{{ $i }}][cohort_from_month]" required
-                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                        <select name="pcs[{{ $i }}][cohort_from_month]" required @disabled($noCohort)
+                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300">
                                             @foreach ($monthNames as $mi => $mname)
                                                 <option value="{{ $mi + 1 }}" @selected(($row->cohort_from_month ?? now()->month) === $mi + 1)>{{ $mname }}</option>
                                             @endforeach
                                         </select>
-                                        <select name="pcs[{{ $i }}][cohort_from_year]" required
-                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                        <select name="pcs[{{ $i }}][cohort_from_year]" required @disabled($noCohort)
+                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300">
                                             @foreach (range(now()->year - 3, now()->year + 1) as $year)
                                                 <option value="{{ $year }}" @selected(($row->cohort_from_year ?? now()->year) === $year)>{{ $year }}</option>
                                             @endforeach
@@ -121,14 +127,14 @@
                                 </td>
                                 <td class="px-3 py-2">
                                     <div class="flex gap-1">
-                                        <select name="pcs[{{ $i }}][cohort_to_month]" required
-                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                        <select name="pcs[{{ $i }}][cohort_to_month]" required @disabled($noCohort)
+                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300">
                                             @foreach ($monthNames as $mi => $mname)
                                                 <option value="{{ $mi + 1 }}" @selected(($row->cohort_to_month ?? now()->month) === $mi + 1)>{{ $mname }}</option>
                                             @endforeach
                                         </select>
-                                        <select name="pcs[{{ $i }}][cohort_to_year]" required
-                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                        <select name="pcs[{{ $i }}][cohort_to_year]" required @disabled($noCohort)
+                                            class="rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-300">
                                             @foreach (range(now()->year - 3, now()->year + 1) as $year)
                                                 <option value="{{ $year }}" @selected(($row->cohort_to_year ?? now()->year) === $year)>{{ $year }}</option>
                                             @endforeach
@@ -192,6 +198,20 @@
             root.querySelector('[data-step-counter]').textContent = `Step ${target + 1} of ${steps.length}`;
             root.querySelector('[data-step-prev]').disabled = target === 0;
             root.querySelector('[data-step-next]').disabled = target === steps.length - 1;
+        });
+
+        // "No cohort this week": disabled selects drop out of the POST,
+        // and required_unless on the server accepts the row as cohort-less.
+        document.addEventListener('change', (event) => {
+            const checkbox = event.target.closest('[data-no-cohort]');
+
+            if (!checkbox) {
+                return;
+            }
+
+            checkbox.closest('[data-cohort-row]').querySelectorAll('select').forEach((select) => {
+                select.disabled = checkbox.checked;
+            });
         });
     </script>
 @endonce
