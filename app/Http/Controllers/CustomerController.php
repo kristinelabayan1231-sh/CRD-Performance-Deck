@@ -103,6 +103,7 @@ class CustomerController extends Controller
             return view('customers.index', array_merge($base, [
                 'mode' => 'pending',
                 'periodLabel' => DashboardPeriod::label($period, $anchor),
+                'building' => \Illuminate\Support\Facades\Cache::has(\App\Console\Commands\SyncCustomerDashboard::BUILD_FLAG),
             ]));
         }
 
@@ -111,6 +112,35 @@ class CustomerController extends Controller
             'periodLabel' => DashboardPeriod::label($period, $anchor),
             'computedAt' => $snapshot->computed_at,
         ]));
+    }
+
+    /**
+     * Kick off pancake:sync-customer-dashboard as a detached background
+     * process so the pending screen's "Build now" button works without a
+     * shell. The command takes minutes (the year period scans ~15k
+     * orders), far beyond any web timeout, so it can't run inline. A
+     * cache flag prevents stacking builds and lets the pending screen
+     * show an in-progress state; the command clears it when done, with
+     * the TTL as a dead-man's switch if the process dies.
+     */
+    public function buildDashboard()
+    {
+        $flag = \App\Console\Commands\SyncCustomerDashboard::BUILD_FLAG;
+
+        if (! \Illuminate\Support\Facades\Cache::add($flag, now()->toDateTimeString(), now()->addMinutes(20))) {
+            return back()->with('status', 'A build is already running — refresh in a few minutes.');
+        }
+
+        $log = storage_path('logs/customer-dashboard-build.log');
+        $command = sprintf(
+            'nohup %s %s pancake:sync-customer-dashboard >> %s 2>&1 &',
+            escapeshellarg(PHP_BINARY),
+            escapeshellarg(base_path('artisan')),
+            escapeshellarg($log),
+        );
+        exec($command);
+
+        return back()->with('status', 'Build started — the weekly view fills in first (a minute or two); month and year take a few minutes more.');
     }
 
     protected function renderSlice(PancakeService $pancake, array $summary, array $selectedSellers, array $base)

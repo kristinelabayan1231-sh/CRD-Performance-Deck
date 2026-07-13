@@ -48,6 +48,12 @@ class SyncCraStats extends Command
             $date = $endDate->copy()->subDays($i);
             $this->info("Syncing {$date->toDateString()}…");
 
+            // CRAs that finalized this day signed off its numbers — their
+            // inquiries are a frozen snapshot the sync must not touch.
+            $finalizedCraIds = \App\Models\CraDayFinalization::where('date', $date->toDateString())
+                ->pluck('cra_id')
+                ->flip();
+
             // One shop covers every page, so this is resolved once per day
             // and reused across all pages below rather than refetched per page.
             $deliveredConversationIds = $posCredential
@@ -58,7 +64,7 @@ class SyncCraStats extends Command
                 $page = $pagePcs->first()->facebookPage;
 
                 try {
-                    $this->syncPageDay($pancake, $page, $pagePcs, $cras, $date, $deliveredConversationIds);
+                    $this->syncPageDay($pancake, $page, $pagePcs, $cras, $date, $deliveredConversationIds, $finalizedCraIds);
                 } catch (\Throwable $e) {
                     $this->error("  {$page->page_name}: {$e->getMessage()}");
                 }
@@ -68,7 +74,7 @@ class SyncCraStats extends Command
         return self::SUCCESS;
     }
 
-    protected function syncPageDay(PancakeService $pancake, $page, $pagePcs, $cras, Carbon $date, ?array $deliveredConversationIds): void
+    protected function syncPageDay(PancakeService $pancake, $page, $pagePcs, $cras, Carbon $date, ?array $deliveredConversationIds, $finalizedCraIds): void
     {
         // --- PC-level engagement and orders, from users_engagements ---
         $engagement = $pancake->getEngagement($page, $date->toDateString(), $date->toDateString());
@@ -96,6 +102,10 @@ class SyncCraStats extends Command
         // plain string comparisons instead of Carbon parsing.
         $buckets = [];
         foreach ($cras as $cra) {
+            if (isset($finalizedCraIds[$cra->id])) {
+                continue;
+            }
+
             foreach ($cra->assignmentsForWeek($date) as $assignment) {
                 // "No cohort this week" rows are an explicit opt-out — no
                 // creation window to bucket inquiries into.

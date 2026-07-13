@@ -154,9 +154,48 @@
             @else
                 <div class="space-y-6">
                     @foreach ($dayTables as $day)
+                        @php
+                            $finalization = $day['finalization'] ?? null;
+                            $daySyncing = ! $finalization && collect($day['rows'])->contains(fn ($r) => $r['inquiries'] === null);
+                        @endphp
                         <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-                            <div class="border-b border-slate-100 bg-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-900">
-                                {{ $day['date']->format('D, M j, Y') }}
+                            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-5 py-2.5">
+                                <span class="text-sm font-semibold text-slate-900">{{ $day['date']->format('D, M j, Y') }}</span>
+                                <span class="flex items-center gap-3">
+                                    @if ($finalization)
+                                        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-700"
+                                            title="Finalized {{ $finalization->created_at->format('M j, Y g:i A') }} — hourly syncing skips this day">
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                            Finalized
+                                        </span>
+                                        @if ($canFinalize ?? false)
+                                            <form method="POST" action="{{ route('cra-day-finalizations.destroy', $finalization) }}">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="text-[11px] font-medium text-slate-400 hover:text-slate-600">Reopen</button>
+                                            </form>
+                                        @endif
+                                    @else
+                                        @if ($daySyncing)
+                                            <span class="inline-flex items-center gap-1.5 text-[11px] text-slate-400" title="Inquiries refresh hourly from Pancake">
+                                                <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></span>
+                                                Still syncing from Pancake — refreshes hourly
+                                            </span>
+                                        @endif
+                                        @if ($canFinalize ?? false)
+                                            <form method="POST" action="{{ route('cra-day-finalizations.store') }}"
+                                                onsubmit="return confirm('Finalize {{ $day['date']->format('M j, Y') }}? Syncing will stop updating this day and its entries will be locked.')">
+                                                @csrf
+                                                <input type="hidden" name="cra_id" value="{{ $activeCra->id }}">
+                                                <input type="hidden" name="date" value="{{ $day['date']->toDateString() }}">
+                                                <button type="submit"
+                                                    class="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 transition hover:bg-slate-100">
+                                                    Finalize day
+                                                </button>
+                                            </form>
+                                        @endif
+                                    @endif
+                                </span>
                             </div>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-sm">
@@ -187,12 +226,21 @@
                                                 </td>
                                                 <td class="px-5 py-2.5 text-xs text-slate-500">{{ $assignment->cohortLabel() }}</td>
                                                 <td class="px-5 py-2.5 text-right tabular-nums text-slate-700">
-                                                    {{ $row['inquiries'] !== null ? number_format($row['inquiries']) : '—' }}
+                                                    @if ($row['inquiries'] !== null)
+                                                        {{ number_format($row['inquiries']) }}
+                                                    @elseif ($finalization)
+                                                        —
+                                                    @else
+                                                        <span class="inline-flex items-center gap-1.5 text-xs text-slate-400" title="Inquiries refresh hourly from Pancake">
+                                                            <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"></span>
+                                                            syncing…
+                                                        </span>
+                                                    @endif
                                                 </td>
                                                 <td class="px-5 py-2.5 text-right">
                                                     <input form="entry-{{ $assignment->pc_id }}-{{ $day['date']->toDateString() }}"
-                                                        type="number" step="1" min="0" name="engagement" value="{{ $row['engagement'] }}" placeholder="—"
-                                                        class="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                                        type="number" step="1" min="0" name="engagement" value="{{ $row['engagement'] }}" placeholder="—" @disabled($finalization)
+                                                        class="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400">
                                                 </td>
                                                 <td class="px-5 py-2.5 text-right tabular-nums text-slate-700">
                                                     {{ $row['orders'] !== null ? number_format($row['orders']) : '—' }}
@@ -200,8 +248,8 @@
                                                 <td class="px-5 py-2.5 text-right tabular-nums text-slate-700">{{ $conversion }}</td>
                                                 <td class="px-5 py-2.5 text-right">
                                                     <input form="entry-{{ $assignment->pc_id }}-{{ $day['date']->toDateString() }}"
-                                                        type="number" step="0.01" min="0" name="amount" value="{{ $row['amount'] }}" placeholder="0.00"
-                                                        class="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
+                                                        type="number" step="0.01" min="0" name="amount" value="{{ $row['amount'] }}" placeholder="0.00" @disabled($finalization)
+                                                        class="w-24 rounded-md border border-slate-200 px-2 py-1 text-right text-xs tabular-nums text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400">
                                                 </td>
                                                 <td class="px-5 py-2.5">
                                                     <form method="POST" action="{{ route('pancake.entry') }}" class="flex items-center gap-1.5"
@@ -210,11 +258,13 @@
                                                         <input type="hidden" name="cra_id" value="{{ $activeCra->id }}">
                                                         <input type="hidden" name="pc_id" value="{{ $assignment->pc_id }}">
                                                         <input type="hidden" name="date" value="{{ $day['date']->toDateString() }}">
-                                                        <input type="text" name="tagging" value="{{ $row['tagging'] }}" placeholder="e.g. SP, FPY - Sweldo Sale"
-                                                            class="w-44 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500">
-                                                        <button type="submit" class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" title="Save engagement, amount & tagging">
-                                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                                                        </button>
+                                                        <input type="text" name="tagging" value="{{ $row['tagging'] }}" placeholder="e.g. SP, FPY - Sweldo Sale" @disabled($finalization)
+                                                            class="w-44 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400">
+                                                        @unless ($finalization)
+                                                            <button type="submit" class="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" title="Save engagement, amount & tagging">
+                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                            </button>
+                                                        @endunless
                                                     </form>
                                                 </td>
                                             </tr>

@@ -15,6 +15,11 @@ class SyncCustomerDashboard extends Command
 
     protected $description = 'Precompute the Customers-tab dashboard (top spenders, customers per page, top products) for the current week/month/year';
 
+    // Set by the Customers tab's "Build now" button before it spawns this
+    // command in the background; cleared below when the run ends so the
+    // pending screen can show an accurate in-progress state.
+    public const BUILD_FLAG = 'customer-dashboard:building';
+
     /**
      * Order volume scales with period width, so wider periods get a higher
      * cap — but even capped, a year's worth of orders takes minutes to
@@ -28,6 +33,15 @@ class SyncCustomerDashboard extends Command
     ];
 
     public function handle(PancakeService $pancake): int
+    {
+        try {
+            return $this->sync($pancake);
+        } finally {
+            \Illuminate\Support\Facades\Cache::forget(self::BUILD_FLAG);
+        }
+    }
+
+    protected function sync(PancakeService $pancake): int
     {
         // CLI-only, run by the scheduler with no request timeout to worry
         // about — the year period's tens of thousands of deduped customers
