@@ -46,6 +46,20 @@ class SyncCustomerDashboard extends Command
         $pageNames = FacebookPage::pluck('page_name', 'page_id')->all();
         $now = now();
 
+        // The Customers tab is CRD-scoped: only orders assigned to the CRD
+        // sellers' POS accounts are counted. An empty list (users endpoint
+        // down, or no names matching the configured filter) would silently
+        // fall back to scanning the whole shop, so bail out instead.
+        $crdSellerIds = collect($pancake->crdSellers($posCredential->shop_id, $posCredential->api_key))->pluck('id')->all();
+
+        if ($crdSellerIds === []) {
+            $this->error('No CRD seller accounts found in the POS shop — refusing to build shop-wide snapshots. Check pos_report.seller_filter and the POS users endpoint.');
+
+            return self::FAILURE;
+        }
+
+        $this->info(count($crdSellerIds).' CRD seller accounts found.');
+
         foreach (['week', 'month', 'year'] as $period) {
             [$start, $end] = DashboardPeriod::bounds($period, $now);
             $this->info("Computing {$period} ({$start->toDateString()} to {$end->toDateString()})…");
@@ -57,6 +71,7 @@ class SyncCustomerDashboard extends Command
                 $end->toDateString(),
                 $pageNames,
                 $this->maxOrdersByPeriod[$period],
+                $crdSellerIds,
             );
 
             CustomerDashboardSnapshot::updateOrCreate(

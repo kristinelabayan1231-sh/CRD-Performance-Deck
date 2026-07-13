@@ -36,7 +36,7 @@
                     $visiblePct = max($pct - $gap, 0);
                     $offset = 25 - $cumulative;
                     $cumulative += $pct;
-                    $color = $item['is_other'] ?? false ? $otherColor : $palette[$i % count($palette)];
+                    $color = $item['color'] ?? (($item['is_other'] ?? false) ? $otherColor : $palette[$i % count($palette)]);
                 @endphp
                 @if ($pct > 0)
                     <circle cx="21" cy="21" r="{{ $radius }}" fill="transparent" stroke="{{ $color }}" stroke-width="4"
@@ -55,7 +55,7 @@
         @foreach ($sliceItems as $i => $item)
             @php
                 $pct = $total > 0 ? ($item['sales_value'] / $total * 100) : 0;
-                $color = $item['is_other'] ?? false ? $otherColor : $palette[$i % count($palette)];
+                $color = $item['color'] ?? (($item['is_other'] ?? false) ? $otherColor : $palette[$i % count($palette)]);
             @endphp
             <li class="flex items-center gap-2 text-xs">
                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" style="background-color: {{ $color }}"></span>

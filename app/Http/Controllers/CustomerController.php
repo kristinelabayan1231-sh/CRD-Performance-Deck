@@ -15,6 +15,11 @@ class CustomerController extends Controller
 
     public function index(Request $request, PancakeService $pancake)
     {
+        $validated = $request->validate([
+            'seller' => ['nullable', 'array'],
+            'seller.*' => ['string'],
+        ]);
+
         $posCredential = PosCredential::current();
         $search = $request->get('q');
         $sort = $request->get('sort', 'ltv_desc');
@@ -36,11 +41,26 @@ class CustomerController extends Controller
             'dashboard' => null,
             'periodLabel' => null,
             'computedAt' => null,
+            'sellers' => [],
+            'selectedSellers' => [],
+            'insights' => [],
         ];
 
         if (! $posCredential) {
             return view('customers.index', $base);
         }
+
+        // The whole tab is scoped to the CRD sellers' POS accounts (the
+        // "User" filter in the POS calendar UI). One canonical name can
+        // cover several accounts, so filtering fans out to every id whose
+        // aliased name matches.
+        $crdSellers = $pancake->crdSellers($posCredential->shop_id, $posCredential->api_key);
+        $sellerNames = collect($crdSellers)->pluck('name')->unique()->sort()->values()->all();
+        $selectedSellers = array_values(array_intersect($validated['seller'] ?? [], $sellerNames));
+        $crdSellerIds = collect($crdSellers)->pluck('id')->all();
+
+        $base['sellers'] = $sellerNames;
+        $base['selectedSellers'] = $selectedSellers;
 
         if ($search) {
             $result = $pancake->sortedCustomers($posCredential->shop_id, $posCredential->api_key, $search, $sort, $page, $this->pageSize);
@@ -54,26 +74,20 @@ class CustomerController extends Controller
             ]));
         }
 
-        // "day" is a small enough scan (a few hundred orders) to compute
-        // live on every request — unlike week/month/year, which take from
-        // several seconds to several minutes and are only ever served from
-        // the pancake:sync-customer-dashboard cache.
+        // "day" is a small enough scan (a few hundred orders, far fewer
+        // once filtered to CRD sellers) to compute live on every request —
+        // unlike week/month/year, which take from several seconds to
+        // several minutes and are only ever served from the
+        // pancake:sync-customer-dashboard cache.
         if ($period === 'day') {
             $anchor = Carbon::parse($selectedDate);
             $pageNames = \App\Models\FacebookPage::pluck('page_name', 'page_id')->all();
-            $payload = $pancake->summarizeCustomerActivityInRange(
-                $posCredential->shop_id, $posCredential->api_key, $anchor->toDateString(), $anchor->toDateString(), $pageNames, 3000,
+            $summary = $pancake->summarizeCustomerActivityInRange(
+                $posCredential->shop_id, $posCredential->api_key, $anchor->toDateString(), $anchor->toDateString(), $pageNames, 3000, $crdSellerIds,
             );
 
-            $sorted = $this->sortCustomers(collect($payload['customers'] ?? []), $sort);
-
-            return view('customers.index', array_merge($base, [
-                'mode' => 'range',
-                'customers' => $sorted->forPage($page, $this->pageSize)->values(),
+            return $this->renderSlice($pancake, $summary, $selectedSellers, array_merge($base, [
                 'page' => $page,
-                'totalPages' => max(1, (int) ceil($sorted->count() / $this->pageSize)),
-                'totalEntries' => $sorted->count(),
-                'dashboard' => $payload,
                 'periodLabel' => DashboardPeriod::label('day', $anchor),
                 'computedAt' => now(),
             ]));
@@ -82,26 +96,119 @@ class CustomerController extends Controller
         $anchor = Carbon::now();
         $snapshot = CustomerDashboardSnapshot::find($period, DashboardPeriod::key($period, $anchor));
 
-        if (! $snapshot) {
+        // Snapshots written before the CRD scoping shipped lack the
+        // per-seller aggregates and can't be sliced — treat them as not
+        // computed yet rather than showing shop-wide numbers as CRD data.
+        if (! $snapshot || ! isset($snapshot->payload['sellerStats'])) {
             return view('customers.index', array_merge($base, [
                 'mode' => 'pending',
                 'periodLabel' => DashboardPeriod::label($period, $anchor),
             ]));
         }
 
-        $payload = $snapshot->payload;
-        $sorted = $this->sortCustomers(collect($payload['customers'] ?? []), $sort);
+        return $this->renderSlice($pancake, $snapshot->payload, $selectedSellers, array_merge($base, [
+            'page' => $page,
+            'periodLabel' => DashboardPeriod::label($period, $anchor),
+            'computedAt' => $snapshot->computed_at,
+        ]));
+    }
+
+    protected function renderSlice(PancakeService $pancake, array $summary, array $selectedSellers, array $base)
+    {
+        $dashboard = $pancake->sliceSummary($summary, $selectedSellers);
+        $sorted = $this->sortCustomers($dashboard['customers'], $base['sort']);
+        $page = $base['page'];
 
         return view('customers.index', array_merge($base, [
             'mode' => 'range',
             'customers' => $sorted->forPage($page, $this->pageSize)->values(),
-            'page' => $page,
             'totalPages' => max(1, (int) ceil($sorted->count() / $this->pageSize)),
             'totalEntries' => $sorted->count(),
-            'dashboard' => $payload,
-            'periodLabel' => DashboardPeriod::label($period, $anchor),
-            'computedAt' => $snapshot->computed_at,
+            'dashboard' => $dashboard,
+            'insights' => $this->buildInsights($dashboard),
         ]));
+    }
+
+    /**
+     * Plain-language observations derived from the sliced dashboard — the
+     * concentrations and outliers a manager would otherwise have to spot
+     * by cross-reading the charts. Each insight is skipped when its data
+     * is missing or the denominator is zero.
+     */
+    protected function buildInsights(array $dashboard): array
+    {
+        $insights = [];
+        $revenue = $dashboard['revenueTotal'];
+        $breakdown = $dashboard['sellerBreakdown'];
+        $customerCount = $dashboard['customerCount'];
+
+        if ($revenue <= 0 || $breakdown->isEmpty()) {
+            return [];
+        }
+
+        $peso = fn ($n) => '₱'.number_format($n);
+
+        $leader = $breakdown->first();
+        $insights[] = sprintf(
+            '%s leads gross sales with %s — %d%% of the period total.',
+            $leader['name'], $peso($leader['gross_sales']), round($leader['gross_sales'] / $revenue * 100),
+        );
+
+        if ($breakdown->count() > 1) {
+            $trailer = $breakdown->last();
+            $insights[] = sprintf(
+                '%s trails at %s, %s behind the leader — worth reviewing call volume or assigned pages.',
+                $trailer['name'], $peso($trailer['gross_sales']), $peso($leader['gross_sales'] - $trailer['gross_sales']),
+            );
+
+            $bestAov = $breakdown->sortByDesc('avg_order')->first();
+            $overallAov = $dashboard['orderCount'] > 0 ? $revenue / $dashboard['orderCount'] : 0;
+
+            if ($bestAov['avg_order'] > $overallAov) {
+                $insights[] = sprintf(
+                    '%s closes the biggest baskets — %s per order vs the %s team average.',
+                    $bestAov['name'], $peso($bestAov['avg_order']), $peso($overallAov),
+                );
+            }
+        }
+
+        $repeat = $dashboard['customers']->filter(fn ($c) => ($c['order_count'] ?? 0) > 1)->count();
+
+        if ($customerCount > 0) {
+            $insights[] = sprintf(
+                '%d%% of this period\'s buyers (%s of %s) are repeat customers.',
+                round($repeat / $customerCount * 100), number_format($repeat), number_format($customerCount),
+            );
+        }
+
+        $topPage = $dashboard['customersPerPage']->first();
+
+        if ($topPage && $customerCount > 0) {
+            $insights[] = sprintf(
+                '%s is the busiest page — %s customers, %d%% of everyone active this period.',
+                $topPage['page_name'], number_format($topPage['count']), round($topPage['count'] / $customerCount * 100),
+            );
+        }
+
+        $topProduct = $dashboard['topProducts']->first();
+
+        if ($topProduct && $topProduct['revenue'] > 0) {
+            $insights[] = sprintf(
+                '%s is the top earner — %s from %s units sold.',
+                $topProduct['name'], $peso($topProduct['revenue']), number_format($topProduct['quantity']),
+            );
+        }
+
+        $topSpend = $dashboard['topCustomers']->sum(fn ($c) => $c['period_revenue'] ?? 0);
+
+        if ($topSpend > 0) {
+            $insights[] = sprintf(
+                'The top 5 spenders contributed %s — %d%% of gross sales came from just %d customers.',
+                $peso($topSpend), round($topSpend / $revenue * 100), $dashboard['topCustomers']->count(),
+            );
+        }
+
+        return $insights;
     }
 
     protected function sortCustomers($customers, string $sort)
@@ -109,6 +216,7 @@ class CustomerController extends Controller
         return (match ($sort) {
             'ltv_asc' => $customers->sortBy(fn ($c) => $c['purchased_amount'] ?? 0),
             'orders_desc' => $customers->sortByDesc(fn ($c) => $c['order_count'] ?? 0),
+            'period_desc' => $customers->sortByDesc(fn ($c) => $c['period_revenue'] ?? 0),
             default => $customers->sortByDesc(fn ($c) => $c['purchased_amount'] ?? 0),
         })->values();
     }

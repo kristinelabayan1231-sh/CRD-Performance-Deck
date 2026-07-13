@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FacebookPage;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 class PancakeService
@@ -155,18 +156,85 @@ class PancakeService
     }
 
     /**
+     * The shop's CRD seller accounts (POS users whose name contains the
+     * configured filter term, e.g. "CRD"), with name variants merged via
+     * the same alias map the deck uses. One canonical seller can map to
+     * several POS user ids (e.g. "CRD ANNA PACLIBARE" has three accounts),
+     * so callers filter orders by the full id list and group by name.
+     *
+     * Cached for an hour — the roster changes rarely and the users
+     * endpoint returns the full 200+ person shop staff list every call.
+     * Returns [] when the endpoint is unavailable rather than failing the
+     * page; callers treat an empty list as "no CRD scoping possible".
+     *
+     * @return array<int, array{id: string, name: string}>
+     */
+    public function crdSellers(string $shopId, string $apiKey): array
+    {
+        try {
+            return Cache::remember("pancake:crd-sellers:{$shopId}", now()->addHour(), function () use ($shopId, $apiKey) {
+                $response = Http::retry(3, 300)->get("{$this->basePos}/shops/{$shopId}/users", [
+                    'api_key' => $apiKey,
+                ]);
+                $response->throw();
+
+                $filterTerm = strtolower(config('pos_report.seller_filter'));
+                $sellers = [];
+
+                foreach ($response->json('data', []) as $entry) {
+                    $user = $entry['user'] ?? [];
+                    $name = $this->canonicalSellerName($user['name'] ?? null);
+
+                    if ($name && ! empty($user['id']) && str_contains(strtolower($name), $filterTerm)) {
+                        $sellers[] = ['id' => $user['id'], 'name' => $name];
+                    }
+                }
+
+                return $sellers;
+            });
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Same normalization the deck's PosReportService applies to CSV seller
+     * names: collapse runs of whitespace, then merge known name variants
+     * into their canonical form.
+     */
+    protected function canonicalSellerName(?string $name): ?string
+    {
+        $name = preg_replace('/\s+/', ' ', trim((string) $name));
+
+        if ($name === '') {
+            return null;
+        }
+
+        return config('pos_report.seller_aliases', [])[$name] ?? $name;
+    }
+
+    /**
      * Builds everything the Customers dashboard needs — the deduped set of
      * customers who ordered in [startDate, endDate] (any status, any page),
-     * a per-page distinct-customer count, and top products by revenue with
-     * each one's single biggest buyer — by streaming through orders in the
-     * range and reducing immediately, rather than collecting full order
-     * objects. Order objects are heavy (90+ fields including nested
-     * images/histories/notes); holding a few thousand of them in memory
-     * at once blew the PHP memory limit in testing, the same failure mode
-     * eachInboxConversation was already rewritten to avoid. Pages are
-     * fetched in small concurrent chunks (Http::pool) for speed, reduced,
-     * then discarded before the next chunk starts, so peak memory stays
-     * bounded regardless of how wide the date range is.
+     * per-page and per-product activity, and a per-seller breakdown — by
+     * streaming through orders in the range and reducing immediately,
+     * rather than collecting full order objects. Order objects are heavy
+     * (90+ fields including nested images/histories/notes); holding a few
+     * thousand of them in memory at once blew the PHP memory limit in
+     * testing, the same failure mode eachInboxConversation was already
+     * rewritten to avoid. Pages are fetched in small concurrent chunks
+     * (Http::pool) for speed, reduced, then discarded before the next
+     * chunk starts, so peak memory stays bounded regardless of how wide
+     * the date range is.
+     *
+     * When $sellerIds is given, orders are filtered server-side to those
+     * assigning sellers (the "User" filter in the POS calendar UI) — the
+     * orders endpoint honors bare `assigning_seller_id[]=` params, so the
+     * query string is built by hand like deliveredConversationIds does.
+     *
+     * Everything is aggregated per canonical seller name so a subset of
+     * sellers can be re-sliced later in PHP (sliceSummary) without another
+     * API scan — that's what lets snapshots serve the seller picker.
      *
      * Only a light subset of each customer's fields is kept (not their
      * full record — addresses/notes/tags aren't needed here) to keep the
@@ -178,8 +246,9 @@ class PancakeService
      * every date-filter param name tried against it.
      *
      * @param  array<string, string>  $pageNames  page_id => page_name
+     * @param  array<int, string>  $sellerIds  POS user ids to filter orders to
      */
-    public function summarizeCustomerActivityInRange(string $shopId, string $apiKey, string $startDate, string $endDate, array $pageNames, int $maxOrders = 6000): array
+    public function summarizeCustomerActivityInRange(string $shopId, string $apiKey, string $startDate, string $endDate, array $pageNames, int $maxOrders = 6000, array $sellerIds = []): array
     {
         $start = Carbon::parse($startDate)->startOfDay()->utc()->timestamp;
         $end = Carbon::parse($endDate)->endOfDay()->utc()->timestamp;
@@ -194,15 +263,28 @@ class PancakeService
             'endDateTime' => $end,
         ];
 
+        // Like filter_status[] above: the API 500s on Laravel's indexed
+        // array encoding (assigning_seller_id[0]=…), so append the bare
+        // []= form by hand.
+        $sellerQuery = implode('', array_map(
+            fn ($id) => '&assigning_seller_id[]='.urlencode($id),
+            $sellerIds,
+        ));
+        $url = fn (int $page) => "{$this->basePos}/shops/{$shopId}/orders?"
+            .http_build_query($baseQuery + ['page_number' => $page]).$sellerQuery;
+
         $customers = [];
-        $pageCustomerIds = [];
+        $sellerStats = [];
+        $pageSellerCustomers = [];
         $productStats = [];
         $revenueTotal = 0;
         $orderCount = 0;
 
-        $reduce = function (array $batch) use (&$customers, &$pageCustomerIds, &$productStats, &$revenueTotal, &$orderCount) {
+        $reduce = function (array $batch) use (&$customers, &$sellerStats, &$pageSellerCustomers, &$productStats, &$revenueTotal, &$orderCount) {
             foreach ($batch as $order) {
                 $orderCount++;
+                $orderTotal = $order['total_price'] ?? 0;
+                $seller = $this->canonicalSellerName($order['assigning_seller']['name'] ?? null) ?? 'Unassigned';
                 $customer = $order['customer'] ?? null;
                 $customerId = $customer['customer_id'] ?? null;
 
@@ -216,16 +298,27 @@ class PancakeService
                         'order_count' => $customer['order_count'] ?? 0,
                         'succeed_order_count' => $customer['succeed_order_count'] ?? 0,
                         'last_order_at' => $customer['last_order_at'] ?? null,
+                        'sellers' => [],
                     ];
+                }
+
+                $sellerStats[$seller] ??= ['gross_sales' => 0, 'order_count' => 0, 'customer_ids' => []];
+                $sellerStats[$seller]['gross_sales'] += $orderTotal;
+                $sellerStats[$seller]['order_count']++;
+
+                if ($customerId) {
+                    $sellerStats[$seller]['customer_ids'][$customerId] = true;
+                    $customers[$customerId]['sellers'][$seller]['orders'] = ($customers[$customerId]['sellers'][$seller]['orders'] ?? 0) + 1;
+                    $customers[$customerId]['sellers'][$seller]['revenue'] = ($customers[$customerId]['sellers'][$seller]['revenue'] ?? 0) + $orderTotal;
                 }
 
                 $pageId = $order['page_id'] ?? null;
 
                 if ($pageId && $customerId) {
-                    $pageCustomerIds[$pageId][$customerId] = true;
+                    $pageSellerCustomers[$pageId][$seller][$customerId] = true;
                 }
 
-                $revenueTotal += $order['total_price'] ?? 0;
+                $revenueTotal += $orderTotal;
 
                 foreach ($order['items'] ?? [] as $item) {
                     $name = $item['variation_info']['name'] ?? null;
@@ -236,18 +329,21 @@ class PancakeService
 
                     $quantity = $item['quantity'] ?? 1;
                     $itemRevenue = ($item['variation_info']['retail_price'] ?? 0) * $quantity;
-                    $productStats[$name]['quantity'] = ($productStats[$name]['quantity'] ?? 0) + $quantity;
-                    $productStats[$name]['revenue'] = ($productStats[$name]['revenue'] ?? 0) + $itemRevenue;
+                    $stats = &$productStats[$name][$seller];
+                    $stats['quantity'] = ($stats['quantity'] ?? 0) + $quantity;
+                    $stats['revenue'] = ($stats['revenue'] ?? 0) + $itemRevenue;
 
                     if ($customerId) {
-                        $productStats[$name]['customer_ids'][$customerId] = ($productStats[$name]['customer_ids'][$customerId] ?? 0) + $quantity;
-                        $productStats[$name]['customer_revenue'][$customerId] = ($productStats[$name]['customer_revenue'][$customerId] ?? 0) + $itemRevenue;
+                        $stats['customer_ids'][$customerId] = ($stats['customer_ids'][$customerId] ?? 0) + $quantity;
+                        $stats['customer_revenue'][$customerId] = ($stats['customer_revenue'][$customerId] ?? 0) + $itemRevenue;
                     }
+
+                    unset($stats);
                 }
             }
         };
 
-        $first = Http::retry(3, 300)->get("{$this->basePos}/shops/{$shopId}/orders", $baseQuery + ['page_number' => 1]);
+        $first = Http::retry(3, 300)->get($url(1));
         $first->throw();
         $firstJson = $first->json();
         $totalEntries = $firstJson['total_entries'] ?? 0;
@@ -260,7 +356,7 @@ class PancakeService
             $pagesInChunk = range($chunkStart, $chunkEnd);
 
             $responses = Http::pool(fn ($pool) => collect($pagesInChunk)->map(
-                fn ($p) => $pool->as((string) $p)->retry(3, 300)->get("{$this->basePos}/shops/{$shopId}/orders", $baseQuery + ['page_number' => $p])
+                fn ($p) => $pool->as((string) $p)->retry(3, 300)->get($url($p))
             )->all());
 
             foreach ($pagesInChunk as $p) {
@@ -277,50 +373,155 @@ class PancakeService
             }
         }
 
-        $topCustomers = collect($customers)
-            ->sortByDesc(fn ($c) => $c['purchased_amount'] ?? 0)
+        return [
+            'customers' => array_values($customers),
+            'sellerStats' => $sellerStats,
+            'pageSellerCustomers' => $pageSellerCustomers,
+            'productStats' => $productStats,
+            'pageNames' => $pageNames,
+            'revenueTotal' => $revenueTotal,
+            'orderCount' => $orderCount,
+            'customerCount' => count($customers),
+            'totalEntries' => $totalEntries,
+            'truncated' => $totalEntries > $orderCount,
+        ];
+    }
+
+    /**
+     * Re-aggregate a summarizeCustomerActivityInRange payload down to a
+     * subset of canonical seller names (or everything when $selectedSellers
+     * is empty), producing the view model the Customers dashboard renders.
+     * Pure PHP over the stored per-seller aggregates — no API calls — so
+     * the seller picker works instantly against hourly snapshots.
+     */
+    public function sliceSummary(array $summary, array $selectedSellers = []): array
+    {
+        $sellerStats = $summary['sellerStats'] ?? [];
+        $selected = $selectedSellers
+            ? array_values(array_intersect(array_keys($sellerStats), $selectedSellers))
+            : array_keys($sellerStats);
+        $selectedSet = array_fill_keys($selected, true);
+
+        $customers = collect($summary['customers'] ?? [])
+            ->map(function ($c) use ($selectedSet) {
+                $inPeriod = array_intersect_key($c['sellers'] ?? [], $selectedSet);
+
+                if ($inPeriod === []) {
+                    return null;
+                }
+
+                $c['crd_sellers'] = array_keys($inPeriod);
+                $c['period_revenue'] = array_sum(array_column($inPeriod, 'revenue'));
+                $c['period_orders'] = array_sum(array_column($inPeriod, 'orders'));
+
+                return $c;
+            })
+            ->filter()
+            ->values();
+
+        $lifetimeOrders = $customers->pluck('order_count', 'customer_id');
+
+        $sellerBreakdown = collect($sellerStats)
+            ->only($selected)
+            ->map(function ($stats, $name) use ($lifetimeOrders) {
+                $customerIds = array_keys($stats['customer_ids'] ?? []);
+
+                return [
+                    'name' => $name,
+                    'gross_sales' => $stats['gross_sales'],
+                    'order_count' => $stats['order_count'],
+                    'customer_count' => count($customerIds),
+                    'avg_order' => $stats['order_count'] > 0 ? $stats['gross_sales'] / $stats['order_count'] : 0,
+                    // Buyers this period whose lifetime order count is > 1 —
+                    // i.e. not first-ever purchases. The retention signal
+                    // a CRD team is judged on.
+                    'repeat_customers' => count(array_filter($customerIds, fn ($id) => ($lifetimeOrders[$id] ?? 0) > 1)),
+                ];
+            })
+            ->sortByDesc('gross_sales')
+            ->values();
+
+        $revenueTotal = $sellerBreakdown->sum('gross_sales');
+        $orderCount = $sellerBreakdown->sum('order_count');
+
+        // Ranked by what they spent with the selected CRDs *this period*,
+        // not lifetime LTV — the table below already sorts by LTV.
+        $topCustomers = $customers
+            ->sortByDesc(fn ($c) => $c['period_revenue'] ?? 0)
             ->take(5)
             ->values();
 
         // Orders can come from Facebook pages we haven't registered locally
         // (no FacebookPage row, so there's no real name for them) — those
         // are dropped rather than shown as a bare numeric page_id.
-        $customersPerPage = collect($pageCustomerIds)
-            ->filter(fn ($ids, $pageId) => isset($pageNames[$pageId]))
-            ->map(fn ($ids, $pageId) => [
-                'page_id' => $pageId,
-                'page_name' => $pageNames[$pageId],
-                'count' => count($ids),
-            ])
+        $pageNames = $summary['pageNames'] ?? [];
+        $customersPerPage = collect($summary['pageSellerCustomers'] ?? [])
+            ->filter(fn ($bySeller, $pageId) => isset($pageNames[$pageId]))
+            ->map(function ($bySeller, $pageId) use ($selectedSet, $pageNames) {
+                $ids = [];
+
+                foreach (array_intersect_key($bySeller, $selectedSet) as $customerIds) {
+                    $ids += $customerIds;
+                }
+
+                return [
+                    'page_id' => $pageId,
+                    'page_name' => $pageNames[$pageId],
+                    'count' => count($ids),
+                ];
+            })
+            ->filter(fn ($p) => $p['count'] > 0)
             ->sortByDesc('count')
             ->values();
 
-        $topProducts = collect($productStats)
-            ->map(function ($stats, $name) use ($customers) {
-                $topCustomerId = collect($stats['customer_ids'] ?? [])->sortDesc()->keys()->first();
+        $customerNames = $customers->pluck('name', 'customer_id');
+
+        $topProducts = collect($summary['productStats'] ?? [])
+            ->map(function ($bySeller, $name) use ($selectedSet, $customerNames) {
+                $quantity = 0;
+                $revenue = 0;
+                $customerQty = [];
+                $customerRevenue = [];
+
+                foreach (array_intersect_key($bySeller, $selectedSet) as $stats) {
+                    $quantity += $stats['quantity'];
+                    $revenue += $stats['revenue'];
+
+                    foreach ($stats['customer_ids'] ?? [] as $id => $qty) {
+                        $customerQty[$id] = ($customerQty[$id] ?? 0) + $qty;
+                    }
+
+                    foreach ($stats['customer_revenue'] ?? [] as $id => $amount) {
+                        $customerRevenue[$id] = ($customerRevenue[$id] ?? 0) + $amount;
+                    }
+                }
+
+                $topCustomerId = collect($customerQty)->sortDesc()->keys()->first();
 
                 return [
                     'name' => $name,
-                    'quantity' => $stats['quantity'],
-                    'revenue' => $stats['revenue'],
-                    'top_customer' => $topCustomerId ? ($customers[$topCustomerId]['name'] ?? null) : null,
-                    'top_customer_value' => $topCustomerId ? ($stats['customer_revenue'][$topCustomerId] ?? 0) : null,
+                    'quantity' => $quantity,
+                    'revenue' => $revenue,
+                    'top_customer' => $topCustomerId ? ($customerNames[$topCustomerId] ?? null) : null,
+                    'top_customer_value' => $topCustomerId ? ($customerRevenue[$topCustomerId] ?? 0) : null,
                 ];
             })
+            ->filter(fn ($p) => $p['quantity'] > 0)
             ->sortByDesc('revenue')
             ->take(5)
             ->values();
 
         return [
-            'customers' => collect($customers)->values(),
+            'customers' => $customers,
+            'sellerBreakdown' => $sellerBreakdown,
             'topCustomers' => $topCustomers,
             'customersPerPage' => $customersPerPage,
             'topProducts' => $topProducts,
             'revenueTotal' => $revenueTotal,
             'orderCount' => $orderCount,
-            'customerCount' => count($customers),
-            'totalEntries' => $totalEntries,
-            'truncated' => $totalEntries > $orderCount,
+            'customerCount' => $customers->count(),
+            'totalEntries' => $summary['totalEntries'] ?? 0,
+            'truncated' => $summary['truncated'] ?? false,
         ];
     }
 
