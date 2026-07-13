@@ -23,10 +23,11 @@ class CraCohortController extends Controller
             'week_start' => 'required|date',
             'pcs' => 'required|array|min:1',
             'pcs.*.pc_id' => 'required|exists:pcs,id',
-            'pcs.*.cohort_from_month' => 'required|integer|min:1|max:12',
-            'pcs.*.cohort_from_year' => 'required|integer|min:2000|max:2100',
-            'pcs.*.cohort_to_month' => 'required|integer|min:1|max:12',
-            'pcs.*.cohort_to_year' => 'required|integer|min:2000|max:2100',
+            'pcs.*.no_cohort' => 'sometimes|in:1',
+            'pcs.*.cohort_from_month' => 'required_unless:pcs.*.no_cohort,1|integer|min:1|max:12',
+            'pcs.*.cohort_from_year' => 'required_unless:pcs.*.no_cohort,1|integer|min:2000|max:2100',
+            'pcs.*.cohort_to_month' => 'required_unless:pcs.*.no_cohort,1|integer|min:1|max:12',
+            'pcs.*.cohort_to_year' => 'required_unless:pcs.*.no_cohort,1|integer|min:2000|max:2100',
         ]);
 
         $saved = $cohorts->saveWeeklyCohorts($cra->id, $validated['week_start'], $validated['pcs']);
