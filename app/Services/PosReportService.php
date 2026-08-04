@@ -8,17 +8,23 @@ use Illuminate\Support\Facades\Http;
 class PosReportService
 {
     /**
-     * Fetch the published POS CSV and return rows for sellers matching the
-     * configured name filter (e.g. "CRD"), regardless of date.
+     * Fetch every configured published POS CSV (one per month) and return
+     * the combined rows for sellers matching the configured name filter
+     * (e.g. "CRD"), regardless of date.
      *
      * @return array<int, array<string, string>>
      */
     public function loadSellerRows(): array
     {
-        $response = Http::timeout(30)->get(config('pos_report.csv_url'));
-        $response->throw();
+        $rows = [];
 
-        $rows = $this->parseCsv($response->body());
+        foreach (config('pos_report.csv_urls', []) as $csvUrl) {
+            $response = Http::timeout(30)->get($csvUrl);
+            $response->throw();
+
+            $rows = array_merge($rows, $this->parseCsv($response->body()));
+        }
+
         $filterTerm = strtolower(config('pos_report.seller_filter'));
         $aliases = config('pos_report.seller_aliases', []);
 
