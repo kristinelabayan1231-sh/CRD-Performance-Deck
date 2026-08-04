@@ -2,9 +2,14 @@
 
 return [
 
-    // Published Google Sheet (File > Share > Publish to web > CSV) that
-    // mirrors the Pancake POS order data.
-    'csv_url' => env('POS_REPORT_CSV_URL'),
+    // Published Google Sheets (File > Share > Publish to web > CSV) that
+    // mirror the Pancake POS order data. Google's publish-to-web export
+    // only ever returns the current month's tab, so each month gets its
+    // own URL here rather than replacing the previous one.
+    'csv_urls' => array_values(array_filter([
+        env('POS_REPORT_CSV_URL'),
+        env('POS_REPORT_CSV_URL_AUGUST'),
+    ])),
 
     // Only assigning sellers whose name contains this (case-insensitive)
     // are shown on the deck.
