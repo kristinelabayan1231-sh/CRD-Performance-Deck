@@ -28,7 +28,7 @@ class ImportUsers extends Command
 
         $data = json_decode(File::get($path), true);
 
-        $this->line('Importing into database: '.DB::connection()->getDatabaseName().' on '.config('database.connections.'.config('database.default').'.host', '(url)'));
+        $this->line('Importing into database: '.DB::connection()->getDatabaseName().' on '.DB::connection()->getConfig('host'));
 
         DB::transaction(function () use ($data) {
             foreach ($data['roles'] as $row) {
