@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
+use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
@@ -62,7 +63,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('settings')->name('settings.')->group(function () {
         // The first Settings tab this user may open.
         Route::get('/', fn () => redirect()->route(
-            request()->user()->can('product_consumption.view') ? 'settings.product-consumption.index' : 'settings.pancake-pages.index'
+            match (true) {
+                request()->user()->can('product_consumption.view') => 'settings.product-consumption.index',
+                request()->user()->can('pancake_pages.manage') => 'settings.pancake-pages.index',
+                default => 'settings.connections.index',
+            }
         ))->name('index');
 
         Route::prefix('pancake-pages')->name('pancake-pages.')->middleware('can:pancake_pages.manage')->group(function () {
@@ -71,6 +76,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
             Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
             Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');
+        });
+
+        Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {
+            Route::get('/', [ConnectionCheckController::class, 'index'])->name('index');
+            Route::post('/', [ConnectionCheckController::class, 'run'])->name('run');
         });
 
         Route::prefix('product-consumption')->name('product-consumption.')->group(function () {

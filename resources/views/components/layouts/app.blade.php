@@ -39,7 +39,7 @@
                 @can('user_access.view')
                     <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                 @endcan
-                @canany(['product_consumption.view', 'pancake_pages.manage'])
+                @canany(['product_consumption.view', 'pancake_pages.manage', 'connections.check'])
                     <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
                 @endcanany
             </nav>

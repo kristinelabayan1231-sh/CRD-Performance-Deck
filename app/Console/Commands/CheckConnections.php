@@ -2,13 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\PancakePage;
-use App\Services\PancakeClient;
+use App\Services\ConnectionChecker;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
-use RuntimeException;
-use Throwable;
 
 class CheckConnections extends Command
 {
@@ -16,95 +11,15 @@ class CheckConnections extends Command
 
     protected $description = 'Test the database, Shecom and Pancake connections with one small request each';
 
-    public function handle(): int
+    public function handle(ConnectionChecker $checker): int
     {
-        $rows = [
-            $this->check('Database', fn () => DB::connection()->getDatabaseName().' · '.DB::table('users')->count().' users'),
-            $this->check('Shecom retention API', function () {
-                $response = Http::withToken((string) config('services.shecom.key'))->acceptJson()->timeout(60)
-                    ->get(rtrim(config('services.shecom.url'), '/').'/management/retention-stockout');
+        $rows = $checker->run();
 
-                return $response->successful() ? number_format((int) $response->json('count')).' stock-outs' : $this->refused($response->status(), $response->json('error'));
-            }),
-            ...$this->pancakePos(),
-            $this->pancakeChat(),
-        ];
+        $this->table(['Connection', 'Result', 'Details', 'Time'], array_map(
+            fn (array $row) => [$row['name'], $row['ok'] ? 'OK' : 'FAIL', $row['details'], $row['seconds'].'s'],
+            $rows,
+        ));
 
-        $this->table(['Connection', 'Result', 'Details', 'Time'], $rows);
-
-        return collect($rows)->contains(fn (array $row) => $row[1] === 'FAIL') ? self::FAILURE : self::SUCCESS;
-    }
-
-    /**
-     * Orders from the POS with each credential that is set: the access token is what syncs use when present.
-     *
-     * @return list<array{0: string, 1: string, 2: string, 3: string}>
-     */
-    private function pancakePos(): array
-    {
-        $credentials = array_filter([
-            'access token (used for syncs)' => ['access_token' => config('services.pancake.access_token')],
-            'API key'.(config('services.pancake.access_token') ? ' (fallback)' : ' (used for syncs)') => ['api_key' => config('services.pancake.key')],
-        ], fn (array $auth) => reset($auth));
-
-        if (empty($credentials)) {
-            return [['Pancake POS orders', 'FAIL', 'Neither PANCAKE_ACCESS_TOKEN nor PANCAKE_API_KEY is set', '—']];
-        }
-
-        return collect($credentials)->map(fn (array $auth, string $label) => $this->check("Pancake POS orders · {$label}", function () use ($auth) {
-            $response = Http::timeout(60)->get(
-                rtrim(config('services.pancake.pos_url'), '/').'/shops/'.config('services.pancake.shop_id').'/orders?'
-                .http_build_query([...$auth, 'page_size' => 1]).'&fields[]=display_id'
-            );
-
-            return $response->json('success')
-                ? 'shop '.config('services.pancake.shop_id').' · '.number_format((int) $response->json('total_entries')).' orders'
-                : $this->refused($response->status(), $response->json('message'));
-        }))->values()->all();
-    }
-
-    /**
-     * Customer engagements for today on every active page in Settings → Pancake Pages.
-     *
-     * @return array{0: string, 1: string, 2: string, 3: string}
-     */
-    private function pancakeChat(): array
-    {
-        return $this->check('Pancake chat engagements', function () {
-            $pages = PancakePage::active()->orderBy('name')->get();
-            $client = app(PancakeClient::class);
-            $failed = $pages->reject(fn (PancakePage $page) => $client->checkPage($page)[0])->pluck('name');
-
-            if ($pages->isEmpty() || $failed->isNotEmpty()) {
-                $this->refused(0, $pages->isEmpty()
-                    ? 'no active pages in Settings → Pancake Pages'
-                    : $failed->count().' of '.$pages->count().' pages refused: '.$failed->join(', '));
-            }
-
-            return $pages->count().' of '.$pages->count().' pages OK';
-        });
-    }
-
-    /**
-     * @return array{0: string, 1: string, 2: string, 3: string}
-     */
-    private function check(string $name, callable $probe): array
-    {
-        $started = microtime(true);
-
-        try {
-            $details = $probe();
-            $result = 'OK';
-        } catch (Throwable $e) {
-            $details = $e->getMessage();
-            $result = 'FAIL';
-        }
-
-        return [$name, $result, $details, round(microtime(true) - $started, 1).'s'];
-    }
-
-    private function refused(int $status, ?string $message): never
-    {
-        throw new RuntimeException(trim(($status ? "HTTP {$status} · " : '').($message ?? 'unknown error')));
+        return collect($rows)->contains('ok', false) ? self::FAILURE : self::SUCCESS;
     }
 }
