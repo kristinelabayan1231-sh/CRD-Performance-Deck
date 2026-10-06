@@ -41,6 +41,11 @@
         <div role="alert" class="mb-6 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">
             Automatic sync couldn't reach the retention API ({{ $syncError }}). Showing the last synced leads.
         </div>
+    @elseif (($lastSyncResult['source'] ?? null) === 'fallback')
+        <div role="status" class="mb-6 rounded-lg border border-[#c9970e]/50 bg-[#ffe5a0]/40 px-4 py-3 text-sm text-[#473821]">
+            <strong>Backup mode:</strong> the retention API is down, so this day's new leads were worked out from saved delivered orders (retention API + Pancake)
+            and Settings → Product Consumption days. Leads that already existed were left as they are.
+        </div>
     @endif
 
     @error('transfer')

@@ -72,6 +72,7 @@ class SegmentationController extends Controller
             'optionalColumns' => config('segmentation.optional_columns'),
             'today' => $today,
             'lastSync' => LeadGenerator::lastSync(CarbonImmutable::parse($filters['date'] ?? $today)),
+            'lastSyncResult' => LeadGenerator::lastSyncResult(CarbonImmutable::parse($filters['date'] ?? $today)),
             'syncError' => $syncError,
         ]);
     }

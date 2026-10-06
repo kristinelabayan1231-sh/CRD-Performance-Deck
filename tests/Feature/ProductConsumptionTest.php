@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\ProductConsumptionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -46,6 +47,31 @@ class ProductConsumptionTest extends TestCase
         $this->assertSame($this->owner->id, $product->created_by);
 
         $this->actingAs($this->owner)->get('/settings/product-consumption')->assertSee('Sinuxyl')->assertSee('Sinuvex');
+    }
+
+    public function test_consumption_days_are_saved_and_must_be_a_sensible_number(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => 'CanPro', 'consumption_days' => '10'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame(10, $product->consumption_days);
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'consumption_days' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->consumption_days);
+
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => 'Bad', 'consumption_days' => '0'])->assertSessionHasErrors('consumption_days');
+    }
+
+    public function test_seeder_adds_products_and_keeps_existing_keywords(): void
+    {
+        Product::create(['name' => 'Scar Cream', 'keywords' => 'Scar Gel', 'consumption_days' => 15]);
+
+        $this->seed(ProductConsumptionSeeder::class);
+        $this->seed(ProductConsumptionSeeder::class);
+
+        $this->assertSame(count(ProductConsumptionSeeder::PRODUCTS), Product::count());
+        $scar = Product::firstWhere('name', 'Scar Cream');
+        $this->assertSame(10, $scar->consumption_days);
+        $this->assertSame('Scar Gel', $scar->keywords);
     }
 
     public function test_product_name_is_required(): void
