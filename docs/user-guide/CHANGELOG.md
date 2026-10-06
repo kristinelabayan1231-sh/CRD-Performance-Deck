@@ -7,6 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-07 · Dashboard · "Welcome, user" replaced by a "CRD Board" button: opens a fun poster (violet tape board matching the mascot, handwritten) with today + the 2 days before (Gross Sales, Net Income) and a Top Seller panel, all typed by hand and not saved; Clear and Full screen buttons; waving CRD mascot with an editable message · shots: new (crd-board)
+- 2026-10-07 · All pages · Browser tab icon (favicon) is now the CRD logo from the sidebar · shots: —
+
 - 2026-10-07 · Dashboard · Heading renamed "Performance Deck"; accent colours: purple monthly-goal card, coloured KPI and retention-rate tiles, soft blue/green logistics tiles, icon badges on the Daily goal and Conversion cards, icons on tiles · shots: 02-dashboard
 - 2026-10-07 · All modules · Darker grey text and deeper tile colours for readability; chart hover tooltips now show instantly on every chart · shots: all module screenshots
 
