@@ -46,8 +46,9 @@ return [
         // A POS user access token; used instead of the API key when set.
         'access_token' => env('PANCAKE_ACCESS_TOKEN'),
         'shop_id' => env('PANCAKE_SHOP_ID'),
-        // Every PANCAKE_PAGE_<NAME>_ID / _TOKEN pair in .env, so a new page only needs two lines there.
-        'pages' => collect($_ENV + $_SERVER)
+        // Every PANCAKE_PAGE_<NAME>_ID / _TOKEN pair, from .env or real environment
+        // variables (e.g. Render's), so a new page only needs two lines.
+        'pages' => collect($_ENV + $_SERVER + getenv())
             ->filter(fn ($value, $key) => is_string($key) && preg_match('/^PANCAKE_PAGE_(.+)_ID$/', $key) && $value)
             ->map(fn ($id, $key) => [
                 'id' => (string) $id,
