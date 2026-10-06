@@ -411,7 +411,7 @@
                 <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>Customers on the CRA's own Pancake orders that day who aren't on any assigned leads list. Canceled and deleted orders don't count.</dd></div>
                 <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>Total confirmed orders ÷ Answered.</dd></div>
                 <div><dt class="font-semibold text-ink">Pick-up rate</dt><dd>Answered ÷ Assigned transactions.</dd></div>
-                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales are the Pancake order totals behind the confirmed orders (all orders of an assigned-lead customer that day, plus the CRA's Pancake-conversion orders). AOV = Gross sales ÷ Total confirmed orders. These will switch to the conversion breakdown once it is built.</dd></div>
+                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales come from Conversion Breakdown: the totals of the CRA's own Pancake orders tagged CRD - BROADCAST plus CRD - SEGMENTATION. Canceled and deleted orders don't count. AOV = Gross sales ÷ Total confirmed orders.</dd></div>
             </dl>
         </details>
     </div>
