@@ -50,6 +50,14 @@ class ConnectionCheckTest extends TestCase
             ->assertSee('Oct 6, 9:05:09 PM');
     }
 
+    public function test_a_missing_shop_id_is_named(): void
+    {
+        config(['services.pancake.shop_id' => null, 'services.pancake.key' => 'pos-key']);
+        Http::fake(['*' => Http::response(['success' => true, 'users_engagements' => [], 'count' => 0])]);
+
+        $this->artisan('connections:check')->expectsOutputToContain('PANCAKE_SHOP_ID is not set')->assertFailed();
+    }
+
     public function test_others_cannot_open_it(): void
     {
         $cra = User::create(['email' => 'cra@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
