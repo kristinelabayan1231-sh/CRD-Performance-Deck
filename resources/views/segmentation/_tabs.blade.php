@@ -1,4 +1,4 @@
-<nav class="mb-6 flex gap-1 overflow-x-auto border-b border-line" aria-label="Segmentation Tracker sections">
+<nav class="mb-4 flex gap-1 overflow-x-auto border-b border-line" aria-label="Segmentation Tracker sections">
     @foreach (['segmentation.index' => 'Daily', 'segmentation.weekly' => 'Weekly Segmentation'] as $route => $label)
         <a href="{{ route($route) }}" @if (request()->routeIs($route)) aria-current="page" @endif
            @class([

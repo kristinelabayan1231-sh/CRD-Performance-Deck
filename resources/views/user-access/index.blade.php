@@ -6,8 +6,8 @@
 
     {{-- Grant access --}}
     @if ($canManage)
-        <section class="mb-8 rounded-xl bg-white p-6 shadow-sm">
-            <h2 class="text-lg font-semibold">Grant access</h2>
+        <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
+            <h2 class="text-base font-semibold">Grant access</h2>
             <form method="POST" action="{{ route('user-access.store') }}" class="mt-4 flex flex-col gap-4 md:flex-row md:items-end">
                 @csrf
                 <label class="flex-1">
@@ -48,8 +48,8 @@
 
     {{-- Accounts --}}
     <section class="overflow-hidden rounded-xl bg-white shadow-sm">
-        <div class="flex items-center justify-between border-b border-line px-6 py-4">
-            <h2 class="text-lg font-semibold">Accounts</h2>
+        <div class="flex items-center justify-between border-b border-line px-4 py-4">
+            <h2 class="text-base font-semibold">Accounts</h2>
             <span class="text-sm text-muted">{{ $users->count() }} total</span>
         </div>
 
@@ -57,13 +57,13 @@
             <table class="w-full min-w-[720px] text-left text-sm">
                 <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                     <tr>
-                        <th class="px-6 py-3 font-semibold">Account</th>
-                        <th class="px-6 py-3 font-semibold">Display name</th>
-                        <th class="px-6 py-3 font-semibold">Role</th>
-                        <th class="px-6 py-3 font-semibold">Status</th>
-                        <th class="px-6 py-3 font-semibold">Last sign-in</th>
+                        <th class="px-4 py-3 font-semibold">Account</th>
+                        <th class="px-4 py-3 font-semibold">Display name</th>
+                        <th class="px-4 py-3 font-semibold">Role</th>
+                        <th class="px-4 py-3 font-semibold">Status</th>
+                        <th class="px-4 py-3 font-semibold">Last sign-in</th>
                         @if ($canManage)
-                            <th class="px-6 py-3 text-right font-semibold">Actions</th>
+                            <th class="px-4 py-3 text-right font-semibold">Actions</th>
                         @endif
                     </tr>
                 </thead>
@@ -72,7 +72,7 @@
                         @php($locked = ! $canManage || $account->isOwner() || $account->is(auth()->user()) || ($account->isSuperAdmin() && ! auth()->user()->isSuperAdmin()))
                         @php($canRename = $canManage && (! $account->isSuperAdmin() || auth()->user()->isSuperAdmin()))
                         <tr>
-                            <td class="px-6 py-4">
+                            <td class="px-4 py-4">
                                 <div class="flex items-center gap-3">
                                     <x-avatar :user="$account" class="size-9" />
                                     <div class="min-w-0">
@@ -86,7 +86,7 @@
                                     </div>
                                 </div>
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-4 py-4">
                                 @if ($canRename)
                                     <form method="POST" action="{{ route('user-access.display-name', $account) }}" data-autosave
                                           data-update-text="[data-display-name-for='{{ $account->id }}']">
@@ -114,7 +114,7 @@
                                     @endif
                                 @endif
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-4 py-4">
                                 @if ($locked)
                                     <span class="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">{{ $account->roleLabel() }}</span>
                                 @else
@@ -129,7 +129,7 @@
                                     </form>
                                 @endif
                             </td>
-                            <td class="px-6 py-4">
+                            <td class="px-4 py-4">
                                 @if (! $account->is_active)
                                     <span class="rounded-full bg-coral/15 px-2.5 py-1 text-xs font-semibold text-coral-700">Disabled</span>
                                 @elseif (! $account->last_login_at)
@@ -138,11 +138,11 @@
                                     <span class="rounded-full bg-teal/15 px-2.5 py-1 text-xs font-semibold text-teal-700">Active</span>
                                 @endif
                             </td>
-                            <td class="px-6 py-4 text-muted">
+                            <td class="px-4 py-4 text-muted">
                                 {{ $account->last_login_at?->diffForHumans() ?? 'Never' }}
                             </td>
                             @if ($canManage)
-                                <td class="px-6 py-4">
+                                <td class="px-4 py-4">
                                     @if ($locked)
                                         <p class="text-right text-xs text-muted">
                                             {{ $account->isOwner() ? 'Default super admin' : ($account->is(auth()->user()) ? 'You' : 'Super admin') }}

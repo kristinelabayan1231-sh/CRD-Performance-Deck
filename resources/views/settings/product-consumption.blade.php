@@ -6,8 +6,8 @@
 
     {{-- Add product --}}
     @if ($canManage)
-        <section class="mb-8 rounded-xl bg-white p-6 shadow-sm">
-            <h2 class="text-lg font-semibold">Add product</h2>
+        <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
+            <h2 class="text-base font-semibold">Add product</h2>
             <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down.</p>
             <form method="POST" action="{{ route('settings.product-consumption.store') }}" class="mt-4 flex flex-col gap-4 md:flex-row md:items-end">
                 @csrf
@@ -39,24 +39,24 @@
 
     {{-- Products --}}
     <section class="overflow-hidden rounded-xl bg-white shadow-sm">
-        <div class="flex items-center justify-between border-b border-line px-6 py-4">
-            <h2 class="text-lg font-semibold">Products</h2>
+        <div class="flex items-center justify-between border-b border-line px-4 py-4">
+            <h2 class="text-base font-semibold">Products</h2>
             <span class="text-sm text-muted">{{ $products->count() }} total</span>
         </div>
 
         @if ($products->isEmpty())
-            <p class="px-6 py-10 text-center text-sm text-muted">No products yet.@if ($canManage) Add your first one above.@endif</p>
+            <p class="px-4 py-10 text-center text-sm text-muted">No products yet.@if ($canManage) Add your first one above.@endif</p>
         @else
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[640px] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
-                            <th class="px-6 py-3 font-semibold">Product</th>
-                            <th class="px-6 py-3 font-semibold">Also matches</th>
-                            <th class="px-6 py-3 font-semibold">Consumption days</th>
-                            <th class="px-6 py-3 font-semibold">Updated</th>
+                            <th class="px-4 py-3 font-semibold">Product</th>
+                            <th class="px-4 py-3 font-semibold">Also matches</th>
+                            <th class="px-4 py-3 font-semibold">Consumption days</th>
+                            <th class="px-4 py-3 font-semibold">Updated</th>
                             @if ($canManage)
-                                <th class="px-6 py-3 text-right font-semibold">Actions</th>
+                                <th class="px-4 py-3 text-right font-semibold">Actions</th>
                             @endif
                         </tr>
                     </thead>
@@ -65,7 +65,7 @@
                             @php($bag = $errors->getBag("product{$product->id}"))
                             <tr class="align-middle">
                                 @if ($canManage)
-                                    <td class="min-w-64 px-6 py-3">
+                                    <td class="min-w-64 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="text" name="name" required maxlength="255"
                                                value="{{ $bag->any() ? old('name', $product->name) : $product->name }}"
                                                aria-label="Name of {{ $product->name }}" class="{{ $input }} h-10">
@@ -73,24 +73,24 @@
                                             <p role="alert" class="mt-1 text-xs text-coral-700">{{ $error }}</p>
                                         @endforeach
                                     </td>
-                                    <td class="min-w-56 px-6 py-3">
+                                    <td class="min-w-56 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="text" name="keywords" maxlength="1000" placeholder="—"
                                                value="{{ $bag->any() ? old('keywords', $product->keywords) : $product->keywords }}"
                                                aria-label="Extra keywords for {{ $product->name }}" class="{{ $input }} h-10">
                                     </td>
-                                    <td class="w-40 px-6 py-3">
+                                    <td class="w-40 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="number" name="consumption_days" min="1" max="365" placeholder="Not set"
                                                value="{{ $bag->any() ? old('consumption_days', $product->consumption_days) : $product->consumption_days }}"
                                                aria-label="Consumption days per unit for {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
                                     </td>
                                 @else
-                                    <td class="px-6 py-4 font-medium">{{ $product->name }}</td>
-                                    <td class="px-6 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
-                                    <td class="px-6 py-4 tabular-nums">{{ $product->consumption_days ? $product->consumption_days.' days' : '—' }}</td>
+                                    <td class="px-4 py-4 font-medium">{{ $product->name }}</td>
+                                    <td class="px-4 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
+                                    <td class="px-4 py-4 tabular-nums">{{ $product->consumption_days ? $product->consumption_days.' days' : '—' }}</td>
                                 @endif
-                                <td class="px-6 py-3 text-muted">{{ $product->updated_at?->diffForHumans() }}</td>
+                                <td class="px-4 py-3 text-muted">{{ $product->updated_at?->diffForHumans() }}</td>
                                 @if ($canManage)
-                                    <td class="px-6 py-3">
+                                    <td class="px-4 py-3">
                                         <div class="flex justify-end gap-2">
                                             <form id="product-{{ $product->id }}" method="POST" action="{{ route('settings.product-consumption.update', $product) }}">
                                                 @csrf @method('PATCH')
