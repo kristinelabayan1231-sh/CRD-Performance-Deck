@@ -26,6 +26,12 @@ return [
         'segmentation' => (int) env('PANCAKE_TAG_SEGMENTATION', 398),
     ],
 
+    // Default sales goals until they are set in Settings → Sales Goals (pesos).
+    'sales_goals' => [
+        'cra_daily' => 77000,
+        'crd_monthly' => 1000000,
+    ],
+
     // A customer is a CRD Lead from this many delivered orders: the 1st order
     // is FSD (Facebook Sales), the 2nd Retention, the 3rd onwards CRD.
     'crd_lead_min_orders' => 3,

@@ -8,6 +8,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\UserAccessController;
@@ -72,6 +73,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             match (true) {
                 request()->user()->can('product_consumption.view') => 'settings.product-consumption.index',
                 request()->user()->can('pancake_pages.manage') => 'settings.pancake-pages.index',
+                request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
@@ -82,6 +84,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
             Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
             Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');
+        });
+
+        Route::prefix('sales-goals')->name('sales-goals.')->middleware('can:sales_goals.manage')->group(function () {
+            Route::get('/', [SalesGoalController::class, 'index'])->name('index');
+            Route::put('/', [SalesGoalController::class, 'update'])->name('update');
         });
 
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {

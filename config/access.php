@@ -23,6 +23,9 @@ $modules = [
     'Settings · Pancake Pages' => [
         'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
     ],
+    'Settings · Sales Goals' => [
+        'sales_goals.manage' => 'Set the CRA daily sales goal and the CRD monthly sales goal',
+    ],
     'Settings · Connections' => [
         'connections.check' => 'Run the connection check (database, Shecom, Pancake) from the server',
     ],
