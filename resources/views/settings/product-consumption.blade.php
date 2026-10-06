@@ -8,7 +8,7 @@
     @if ($canManage)
         <section class="mb-8 rounded-xl bg-white p-6 shadow-sm">
             <h2 class="text-lg font-semibold">Add product</h2>
-            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it.</p>
+            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down.</p>
             <form method="POST" action="{{ route('settings.product-consumption.store') }}" class="mt-4 flex flex-col gap-4 md:flex-row md:items-end">
                 @csrf
                 <label class="flex-1">
@@ -18,6 +18,10 @@
                 <label class="flex-1">
                     <span class="mb-1 block text-sm font-medium">Also matches <span class="font-normal text-muted">(optional, comma-separated)</span></span>
                     <input type="text" name="keywords" value="{{ $errors->any() ? old('keywords') : '' }}" maxlength="1000" placeholder="e.g. Clear Sight, Clearsite" class="{{ $input }}">
+                </label>
+                <label class="md:w-44">
+                    <span class="mb-1 block text-sm font-medium">Consumption days <span class="font-normal text-muted">(per unit)</span></span>
+                    <input type="number" name="consumption_days" value="{{ $errors->any() ? old('consumption_days') : '' }}" min="1" max="365" placeholder="e.g. 15" class="{{ $input }}">
                 </label>
                 <button type="submit" class="h-11 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">
                     Add product
@@ -49,6 +53,7 @@
                         <tr>
                             <th class="px-6 py-3 font-semibold">Product</th>
                             <th class="px-6 py-3 font-semibold">Also matches</th>
+                            <th class="px-6 py-3 font-semibold">Consumption days</th>
                             <th class="px-6 py-3 font-semibold">Updated</th>
                             @if ($canManage)
                                 <th class="px-6 py-3 text-right font-semibold">Actions</th>
@@ -73,9 +78,15 @@
                                                value="{{ $bag->any() ? old('keywords', $product->keywords) : $product->keywords }}"
                                                aria-label="Extra keywords for {{ $product->name }}" class="{{ $input }} h-10">
                                     </td>
+                                    <td class="w-40 px-6 py-3">
+                                        <input form="product-{{ $product->id }}" type="number" name="consumption_days" min="1" max="365" placeholder="Not set"
+                                               value="{{ $bag->any() ? old('consumption_days', $product->consumption_days) : $product->consumption_days }}"
+                                               aria-label="Consumption days per unit for {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
+                                    </td>
                                 @else
                                     <td class="px-6 py-4 font-medium">{{ $product->name }}</td>
                                     <td class="px-6 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
+                                    <td class="px-6 py-4 tabular-nums">{{ $product->consumption_days ? $product->consumption_days.' days' : '—' }}</td>
                                 @endif
                                 <td class="px-6 py-3 text-muted">{{ $product->updated_at?->diffForHumans() }}</td>
                                 @if ($canManage)

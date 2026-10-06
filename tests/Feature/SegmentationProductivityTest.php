@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\PancakePage;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
@@ -203,6 +205,36 @@ class SegmentationProductivityTest extends TestCase
                     return $selected['top']['name'] === 'Regina' && $selected['top']['value'] === 1800.0 && $selected['total'] === 3300.0;
                 });
         }
+    }
+
+    public function test_pancake_delivered_orders_are_saved_for_the_lead_fallback(): void
+    {
+        $delivered = fn (int $display, int $status, array $items) => [
+            'id' => 5000 + $display, 'display_id' => $display, 'status' => $status, 'bill_phone_number' => '0917000'.$display,
+            'bill_full_name' => "Buyer {$display}", 'partner' => ['extend_code' => "JT{$display}"], 'items' => $items,
+        ];
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
+        $this->orders = [
+            // Two lines of the tracked product plus a freebie: 3 units of Pterygium.
+            $delivered(101, 3, [['variation_info' => ['name' => 'Free Pouch'], 'quantity' => 1], ['variation_info' => ['name' => 'Pterygium Eye Drops'], 'quantity' => 2], ['variation_info' => ['name' => 'Pterygium'], 'quantity' => 1]]),
+            // Returned after delivery: not saved.
+            $delivered(102, 5, [['variation_info' => ['name' => 'Pterygium'], 'quantity' => 1]]),
+            // Already saved from the retention API: left alone.
+            $delivered(103, 3, [['variation_info' => ['name' => 'Pterygium'], 'quantity' => 9]]),
+        ];
+        DeliveredOrder::create(['order_id' => '103', 'customer_name' => 'From Shecom', 'phone_number' => '0917000103', 'product_raw' => 'Pterygium Drops',
+            'qty' => 1, 'delivered_date' => '2026-09-30', 'consumption_days_per_unit' => 15, 'source' => DeliveredOrder::SOURCE_SHECOM]);
+
+        $this->assertSame(1, app(PancakeSync::class)->syncDelivered(Lead::today()));
+
+        $order = DeliveredOrder::firstWhere('order_id', '101');
+        $this->assertSame(3, $order->qty);
+        $this->assertSame('Pterygium Eye Drops', $order->product_raw);
+        $this->assertSame('2026-10-01', $order->delivered_date->toDateString());
+        $this->assertSame('JT101', $order->tracking_number);
+        $this->assertNull(DeliveredOrder::firstWhere('order_id', '102'));
+        $this->assertSame(1, DeliveredOrder::firstWhere('order_id', '103')->qty);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'updateStatus=3'));
     }
 
     public function test_supervisor_syncs_a_day_from_pancake(): void

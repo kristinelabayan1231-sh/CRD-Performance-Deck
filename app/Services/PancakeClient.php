@@ -89,6 +89,85 @@ class PancakeClient
     }
 
     /**
+     * Orders that became Delivered on $day and still are (a later return drops
+     * them), with their items, for the lead fallback.
+     *
+     * @return list<array{order_id: string, tracking_number: ?string, customer_name: string, phone_number: string, items: list<array{name: string, qty: int}>}>
+     */
+    public function deliveredOrders(CarbonImmutable $day): array
+    {
+        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
+        $fields = ['display_id', 'id', 'status', 'bill_phone_number', 'bill_full_name', 'customer', 'items', 'partner'];
+        $orders = [];
+        $page = 1;
+
+        do {
+            $body = $this->posPage([
+                'page_size' => 100,
+                'page_number' => $page,
+                'startDateTime' => $start->getTimestamp(),
+                'endDateTime' => $start->endOfDay()->getTimestamp(),
+                // Filter by the time the order's status became 3 (Delivered).
+                'updateStatus' => '3',
+            ], $fields);
+
+            foreach ($body['data'] ?? [] as $order) {
+                if ((int) ($order['status'] ?? 0) !== 3) {
+                    continue;
+                }
+
+                $orders[] = [
+                    'order_id' => (string) ($order['display_id'] ?? $order['id']),
+                    'tracking_number' => $order['partner']['extend_code'] ?? null,
+                    'customer_name' => trim($order['bill_full_name'] ?? ($order['customer']['name'] ?? '')),
+                    'phone_number' => (string) ($order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? '')),
+                    'items' => collect($order['items'] ?? [])->map(fn (array $item) => [
+                        'name' => trim((string) ($item['variation_info']['name'] ?? '')),
+                        'qty' => max(1, (int) ($item['quantity'] ?? 1)),
+                    ])->filter(fn (array $item) => $item['name'] !== '')->values()->all(),
+                ];
+            }
+
+            $totalPages = (int) ($body['total_pages'] ?? 1);
+            $page++;
+        } while ($page <= $totalPages);
+
+        return $orders;
+    }
+
+    /**
+     * One page of POS orders with only $fields, authenticated with the access token or API key.
+     *
+     * @param  array<string, mixed>  $query
+     * @param  list<string>  $fields
+     * @return array<string, mixed>
+     */
+    private function posPage(array $query, array $fields): array
+    {
+        $shop = config('services.pancake.shop_id');
+        $auth = config('services.pancake.access_token')
+            ? ['access_token' => config('services.pancake.access_token')]
+            : ['api_key' => config('services.pancake.key')];
+
+        if (! reset($auth) || ! $shop) {
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set.');
+        }
+
+        // No Accept: application/json here; with it the POS API stalls mid-response.
+        $response = Http::timeout(90)->retry(3, 2000, throw: false)->get(
+            rtrim(config('services.pancake.pos_url'), '/')."/shops/{$shop}/orders?".http_build_query([...$auth, ...$query])
+            .'&'.collect($fields)->map(fn (string $field) => 'fields[]='.$field)->join('&')
+        );
+        $body = $response->json();
+
+        if ($response->failed() || ! ($body['success'] ?? false)) {
+            throw new RuntimeException("Pancake POS orders returned HTTP {$response->status()}: ".($body['message'] ?? 'unknown error'));
+        }
+
+        return $body;
+    }
+
+    /**
      * Every POS order created on $day (segmentation timezone), trimmed to the
      * fields Segmentation Productivity uses; full orders are large.
      *

@@ -8,6 +8,8 @@ never needs to re-read the whole PDF. Newest first.
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
 - 2026-10-06 · Segmentation Productivity · New module: CRA cards (confirmed orders, funnel, conversion, pick-up, trend), weekly/daily charts, report table with TOTAL; filters for CRA, day/week, compare period, trend metric; Sync Pancake button; AOV and Gross sales on hold · shots: new (productivity-day, productivity-week)
+- 2026-10-06 · Segmentation Tracker · Backup mode: when the retention API is down, new leads come from saved delivered orders (retention API copy + Pancake POS deliveries) with Est. out of stock = delivered + qty × consumption days − 1; existing leads untouched; yellow "Backup mode" notice · shots: 03-daily-overview
+- 2026-10-06 · Settings · Product Consumption: new "Consumption days (per unit)" field; seeded values (Scar Cream 10, CanPro 10, others 15) · shots: 15-products
 - 2026-10-06 · Settings · New "Connections" tab (Super Admin): Run check tests database, Shecom, Pancake POS (API key / access token), Pancake pages and shows the server's outgoing IP; new permission connections.check · shots: new (settings-connections)
 - 2026-10-06 · Settings · New "Pancake Pages" tab: add/edit/turn off/remove/test Facebook pages and their Pancake access tokens (tokens masked, stored encrypted); replaces PANCAKE_PAGE_* in .env; new permission pancake_pages.manage · shots: new (settings-pancake-pages)
 - 2026-10-06 · Segmentation Tracker · CRD Lead now means 3+ delivered orders (1st = FSD, 2nd = Retention, 3rd+ = CRD); glossary "CRD Lead" wording · shots: —

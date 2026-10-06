@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DeliveredOrder;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use Carbon\CarbonImmutable;
@@ -16,10 +17,13 @@ class PancakeSync
      * Copy one day's chat engagements and POS orders from Pancake. Rows are
      * updated in place by their Pancake id; nothing is deleted.
      *
-     * @return array{staff: int, orders: int}
+     * @return array{staff: int, orders: int, delivered: int}
      */
     public function sync(CarbonImmutable $day): array
     {
+        // The lead fallback's orders; a failure here mustn't stop the engagements and orders below.
+        $delivered = rescue(fn () => $this->syncDelivered($day), 0);
+
         $day = $day->startOfDay();
         Cache::put(self::runningKey($day), true, now()->addMinutes(15));
 
@@ -58,7 +62,53 @@ class PancakeSync
 
         Cache::put(self::syncKey($day), now()->toIso8601String(), now()->addDays(40));
 
-        return ['staff' => count($engagements), 'orders' => $orders->count()];
+        return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered];
+    }
+
+    /**
+     * Save the orders delivered on $day for the lead fallback (used when the
+     * retention API is down). Orders the retention API already gave are left
+     * as they are, since those carry its consumption days.
+     */
+    public function syncDelivered(CarbonImmutable $day): int
+    {
+        $catalog = new ProductCatalog;
+        $orders = collect($this->client->deliveredOrders($day))->filter(fn (array $order) => $order['phone_number'] !== '' && $order['items']);
+        $fromRetentionApi = DeliveredOrder::whereIn('order_id', $orders->pluck('order_id'))
+            ->where('source', DeliveredOrder::SOURCE_SHECOM)->pluck('order_id')->flip();
+        $now = now();
+
+        $rows = $orders->reject(fn (array $order) => isset($fromRetentionApi[$order['order_id']]))->map(function (array $order) use ($catalog, $day, $now) {
+            // The tracked product: the first item that matches a Product Consumption product, else the first item.
+            $items = collect($order['items']);
+            $main = $items->first(fn (array $item) => $catalog->match($item['name'])) ?? $items->first();
+            $product = $catalog->match($main['name']);
+
+            return [
+                'order_id' => $order['order_id'],
+                'tracking_number' => $order['tracking_number'],
+                'customer_name' => $order['customer_name'] ?: 'Unknown',
+                'phone_number' => $order['phone_number'],
+                'product_raw' => $main['name'],
+                // All units of that product in the order.
+                'qty' => $product
+                    ? $items->filter(fn (array $item) => $catalog->match($item['name'])?->is($product))->sum('qty')
+                    : $main['qty'],
+                'delivered_date' => $day->toDateString(),
+                'consumption_days_per_unit' => null,
+                'source' => DeliveredOrder::SOURCE_PANCAKE,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        })->values();
+
+        foreach ($rows->chunk(500) as $chunk) {
+            DeliveredOrder::upsert($chunk->values()->all(), ['order_id'], [
+                'tracking_number', 'customer_name', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'updated_at',
+            ]);
+        }
+
+        return $rows->count();
     }
 
     /**

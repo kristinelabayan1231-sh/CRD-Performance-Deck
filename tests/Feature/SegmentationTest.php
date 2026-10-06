@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\Product;
 use App\Models\Role;
@@ -75,6 +76,66 @@ class SegmentationTest extends TestCase
         $this->assertSame(Lead::TYPE_NEW, Lead::firstWhere('order_id', '5')->lead_type);
         $this->assertNull(Lead::firstWhere('order_id', '4'));
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
+    }
+
+    public function test_a_successful_sync_keeps_a_copy_of_every_delivered_order(): void
+    {
+        $this->fakeApi([
+            $this->row('1', '9171111111', '2026-10-05'),
+            $this->row('2', '9172222222', '2026-11-30'),
+        ]);
+
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame(['1', '2'], DeliveredOrder::orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame(15, DeliveredOrder::firstWhere('order_id', '2')->consumption_days_per_unit);
+    }
+
+    public function test_when_the_retention_api_is_down_leads_come_from_saved_orders_and_product_consumption(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['status' => 'error', 'message' => 'Application failed to respond'], 502)]);
+        $alice = $this->cra('alice@gmail.com');
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 10]);
+
+        $saved = fn (string $id, string $phone, string $delivered, int $qty, ?int $days, string $product = 'Pterygium Drops') => DeliveredOrder::create([
+            'order_id' => $id, 'customer_name' => "Customer {$id}", 'phone_number' => $phone, 'product_raw' => $product,
+            'qty' => $qty, 'delivered_date' => $delivered, 'consumption_days_per_unit' => $days, 'source' => DeliveredOrder::SOURCE_PANCAKE,
+        ]);
+        // Product Consumption says 10 days: Sep 16 + 2×10 − 1 = Oct 5. The saved 15 days is ignored.
+        $saved('p1', '9171111111', '2026-09-16', 2, 15);
+        // No matching product: the saved 15 days apply. Sep 21 + 15 − 1 = Oct 5.
+        $saved('p2', '9172222222', '2026-09-21', 1, 15, 'Mystery Serum');
+        // Neither: skipped.
+        $saved('p3', '9173333333', '2026-09-21', 1, null, 'Mystery Serum');
+        // Runs out Oct 6: not today's lead.
+        $saved('p4', '9174444444', '2026-09-27', 1, null);
+        // Already a lead with a different date and an assignment: left exactly as it is.
+        $saved('p5', '9175555555', '2026-09-26', 1, null);
+        $existing = Lead::create([
+            'order_id' => 'p5', 'customer_name' => 'Kept', 'phone_number' => '9175555555', 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-09-20', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-10-04',
+            'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $alice->id, 'status' => 'active',
+        ]);
+
+        $result = app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame('fallback', $result['source']);
+        $this->assertSame(['p1', 'p2'], Lead::whereDate('est_out_of_stock_date', '2026-10-05')->orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame(10, Lead::firstWhere('order_id', 'p1')->consumption_days);
+        $this->assertSame('2026-10-04', $existing->fresh()->est_out_of_stock_date->toDateString());
+        $this->assertSame('Kept', $existing->fresh()->customer_name);
+        $this->assertSame($alice->id, $existing->fresh()->assigned_to);
+
+        $this->actingAs($this->owner)->get('/segmentation?date=2026-10-05')->assertSee('Backup mode');
+    }
+
+    public function test_without_saved_orders_the_retention_api_error_still_shows(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['error' => 'down'], 502)]);
+
+        $this->expectExceptionMessage('Retention API returned HTTP 502');
+
+        app(LeadGenerator::class)->generate($this->day);
     }
 
     public function test_crd_leads_first_up_to_quota_then_excess_spread_evenly(): void

@@ -52,6 +52,10 @@ class ConnectionChecker
             return [['name' => 'Pancake POS orders', 'ok' => false, 'details' => 'Neither PANCAKE_ACCESS_TOKEN nor PANCAKE_API_KEY is set', 'seconds' => 0.0]];
         }
 
+        if (! config('services.pancake.shop_id')) {
+            return [['name' => 'Pancake POS orders', 'ok' => false, 'details' => 'PANCAKE_SHOP_ID is not set (Pancake answers "shop does not exist")', 'seconds' => 0.0]];
+        }
+
         return collect($credentials)->map(fn (array $auth, string $label) => $this->check("Pancake POS orders · {$label}", function () use ($auth) {
             $response = Http::timeout(60)->get(
                 rtrim(config('services.pancake.pos_url'), '/').'/shops/'.config('services.pancake.shop_id').'/orders?'

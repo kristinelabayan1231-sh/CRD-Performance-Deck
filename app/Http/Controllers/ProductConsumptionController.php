@@ -45,12 +45,16 @@ class ProductConsumptionController extends Controller
     }
 
     /**
-     * @return array{name: string, keywords: ?string}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
         $keywords = collect(explode(',', (string) $request->input('keywords')))->map(fn ($k) => trim($k))->filter()->unique()->join(', ');
-        $request->merge(['name' => trim((string) $request->input('name')), 'keywords' => $keywords ?: null]);
+        $request->merge([
+            'name' => trim((string) $request->input('name')),
+            'keywords' => $keywords ?: null,
+            'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
+        ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
         $bag = $product ? "product{$product->id}" : 'default';
@@ -58,6 +62,7 @@ class ProductConsumptionController extends Controller
         return $request->validateWithBag($bag, [
             'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product)],
             'keywords' => ['nullable', 'string', 'max:1000'],
+            'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);

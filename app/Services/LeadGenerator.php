@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\Role;
 use App\Models\User;
@@ -9,6 +10,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class LeadGenerator
 {
@@ -18,18 +21,35 @@ class LeadGenerator
      * Pull customers whose product runs out on $date, store them as leads and
      * assign them to CRAs.
      *
-     * @return array{found: int, created: int, crd: int, new: int, assigned: int, unassigned: int}
+     * When the retention API is down, the leads come from the saved delivered
+     * orders (retention API + Pancake POS) and Settings → Product Consumption
+     * days instead; existing leads are then left exactly as they are.
+     *
+     * @return array{found: int, created: int, crd: int, new: int, assigned: int, unassigned: int, source: string, fallback_reason: ?string}
      */
     public function generate(CarbonImmutable $date): array
     {
-        $rows = $this->client->retentionStockouts();
         $date = $date->startOfDay();
+        // Product names are grouped under Settings → Product Consumption products.
+        $catalog = new ProductCatalog;
+        $fallbackReason = null;
+
+        try {
+            $rows = $this->client->retentionStockouts();
+            $this->rememberDelivered($rows);
+        } catch (Throwable $e) {
+            $rows = $this->fallbackRows($catalog);
+
+            if (empty($rows)) {
+                throw $e;
+            }
+
+            $fallbackReason = $e->getMessage();
+            Log::warning('Retention API unavailable; leads from saved delivered orders', ['date' => $date->toDateString(), 'message' => $fallbackReason]);
+        }
 
         // Customers with enough delivered orders are CRD Leads (see segmentation.crd_lead_min_orders).
         $ordersPerPhone = collect($rows)->countBy(fn (array $row) => self::normalizePhone($row['phone_number'] ?? ''));
-
-        // Product names are grouped under Settings → Product Consumption products.
-        $catalog = new ProductCatalog;
 
         $leads = collect($rows)
             ->map(fn (array $row) => $this->toLead($row, $catalog, $ordersPerPhone))
@@ -38,9 +58,15 @@ class LeadGenerator
 
         $created = 0;
 
-        DB::transaction(function () use ($leads, &$created) {
+        DB::transaction(function () use ($leads, &$created, $fallbackReason) {
             foreach ($leads as $data) {
                 $lead = Lead::firstOrNew(['order_id' => $data['order_id']]);
+
+                // Fallback numbers are estimates: never move or change a lead that already exists.
+                if ($lead->exists && $fallbackReason !== null) {
+                    continue;
+                }
+
                 $created += $lead->exists ? 0 : 1;
                 // Refresh order details but keep any assignment and status already set.
                 $lead->fill($data)->save();
@@ -58,11 +84,82 @@ class LeadGenerator
             'new' => $forDay->where('lead_type', Lead::TYPE_NEW)->count(),
             'assigned' => $assigned,
             'unassigned' => $forDay->whereNull('assigned_to')->count(),
+            'source' => $fallbackReason === null ? 'retention_api' : 'fallback',
+            'fallback_reason' => $fallbackReason,
         ];
 
         Cache::put(self::syncKey($date), ['at' => now()->toIso8601String(), ...$result], now()->addDays(40));
 
         return $result;
+    }
+
+    /**
+     * Keep a copy of every delivered order the retention API returns, for the fallback.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     */
+    private function rememberDelivered(array $rows): void
+    {
+        $now = now();
+
+        collect($rows)
+            ->filter(fn (array $row) => ! empty($row['order_id']) && ! empty($row['delivered_date']))
+            ->map(fn (array $row) => [
+                'order_id' => (string) $row['order_id'],
+                'tracking_number' => $row['tracking_number'] ?: null,
+                'customer_name' => trim($row['customer_name'] ?? ''),
+                'phone_number' => (string) ($row['phone_number'] ?? ''),
+                'product_raw' => trim($row['product_name'] ?? ''),
+                'qty' => max(1, (int) ($row['qty'] ?? 1)),
+                'delivered_date' => CarbonImmutable::parse($row['delivered_date'])->toDateString(),
+                'consumption_days_per_unit' => isset($row['consumption_days_per_unit']) ? (int) $row['consumption_days_per_unit'] : null,
+                'source' => DeliveredOrder::SOURCE_SHECOM,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])
+            ->unique('order_id')
+            ->chunk(500)
+            ->each(fn (Collection $chunk) => DeliveredOrder::upsert(
+                $chunk->values()->all(),
+                ['order_id'],
+                ['tracking_number', 'customer_name', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit', 'source', 'updated_at'],
+            ));
+    }
+
+    /**
+     * The saved delivered orders in the retention API's shape, with the
+     * out-of-stock date worked out the way the retention API does:
+     * delivered date + (qty × consumption days) − 1, the delivery day being day 1.
+     * Days per unit come from Settings → Product Consumption, else the last
+     * value the retention API gave; orders with neither are skipped.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function fallbackRows(ProductCatalog $catalog): array
+    {
+        $rows = [];
+
+        DeliveredOrder::query()->orderBy('id')->each(function (DeliveredOrder $order) use ($catalog, &$rows) {
+            $days = $catalog->match($order->product_raw)?->consumption_days ?: $order->consumption_days_per_unit;
+
+            if (! $days) {
+                return;
+            }
+
+            $rows[] = [
+                'order_id' => $order->order_id,
+                'tracking_number' => $order->tracking_number,
+                'customer_name' => $order->customer_name,
+                'phone_number' => $order->phone_number,
+                'product_name' => $order->product_raw,
+                'qty' => $order->qty,
+                'delivered_date' => $order->delivered_date->toDateString(),
+                'consumption_days_per_unit' => $days,
+                'estimated_out_of_stock_date' => $order->delivered_date->addDays($order->qty * $days - 1)->toDateString(),
+            ];
+        }, 1000);
+
+        return $rows;
     }
 
     /**
@@ -85,6 +182,16 @@ class LeadGenerator
     /**
      * When $date's leads were last synced from the API, if ever.
      */
+    /**
+     * The last sync's result for $date (when, how many, and whether it used the fallback).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function lastSyncResult(CarbonImmutable $date): ?array
+    {
+        return Cache::get(self::syncKey($date));
+    }
+
     public static function lastSync(CarbonImmutable $date): ?CarbonImmutable
     {
         $at = Cache::get(self::syncKey($date))['at'] ?? null;
