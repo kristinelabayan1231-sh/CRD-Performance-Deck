@@ -37,6 +37,19 @@ class ConnectionCheckTest extends TestCase
             ->assertSee('203.0.113.7');
     }
 
+    public function test_results_render_after_the_session_stores_them_as_json(): void
+    {
+        $owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+
+        // Production sessions are JSON, so the check time comes back as a string.
+        $this->actingAs($owner)->withSession([
+            'connection_results' => [['name' => 'Database', 'ok' => true, 'details' => 'pgsql', 'seconds' => 0.1]],
+            'connection_checked_at' => '2026-10-06T13:05:09+00:00',
+        ])->get(route('settings.connections.index'))
+            ->assertOk()
+            ->assertSee('Oct 6, 9:05:09 PM');
+    }
+
     public function test_others_cannot_open_it(): void
     {
         $cra = User::create(['email' => 'cra@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
