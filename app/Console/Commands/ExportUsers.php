@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Console\Command;
@@ -11,7 +12,7 @@ class ExportUsers extends Command
 {
     protected $signature = 'users:export {path=storage/app/private/users-export.json : Where to write the file}';
 
-    protected $description = 'Write every role and user (no passwords) to a JSON file for users:import on another server';
+    protected $description = 'Write every role, user (no passwords) and Pancake page to a JSON file for users:import on another server';
 
     public function handle(): int
     {
@@ -23,13 +24,18 @@ class ExportUsers extends Command
                 'granted_by' => $user->grantedBy?->email,
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
             ])->all(),
+            // Tokens are written in plain text: keep this file private (storage/app/private is git-ignored).
+            'pancake_pages' => PancakePage::orderBy('id')->get()->map(fn (PancakePage $page) => [
+                ...$page->only(['name', 'page_id', 'is_active']),
+                'access_token' => $page->access_token,
+            ])->all(),
         ];
 
         $path = base_path($this->argument('path'));
         File::ensureDirectoryExists(dirname($path));
         File::put($path, json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
-        $this->info('Exported '.count($data['roles']).' roles and '.count($data['users'])." users to {$this->argument('path')}.");
+        $this->info('Exported '.count($data['roles']).' roles, '.count($data['users']).' users and '.count($data['pancake_pages'])." Pancake pages to {$this->argument('path')}.");
 
         return self::SUCCESS;
     }

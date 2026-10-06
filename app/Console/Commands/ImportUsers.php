@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -13,7 +14,7 @@ class ImportUsers extends Command
 {
     protected $signature = 'users:import {path=storage/app/private/users-export.json : File written by users:export}';
 
-    protected $description = 'Add or update roles (by slug) and users (by email) from a users:export file; nothing is deleted';
+    protected $description = 'Add or update roles (by slug), users (by email) and Pancake pages (by page ID) from a users:export file; nothing is deleted';
 
     public function handle(): int
     {
@@ -44,6 +45,10 @@ class ImportUsers extends Command
                 ]);
             }
 
+            foreach ($data['pancake_pages'] ?? [] as $row) {
+                PancakePage::updateOrCreate(['page_id' => (string) $row['page_id']], $row);
+            }
+
             // Second pass, once everyone exists: who granted each account.
             $ids = User::pluck('id', 'email');
             foreach ($data['users'] as $row) {
@@ -53,7 +58,7 @@ class ImportUsers extends Command
             }
         });
 
-        $this->info('Imported '.count($data['roles']).' roles and '.count($data['users']).' users.');
+        $this->info('Imported '.count($data['roles']).' roles, '.count($data['users']).' users and '.count($data['pancake_pages'] ?? []).' Pancake pages.');
 
         return self::SUCCESS;
     }

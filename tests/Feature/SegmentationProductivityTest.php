@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
@@ -39,10 +40,10 @@ class SegmentationProductivityTest extends TestCase
             'services.shecom.key' => 'test-key',
             'services.pancake.key' => 'pos-key',
             'services.pancake.shop_id' => '1',
-            'services.pancake.pages' => [['id' => 'page-1', 'token' => 'page-token']],
         ]);
         $this->travelTo(CarbonImmutable::parse('2026-10-01 18:00', 'Asia/Manila'));
         $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+        PancakePage::create(['name' => 'Trusted Eye Care', 'page_id' => '1001', 'access_token' => 'page-token']);
 
         Http::fake(function (Request $request) {
             return match (true) {

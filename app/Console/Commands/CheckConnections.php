@@ -2,6 +2,8 @@
 
 namespace App\Console\Commands;
 
+use App\Models\PancakePage;
+use App\Services\PancakeClient;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -62,33 +64,24 @@ class CheckConnections extends Command
     }
 
     /**
-     * Customer engagements for today on every configured page.
+     * Customer engagements for today on every active page in Settings → Pancake Pages.
      *
      * @return array{0: string, 1: string, 2: string, 3: string}
      */
     private function pancakeChat(): array
     {
         return $this->check('Pancake chat engagements', function () {
-            $pages = config('services.pancake.pages');
-            $day = now(config('segmentation.timezone'))->format('d/m/Y');
-            $failed = [];
+            $pages = PancakePage::active()->orderBy('name')->get();
+            $client = app(PancakeClient::class);
+            $failed = $pages->reject(fn (PancakePage $page) => $client->checkPage($page)[0])->pluck('name');
 
-            foreach ($pages as $page) {
-                $response = Http::acceptJson()->timeout(30)->get(
-                    rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page['id']}/statistics/customer_engagements",
-                    ['page_access_token' => $page['token'], 'date_range' => "{$day} 00:00:00 - {$day} 23:59:59"],
-                );
-
-                if (! $response->json('success')) {
-                    $failed[] = $page['id'];
-                }
+            if ($pages->isEmpty() || $failed->isNotEmpty()) {
+                $this->refused(0, $pages->isEmpty()
+                    ? 'no active pages in Settings → Pancake Pages'
+                    : $failed->count().' of '.$pages->count().' pages refused: '.$failed->join(', '));
             }
 
-            if (empty($pages) || $failed) {
-                $this->refused(0, empty($pages) ? 'no PANCAKE_PAGE_* pairs in .env' : count($failed).' of '.count($pages).' pages refused: '.implode(', ', $failed));
-            }
-
-            return count($pages).' of '.count($pages).' pages OK';
+            return $pages->count().' of '.$pages->count().' pages OK';
         });
     }
 

@@ -46,17 +46,7 @@ return [
         // A POS user access token; used instead of the API key when set.
         'access_token' => env('PANCAKE_ACCESS_TOKEN'),
         'shop_id' => env('PANCAKE_SHOP_ID'),
-        // Every PANCAKE_PAGE_<NAME>_ID / _TOKEN pair, from .env or real environment
-        // variables (e.g. Render's), so a new page only needs two lines.
-        'pages' => collect($_ENV + $_SERVER + getenv())
-            ->filter(fn ($value, $key) => is_string($key) && preg_match('/^PANCAKE_PAGE_(.+)_ID$/', $key) && $value)
-            ->map(fn ($id, $key) => [
-                'id' => (string) $id,
-                'token' => env(preg_replace('/_ID$/', '_TOKEN', $key)),
-            ])
-            ->filter(fn (array $page) => $page['token'])
-            ->values()
-            ->all(),
+        // Facebook pages for chat engagements live in Settings → Pancake Pages (pancake_pages table).
     ],
 
     'slack' => [

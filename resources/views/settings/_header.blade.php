@@ -9,16 +9,19 @@
 </div>
 
 {{-- Add more Settings sub tabs here: route name => [label, permission]. --}}
-@php($tabs = ['settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view']])
+@php($tabs = [
+    'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
+    'settings.pancake-pages.index' => ['Pancake Pages', 'pancake_pages.manage'],
+])
 
 <nav class="mb-8 flex gap-1 overflow-x-auto border-b border-line" aria-label="Settings sections">
     @foreach ($tabs as $route => [$label, $permission])
         @can($permission)
-            <a href="{{ route($route) }}" @if (request()->routeIs($route)) aria-current="page" @endif
+            <a href="{{ route($route) }}" @if (request()->routeIs(str_replace('.index', '.*', $route))) aria-current="page" @endif
                @class([
                    '-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition',
-                   'border-brand-500 text-brand-600' => request()->routeIs($route),
-                   'border-transparent text-muted hover:text-brand-600' => ! request()->routeIs($route),
+                   'border-brand-500 text-brand-600' => request()->routeIs(str_replace('.index', '.*', $route)),
+                   'border-transparent text-muted hover:text-brand-600' => ! request()->routeIs(str_replace('.index', '.*', $route)),
                ])>{{ $label }}</a>
         @endcan
     @endforeach
