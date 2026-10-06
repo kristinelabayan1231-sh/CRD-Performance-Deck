@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\PancakePage;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -16,7 +18,7 @@ class PancakeClient
 
     /**
      * Chat → Analytics → Engagements → Customer engagement for one day, per
-     * staff account, summed over every configured page.
+     * staff account, summed over every active page in Settings → Pancake Pages.
      *
      * Filtering the API by user_ids returns zeros, so each page is read
      * unfiltered and its users_engagements list is used instead.
@@ -25,26 +27,19 @@ class PancakeClient
      */
     public function engagements(CarbonImmutable $day): array
     {
-        $pages = config('services.pancake.pages');
+        $pages = PancakePage::active()->get();
 
-        if (empty($pages)) {
-            throw new RuntimeException('No Pancake pages are set in .env (PANCAKE_PAGE_<NAME>_ID and _TOKEN).');
+        if ($pages->isEmpty()) {
+            throw new RuntimeException('No active Pancake pages. Add them in Settings → Pancake Pages.');
         }
 
-        $range = $day->format('d/m/Y').' 00:00:00 - '.$day->format('d/m/Y').' 23:59:59';
         $staff = [];
 
         foreach ($pages as $page) {
-            $response = Http::acceptJson()
-                ->timeout(60)
-                ->retry(2, 1000, throw: false)
-                ->get(rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page['id']}/statistics/customer_engagements", [
-                    'page_access_token' => $page['token'],
-                    'date_range' => $range,
-                ]);
+            $response = $this->engagementRequest($page, $day);
 
             if ($response->failed() || ! $response->json('success')) {
-                throw new RuntimeException("Pancake engagements for page {$page['id']} returned HTTP {$response->status()}.");
+                throw new RuntimeException("Pancake engagements for page {$page->name} ({$page->page_id}) returned HTTP {$response->status()}.");
             }
 
             foreach ($response->json('users_engagements') ?? [] as $row) {
@@ -60,6 +55,37 @@ class PancakeClient
         }
 
         return $staff;
+    }
+
+    /**
+     * Whether Pancake accepts the page's token: one engagements request for today.
+     *
+     * @return array{0: bool, 1: string}
+     */
+    public function checkPage(PancakePage $page): array
+    {
+        try {
+            $response = $this->engagementRequest($page, CarbonImmutable::now(config('segmentation.timezone')));
+        } catch (\Throwable $e) {
+            return [false, "Couldn't reach Pancake: {$e->getMessage()}"];
+        }
+
+        if ($response->json('success')) {
+            return [true, 'Connected: Pancake accepted the token.'];
+        }
+
+        return [false, 'Pancake refused the token (HTTP '.$response->status().'). Check the page ID and copy a fresh page access token from Pancake → Settings → Tools.'];
+    }
+
+    private function engagementRequest(PancakePage $page, CarbonImmutable $day): Response
+    {
+        return Http::acceptJson()
+            ->timeout(60)
+            ->retry(2, 1000, throw: false)
+            ->get(rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page->page_id}/statistics/customer_engagements", [
+                'page_access_token' => $page->access_token,
+                'date_range' => $day->format('d/m/Y').' 00:00:00 - '.$day->format('d/m/Y').' 23:59:59',
+            ]);
     }
 
     /**

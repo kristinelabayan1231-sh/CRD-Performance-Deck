@@ -20,6 +20,9 @@ $modules = [
         'product_consumption.view' => 'View products and their keywords',
         'product_consumption.manage' => 'Add, edit and delete products',
     ],
+    'Settings · Pancake Pages' => [
+        'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
+    ],
     'Segmentation Tracker' => [
         'segmentation.view' => 'View own assigned leads and update their status',
         'segmentation.view_all' => 'View all leads and filter by CRA',

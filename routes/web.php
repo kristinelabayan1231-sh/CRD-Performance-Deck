@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SegmentationController;
@@ -59,7 +60,18 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
-        Route::redirect('/', '/settings/product-consumption')->name('index');
+        // The first Settings tab this user may open.
+        Route::get('/', fn () => redirect()->route(
+            request()->user()->can('product_consumption.view') ? 'settings.product-consumption.index' : 'settings.pancake-pages.index'
+        ))->name('index');
+
+        Route::prefix('pancake-pages')->name('pancake-pages.')->middleware('can:pancake_pages.manage')->group(function () {
+            Route::get('/', [PancakePageController::class, 'index'])->name('index');
+            Route::post('/', [PancakePageController::class, 'store'])->name('store');
+            Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
+            Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
+            Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');
+        });
 
         Route::prefix('product-consumption')->name('product-consumption.')->group(function () {
             Route::get('/', [ProductConsumptionController::class, 'index'])->middleware('can:product_consumption.view')->name('index');
