@@ -7,6 +7,20 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-07 · Dashboard · Heading renamed "Performance Deck"; accent colours: purple monthly-goal card, coloured KPI and retention-rate tiles, soft blue/green logistics tiles, icon badges on the Daily goal and Conversion cards, icons on tiles · shots: 02-dashboard
+- 2026-10-07 · All modules · Darker grey text and deeper tile colours for readability; chart hover tooltips now show instantly on every chart · shots: all module screenshots
+
+- 2026-10-07 · Dashboard · New "Live from Logistics" row (6 tiles from the Shecom retention report, by delivered date): Total FB delivered, Retained by CRD, Retention rate, Total CRD delivered, Ordered again via CRD, Repeat rate; Week / Month / All time; "Updated" time · shots: 02-dashboard
+
+- 2026-10-07 · Dashboard · Went cold tile now shows the count beside the % (cold leads / all leads, e.g. 45/320); cold = Customer Tagging Cold or CanPro Cold · shots: 02-dashboard
+
+- 2026-10-07 · All modules · Compact layout to match the dashboard: one-line page titles with the description inline (no icon tile), smaller section headings, tighter cards and spacing; Segmentation Tracker summary tiles smaller; Segmentation Productivity CRA cards in one row on wide screens · shots: all module screenshots
+
+- 2026-10-07 · Conversion Breakdown · New module (own sidebar item): team scorecard + per-CRA funnel board with Orders BC/SC (POS tags CRD - BROADCAST / CRD - SEGMENTATION), Engagements, Leads, BC/SC/Total conv %, Gross BC/SC/total, BC vs SC mix, TOTAL row; Day/Week/Month vs the period before; sortable columns; Sync Pancake button; new permissions conversion.view (CRA), conversion.view_all (CRA Supervisor) · shots: new (conversion-breakdown-day, conversion-breakdown-month)
+- 2026-10-07 · Settings · New "Sales Goals" tab: CRA daily goal (default ₱77,000), CRD monthly goal (default ₱1,000,000), optional own daily goal per CRA; new permission sales_goals.manage (CRA Supervisor) · shots: new (settings-sales-goals)
+- 2026-10-07 · Dashboard · Redesigned to fit one screen: Sales Goals (CRD monthly goal % with pace marker, daily goal % per CRA) and Conversion (Total conv % per CRA, Today/Week/Month) on top, compact Segmentation Tracker below; User Access tile removed; a CRA sees only their own rows · shots: 02-dashboard
+- 2026-10-06 · Segmentation Productivity · Gross sales (and AOV) now = Gross BC + Gross SC from tagged POS orders; "How the numbers are worked out" wording · shots: productivity-day, productivity-week
+
 - 2026-10-06 · Segmentation Productivity · New module: CRA cards (confirmed orders, funnel, conversion, pick-up, trend), weekly/daily charts, report table with TOTAL; filters for CRA, day/week, compare period, trend metric; Sync Pancake button; AOV and Gross sales on hold · shots: new (productivity-day, productivity-week)
 - 2026-10-06 · Segmentation Tracker · Backup mode: when the retention API is down, new leads come from saved delivered orders (retention API copy + Pancake POS deliveries) with Est. out of stock = delivered + qty × consumption days − 1; existing leads untouched; yellow "Backup mode" notice · shots: 03-daily-overview
 - 2026-10-06 · Settings · Product Consumption: new "Consumption days (per unit)" field; seeded values (Scar Cream 10, CanPro 10, others 15) · shots: 15-products
