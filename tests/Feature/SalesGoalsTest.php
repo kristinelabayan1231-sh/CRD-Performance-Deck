@@ -119,6 +119,17 @@ class SalesGoalsTest extends TestCase
         $this->assertTrue($byName['Regina']['own_goal']);
     }
 
+    public function test_dashboard_has_the_crd_board_with_today_and_the_two_days_before(): void
+    {
+        $this->actingAs($this->owner)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('CRD Board')
+            ->assertDontSee('Welcome,')
+            ->assertSee('CUSTOMER RETENTION DEPARTMENT [CRD]')
+            ->assertSeeInOrder(['OCTOBER 8, 2026', 'OCTOBER 9, 2026', 'OCTOBER 10, 2026', 'TOP SELLER'])
+            ->assertSee('CRD mascot waving');
+    }
+
     public function test_dashboard_shows_goal_progress_and_a_cra_sees_only_their_own_daily_goal(): void
     {
         $lhea = $this->cra('Lhea', 'CRD LHEI');

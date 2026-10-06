@@ -27,3 +27,25 @@
     --color-muted: #4f5563;
     --color-line: #ebe6ee;
 }
+
+/* CRD poster mascot: a gentle wave (still for reduced motion). */
+@keyframes poster-wave {
+    0%, 60%, 100% { transform: rotate(0deg); }
+    15%, 45% { transform: rotate(-16deg); }
+    30% { transform: rotate(10deg); }
+}
+@media (prefers-reduced-motion: no-preference) {
+    .poster-wave { animation: poster-wave 2.4s ease-in-out infinite; }
+}
+
+/* CRD poster: violet tape frame (matches the CRD mascot) with a soft stripe weave and scattered dots. */
+.poster-tape {
+    background-color: #6d28d9;
+    background-image:
+        radial-gradient(rgb(255 255 255 / 0.28) 1.4px, transparent 1.8px),
+        radial-gradient(rgb(255 209 102 / 0.5) 1.6px, transparent 2px),
+        repeating-linear-gradient(135deg, rgb(255 255 255 / 0.07) 0 6px, transparent 6px 14px),
+        linear-gradient(160deg, #7429d6, #5b21b6);
+    background-size: 26px 26px, 61px 61px, auto, auto;
+    background-position: 0 0, 13px 30px, 0 0, 0 0;
+}

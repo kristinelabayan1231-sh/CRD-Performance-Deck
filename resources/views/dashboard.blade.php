@@ -1,7 +1,10 @@
 <x-layouts.app title="Performance Deck">
     {{-- One screen: sales goals + conversion on top, Segmentation Tracker below. --}}
     <div class="space-y-4">
-        <h1 class="text-xl font-semibold">Performance Deck <span class="text-sm font-normal text-muted">· Welcome, {{ auth()->user()->displayName() }}.</span></h1>
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-semibold">Performance Deck</h1>
+            <x-dashboard.poster />
+        </div>
 
         @if ($salesGoals || $conversion)
             <div class="grid gap-4 lg:grid-cols-12">
