@@ -62,7 +62,9 @@ class SegmentationStats
                 $this->kpi('Leads', $now['leads'], $before['leads'], 'count', higherIsBetter: true),
                 $this->kpi('Processed', $pct($now, 'processed'), $pct($before, 'processed'), 'percent', higherIsBetter: true),
                 $this->kpi('Converted', $pct($now, 'converted'), $pct($before, 'converted'), 'percent', higherIsBetter: true),
-                $this->kpi('Went cold', $pct($now, 'cold'), $pct($before, 'cold'), 'percent', higherIsBetter: false),
+                // Cold = leads tagged Cold / CanPro Cold, shown as a share and as "cold/leads".
+                $this->kpi('Went cold', $pct($now, 'cold'), $pct($before, 'cold'), 'percent', higherIsBetter: false,
+                    count: number_format($now['cold']).'/'.number_format($now['leads'])),
             ],
             'retained' => $now['crd'] ? round($now['crd_converted'] / $now['crd'] * 100) : 0,
             'new_converted' => $now['new'] ? round($now['new_converted'] / $now['new'] * 100) : 0,
@@ -107,9 +109,10 @@ class SegmentationStats
 
     /**
      * One KPI card: value, previous value, and the change between them.
-     * Counts change in %, percentages change in points.
+     * Counts change in %, percentages change in points. $count is an optional
+     * "part/total" shown beside a percentage.
      */
-    private function kpi(string $label, float $value, float $previous, string $format, bool $higherIsBetter): array
+    private function kpi(string $label, float $value, float $previous, string $format, bool $higherIsBetter, ?string $count = null): array
     {
         $delta = $format === 'count'
             ? ($previous ? ($value - $previous) / $previous * 100 : null)
@@ -123,6 +126,7 @@ class SegmentationStats
             'change' => $delta === null ? '—' : (($delta > 0 ? '+' : '').round($delta).($format === 'count' ? '%' : ' pts')),
             'direction' => $direction,
             'good' => $direction === 'flat' ? null : (($direction === 'up') === $higherIsBetter),
+            'count' => $count,
         ];
     }
 

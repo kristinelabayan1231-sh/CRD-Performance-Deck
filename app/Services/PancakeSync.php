@@ -8,6 +8,10 @@ use App\Models\PancakeOrder;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
+
+use function Illuminate\Support\defer;
 
 class PancakeSync
 {
@@ -55,7 +59,7 @@ class PancakeSync
                     $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
                     ['pancake_order_id'],
                     ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
-                        'phone_key', 'status', 'status_name', 'total_price', 'page_name', 'updated_at'],
+                        'phone_key', 'status', 'status_name', 'total_price', 'page_name', 'tags', 'conversion_type', 'updated_at'],
                 );
             }
         });
@@ -125,6 +129,21 @@ class PancakeSync
             ->get(fn () => $this->sync($day)) ?: null;
     }
 
+    /**
+     * Sync $day after the response is sent (a full day takes minutes). Failures
+     * are logged, and pages keep showing the last good sync time.
+     */
+    public function syncLater(CarbonImmutable $day, bool $force = false): void
+    {
+        defer(function () use ($day, $force) {
+            try {
+                $this->syncIfStale($day, $force ? 0 : 60);
+            } catch (Throwable $e) {
+                Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
+            }
+        }, 'pancake-sync-'.$day->toDateString());
+    }
+
     public static function lastSync(CarbonImmutable $day): ?CarbonImmutable
     {
         $at = Cache::get(self::syncKey($day));
@@ -178,6 +197,10 @@ class PancakeSync
         $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
         $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
         $phoneKey = $phone ? LeadGenerator::normalizePhone((string) $phone) : '';
+        // POS order tags come as ids ([398, 17, …]); tolerate {id, name} objects too.
+        $tagIds = collect($order['tags'] ?? [])
+            ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
+            ->filter()->values()->all();
 
         return [
             'pancake_order_id' => (string) $orderId,
@@ -192,6 +215,9 @@ class PancakeSync
             'status_name' => $order['status_name'] ?? null,
             'total_price' => (float) ($order['total_price'] ?? 0),
             'page_name' => $order['account_name'] ?? null,
+            // upsert() skips model casts, so the list is stored as JSON here.
+            'tags' => json_encode($tagIds),
+            'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
         ];
     }
 }

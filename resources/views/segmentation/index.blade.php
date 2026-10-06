@@ -2,16 +2,8 @@
     @php($control = 'h-10 rounded-lg border border-line bg-white px-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
     @php($quota = config('segmentation.leads_per_cra'))
 
-    <div class="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-            <span class="grid size-10 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-violet text-white shadow">
-                <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h2v16h16v2H3V3Zm4 10h3v4H7v-4Zm5-5h3v9h-3V8Zm5-3h3v12h-3V5Z"/></svg>
-            </span>
-            <div>
-                <h1 class="text-2xl font-semibold">Segmentation Tracker</h1>
-                <p class="text-sm text-muted">Customers whose product runs out on the lead day.</p>
-            </div>
-        </div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <h1 class="text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
 
         <div class="flex items-center gap-3 text-sm text-muted">
             <span class="flex items-center gap-1.5">
@@ -38,26 +30,26 @@
     @include('segmentation._tabs')
 
     @if ($syncError)
-        <div role="alert" class="mb-6 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">
+        <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">
             Automatic sync couldn't reach the retention API ({{ $syncError }}). Showing the last synced leads.
         </div>
     @elseif (($lastSyncResult['source'] ?? null) === 'fallback')
-        <div role="status" class="mb-6 rounded-lg border border-[#c9970e]/50 bg-[#ffe5a0]/40 px-4 py-3 text-sm text-[#473821]">
+        <div role="status" class="mb-4 rounded-lg border border-[#c9970e]/50 bg-[#ffe5a0]/40 px-4 py-3 text-sm text-[#473821]">
             <strong>Backup mode:</strong> the retention API is down, so this day's new leads were worked out from saved delivered orders (retention API + Pancake)
             and Settings → Product Consumption days. Leads that already existed were left as they are.
         </div>
     @endif
 
     @error('transfer')
-        <div role="alert" class="mb-6 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
+        <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
     @enderror
 
     @error('sync')
-        <div role="alert" class="mb-6 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
+        <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
     @enderror
 
     {{-- Filters --}}
-    <form method="GET" action="{{ route('segmentation.index') }}" class="mb-6 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
+    <form method="GET" action="{{ route('segmentation.index') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
         <label>
             <span class="mb-1 block text-xs font-medium text-muted">Month</span>
             <input type="month" name="month" value="{{ $filters['month'] }}" class="{{ $control }}"
@@ -106,34 +98,34 @@
     {{-- Summary --}}
     {{-- Summary tiles (refreshed live from segmentation.summary) --}}
     @php($tileStyles = [
-        'total' => ['Leads', 'from-brand-500 to-violet'],
-        'crd' => ['CRD Leads', 'from-teal to-[#14a892]'],
-        'new' => ['New Customers', 'from-sky to-[#2fa9cc]'],
-        'per_cra' => ['Per CRA', 'from-coral to-[#f0727a]'],
-        'updated' => ['Status Updated', 'from-[#7429d6] to-brand-500'],
-        'converted' => ['Conversion', 'from-[#11734b] to-teal'],
+        'total' => ['Leads', 'from-brand-600 to-brand-700'],
+        'crd' => ['CRD Leads', 'from-[#0e8f7c] to-[#0b7d6c]'],
+        'new' => ['New Customers', 'from-[#1f8fb8] to-[#1a7fa6]'],
+        'per_cra' => ['Per CRA', 'from-[#e05a5f] to-[#d1494e]'],
+        'updated' => ['Status Updated', 'from-[#7429d6] to-brand-600'],
+        'converted' => ['Conversion', 'from-[#11734b] to-[#0e8f7c]'],
     ])
     <div data-live-summary data-url="{{ route('segmentation.summary', request()->query()) }}"
-         @class(['mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3', 'xl:grid-cols-6' => count($tiles) === 6, 'xl:grid-cols-5' => count($tiles) === 5])>
+         @class(['mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3', 'xl:grid-cols-6' => count($tiles) === 6, 'xl:grid-cols-5' => count($tiles) === 5])>
         @foreach ($tiles as $key => $tile)
             @php($pressable = $key === 'per_cra')
             <{{ $pressable ? 'button' : 'div' }} @if ($pressable) type="button" data-per-cra-open aria-haspopup="dialog" @endif
-                class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $tileStyles[$key][1] }} p-5 text-left text-white shadow-sm {{ $pressable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral' : '' }}">
-                <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
-                <span class="relative flex items-center justify-between text-sm font-medium">
+                class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $tileStyles[$key][1] }} px-4 py-3 text-left text-white shadow-sm {{ $pressable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral' : '' }}">
+                <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
+                <span class="relative flex items-center justify-between text-xs font-medium">
                     {{ $tileStyles[$key][0] }}
                     @if ($pressable)
                         <svg class="size-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
                     @endif
                 </span>
-                <span class="relative mt-2 block text-3xl font-bold tabular-nums" data-tile-value="{{ $key }}">{{ $tile['value'] }}</span>
-                <span class="relative mt-1 block min-h-4 text-xs font-medium text-white/90" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
+                <span class="relative mt-0.5 block text-2xl font-bold tabular-nums" data-tile-value="{{ $key }}">{{ $tile['value'] }}</span>
+                <span class="relative block min-h-4 text-[11px] font-medium text-white/90" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
             </{{ $pressable ? 'button' : 'div' }}>
         @endforeach
     </div>
 
     @if ($canViewAll && $cras->isEmpty())
-        <p class="mb-6 rounded-lg border border-sky/50 bg-sky/10 px-4 py-3 text-sm text-sky-900">
+        <p class="mb-4 rounded-lg border border-sky/50 bg-sky/10 px-4 py-3 text-sm text-sky-900">
             No CRAs yet. Give users the <strong>CRA</strong> role in User Access and leads will be assigned to them ({{ $quota }} each per day, CRD Leads first).
         </p>
     @endif
@@ -141,7 +133,7 @@
     {{-- Leads --}}
     <section class="overflow-hidden rounded-xl bg-white shadow-sm">
         @if ($leads->isEmpty())
-            <p class="px-6 py-12 text-center text-sm text-muted">
+            <p class="px-4 py-12 text-center text-sm text-muted">
                 No leads for this filter.
                 @if ($canManage) Past days only have leads if they were synced then — use <strong>Sync now</strong> to fill one in. @endif
             </p>
@@ -267,7 +259,7 @@
         <dialog id="per-cra-dialog" aria-labelledby="per-cra-title" class="m-auto w-[min(26rem,calc(100%-2rem))] rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
             <div class="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
                 <div>
-                    <h2 id="per-cra-title" class="text-lg font-semibold">Assigned per CRA</h2>
+                    <h2 id="per-cra-title" class="text-base font-semibold">Assigned per CRA</h2>
                     <p class="text-sm text-muted" data-per-cra-period>{{ $tiles['per_cra']['period'] }}</p>
                 </div>
                 <button type="button" data-per-cra-close aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
@@ -302,7 +294,7 @@
     {{-- Note editor (one dialog shared by every row) --}}
     <dialog id="note-dialog" class="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
         <form method="dialog" class="p-5" data-note-form>
-            <h2 class="text-lg font-semibold">Note</h2>
+            <h2 class="text-base font-semibold">Note</h2>
             <p class="text-sm text-muted" data-note-title></p>
             <textarea name="notes" rows="6" maxlength="5000" placeholder="Add a note…"
                       class="mt-3 w-full rounded-lg border border-line p-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"></textarea>

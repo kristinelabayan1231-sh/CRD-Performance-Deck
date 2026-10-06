@@ -23,6 +23,9 @@ $modules = [
     'Settings · Pancake Pages' => [
         'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
     ],
+    'Settings · Sales Goals' => [
+        'sales_goals.manage' => 'Set the CRA daily sales goal and the CRD monthly sales goal',
+    ],
     'Settings · Connections' => [
         'connections.check' => 'Run the connection check (database, Shecom, Pancake) from the server',
     ],
@@ -35,6 +38,10 @@ $modules = [
     'Segmentation Productivity' => [
         'productivity.view' => 'View own productivity numbers',
         'productivity.view_all' => 'View and compare every CRA, and sync Pancake data',
+    ],
+    'Conversion Breakdown' => [
+        'conversion.view' => 'View own broadcast and segmentation conversions',
+        'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
     ],
 ];
 

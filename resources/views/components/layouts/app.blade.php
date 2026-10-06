@@ -9,6 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} · CRD Performance Deck</title>
+    <x-favicons />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-canvas font-sans text-ink antialiased">
@@ -36,10 +37,13 @@
                 @can('productivity.view')
                     <x-nav-link :href="route('productivity.index')" :active="request()->routeIs('productivity.*')" icon="trend">Segmentation Productivity</x-nav-link>
                 @endcan
+                @can('conversion.view')
+                    <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
+                @endcan
                 @can('user_access.view')
                     <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                 @endcan
-                @canany(['product_consumption.view', 'pancake_pages.manage', 'connections.check'])
+                @canany(['product_consumption.view', 'pancake_pages.manage', 'sales_goals.manage', 'connections.check'])
                     <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
                 @endcanany
             </nav>

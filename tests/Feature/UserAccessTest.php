@@ -133,7 +133,7 @@ class UserAccessTest extends TestCase
         $anna->update(['name' => 'Anna Reyes Santos']);
         $this->assertSame('Anna R.', $anna->fresh()->displayName());
 
-        $this->actingAs($anna->fresh())->get('/dashboard')->assertSee('Welcome, Anna R.');
+        $this->actingAs($anna->fresh())->get('/dashboard')->assertSee('Anna R.');
         $this->actingAs($this->owner)->get('/user-access')->assertSee('Anna R.')->assertSee('Google name: Anna Reyes Santos');
     }
 

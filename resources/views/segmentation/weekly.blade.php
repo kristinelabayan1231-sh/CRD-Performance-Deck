@@ -1,24 +1,16 @@
 <x-layouts.app title="Weekly Segmentation">
     @php($control = 'h-10 rounded-lg border border-line bg-white px-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
-    <div class="mb-6 flex items-center gap-3">
-        <span class="grid size-10 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-violet text-white shadow">
-            <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h2v16h16v2H3V3Zm4 10h3v4H7v-4Zm5-5h3v9h-3V8Zm5-3h3v12h-3V5Z"/></svg>
-        </span>
-        <div>
-            <h1 class="text-2xl font-semibold">Segmentation Tracker</h1>
-            <p class="text-sm text-muted">Handled vs. unprocessed leads per CRA, week by week.</p>
-        </div>
-    </div>
+    <h1 class="mb-4 text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Handled vs. unprocessed leads per CRA, week by week.</span></h1>
 
     @include('segmentation._tabs')
 
     @error('transfer')
-        <div role="alert" class="mb-6 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
+        <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
     @enderror
 
     {{-- Filters: month, week of the month, CRA --}}
-    <form method="GET" action="{{ route('segmentation.weekly') }}" class="mb-6 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
+    <form method="GET" action="{{ route('segmentation.weekly') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
         <label>
             <span class="mb-1 block text-xs font-medium text-muted">Month</span>
             <input type="month" name="month" value="{{ $filters['month'] }}" class="{{ $control }}"
@@ -53,24 +45,24 @@
     </form>
 
     {{-- Week totals --}}
-    <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach ([
-            ['Assigned', number_format($totals['assigned']), $week['label'], 'from-brand-500 to-violet'],
-            ['Handled', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-teal to-[#14a892]'],
-            ['Unprocessed', number_format($totals['unprocessed']), 'from past days this week', 'from-coral to-[#f0727a]'],
-            ['Backlog now', number_format($totals['backlog']), 'all unprocessed, any week', 'from-[#7429d6] to-brand-500'],
+            ['Assigned', number_format($totals['assigned']), $week['label'], 'from-brand-600 to-brand-700'],
+            ['Handled', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-[#0e8f7c] to-[#0b7d6c]'],
+            ['Unprocessed', number_format($totals['unprocessed']), 'from past days this week', 'from-[#e05a5f] to-[#d1494e]'],
+            ['Backlog now', number_format($totals['backlog']), 'all unprocessed, any week', 'from-[#7429d6] to-brand-600'],
         ] as [$label, $value, $note, $gradient])
-            <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} p-5 text-white shadow-sm">
-                <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
-                <span class="relative block text-sm font-medium">{{ $label }}</span>
-                <span class="relative mt-2 block text-3xl font-bold tabular-nums">{{ $value }}</span>
-                <span class="relative mt-1 block text-xs font-medium text-white/90">{{ $note }}</span>
+            <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} px-4 py-3 text-white shadow-sm">
+                <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
+                <span class="relative block text-xs font-medium">{{ $label }}</span>
+                <span class="relative mt-0.5 block text-2xl font-bold tabular-nums">{{ $value }}</span>
+                <span class="relative block text-[11px] font-medium text-white/90">{{ $note }}</span>
             </div>
         @endforeach
     </div>
 
     {{-- Per CRA: handled / assigned for each day of the week --}}
-    <section class="mb-8 overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="weekly-title">
+    <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="weekly-title">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
             <h2 id="weekly-title" class="font-semibold">Handled per CRA · {{ $week['label'] }}, {{ $month->format('Y') }}</h2>
             <p class="flex flex-wrap gap-3 text-xs text-muted">
@@ -82,7 +74,7 @@
         </div>
 
         @if ($rows->isEmpty())
-            <p class="px-6 py-12 text-center text-sm text-muted">No CRAs yet. Give users the CRA role in User Access.</p>
+            <p class="px-4 py-12 text-center text-sm text-muted">No CRAs yet. Give users the CRA role in User Access.</p>
         @else
             <div class="overflow-x-auto">
                 <table class="w-max min-w-full text-sm">
@@ -207,7 +199,7 @@
                 </div>
             </div>
         @empty
-            <p class="rounded-xl bg-white px-6 py-10 text-center text-sm text-muted shadow-sm">No carry-over customers this week.</p>
+            <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">No carry-over customers this week.</p>
         @endforelse
     </section>
 

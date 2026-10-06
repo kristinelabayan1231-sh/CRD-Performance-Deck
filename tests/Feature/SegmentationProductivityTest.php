@@ -79,14 +79,14 @@ class SegmentationProductivityTest extends TestCase
         ]);
     }
 
-    private function order(string $phone, string $seller, int $status = 3, float $total = 800): array
+    private function order(string $phone, string $seller, int $status = 3, float $total = 800, array $tags = []): array
     {
         $this->seq++;
 
         // 2026-10-01 10:00 UTC = 6 PM in Manila.
         return [
             'id' => 360301022569000 + $this->seq, 'display_id' => $this->seq === 1 ? 1374947 : 9000 + $this->seq, 'inserted_at' => '2026-10-01T10:00:00.000000', 'status' => $status, 'status_name' => 'delivered',
-            'bill_phone_number' => $phone, 'bill_full_name' => 'Buyer', 'total_price' => $total, 'account_name' => 'Trusted Eye Care',
+            'bill_phone_number' => $phone, 'bill_full_name' => 'Buyer', 'total_price' => $total, 'account_name' => 'Trusted Eye Care', 'tags' => $tags,
             'assigning_seller' => ['id' => 'seller-'.md5($seller), 'name' => $seller],
         ];
     }
@@ -111,13 +111,14 @@ class SegmentationProductivityTest extends TestCase
             // Repeat Purchase = Yes lead buys, even through another seller: assigned lead conversion.
             $this->order('+63 917 000 0001', 'Someone Else'),
             // Lhea's own orders for a customer outside every leads list, twice: one Pancake conversion.
-            $this->order('09998887777', 'CRD  Lhei'),
-            $this->order('639998887777', 'CRD Lhei'),
+            // Tagged CRD - BROADCAST and CRD - SEGMENTATION, so both are gross sales.
+            $this->order('09998887777', 'CRD  Lhei', tags: [397]),
+            $this->order('639998887777', 'CRD Lhei', tags: [398]),
             // Another CRA's lead and Lhea's lead without Repeat Purchase = Yes: neither conversion.
             $this->order('09170000004', 'CRD Lhei'),
             $this->order('09170000002', 'CRD Lhei'),
             // Canceled orders don't count.
-            $this->order('09111111111', 'CRD Lhei', status: 6),
+            $this->order('09111111111', 'CRD Lhei', status: 6, tags: [398]),
         ];
 
         app(PancakeSync::class)->sync(Lead::today());
@@ -133,9 +134,9 @@ class SegmentationProductivityTest extends TestCase
         $this->assertSame(2, $day['confirmed']);
         $this->assertEqualsWithDelta(2 / 7, $day['conversion_rate'], 1e-9);
         $this->assertEqualsWithDelta(7 / 4, $day['pickup_rate'], 1e-9);
-        // Sales: the Repeat Purchase customer's order + Lhea's two Pancake-conversion orders, 800 each; canceled and unmatched orders add nothing.
-        $this->assertEqualsWithDelta(2400.0, $day['gross'], 0.001);
-        $this->assertEqualsWithDelta(1200.0, $day['aov'], 0.001);
+        // Sales: Lhea's two tagged orders, 800 each; untagged and canceled orders add nothing.
+        $this->assertEqualsWithDelta(1600.0, $day['gross'], 0.001);
+        $this->assertEqualsWithDelta(800.0, $day['aov'], 0.001);
     }
 
     public function test_rates_are_blank_without_assigned_or_answered(): void
@@ -190,9 +191,9 @@ class SegmentationProductivityTest extends TestCase
         $this->cra('Lhea', 'CRD Lhei');
         $this->cra('Regina', 'CRD Rej Vergara');
         $this->orders = [
-            $this->order('09990000001', 'CRD Lhei', total: 1500),
-            $this->order('09990000002', 'CRD Rej Vergara', total: 900),
-            $this->order('09990000003', 'CRD Rej Vergara', total: 900),
+            $this->order('09990000001', 'CRD Lhei', total: 1500, tags: [397]),
+            $this->order('09990000002', 'CRD Rej Vergara', total: 900, tags: [398]),
+            $this->order('09990000003', 'CRD Rej Vergara', total: 900, tags: [397]),
         ];
         app(PancakeSync::class)->sync(Lead::today());
 

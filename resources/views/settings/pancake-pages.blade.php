@@ -4,8 +4,8 @@
     @php($input = 'h-11 w-full rounded-lg border border-line bg-white px-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
     {{-- Add page --}}
-    <section class="mb-8 rounded-xl bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold">Add page</h2>
+    <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
+        <h2 class="text-base font-semibold">Add page</h2>
         <p class="text-sm text-muted">Facebook pages whose Pancake chat engagements count toward Segmentation Productivity. Get the page access token in Pancake → the page's Settings → Tools.</p>
         <form method="POST" action="{{ route('settings.pancake-pages.store') }}" class="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_1.4fr_auto] md:items-end">
             @csrf
@@ -36,24 +36,24 @@
 
     {{-- Pages --}}
     <section class="overflow-hidden rounded-xl bg-white shadow-sm">
-        <div class="flex items-center justify-between border-b border-line px-6 py-4">
-            <h2 class="text-lg font-semibold">Pages</h2>
+        <div class="flex items-center justify-between border-b border-line px-4 py-4">
+            <h2 class="text-base font-semibold">Pages</h2>
             <span class="text-sm text-muted">{{ $pages->where('is_active', true)->count() }} active of {{ $pages->count() }}</span>
         </div>
 
         @if ($pages->isEmpty())
-            <p class="px-6 py-10 text-center text-sm text-muted">No pages yet. Add your first one above.</p>
+            <p class="px-4 py-10 text-center text-sm text-muted">No pages yet. Add your first one above.</p>
         @else
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[980px] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
-                            <th class="px-6 py-3 font-semibold">Page name</th>
+                            <th class="px-4 py-3 font-semibold">Page name</th>
                             <th class="px-4 py-3 font-semibold">Page ID</th>
                             <th class="px-4 py-3 font-semibold">Access token</th>
                             <th class="px-4 py-3 font-semibold">Active</th>
                             <th class="px-4 py-3 font-semibold">Last test</th>
-                            <th class="px-6 py-3 text-right font-semibold">Actions</th>
+                            <th class="px-4 py-3 text-right font-semibold">Actions</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-line">
@@ -61,7 +61,7 @@
                             @php($bag = $errors->getBag("page{$page->id}"))
                             @php($form = "page-{$page->id}")
                             <tr @class(['align-middle', 'bg-canvas/40 text-muted' => ! $page->is_active])>
-                                <td class="min-w-56 px-6 py-3">
+                                <td class="min-w-56 px-4 py-3">
                                     <input form="{{ $form }}" type="text" name="name" required maxlength="255"
                                            value="{{ $bag->any() ? old('name', $page->name) : $page->name }}"
                                            aria-label="Name of {{ $page->name }}" class="{{ $input }} h-10">
@@ -98,7 +98,7 @@
                                         <span class="mt-1 block text-muted">{{ $page->checked_at->diffForHumans() }}</span>
                                     @endif
                                 </td>
-                                <td class="px-6 py-3">
+                                <td class="px-4 py-3">
                                     <div class="flex justify-end gap-2">
                                         <form id="{{ $form }}" method="POST" action="{{ route('settings.pancake-pages.update', $page) }}">
                                             @csrf @method('PATCH')

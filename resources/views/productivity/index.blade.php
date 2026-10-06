@@ -20,12 +20,9 @@
 @endphp
 
 <x-layouts.app title="Segmentation Productivity">
-    <div class="space-y-6">
-        <header class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-bold">Segmentation Productivity</h1>
-                <p class="mt-1 text-sm text-muted">{{ $period['label'] }} <span class="text-muted/80">· compared with {{ $compare['label'] }}</span></p>
-            </div>
+    <div class="space-y-4">
+        <header class="flex flex-wrap items-center justify-between gap-4">
+            <h1 class="text-xl font-semibold">Segmentation Productivity <span class="text-sm font-normal text-muted">· {{ $period['label'] }} <span class="text-muted/80">· compared with {{ $compare['label'] }}</span></span></h1>
             <div class="flex flex-wrap items-center gap-3 text-xs text-muted">
                 <span>
                     @if ($syncing)
@@ -133,7 +130,7 @@
         </form>
 
         {{-- CRA cards --}}
-        <section aria-label="CRA profiles" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <section aria-label="CRA profiles" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             @forelse ($rows as $row)
                 @php($now = $row['now'])
                 @php($d = $delta($now['confirmed'], $row['before']['confirmed']))
@@ -156,7 +153,7 @@
                     <div>
                         <p class="text-xs font-semibold tracking-wide text-muted uppercase">Confirmed orders</p>
                         <p class="flex items-baseline gap-2">
-                            <span class="text-3xl font-bold tabular-nums">{{ number_format($now['confirmed']) }}</span>
+                            <span class="text-2xl font-bold tabular-nums">{{ number_format($now['confirmed']) }}</span>
                             <span @class(['text-xs font-semibold tabular-nums', 'text-teal-700' => $d['dir'] === 'up', 'text-coral-700' => $d['dir'] === 'down', 'text-muted' => $d['dir'] === 'flat'])>
                                 {{ $d['dir'] === 'up' ? '▲' : ($d['dir'] === 'down' ? '▼' : '') }} {{ $d['text'] }}
                             </span>
@@ -411,7 +408,7 @@
                 <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>Customers on the CRA's own Pancake orders that day who aren't on any assigned leads list. Canceled and deleted orders don't count.</dd></div>
                 <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>Total confirmed orders ÷ Answered.</dd></div>
                 <div><dt class="font-semibold text-ink">Pick-up rate</dt><dd>Answered ÷ Assigned transactions.</dd></div>
-                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales are the Pancake order totals behind the confirmed orders (all orders of an assigned-lead customer that day, plus the CRA's Pancake-conversion orders). AOV = Gross sales ÷ Total confirmed orders. These will switch to the conversion breakdown once it is built.</dd></div>
+                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales come from Conversion Breakdown: the totals of the CRA's own Pancake orders tagged CRD - BROADCAST plus CRD - SEGMENTATION. Canceled and deleted orders don't count. AOV = Gross sales ÷ Total confirmed orders.</dd></div>
             </dl>
         </details>
     </div>

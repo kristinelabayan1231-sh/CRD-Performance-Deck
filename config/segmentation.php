@@ -18,6 +18,20 @@ return [
     // everyone's quota are spread evenly rather than left unassigned.
     'leads_per_cra' => (int) env('SEGMENTATION_LEADS_PER_CRA', 70),
 
+    // Pancake POS order tag ids that make an order a CRD conversion (Conversion
+    // Breakdown): "CRD - BROADCAST" and "CRD - SEGMENTATION". An order with
+    // both tags counts as segmentation.
+    'conversion_tags' => [
+        'broadcast' => (int) env('PANCAKE_TAG_BROADCAST', 397),
+        'segmentation' => (int) env('PANCAKE_TAG_SEGMENTATION', 398),
+    ],
+
+    // Default sales goals until they are set in Settings → Sales Goals (pesos).
+    'sales_goals' => [
+        'cra_daily' => 77000,
+        'crd_monthly' => 1000000,
+    ],
+
     // A customer is a CRD Lead from this many delivered orders: the 1st order
     // is FSD (Facebook Sales), the 2nd Retention, the 3rd onwards CRD.
     'crd_lead_min_orders' => 3,
