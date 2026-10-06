@@ -12,6 +12,7 @@
 @php($tabs = [
     'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
     'settings.pancake-pages.index' => ['Pancake Pages', 'pancake_pages.manage'],
+    'settings.connections.index' => ['Connections', 'connections.check'],
 ])
 
 <nav class="mb-8 flex gap-1 overflow-x-auto border-b border-line" aria-label="Settings sections">
