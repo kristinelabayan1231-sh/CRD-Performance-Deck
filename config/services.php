@@ -37,6 +37,8 @@ return [
     'shecom' => [
         'url' => env('SHECOM_API_URL', 'https://gm-shecom.up.railway.app/api'),
         'key' => env('SHECOM_API_KEY'),
+        // Memory for reading the retention report (about 150 MB decoded).
+        'memory_limit' => env('SHECOM_MEMORY_LIMIT', '512M'),
     ],
 
     'pancake' => [
