@@ -1,0 +1,481 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Lead;
+use App\Models\Product;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\LeadGenerator;
+use Carbon\CarbonImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
+use Tests\TestCase;
+
+class SegmentationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $owner;
+
+    private CarbonImmutable $day;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['services.shecom.key' => 'test-key', 'segmentation.leads_per_cra' => 2]);
+        $this->day = CarbonImmutable::parse('2026-10-05');
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 09:00', 'Asia/Manila'));
+
+        $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+    }
+
+    private function cra(string $email): User
+    {
+        return User::create(['email' => $email, 'name' => ucfirst(strtok($email, '@')), 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+    }
+
+    /**
+     * An order whose stock runs out on $outDate (qty 1, 15 days per unit).
+     */
+    private function row(string $orderId, string $phone, string $outDate, string $product = 'Pterygium Drops', int $qty = 1, int $days = 15): array
+    {
+        $delivered = CarbonImmutable::parse($outDate)->subDays($qty * $days - 1)->toDateString();
+
+        return [
+            'order_id' => $orderId, 'tracking_number' => "JT{$orderId}", 'customer_name' => "Customer {$orderId}",
+            'phone_number' => $phone, 'product_name' => $product, 'qty' => $qty, 'delivered_date' => $delivered,
+            'consumption_days_per_unit' => $days, 'estimated_out_of_stock_date' => $outDate,
+        ];
+    }
+
+    private function fakeApi(array $rows): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['count' => count($rows), 'stock_outs' => $rows])]);
+    }
+
+    public function test_leads_are_todays_stockouts_typed_by_order_history(): void
+    {
+        $this->fakeApi([
+            $this->row('1', '9171111111', '2026-10-05'),       // 3rd order -> CRD
+            $this->row('2', '09171111111', '2026-08-01'),      // same phone, 2nd order
+            $this->row('2b', '639171111111', '2026-06-01'),    // same phone, 1st order
+            $this->row('3', '9172222222', '2026-10-05'),       // 1st order (FSD) -> New
+            $this->row('5', '9175555555', '2026-10-05'),       // 2nd order (Retention) -> New
+            $this->row('5b', '9175555555', '2026-08-01'),
+            $this->row('4', '9173333333', '2026-10-06'),       // not today
+        ]);
+
+        $result = app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame(3, $result['found']);
+        $this->assertSame(Lead::TYPE_CRD, Lead::firstWhere('order_id', '1')->lead_type);
+        $this->assertSame(Lead::TYPE_NEW, Lead::firstWhere('order_id', '3')->lead_type);
+        $this->assertSame(Lead::TYPE_NEW, Lead::firstWhere('order_id', '5')->lead_type);
+        $this->assertNull(Lead::firstWhere('order_id', '4'));
+        Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
+    }
+
+    public function test_crd_leads_first_up_to_quota_then_excess_spread_evenly(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+
+        // 3 CRD (repeat phones) + 4 New, quota 2 each => 7 leads over 2 CRAs.
+        $rows = [];
+        foreach (['a', 'b', 'c'] as $i => $p) {
+            $rows[] = $this->row("c{$i}", "91700000{$i}0", '2026-10-05');
+            $rows[] = $this->row("c{$i}-old", "91700000{$i}0", '2026-07-01');
+            $rows[] = $this->row("c{$i}-older", "91700000{$i}0", '2026-05-01');
+        }
+        foreach (range(1, 4) as $i) {
+            $rows[] = $this->row("n{$i}", "91800000{$i}0", '2026-10-05');
+        }
+        $this->fakeApi($rows);
+
+        $result = app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame(7, $result['found']);
+        $this->assertSame(0, $result['unassigned']);
+        $counts = Lead::whereDate('est_out_of_stock_date', $this->day)->get()->countBy('assigned_to');
+        $this->assertEqualsCanonicalizing([4, 3], $counts->values()->all());
+
+        // CRD Leads were handed out before any New Customer: both CRAs got CRD first.
+        $firstTwo = Lead::orderBy('assigned_at')->orderBy('id')->take(3)->pluck('lead_type')->unique()->all();
+        $this->assertSame([Lead::TYPE_CRD], $firstTwo);
+        $this->assertTrue(Lead::where('lead_type', Lead::TYPE_CRD)->pluck('assigned_to')->contains($alice->id));
+        $this->assertTrue(Lead::where('lead_type', Lead::TYPE_CRD)->pluck('assigned_to')->contains($bob->id));
+    }
+
+    public function test_resync_keeps_assignment_and_status(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+
+        app(LeadGenerator::class)->generate($this->day);
+        $lead = Lead::firstWhere('order_id', '1');
+        $lead->update(['status' => 'busy_callback']);
+        $this->cra('bob@gmail.com');
+
+        $result = app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame(0, $result['created']);
+        $this->assertSame($alice->id, $lead->fresh()->assigned_to);
+        $this->assertSame('busy_callback', $lead->fresh()->status);
+        $this->assertSame(1, Lead::count());
+    }
+
+    public function test_out_of_stock_date_comes_from_the_api_and_products_are_grouped(): void
+    {
+        Product::create(['name' => 'Pterygium']);
+
+        // The API's own date is used as given, even if it differs from delivered + days.
+        $row = $this->row('1', '9171111111', '2026-10-05');
+        $row['delivered_date'] = '2026-09-01';
+        $row['product_name'] = 'Pterygium Eye Drops';
+        $this->fakeApi([$row]);
+
+        app(LeadGenerator::class)->generate($this->day);
+
+        $lead = Lead::firstWhere('order_id', '1');
+        $this->assertSame('2026-10-05', $lead->est_out_of_stock_date->toDateString());
+        $this->assertSame(['Pterygium', 'Pterygium Eye Drops'], [$lead->product_name, $lead->product_raw]);
+    }
+
+    public function test_page_shows_sheet_columns_and_filters(): void
+    {
+        $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05', 'Audicure', qty: 5, days: 15)]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->actingAs($this->owner)->get('/segmentation')
+            ->assertOk()
+            ->assertSeeInOrder(['Customer Name', 'Qty', 'Product', 'Contact #', 'Delivered Date', 'Days since Delivered', 'Est. Out of Stock', 'Recommended Replenishment Day', 'Assigned to', 'Status'])
+            ->assertSee('Customer 1')
+            ->assertSee('Sep 28, 2026') // replenishment day = out date - 7
+            ->assertSee('Alice');
+
+        $this->actingAs($this->owner)->get('/segmentation?month=2026-09')->assertOk()->assertDontSee('Customer 1');
+        $this->actingAs($this->owner)->get('/segmentation?cra=unassigned&date=2026-10-05')->assertOk()->assertDontSee('Customer 1');
+    }
+
+    public function test_cra_sees_only_own_leads_and_can_set_status(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $mine = Lead::where('assigned_to', $alice->id)->first();
+        $theirs = Lead::where('assigned_to', $bob->id)->first();
+
+        $this->actingAs($alice)->get('/segmentation?cra=all')
+            ->assertOk()->assertSee($mine->customer_name)->assertDontSee($theirs->customer_name)->assertDontSee('Sync leads');
+
+        $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['status' => 'repeat_purchase'])->assertSessionHasNoErrors();
+        $this->assertSame('repeat_purchase', $mine->fresh()->status);
+        $this->assertSame($alice->id, $mine->fresh()->status_updated_by);
+
+        $this->actingAs($alice)->patch("/segmentation/leads/{$theirs->id}", ['status' => 'blocked'])->assertForbidden();
+        $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['assigned_to' => $bob->id])->assertForbidden();
+        $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['status' => 'made-up'])->assertSessionHasErrors('status');
+        $this->actingAs($alice)->post('/segmentation/sync', ['date' => '2026-10-05'])->assertForbidden();
+    }
+
+    public function test_manager_can_reassign_only_to_cras_and_sync(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+
+        $this->actingAs($this->owner)->post('/segmentation/sync', ['date' => '2026-10-05'])
+            ->assertRedirect('/segmentation?date=2026-10-05')->assertSessionHas('status');
+
+        $lead = Lead::first();
+        $this->actingAs($this->owner)->patch("/segmentation/leads/{$lead->id}", ['assigned_to' => $bob->id]);
+        $this->assertSame($bob->id, $lead->fresh()->assigned_to);
+
+        $this->actingAs($this->owner)->patch("/segmentation/leads/{$lead->id}", ['assigned_to' => $this->owner->id])->assertSessionHasErrors('assigned_to');
+        $this->assertSame($bob->id, $lead->fresh()->assigned_to);
+    }
+
+    public function test_sync_reports_api_errors(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'Invalid or missing API key.'], 401)]);
+
+        $this->actingAs($this->owner)->post('/segmentation/sync', ['date' => '2026-10-05'])->assertSessionHasErrors('sync');
+        $this->assertSame(0, Lead::count());
+    }
+
+    public function test_cra_can_fill_tracking_fields_via_json(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $lead = Lead::first();
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", [
+            'repeat_purchase' => 'reserve',
+            'customer_tag' => 'canpro_warm',
+            'contact_date' => '2026-10-05',
+            'contact_time' => '11',
+            'callback_date' => '2026-10-08',
+        ])->assertOk()->assertJson(['saved' => true]);
+
+        $lead->refresh();
+        $this->assertSame(['reserve', 'canpro_warm', '11'], [$lead->repeat_purchase, $lead->customer_tag, $lead->contact_time]);
+        $this->assertSame('2026-10-05', $lead->contact_date->toDateString());
+        $this->assertSame('2026-10-08', $lead->callback_date->toDateString());
+
+        // Clearing a field works; invalid values are rejected.
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['customer_tag' => null])->assertOk();
+        $this->assertNull($lead->fresh()->customer_tag);
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['contact_time' => '23'])->assertUnprocessable();
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['repeat_purchase' => 'maybe'])->assertUnprocessable();
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['contact_date' => 'tomorrow'])->assertUnprocessable();
+
+        // Feedback only accepts the configured choices.
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['feedback' => 'happy'])->assertUnprocessable();
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['feedback' => 'no_budget'])->assertOk();
+        $this->assertSame('NO BUDGET', Lead::optionLabel('feedback', $lead->fresh()->feedback));
+    }
+
+    public function test_notes_can_be_added_edited_and_deleted(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $mine = Lead::where('assigned_to', $alice->id)->first();
+        $theirs = Lead::where('assigned_to', $bob->id)->first();
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$mine->id}", ['notes' => "  Prefers calls after 5pm\nAsk about CanPro  "])
+            ->assertOk()->assertJson(['notes' => "Prefers calls after 5pm\nAsk about CanPro"])
+            ->assertJsonPath('notes_meta', fn ($meta) => str_starts_with($meta, 'Alice'));
+        $this->assertSame($alice->id, $mine->fresh()->notes_updated_by);
+
+        $this->actingAs($alice)->get('/segmentation')->assertSee('Prefers calls after 5pm');
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$theirs->id}", ['notes' => 'nope'])->assertForbidden();
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$mine->id}", ['notes' => ''])->assertOk()->assertJson(['notes' => null]);
+        $this->assertNull($mine->fresh()->notes);
+        $this->assertNull($mine->fresh()->notes_updated_by);
+    }
+
+    public function test_optional_columns_render_and_coming_soon_column_is_listed_only(): void
+    {
+        $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $response = $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+
+        $response->assertSeeInOrder(['Status', 'Repeat Purchase?', 'Customer Tagging', 'Date of Contact', 'Time of Contact', 'Customer&#039;s Feedback', 'Callback Date'], false);
+        $response->assertSee('data-column-toggle="call_recording_url"', false)->assertSee('Coming soon');
+        $response->assertDontSee('data-col="call_recording_url"', false);
+        $response->assertSee('Hot Leads / Recent Buyers (0 to 15 days)')->assertSee('11:00AM-12:00NN')->assertSee('STOPPED BY THE DR.')->assertSee('PURCHASED');
+    }
+
+    public function test_opening_the_tracker_syncs_today_automatically_once_an_hour(): void
+    {
+        $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk()->assertSee('Customer 1')->assertSee('Auto-synced');
+        $this->assertNotNull(Lead::first()->assigned_to);
+        Http::assertSentCount(1);
+
+        // Fresh for an hour: no extra API calls.
+        $this->travel(30)->minutes();
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        Http::assertSentCount(1);
+
+        $this->travel(31)->minutes();
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        Http::assertSentCount(2);
+    }
+
+    public function test_cras_also_trigger_the_automatic_sync(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+
+        $this->actingAs($alice)->get('/segmentation')->assertOk()->assertSee('Customer 1');
+    }
+
+    public function test_tracker_still_loads_when_automatic_sync_fails(): void
+    {
+        Http::fake(['*' => Http::response(['error' => 'Invalid or missing API key.'], 401)]);
+
+        $this->actingAs($this->owner)->get('/segmentation')
+            ->assertOk()
+            ->assertSee("Automatic sync couldn't reach the retention API", false);
+    }
+
+    public function test_new_cra_gets_todays_unassigned_leads_immediately(): void
+    {
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $this->assertSame(2, Lead::whereNull('assigned_to')->count());
+
+        $this->actingAs($this->owner)->post('/user-access', [
+            'email' => 'newcra@gmail.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id,
+        ])->assertSessionHasNoErrors();
+
+        $cra = User::firstWhere('email', 'newcra@gmail.com');
+        $this->assertSame(2, Lead::where('assigned_to', $cra->id)->count());
+    }
+
+    public function test_promoting_an_existing_user_to_cra_assigns_leads(): void
+    {
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $user = User::create(['email' => 'later@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
+
+        $this->actingAs($this->owner)->patch("/user-access/{$user->id}", ['role_id' => Role::firstWhere('slug', Role::CRA)->id]);
+
+        $this->assertSame($user->id, Lead::first()->assigned_to);
+    }
+
+    public function test_summary_tiles_include_per_cra_and_live_status_updated_count(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->cra('bob@gmail.com');
+        $this->fakeApi([
+            $this->row('1', '9171111111', '2026-10-05'),
+            $this->row('2', '9172222222', '2026-10-05'),
+            $this->row('3', '9173333333', '2026-10-05'),
+        ]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk()
+            ->assertSeeInOrder(['Leads', 'CRD Leads', 'New Customers', 'Per CRA', 'Status Updated'])
+            ->assertSee('1–2')->assertSee('2 CRAs · base 2 each')->assertSee('of 3 · 3 pending · 0%');
+
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')->assertOk()
+            ->assertJsonPath('total.value', '3')
+            ->assertJsonPath('per_cra.value', '1–2')
+            ->assertJsonPath('updated.value', '0');
+
+        // A CRA updates a status: the live count moves.
+        $lead = Lead::where('assigned_to', $alice->id)->first();
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['status' => 'active'])->assertOk();
+
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')
+            ->assertJsonPath('updated.value', '1')
+            ->assertJsonPath('updated.note', 'of 3 · 2 pending · 33%');
+
+        // Status filter on the table doesn't skew the tiles.
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05&status=active')->assertJsonPath('total.value', '3');
+    }
+
+    public function test_cra_summary_counts_only_their_leads_without_per_cra_tile(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->cra('bob@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->actingAs($alice)->getJson('/segmentation/summary?cra=all')->assertOk()
+            ->assertJsonPath('total.value', '1')
+            ->assertJsonMissingPath('per_cra');
+        $this->actingAs($alice)->get('/segmentation')->assertDontSee('Per CRA');
+    }
+
+    public function test_conversion_tile_counts_yes_or_no_with_purchased_feedback(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $rows = array_map(fn ($i) => $this->row((string) $i, '91700000'.$i.'0', '2026-10-05'), range(1, 8));
+        $this->fakeApi($rows);
+        app(LeadGenerator::class)->generate($this->day);
+        [$a, $b, $c, $d, $e] = Lead::orderBy('id')->take(5)->get()->all();
+
+        $a->update(['repeat_purchase' => 'yes']);                                   // converted
+        $b->update(['repeat_purchase' => 'no', 'feedback' => 'purchased']);         // converted
+        $c->update(['repeat_purchase' => 'no', 'feedback' => 'no_budget']);         // not
+        $d->update(['repeat_purchase' => 'reserve', 'feedback' => 'purchased']);    // not
+        $e->update(['feedback' => 'purchased']);                                    // not (no repeat purchase answer)
+
+        $this->assertSame(2, Lead::converted()->count());
+        $this->assertTrue($a->fresh()->isConverted());
+        $this->assertFalse($d->fresh()->isConverted());
+
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')
+            ->assertJsonPath('converted.value', '25%')
+            ->assertJsonPath('converted.note', '2 of 8 converted');
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertSee('Conversion')->assertSee('2 of 8 converted');
+    }
+
+    public function test_per_cra_tile_follows_the_cra_filter(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->cra('bob@gmail.com');
+        $this->fakeApi(array_map(fn ($i) => $this->row((string) $i, '91700000'.$i.'0', '2026-10-05'), range(1, 3)));
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05&cra=all')
+            ->assertJsonPath('per_cra.value', '1–2')->assertJsonPath('per_cra.note', '2 CRAs · base 2 each');
+
+        $aliceCount = Lead::where('assigned_to', $alice->id)->count();
+        $this->actingAs($this->owner)->getJson("/segmentation/summary?date=2026-10-05&cra={$alice->id}")
+            ->assertJsonPath('per_cra.value', (string) $aliceCount)
+            ->assertJsonPath('per_cra.note', 'Alice · base 2')
+            ->assertJsonPath('total.value', (string) $aliceCount);
+
+        // Month view: overall split for the month, no daily base.
+        $this->actingAs($this->owner)->getJson('/segmentation/summary?month=2026-10')->assertJsonPath('per_cra.note', '2 CRAs');
+    }
+
+    public function test_per_cra_popup_lists_each_cra_and_flags_uneven_counts(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $carl = $this->cra('carl@gmail.com');
+        // 7 leads over 3 CRAs => 3 / 2 / 2: one CRA is uneven.
+        $this->fakeApi(array_map(fn ($i) => $this->row((string) $i, '91700000'.$i.'0', '2026-10-05'), range(1, 7)));
+        app(LeadGenerator::class)->generate($this->day);
+
+        $json = $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')
+            ->assertOk()
+            ->assertJsonPath('per_cra.period', 'Oct 5, 2026')
+            ->json('per_cra.breakdown');
+
+        $this->assertSame(['Alice', 'Bob', 'Carl'], array_column($json, 'name'));
+        $this->assertSame(7, array_sum(array_column($json, 'total')));
+        $uneven = array_values(array_filter($json, fn ($row) => $row['odd']));
+        $this->assertCount(1, $uneven);
+        $this->assertSame(3, $uneven[0]['total']);
+
+        // The breakdown covers every CRA even when the table is filtered to one.
+        $this->actingAs($this->owner)->getJson("/segmentation/summary?date=2026-10-05&cra={$bob->id}")
+            ->assertJsonCount(3, 'per_cra.breakdown');
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk()
+            ->assertSee('data-per-cra-open', false)
+            ->assertSee('Assigned per CRA')
+            ->assertSee('Uneven');
+    }
+
+    public function test_even_split_has_no_uneven_flags(): void
+    {
+        $this->cra('alice@gmail.com');
+        $this->cra('bob@gmail.com');
+        $this->fakeApi(array_map(fn ($i) => $this->row((string) $i, '91700000'.$i.'0', '2026-10-05'), range(1, 4)));
+        app(LeadGenerator::class)->generate($this->day);
+
+        $breakdown = $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')->json('per_cra.breakdown');
+
+        $this->assertSame([2, 2], array_column($breakdown, 'total'));
+        $this->assertSame([false, false], array_column($breakdown, 'odd'));
+    }
+
+    public function test_users_without_permission_are_blocked(): void
+    {
+        $plain = User::create(['email' => 'plain@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
+
+        $this->actingAs($plain)->get('/segmentation')->assertForbidden();
+    }
+}

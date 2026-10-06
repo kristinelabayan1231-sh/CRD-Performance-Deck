@@ -1,0 +1,27 @@
+# Secrets and local state never go into the image.
+.env
+.env.*
+!.env.example
+.git
+node_modules
+vendor
+public/build
+public/hot
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/private/*
+storage/app/public/*
+# Local package cache lists dev-only providers (e.g. Boost); the image rebuilds it.
+bootstrap/cache/*.php
+# Docs, editor and agent tooling aren't needed to run the app.
+docs
+tests
+.claude
+.ai
+.mcp.json
+boost.json
+.phpunit.result.cache
+*.log
+.DS_Store

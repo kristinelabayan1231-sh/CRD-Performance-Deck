@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CRD Performance Deck — User Guide</title>
+<link rel="stylesheet" href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600,700">
+<style>
+    @page { size: A4; margin: 16mm 14mm 18mm; }
+    :root { --brand: #8b3ff0; --brand-soft: #f6efff; --ink: #343a40; --muted: #6c7383; --line: #ebe6ee; --red: #e11d48; --teal: #0e8f7c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Instrument Sans', system-ui, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; background: #fff; }
+    h1, h2, h3 { line-height: 1.2; margin: 0; }
+    a { color: var(--brand); text-decoration: none; }
+    .page-break { break-before: page; }
+
+    /* Cover */
+    .cover { height: 255mm; display: flex; flex-direction: column; justify-content: space-between; }
+    .cover-band { border-radius: 18px; padding: 40px 36px; color: #fff; background: linear-gradient(135deg, #a05aff, #9e58ff 45%, #4bcbeb); }
+    .cover-band .logo { width: 72px; height: 72px; }
+    .cover-band h1 { font-size: 34pt; margin-top: 22px; }
+    .cover-band p { margin: 8px 0 0; font-size: 13pt; opacity: .9; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 26px; }
+    .card { border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+    .card h3 { font-size: 10pt; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+    .card ul { margin: 0; padding-left: 18px; }
+    .stack { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { background: var(--brand-soft); color: #7429d6; border-radius: 999px; padding: 3px 10px; font-size: 9pt; font-weight: 600; }
+    .byline { font-size: 11pt; } .byline b { color: var(--brand); }
+
+    /* TOC */
+    .toc h2 { font-size: 20pt; margin-bottom: 18px; }
+    .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: toc; }
+    .toc > ol > li { counter-increment: toc; border-bottom: 1px solid var(--line); padding: 9px 0; }
+    .toc > ol > li > a { font-weight: 600; font-size: 12pt; color: var(--ink); }
+    .toc > ol > li > a::before { content: counter(toc) ". "; color: var(--brand); }
+    .toc ol ol { margin: 4px 0 0 22px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+    .toc ol ol a { color: var(--muted); font-size: 9.5pt; }
+
+    /* Sections */
+    .module-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .module-head .num { width: 34px; height: 34px; border-radius: 9px; background: var(--brand); color: #fff; display: grid; place-items: center; font-weight: 700; }
+    .module-head h2 { font-size: 19pt; }
+    .lead { color: var(--muted); margin: 0 0 14px; }
+    .who { display: inline-block; font-size: 8.5pt; font-weight: 600; color: var(--teal); background: #e3f4f1; border-radius: 999px; padding: 2px 9px; margin-bottom: 10px; }
+    h3.screen { font-size: 12.5pt; margin: 18px 0 8px; }
+    figure { margin: 0 0 10px; }
+    figure img { width: 100%; border: 1px solid var(--line); border-radius: 8px; display: block; }
+    .callouts { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
+    .callouts li { display: flex; gap: 8px; align-items: flex-start; font-size: 9.5pt; }
+    .callouts .n { flex: none; width: 19px; height: 19px; border-radius: 50%; background: var(--red); color: #fff; font-size: 9pt; font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
+    .howto { background: #faf8fb; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-top: 10px; break-inside: avoid; }
+    .howto h4 { margin: 0 0 4px; font-size: 10pt; color: var(--brand); }
+    .howto ol, .howto ul { margin: 0; padding-left: 18px; font-size: 9.5pt; }
+    .block, .shot { break-inside: avoid; }
+    .shot + .shot { margin-top: 14px; }
+    .module-head, .lead, .who, h3.screen { break-after: avoid; }
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 8px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { background: #f7f4f8; font-size: 8.5pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .yes { color: var(--teal); font-weight: 700; } .no { color: #c4484c; }
+    .tag { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 8.5pt; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<!-- ========================= COVER ========================= -->
+<section class="cover">
+    <div>
+        <div class="cover-band">
+            <svg class="logo" viewBox="0 0 120 120" aria-hidden="true">
+                <rect x="4" y="4" width="112" height="112" rx="30" fill="#fff" fill-opacity=".16" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
+                <rect x="26" y="62" width="14" height="22" rx="5" fill="#FE9496"/><rect x="46" y="48" width="14" height="36" rx="5" fill="#1BCFB4"/>
+                <rect x="66" y="34" width="14" height="50" rx="5" fill="#fff"/><circle cx="90" cy="28" r="7" fill="#fff" fill-opacity=".9"/>
+                <text x="60" y="104" text-anchor="middle" font-family="sans-serif" font-size="17" font-weight="700" letter-spacing="4" fill="#fff">CRD</text>
+            </svg>
+            <h1>CRD Performance Deck</h1>
+            <p>User Guide</p>
+        </div>
+
+        <div class="meta">
+            <div class="card">
+                <h3>Purpose</h3>
+                <p style="margin:0">CRD Performance Deck turns delivered orders into daily follow-up leads for the CRA team. It assigns leads automatically, tracks every call outcome, carries unfinished work to the next day, and shows team performance at a glance.</p>
+            </div>
+            <div class="card">
+                <h3>Tech stack</h3>
+                <div class="stack">
+                    <span class="chip">Laravel 13 (PHP 8.5)</span><span class="chip">MySQL 9</span><span class="chip">Tailwind CSS 4</span>
+                    <span class="chip">Vite</span><span class="chip">Blade + JavaScript</span><span class="chip">Google Sign-in (OAuth)</span>
+                    <span class="chip">Logistics API</span><span class="chip">Pancake POS / Pages API</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="byline">
+        <p>Developed by: <b>Kristine Labayan</b></p>
+        <p style="color:var(--muted)">Version 1.0 · October 6, 2026 · Screenshots use demo data</p>
+    </div>
+</section>
+
+<!-- ========================= TOC ========================= -->
+<section class="toc page-break">
+    <h2>Table of Contents</h2>
+    <ol>
+        <li><a href="#signin">Signing In</a></li>
+        <li><a href="#roles">Roles &amp; Access</a></li>
+        <li><a href="#dashboard">Dashboard</a></li>
+        <li><a href="#daily">Segmentation Tracker — Daily</a>
+            <ol><li><a href="#daily-overview">Overview</a></li><li><a href="#daily-table">Leads table</a></li><li><a href="#daily-fields">Tracking fields</a></li><li><a href="#per-cra">Per CRA</a></li><li><a href="#columns">Show / hide columns</a></li><li><a href="#notes">Notes</a></li></ol></li>
+        <li><a href="#carry">Carry-over &amp; Transfers</a>
+            <ol><li><a href="#carry-list">Carry-over list</a></li><li><a href="#transfer">Transferring a lead</a></li></ol></li>
+        <li><a href="#weekly">Weekly Segmentation</a></li>
+        <li><a href="#user-access">User Access</a>
+            <ol><li><a href="#users">Users</a></li><li><a href="#role-mgmt">Roles</a></li></ol></li>
+        <li><a href="#settings">Settings — Products</a></li>
+        <li><a href="#glossary">Glossary</a></li>
+    </ol>
+</section>
+
+<!-- ========================= 1. SIGN IN ========================= -->
+<section id="signin" class="page-break">
+    <div class="module-head"><span class="num">1</span><h2>Signing In</h2></div>
+    <p class="lead">Sign in with the Google account a Super Admin gave access to.</p>
+    <div class="shot">
+    <figure><img src="screenshots/01-login.png" alt="Sign-in page"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Sign in with Google.</span></li>
+        <li><span class="n">2</span><span>Keep me signed in on this device.</span></li>
+        <li><span class="n">3</span><span>CRD Performance Deck branding.</span></li>
+    </ol>
+    <div class="howto"><h4>How to use</h4><ol>
+        <li>Click <b>Sign in with Google</b> and pick your work account.</li>
+        <li>"Doesn't have access" means you haven't been added yet. Ask a Super Admin.</li>
+    </ol></div>
+    </div>
+</section>
+
+<!-- ========================= 2. ROLES ========================= -->
+<section id="roles" class="block" style="margin-top:22px">
+    <div class="module-head"><span class="num">2</span><h2>Roles &amp; Access</h2></div>
+    <p class="lead">What you see depends on your role. Super Admins can create custom roles.</p>
+    <table>
+        <thead><tr><th>Role</th><th>Dashboard</th><th>Own leads</th><th>All leads</th><th>Transfer carry-over</th><th>User Access &amp; Roles</th></tr></thead>
+        <tbody>
+            <tr><td><b>Super Admin</b></td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            <tr><td><b>CRA Supervisor</b></td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+            <tr><td><b>CRA</b></td><td class="yes">✓ own</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+            <tr><td><b>User</b></td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<!-- ========================= 3. DASHBOARD ========================= -->
+<section id="dashboard" class="page-break">
+    <div class="module-head"><span class="num">3</span><h2>Dashboard</h2></div>
+    <p class="lead">Team performance at a glance, for today, this week or this month.</p>
+    <span class="who">Everyone · CRAs see only their own numbers</span>
+    <div class="shot">
+    <figure><img src="screenshots/02-dashboard.png" alt="Dashboard"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Switch period: Today / Week / Month.</span></li>
+        <li><span class="n">2</span><span>Leads, Processed %, Converted %, Went cold %, each compared with the previous period (▲ / ▼).</span></li>
+        <li><span class="n">3</span><span>Daily trend: processed vs. unprocessed.</span></li>
+        <li><span class="n">4</span><span>Customer tags: Hot, Cold, Warm, High value.</span></li>
+        <li><span class="n">5</span><span>Top CRAs: Done, Open, Converted.</span></li>
+    </ol>
+    <div class="howto"><h4>Good to know</h4><ul>
+        <li><b>Processed</b> = a status was set. <b>Converted</b> = Repeat Purchase "Yes", or "No" with feedback PURCHASED.</li>
+        <li>Green arrows are good changes; red arrows need attention.</li>
+    </ul></div>
+    </div>
+</section>
+
+<!-- ========================= 4. DAILY ========================= -->
+<section id="daily" class="page-break">
+    <div class="module-head"><span class="num">4</span><h2>Segmentation Tracker — Daily</h2></div>
+    <p class="lead">Customers whose product runs out today become leads. Each CRA gets 70 a day, returning customers first, and extras are split evenly.</p>
+    <span class="who">CRAs see their own leads · Supervisors &amp; admins see all</span>
+
+    <div class="shot">
+    <h3 id="daily-overview" class="screen">Overview</h3>
+    <figure><img src="screenshots/03-daily-overview.png" alt="Daily overview"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Daily and Weekly Segmentation tabs.</span></li>
+        <li><span class="n">2</span><span>Leads sync automatically every hour. <b>Sync now</b> is for managers.</span></li>
+        <li><span class="n">3</span><span>Filters: month, date, CRA, type, status. <b>Today</b> resets them.</span></li>
+        <li><span class="n">4</span><span>Live totals: Leads, CRD Leads, New Customers, Per CRA, Status Updated, Conversion.</span></li>
+    </ol>
+    </div>
+</section>
+
+<section id="daily-table" class="page-break">
+    <div class="shot">
+    <h3 class="screen">Leads table</h3>
+    <figure><img src="screenshots/04-daily-table.png" alt="Leads table"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span><b>Columns</b>: show or hide optional columns.</span></li>
+        <li><span class="n">2</span><span>Customer name. Hover it to add a note.</span></li>
+        <li><span class="n">3</span><span>Days since delivered.</span></li>
+    </ol>
+    </div>
+
+    <div class="shot">
+    <h3 id="daily-fields" class="screen">Tracking fields</h3>
+    <figure><img src="screenshots/04b-daily-fields.png" alt="Tracking fields"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span><b>Status</b>: the call outcome.</span></li>
+        <li><span class="n">2</span><span><b>Repeat Purchase?</b> Yes / No / Reserve.</span></li>
+        <li><span class="n">3</span><span><b>Customer Tagging</b>: Hot, Warm, Cold, High Value…</span></li>
+        <li><span class="n">4</span><span>Optional columns (green headers).</span></li>
+    </ol>
+    <div class="howto"><h4>How to use</h4><ol>
+        <li>Call the customer, then pick a <b>Status</b>. It saves instantly, and the field flashes green when saved.</li>
+        <li>Fill in Repeat Purchase, Tagging, Date / Time of Contact, Feedback and Callback Date.</li>
+    </ol></div>
+    </div>
+</section>
+
+<section id="per-cra" class="page-break">
+    <div class="shot">
+    <h3 class="screen">Per CRA</h3>
+    <figure><img src="screenshots/05-per-cra-popup.png" alt="Per CRA pop-up"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Click the <b>Per CRA</b> tile to see each CRA's assigned leads. Uneven counts are flagged.</span></li>
+    </ol>
+    </div>
+
+    <div class="shot">
+    <h3 id="columns" class="screen">Show / hide columns</h3>
+    <figure><img src="screenshots/06-column-picker.png" alt="Column picker"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Tick or untick columns. Your choice is remembered. "Coming soon" columns aren't available yet.</span></li>
+    </ol>
+    </div>
+</section>
+
+<section id="notes" class="page-break">
+    <div class="shot">
+    <h3 class="screen">Notes</h3>
+    <figure><img src="screenshots/07-notes.png" alt="Notes"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>A black corner means the customer has a note.</span></li>
+        <li><span class="n">2</span><span>Hover to read it, with who wrote it and when.</span></li>
+    </ol>
+    <div class="howto"><h4>How to use</h4><ol>
+        <li>Hover a customer name and click the pencil.</li>
+        <li>Type the note and click <b>Save</b>. Use <b>Delete note</b> to remove it.</li>
+    </ol></div>
+    </div>
+</section>
+
+<!-- ========================= 5. CARRY-OVER ========================= -->
+<section id="carry" class="page-break">
+    <div class="module-head"><span class="num">5</span><h2>Carry-over &amp; Transfers</h2></div>
+    <p class="lead">These customers move to the next day with the same CRA: <b>no status</b>, <b>PJR</b>, <b>Repeat Purchase</b> or <b>Inactive</b>. Carry-over stops once the status changes to Active, Busy/Callback, Reminders/FFUP or Blocked.</p>
+
+    <div class="shot">
+    <h3 id="carry-list" class="screen">Carry-over list</h3>
+    <figure><img src="screenshots/08-carry-over.png" alt="Carry-over"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Carry-over section and count, below today's leads.</span></li>
+        <li><span class="n">2</span><span>Reason and date, e.g. "Unprocessed since Sep 29".</span></li>
+        <li><span class="n">3</span><span><b>Transfer</b> one customer (Supervisors).</span></li>
+        <li><span class="n">4</span><span>Tick several, then <b>Transfer selected</b>.</span></li>
+    </ol>
+    </div>
+</section>
+
+<section id="transfer" class="page-break">
+    <div class="shot">
+    <h3 class="screen">Transferring a lead</h3>
+    <figure><img src="screenshots/09-transfer-choose.png" alt="Choose CRA"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Each CRA's current load: today's leads and carry-over. Pick one.</span></li>
+    </ol>
+    </div>
+
+    <div class="shot">
+    <h3 class="screen">Confirm the transfer</h3>
+    <figure><img src="screenshots/10-transfer-confirm.png" alt="Confirm transfer"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Review the summary.</span></li>
+        <li><span class="n">2</span><span><b>Confirm transfer</b>. It's recorded and shows "from [CRA]".</span></li>
+    </ol>
+    </div>
+</section>
+
+<!-- ========================= 6. WEEKLY ========================= -->
+<section id="weekly" class="page-break">
+    <div class="module-head"><span class="num">6</span><h2>Weekly Segmentation</h2></div>
+    <p class="lead">Handled vs. unprocessed per CRA, week by week. Weeks always start on the 1st: 1–7, 8–14, 15–21, 22–28, 29–end.</p>
+    <div class="shot">
+    <figure><img src="screenshots/11-weekly.png" alt="Weekly Segmentation"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Pick a week. "This week" jumps back.</span></li>
+        <li><span class="n">2</span><span>Assigned, Handled, Unprocessed, Backlog now.</span></li>
+        <li><span class="n">3</span><span>Handled / assigned per CRA per day: green = all handled, yellow = some open, red = none, blue = today.</span></li>
+    </ol>
+    </div>
+</section>
+
+<section class="page-break">
+    <div class="shot">
+    <h3 class="screen">Carry-over customers this week</h3>
+    <figure><img src="screenshots/12-weekly-carry-over.png" alt="Weekly carry-over"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Carry-over customers, grouped per CRA.</span></li>
+        <li><span class="n">2</span><span>Reason and since when.</span></li>
+        <li><span class="n">3</span><span>Transfer (Supervisors).</span></li>
+    </ol>
+    </div>
+</section>
+
+<!-- ========================= 7. USER ACCESS ========================= -->
+<section id="user-access" class="page-break">
+    <div class="module-head"><span class="num">7</span><h2>User Access</h2></div>
+    <p class="lead">Only Google accounts listed here can sign in.</p>
+    <span class="who">Super Admins &amp; roles with User Access permission</span>
+
+    <div class="shot">
+    <h3 id="users" class="screen">Users</h3>
+    <figure><img src="screenshots/13-user-access.png" alt="User Access"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Grant access: Google email, optional display name, role.</span></li>
+        <li><span class="n">2</span><span>Display name: the name shown everywhere. Type and press Enter.</span></li>
+        <li><span class="n">3</span><span>Change role.</span></li>
+        <li><span class="n">4</span><span>Disable or remove access.</span></li>
+    </ol>
+    <div class="howto"><h4>Good to know</h4><ul>
+        <li>The default Super Admin can't be changed, and nobody can change their own access.</li>
+        <li>New or re-enabled CRAs receive today's unassigned leads right away.</li>
+    </ul></div>
+    </div>
+</section>
+
+<section id="role-mgmt" class="page-break">
+    <div class="shot">
+    <h3 class="screen">Roles</h3>
+    <figure><img src="screenshots/14-roles.png" alt="Roles"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Role name and description.</span></li>
+        <li><span class="n">2</span><span>Tick what the role can do, per module.</span></li>
+        <li><span class="n">3</span><span><b>Create role</b>. Click a role in the list to edit it.</span></li>
+    </ol>
+    </div>
+</section>
+
+<!-- ========================= 8. SETTINGS ========================= -->
+<section id="settings" class="page-break">
+    <div class="module-head"><span class="num">8</span><h2>Settings — Products</h2></div>
+    <p class="lead">Groups product name variants under one product, e.g. "Pterygium Drops" and "Pterygium Eye Drops" → <b>Pterygium</b>.</p>
+    <div class="shot">
+    <figure><img src="screenshots/15-products.png" alt="Products"></figure>
+    <ol class="callouts">
+        <li><span class="n">1</span><span>Add a product (its name is the keyword) and optional extra spellings.</span></li>
+        <li><span class="n">2</span><span><b>Also matches</b>: other spellings, comma-separated.</span></li>
+    </ol>
+    <div class="howto"><h4>Good to know</h4><ul>
+        <li>Matching ignores capitals and spaces: "Clearsight" also matches "Clear Sight 3.0".</li>
+        <li>Existing leads re-group automatically after you save.</li>
+    </ul></div>
+    </div>
+
+    <!-- ========================= 9. GLOSSARY ========================= -->
+    <div id="glossary" class="block" style="margin-top:26px">
+        <div class="module-head"><span class="num">9</span><h2>Glossary</h2></div>
+        <table>
+            <tbody>
+                <tr><td><b>Lead</b></td><td>A customer whose product is estimated to run out today (from the Logistics API).</td></tr>
+                <tr><td><b>CRD Lead</b></td><td>A returning customer (more than one delivered order).</td></tr>
+                <tr><td><b>New Customer</b></td><td>A first-time buyer.</td></tr>
+                <tr><td><b>Processed / Handled</b></td><td>A status has been set.</td></tr>
+                <tr><td><b>Carry-over</b></td><td>No status, PJR, Repeat Purchase or Inactive. Moves to the next day.</td></tr>
+                <tr><td><b>Converted</b></td><td>Repeat Purchase "Yes", or "No" with feedback PURCHASED.</td></tr>
+                <tr><td><b>Recommended Replenishment Day</b></td><td>Est. Out of Stock minus 7 days.</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+</body>
+</html>

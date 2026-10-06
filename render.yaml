@@ -1,0 +1,46 @@
+# Render Blueprint: New → Blueprint → pick this repo. Creates the free Postgres
+# database and the web service, and wires the database URL in automatically.
+# Secrets (API keys, tokens, APP_KEY…) go in a Secret File named .env on the
+# web service (Environment → Secret Files).
+
+databases:
+  - name: crd-performance-deck-db
+    plan: free
+    region: singapore
+    databaseName: crd_performance_deck
+    user: crd
+
+services:
+  - type: web
+    name: crd-performance-deck
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /up
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      # The service's public address, e.g. https://crd-performance-deck.onrender.com
+      - key: APP_URL
+        sync: false
+      # APP_URL + /auth/google/callback; also add it in Google Cloud → OAuth client → Authorized redirect URIs.
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: crd-performance-deck-db
+          property: connectionString
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: SESSION_DRIVER
+        value: database
+      - key: SESSION_SECURE_COOKIE
+        value: "true"
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: sync

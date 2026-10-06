@@ -1,0 +1,117 @@
+<?php
+
+namespace App\Services;
+
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
+
+class PancakeClient
+{
+    /** Order fields Segmentation Productivity uses; asked for with fields[] since full orders are large. */
+    private const ORDER_FIELDS = [
+        'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
+        'customer', 'total_price', 'account_name', 'assigning_seller', 'creator',
+    ];
+
+    /**
+     * Chat → Analytics → Engagements → Customer engagement for one day, per
+     * staff account, summed over every configured page.
+     *
+     * Filtering the API by user_ids returns zeros, so each page is read
+     * unfiltered and its users_engagements list is used instead.
+     *
+     * @return array<string, array{name: string, engagements: int}> keyed by Pancake user id
+     */
+    public function engagements(CarbonImmutable $day): array
+    {
+        $pages = config('services.pancake.pages');
+
+        if (empty($pages)) {
+            throw new RuntimeException('No Pancake pages are set in .env (PANCAKE_PAGE_<NAME>_ID and _TOKEN).');
+        }
+
+        $range = $day->format('d/m/Y').' 00:00:00 - '.$day->format('d/m/Y').' 23:59:59';
+        $staff = [];
+
+        foreach ($pages as $page) {
+            $response = Http::acceptJson()
+                ->timeout(60)
+                ->retry(2, 1000, throw: false)
+                ->get(rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page['id']}/statistics/customer_engagements", [
+                    'page_access_token' => $page['token'],
+                    'date_range' => $range,
+                ]);
+
+            if ($response->failed() || ! $response->json('success')) {
+                throw new RuntimeException("Pancake engagements for page {$page['id']} returned HTTP {$response->status()}.");
+            }
+
+            foreach ($response->json('users_engagements') ?? [] as $row) {
+                $id = (string) ($row['user_id'] ?? '');
+
+                if ($id === '') {
+                    continue;
+                }
+
+                $staff[$id] ??= ['name' => (string) ($row['name'] ?? ''), 'engagements' => 0];
+                $staff[$id]['engagements'] += (int) ($row['total_engagement'] ?? 0);
+            }
+        }
+
+        return $staff;
+    }
+
+    /**
+     * Every POS order created on $day (segmentation timezone), trimmed to the
+     * fields Segmentation Productivity uses; full orders are large.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function orders(CarbonImmutable $day): array
+    {
+        $shop = config('services.pancake.shop_id');
+        // A user access token works when the shop's API keys are refused; otherwise the API key.
+        $auth = config('services.pancake.access_token')
+            ? ['access_token' => config('services.pancake.access_token')]
+            : ['api_key' => config('services.pancake.key')];
+
+        if (! reset($auth) || ! $shop) {
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set in .env.');
+        }
+
+        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
+        $orders = [];
+        $page = 1;
+
+        do {
+            // No Accept: application/json here; with it the POS API stalls mid-response.
+            $response = Http::timeout(90)
+                ->retry(3, 2000, throw: false)
+                ->get(rtrim(config('services.pancake.pos_url'), '/')."/shops/{$shop}/orders?".http_build_query([
+                    ...$auth,
+                    'page_size' => 50,
+                    'page_number' => $page,
+                    'startDateTime' => $start->getTimestamp(),
+                    'endDateTime' => $start->endOfDay()->getTimestamp(),
+                    'updateStatus' => 'inserted_at',
+                ]).'&'.collect(self::ORDER_FIELDS)->map(fn (string $field) => 'fields[]='.$field)->join('&'));
+
+            $body = $response->json();
+
+            if ($response->failed() || ! ($body['success'] ?? false)) {
+                throw new RuntimeException("Pancake POS orders returned HTTP {$response->status()}: ".($body['message'] ?? 'unknown error'));
+            }
+
+            foreach ($body['data'] ?? [] as $order) {
+                $orders[] = array_intersect_key($order, array_flip(self::ORDER_FIELDS));
+            }
+
+            $totalPages = (int) ($body['total_pages'] ?? 1);
+            unset($body, $response);
+            $page++;
+        } while ($page <= $totalPages);
+
+        return $orders;
+    }
+}
