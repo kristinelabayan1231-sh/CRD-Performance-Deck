@@ -36,6 +36,10 @@ $modules = [
         'productivity.view' => 'View own productivity numbers',
         'productivity.view_all' => 'View and compare every CRA, and sync Pancake data',
     ],
+    'Conversion Breakdown' => [
+        'conversion.view' => 'View own broadcast and segmentation conversions',
+        'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
+    ],
 ];
 
 return [

@@ -12,12 +12,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Throwable;
-
-use function Illuminate\Support\defer;
 
 class SegmentationProductivityController extends Controller
 {
@@ -75,7 +71,7 @@ class SegmentationProductivityController extends Controller
         // day takes minutes, so it runs after the page has been sent.
         if ($period['from']->lessThanOrEqualTo($today) && $period['to']->greaterThanOrEqualTo($today)
             && PancakeSync::isStale($today) && ! PancakeSync::isRunning($today)) {
-            $this->syncLater($pancake, $today);
+            $pancake->syncLater($today);
         }
         $syncDay = $period['to']->min($today);
 
@@ -202,23 +198,9 @@ class SegmentationProductivityController extends Controller
             return back()->with('status', "Pancake is already syncing {$day->format('M j, Y')}. Refresh in a few minutes.");
         }
 
-        $this->syncLater($pancake, $day, force: true);
+        $pancake->syncLater($day, force: true);
 
         return back()->with('status', "Syncing Pancake for {$day->format('M j, Y')}. It takes a few minutes; refresh to see the new numbers.");
-    }
-
-    /**
-     * Sync after the response is sent; failures are logged, and the page shows the last good sync time.
-     */
-    private function syncLater(PancakeSync $pancake, CarbonImmutable $day, bool $force = false): void
-    {
-        defer(function () use ($pancake, $day, $force) {
-            try {
-                $pancake->syncIfStale($day, $force ? 0 : 60);
-            } catch (Throwable $e) {
-                Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
-            }
-        }, 'pancake-sync-'.$day->toDateString());
     }
 
     /**

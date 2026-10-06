@@ -36,6 +36,9 @@
                 @can('productivity.view')
                     <x-nav-link :href="route('productivity.index')" :active="request()->routeIs('productivity.*')" icon="trend">Segmentation Productivity</x-nav-link>
                 @endcan
+                @can('conversion.view')
+                    <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
+                @endcan
                 @can('user_access.view')
                     <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                 @endcan

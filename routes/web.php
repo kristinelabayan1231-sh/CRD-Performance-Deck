@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\ConnectionCheckController;
+use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
@@ -58,6 +59,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
         Route::get('/', [SegmentationProductivityController::class, 'index'])->name('index');
         Route::post('/sync', [SegmentationProductivityController::class, 'sync'])->middleware('can:productivity.view_all')->name('sync');
+    });
+
+    Route::prefix('conversion-breakdown')->name('conversion.')->middleware('can:conversion.view')->group(function () {
+        Route::get('/', [ConversionBreakdownController::class, 'index'])->name('index');
+        Route::post('/sync', [ConversionBreakdownController::class, 'sync'])->middleware('can:conversion.view_all')->name('sync');
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
