@@ -24,4 +24,6 @@ tests
 boost.json
 .phpunit.result.cache
 *.log
+# Local SQLite databases
+database/*.sqlite
 .DS_Store
