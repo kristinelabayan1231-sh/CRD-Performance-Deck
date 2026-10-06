@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Role;
+use App\Models\User;
 use App\Services\LogisticsRetention;
 use App\Services\ShecomClient;
 use Carbon\CarbonImmutable;
@@ -62,5 +64,16 @@ class LogisticsRetentionTest extends TestCase
 
         $this->assertSame([5, 2, 3, 1], [$periods['all']['fb_delivered'], $periods['all']['fb_retained'], $periods['all']['crd_delivered'], $periods['all']['crd_again']]);
         $this->assertSame('Since Aug 30, 2026', $periods['all']['label']);
+    }
+
+    public function test_dashboard_shows_the_tiles_labelled_live_from_logistics(): void
+    {
+        $owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+
+        $this->actingAs($owner)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('Live from Logistics')
+            ->assertSeeInOrder(['FB delivered', 'Retained by CRD', 'Retention rate', 'CRD delivered', 'Ordered again', 'Repeat rate'])
+            ->assertSee('33.33%');
     }
 }

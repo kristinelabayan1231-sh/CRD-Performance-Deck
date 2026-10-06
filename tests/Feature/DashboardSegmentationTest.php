@@ -78,6 +78,7 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame([50.0, 33.0], [$today['retained'], $today['new_converted']]);
         // Went cold 1 of 5 = 20%, up from 0: bad, since lower is better.
         $this->assertSame(['20%', false], [$kpis['Went cold']['value'], $kpis['Went cold']['good']]);
+        $this->assertSame('1/5', $kpis['Went cold']['count']);
 
         // Tags donut and untagged remainder.
         $this->assertSame(['Hot' => 1, 'Cold' => 1, 'Warm' => 1, 'High value' => 1], collect($today['tags'])->pluck('value', 'label')->all());

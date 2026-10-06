@@ -7,13 +7,13 @@
     tags   Hot #E0663F · Cold #2F6FD6 · Warm #C9970E · High value #8B3FF0 (ring order), untagged #E6E1E8
 --}}
 <section {{ $attributes }} aria-labelledby="seg-dash-title" data-tabs="dashboard.segmentation">
-    <header class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 id="seg-dash-title" class="text-lg font-semibold">Segmentation Tracker</h2>
+    <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
+        <h2 id="seg-dash-title" class="text-base font-semibold">Segmentation Tracker</h2>
         <div class="flex items-center gap-3">
             <div class="flex rounded-lg bg-white p-0.5 text-xs font-semibold shadow-sm" role="tablist" aria-label="Period">
                 @foreach ($periods as $key => $p)
                     <button type="button" role="tab" data-tab="{{ $key }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}"
-                            class="rounded-md px-3 py-1.5 text-muted transition aria-selected:bg-brand-600 aria-selected:text-white">{{ $p['name'] }}</button>
+                            class="rounded-md px-2.5 py-1 text-muted transition aria-selected:bg-brand-600 aria-selected:text-white">{{ $p['name'] }}</button>
                 @endforeach
             </div>
             <a href="{{ route('segmentation.index') }}" class="text-xs font-semibold text-brand-600 hover:underline">Open &rarr;</a>
@@ -21,21 +21,33 @@
     </header>
 
     @foreach ($periods as $key => $p)
-        <div role="tabpanel" data-tab-panel="{{ $key }}" @unless ($loop->first) hidden @endunless class="space-y-4">
+        <div role="tabpanel" data-tab-panel="{{ $key }}" @unless ($loop->first) hidden @endunless class="grid gap-4 lg:grid-cols-12">
 
             {{-- KPI cards --}}
-            @php($kpiColors = ['text-brand-600', 'text-teal-700', 'text-sky-800', 'text-coral-700'])
-            <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            @php($kpiIcons = ['<path stroke-linecap="round" stroke-linejoin="round" d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm13 9v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6M10 20h.01M17 20h.01"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1 19.1 4.9"/>'])
+            @php($kpiGradients = ['from-brand-600 to-brand-700', 'from-[#0e8f7c] to-[#0b7d6c]', 'from-[#1f8fb8] to-[#1a7fa6]', 'from-[#e05a5f] to-[#d1494e]'])
+            <div class="grid grid-cols-2 gap-3 lg:col-span-3">
                 @foreach ($p['kpis'] as $i => $kpi)
-                    <div class="rounded-xl bg-white p-4 shadow-sm">
-                        <p class="text-sm font-medium text-muted">{{ $kpi['label'] }}</p>
-                        <p class="mt-1 text-3xl font-bold tabular-nums {{ $kpiColors[$i] }}">{{ $kpi['value'] }}</p>
-                        <p class="mt-2 flex items-center justify-between border-t border-line pt-2 text-xs text-muted">
-                            <span>Prev <span class="tabular-nums text-ink">{{ $kpi['previous'] }}</span></span>
+                    <div class="relative min-w-0 overflow-hidden rounded-xl bg-gradient-to-br {{ $kpiGradients[$i] }} p-3 text-white shadow-sm">
+                        <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
+                        <p class="relative flex items-center gap-1.5 text-xs font-medium text-white">
+                            <svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">{!! $kpiIcons[$i] !!}</svg>
+                            <span class="truncate">{{ $kpi['label'] }}</span>
+                        </p>
+                        <p class="relative flex items-baseline gap-1.5">
+                            <span class="text-2xl font-bold tabular-nums">{{ $kpi['value'] }}</span>
+                            @if ($kpi['count'])
+                                <span class="text-sm font-semibold tabular-nums text-white/90" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>
+                            @endif
+                        </p>
+                        <p class="relative mt-1 flex flex-wrap items-center justify-between gap-x-1 border-t border-white/30 pt-1 text-[11px] text-white/90">
+                            <span>Prev <span class="font-semibold tabular-nums text-white">{{ $kpi['previous'] }}</span></span>
+                            {{-- Good / bad change as a white pill so it reads on the coloured tile --}}
                             <span @class([
-                                'flex items-center gap-0.5 font-semibold tabular-nums',
-                                'text-teal-700' => $kpi['good'] === true,
-                                'text-coral-700' => $kpi['good'] === false,
+                                'flex items-center gap-0.5 rounded-full px-1.5 font-semibold tabular-nums',
+                                'bg-white text-teal-700' => $kpi['good'] === true,
+                                'bg-white text-coral-700' => $kpi['good'] === false,
+                                'bg-white/20 text-white' => $kpi['good'] === null,
                             ])>
                                 @if ($kpi['direction'] === 'up')
                                     <svg class="size-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4l6 8H4z"/></svg>
@@ -46,13 +58,12 @@
                             </span>
                         </p>
                         @if ($kpi['label'] === 'Converted')
-                            <p class="mt-1 text-[11px] text-muted">Retained <span class="font-semibold text-ink">{{ $p['retained'] }}%</span> · New <span class="font-semibold text-ink">{{ $p['new_converted'] }}%</span></p>
+                            <p class="relative mt-0.5 truncate text-[10px] text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · New <span class="font-semibold text-white">{{ $p['new_converted'] }}%</span></p>
                         @endif
                     </div>
                 @endforeach
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-12">
                 {{-- Trend: processed vs unprocessed per day --}}
                 @php($pts = $p['series'])
                 @php($n = count($pts))
@@ -60,7 +71,7 @@
                 @php($yMax = $peak <= 4 ? 4 : (int) (ceil($peak / 5) * 5))
                 @php($x = fn ($i) => round(30 + ($n > 1 ? $i * 282 / ($n - 1) : 141), 1))
                 @php($y = fn ($v) => round(10 + (1 - $v / $yMax) * 110, 1))
-                <figure class="rounded-xl bg-white p-4 shadow-sm lg:col-span-5">
+                <figure class="min-w-0 rounded-xl bg-white p-4 shadow-sm lg:col-span-4">
                     <figcaption class="mb-2 flex items-center justify-between text-sm">
                         <span class="font-semibold">Daily trend</span>
                         <span class="flex gap-3 text-xs text-muted">
@@ -101,10 +112,10 @@
                 @php($circ = 2 * M_PI * 36)
                 @php($slices = collect($p['tags'])->push(['label' => 'Untagged', 'value' => $p['untagged'], 'color' => '#E6E1E8'])->filter(fn ($s) => $s['value'] > 0)->values())
                 @php($gap = $slices->count() > 1 ? 2 : 0)
-                <figure class="rounded-xl bg-white p-4 shadow-sm lg:col-span-3">
+                <figure class="min-w-0 rounded-xl bg-white p-4 shadow-sm lg:col-span-2">
                     <figcaption class="mb-2 text-sm font-semibold">Customer tags</figcaption>
-                    <div class="flex items-center gap-4">
-                        <svg viewBox="0 0 100 100" class="size-28 shrink-0 -rotate-90" role="img" aria-label="Leads by customer tag, {{ $p['label'] }}">
+                    <div class="flex flex-col items-center gap-2">
+                        <svg viewBox="0 0 100 100" class="size-20 shrink-0 -rotate-90" role="img" aria-label="Leads by customer tag, {{ $p['label'] }}">
                             <circle cx="50" cy="50" r="36" fill="none" stroke="#f2edf3" stroke-width="14" />
                             @php($offset = 0)
                             @foreach ($slices as $s)
@@ -117,7 +128,7 @@
                             @endforeach
                             <text x="50" y="50" text-anchor="middle" dominant-baseline="central" transform="rotate(90 50 50)" class="fill-ink text-[16px] font-bold">{{ number_format($p['leads']) }}</text>
                         </svg>
-                        <ul class="min-w-0 flex-1 space-y-1.5 text-xs">
+                        <ul class="w-full min-w-0 space-y-0.5 text-[11px]">
                             @foreach ($p['tags'] as $s)
                                 <li class="flex items-center justify-between gap-2">
                                     <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm" style="background: {{ $s['color'] }}"></span>{{ $s['label'] }}</span>
@@ -130,7 +141,7 @@
 
                 {{-- Top CRAs --}}
                 @php($maxUnprocessed = collect($p['ranking'])->max('unprocessed'))
-                <div class="rounded-xl bg-white p-4 shadow-sm lg:col-span-4">
+                <div class="min-w-0 rounded-xl bg-white p-4 shadow-sm lg:col-span-3">
                     <p class="mb-2 text-sm font-semibold">Top CRAs</p>
                     @if (empty($p['ranking']))
                         <p class="py-6 text-center text-sm text-muted">No CRAs yet.</p>
@@ -166,7 +177,6 @@
                         </table>
                     @endif
                 </div>
-            </div>
         </div>
     @endforeach
 </section>

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\SalesGoalProgress;
 use App\Support\SalesGoals;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +17,8 @@ class SalesGoalsTest extends TestCase
     use RefreshDatabase;
 
     private User $owner;
+
+    private int $seq = 0;
 
     protected function setUp(): void
     {
@@ -31,6 +35,15 @@ class SalesGoalsTest extends TestCase
         return User::create([
             'email' => strtolower($name).'@example.com', 'display_name' => $name, 'pancake_name' => $pancake, 'daily_sales_goal' => $goal,
             'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true,
+        ]);
+    }
+
+    private function sale(string $seller, string $day, float $total, ?string $type = PancakeOrder::SEGMENTATION, int $status = 2): void
+    {
+        $this->seq++;
+        PancakeOrder::create([
+            'pancake_order_id' => (string) (5000 + $this->seq), 'ordered_on' => $day, 'seller_name' => $seller,
+            'status' => $status, 'total_price' => $total, 'conversion_type' => $type,
         ]);
     }
 
@@ -76,5 +89,53 @@ class SalesGoalsTest extends TestCase
 
         $this->actingAs($lhea)->get(route('settings.sales-goals.index'))->assertForbidden();
         $this->actingAs($lhea)->put(route('settings.sales-goals.update'), ['cra_daily' => 1, 'crd_monthly' => 1])->assertForbidden();
+    }
+
+    public function test_progress_counts_tagged_sales_against_the_goals(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        $regina = $this->cra('Regina', 'CRD REJ VERGARA', goal: 50000);
+
+        $this->sale('CRD LHEI', '2026-10-10', 38500, PancakeOrder::BROADCAST);
+        $this->sale('CRD LHEI', '2026-10-10', 38500);
+        $this->sale('CRD REJ VERGARA', '2026-10-10', 25000);
+        $this->sale('CRD REJ VERGARA', '2026-10-03', 100000);
+        // Not sales: untagged, canceled, and last month.
+        $this->sale('CRD LHEI', '2026-10-10', 9999, type: null);
+        $this->sale('CRD LHEI', '2026-10-10', 9999, status: 6);
+        $this->sale('CRD LHEI', '2026-09-30', 9999);
+
+        $goals = app(SalesGoalProgress::class)->for(collect([$lhea, $regina]), CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertEqualsWithDelta(202000.0, $goals['month']['sales'], 0.001);
+        $this->assertEqualsWithDelta(0.202, $goals['month']['progress'], 1e-9);
+        $this->assertEqualsWithDelta(10 / 31, $goals['month']['pace'], 1e-9);
+        $this->assertEqualsWithDelta(798000.0, $goals['month']['remaining'], 0.001);
+
+        $byName = $goals['cras']->keyBy(fn ($row) => $row['cra']->display_name);
+        // Lhea hits the general ₱77,000; Regina is measured against her own ₱50,000.
+        $this->assertEqualsWithDelta(1.0, $byName['Lhea']['progress'], 1e-9);
+        $this->assertEqualsWithDelta(0.5, $byName['Regina']['progress'], 1e-9);
+        $this->assertTrue($byName['Regina']['own_goal']);
+    }
+
+    public function test_dashboard_shows_goal_progress_and_a_cra_sees_only_their_own_daily_goal(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        $this->cra('Regina', 'CRD REJ VERGARA');
+        $this->sale('CRD LHEI', '2026-10-10', 38500);
+
+        $this->actingAs($this->owner)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('CRD monthly goal · October 2026')
+            ->assertSeeText('₱38,500 of ₱1,000,000')
+            ->assertSee('Total conv % per CRA')
+            ->assertDontSee('accounts')
+            ->assertSee('Regina');
+
+        $this->actingAs($lhea)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('50.0%')
+            ->assertViewHas('salesGoals', fn ($goals) => $goals['cras']->pluck('cra.id')->all() === [$lhea->id]);
     }
 }
