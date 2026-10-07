@@ -42,7 +42,7 @@ class WorkingDateTest extends TestCase
         Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
         $this->lead('1', '2026-09-07', 'September Seventh Customer');
         $this->lead('2', '2026-09-08', 'September Eighth Customer');
-        $this->lead('3', '2026-10-07', 'October Customer');
+        $this->lead('3', '2026-10-08', 'October Customer');
 
         $this->actingAs($this->supervisor)->put(route('settings.working-date.update'), ['start' => '2026-09-08'])
             ->assertSessionHasNoErrors();

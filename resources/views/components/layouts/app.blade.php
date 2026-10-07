@@ -1,4 +1,4 @@
-@props(['title' => 'Dashboard'])
+@props(['title' => 'Dashboard', 'fit' => false])
 
 @php($user = auth()->user())
 
@@ -13,7 +13,8 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-canvas font-sans text-ink antialiased">
-    <div class="flex min-h-screen">
+    {{-- fit: on large screens the page fills the window and only its own sections scroll. --}}
+    <div @class(['flex min-h-screen', 'lg:h-dvh lg:overflow-hidden' => $fit])>
         {{-- Sidebar --}}
         <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full border-r border-line bg-white transition-transform lg:static lg:translate-x-0">
             <a href="{{ route('dashboard') }}" class="flex h-16 items-center gap-3 px-6">
@@ -49,7 +50,7 @@
             </nav>
         </aside>
 
-        <div class="flex min-w-0 flex-1 flex-col">
+        <div @class(['flex min-w-0 flex-1 flex-col', 'lg:min-h-0' => $fit])>
             {{-- Top bar --}}
             <header class="flex h-16 items-center justify-between gap-4 border-b border-line bg-white px-4 sm:px-6">
                 <button type="button" class="rounded-md p-2 text-muted hover:bg-brand-50 lg:hidden" aria-controls="sidebar" aria-label="Toggle menu"
@@ -70,7 +71,7 @@
                 </div>
             </header>
 
-            <main class="flex-1 p-4 sm:p-8">
+            <main @class(['flex-1 p-4 sm:p-8', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:py-5' => $fit])>
                 @if ($workingDate = \App\Support\WorkingDate::get())
                     <div role="note" class="mb-4 flex flex-wrap items-center gap-x-2 rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
                         <span class="font-semibold">Working date: {{ $workingDate->format('M j, Y') }}</span>

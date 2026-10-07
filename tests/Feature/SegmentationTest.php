@@ -355,6 +355,31 @@ class SegmentationTest extends TestCase
         $response->assertSee('Hot Leads / Recent Buyers (0 to 15 days)')->assertSee('11:00AM-12:00NN')->assertSee('STOPPED BY THE DR.')->assertSee('PURCHASED');
     }
 
+    public function test_the_day_is_split_into_unprocessed_then_processed_and_show_narrows_it(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        $make = fn (string $id, string $name, array $fields = []) => Lead::create([
+            'order_id' => $id, 'customer_name' => $name, 'phone_number' => '917'.$id, 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, ...$fields,
+        ]);
+        $make('1', 'Waiting Wendy');
+        $make('2', 'Status Sam', ['status' => 'active']);
+        $make('3', 'Called Carla', ['contact_date' => '2026-10-05']);
+        // Earlier day, still unprocessed: carry-over is off, so it isn't listed.
+        Lead::create(['order_id' => '4', 'customer_name' => 'Yesterday Yuri', 'phone_number' => '9174', 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-04', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-04',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id]);
+
+        $this->actingAs($alice)->get('/segmentation')->assertOk()
+            ->assertSeeInOrder(['Unprocessed', 'Waiting Wendy', 'Processed', 'Called Carla', 'Status Sam'])
+            ->assertDontSee('Yesterday Yuri');
+
+        $this->actingAs($alice)->get('/segmentation?show=processed')
+            ->assertSee('Status Sam')->assertDontSee('Waiting Wendy');
+    }
+
     public function test_opening_the_tracker_syncs_today_automatically_once_an_hour(): void
     {
         $this->cra('alice@gmail.com');
