@@ -30,40 +30,45 @@ class SegmentationController extends Controller
         $scope = $this->scope($filters, $from, $to);
         $cras = LeadGenerator::cras();
 
-        $leads = (clone $scope)
+        // The selected day's leads in two lists: still to do (no status and no contact
+        // date yet) and processed. "show" narrows the page to one of them.
+        $show = $filters['show'];
+        $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
             ->with(['assignee', 'notesAuthor'])
             ->orderBy('est_out_of_stock_date')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
-            ->orderBy('customer_name')
-            ->paginate(50)
-            ->withQueryString();
+            ->orderBy('customer_name');
 
-        // Carried-over (unprocessed) leads from earlier days, on today's view only (a
-        // past day shows just its own leads), 50 per page: a month's backlog is thousands of rows.
-        $backlogQuery = $from->equalTo($to) && $from->isSameDay($today)
-            ? Lead::backlogAsOf($from)
-                ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
-                ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+        $unprocessed = in_array($show, ['all', 'unprocessed'], true)
+            ? (clone $listed)->whereNull('status')->whereNull('contact_date')->paginate(50)->withQueryString()
             : null;
-        $backlog = $backlogQuery
-            ? (clone $backlogQuery)
-                ->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
-                ->orderBy('est_out_of_stock_date')
-                ->orderBy('customer_name')
-                ->paginate(50, ['*'], 'backlog_page')
-                ->withQueryString()
-            : collect();
-        $carryingOver = $backlogQuery
-            ? (clone $backlogQuery)->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))->count()
-            : 0;
+        $processed = in_array($show, ['all', 'processed'], true)
+            ? (clone $listed)->where(fn (Builder $q) => $q->whereNotNull('status')->orWhereNotNull('contact_date'))
+                ->paginate(50, ['*'], 'processed_page')->withQueryString()
+            : null;
+
+        // Carry-over (earlier days' unprocessed leads under today) is turned off for now
+        // to keep the page simple. To bring it back, restore this block and pass $backlog.
+        // $backlogQuery = $from->equalTo($to) && $from->isSameDay($today)
+        //     ? Lead::backlogAsOf($from)
+        //         ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+        //         ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+        //     : null;
+        // $backlog = $backlogQuery
+        //     ? (clone $backlogQuery)->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
+        //         ->orderBy('est_out_of_stock_date')->orderBy('customer_name')
+        //         ->paginate(50, ['*'], 'backlog_page')->withQueryString()
+        //     : collect();
+        // $carryingOver = $backlogQuery
+        //     ? (clone $backlogQuery)->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))->count()
+        //     : 0;
 
         $canTransfer = $user->can('segmentation.transfer');
 
         return view('segmentation.index', [
-            'leads' => $leads,
-            'backlog' => $backlog,
-            'carryingOver' => $carryingOver,
+            'unprocessed' => $unprocessed,
+            'processed' => $processed,
             'canTransfer' => $canTransfer,
             'workload' => $canTransfer ? LeadGenerator::workload($today) : [],
             'tiles' => $this->tiles($scope, $filters, $from, $to, $cras, $canViewAll),
@@ -107,7 +112,9 @@ class SegmentationController extends Controller
             'cra' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
             'status' => ['nullable', 'string'],
+            'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
         ]);
+        $filters['show'] ??= 'all';
 
         // A specific date wins; otherwise a whole month; default is today.
         if (! empty($filters['date'])) {
