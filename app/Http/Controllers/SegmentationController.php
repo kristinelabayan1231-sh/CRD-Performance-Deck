@@ -22,14 +22,9 @@ class SegmentationController extends Controller
         $canViewAll = $user->can('segmentation.view_all');
         $today = Lead::today();
 
-        // Keep today's leads fresh without anyone pressing a button.
-        $syncError = null;
-        try {
-            $generator->syncIfStale($today);
-        } catch (Throwable $e) {
-            Log::warning('Automatic lead sync failed', ['message' => $e->getMessage()]);
-            $syncError = $e->getMessage();
-        }
+        // Keep today's leads fresh without anyone pressing a button (after the page is sent).
+        $generator->syncLater($today);
+        $syncError = LeadGenerator::lastSyncError($today);
 
         [$filters, $from, $to] = $this->resolveFilters($request, $today);
         $scope = $this->scope($filters, $from, $to);
