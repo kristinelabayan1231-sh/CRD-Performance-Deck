@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
-    'order_id', 'tracking_number', 'customer_name', 'phone_number', 'product_name', 'product_raw', 'qty',
+    'order_id', 'tracking_number', 'customer_name', 'phone_number', 'product_name', 'product_raw', 'qty', 'qty_unknown',
     'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'lead_type',
     'assigned_to', 'assigned_at', 'status', 'status_updated_by', 'status_updated_at',
     'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
@@ -32,6 +32,7 @@ class Lead extends Model
     {
         return [
             'qty' => 'integer',
+            'qty_unknown' => 'boolean',
             'consumption_days' => 'integer',
             'delivered_date' => 'immutable_date',
             'est_out_of_stock_date' => 'immutable_date',

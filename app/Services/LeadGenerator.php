@@ -36,8 +36,14 @@ class LeadGenerator
         $fallbackReason = null;
 
         try {
-            $rows = $this->client->retentionStockouts();
-            $this->rememberDelivered($rows);
+            // CRD Leads: CRD-delivered orders (Shecom's out-of-stock list). FSD Leads:
+            // FSD-delivered orders, their out-of-stock date worked out here.
+            $sources = $this->client->leadSources();
+            $this->rememberDelivered($sources['crd']);
+            $rows = [
+                ...array_map(fn (array $row) => [...$row, 'lead_type' => Lead::TYPE_CRD], $sources['crd']),
+                ...$this->fsdRows($sources['fsd'], $catalog, $date),
+            ];
         } catch (Throwable $e) {
             $rows = $this->fallbackRows($catalog);
 
@@ -49,7 +55,8 @@ class LeadGenerator
             Log::warning('Retention API unavailable; leads from saved delivered orders', ['date' => $date->toDateString(), 'message' => $fallbackReason]);
         }
 
-        // Customers with enough delivered orders are CRD Leads (see segmentation.crd_lead_min_orders).
+        // Rows without a type (fallback): customers with enough delivered orders are
+        // CRD Leads (see segmentation.crd_lead_min_orders).
         $ordersPerPhone = collect($rows)->countBy(fn (array $row) => self::normalizePhone($row['phone_number'] ?? ''));
 
         $leads = collect($rows)
@@ -126,6 +133,65 @@ class LeadGenerator
                 ['order_id'],
                 ['tracking_number', 'customer_name', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit', 'source', 'updated_at'],
             ));
+    }
+
+    /**
+     * FSD-delivered orders that run out on $date, in the retention API's shape.
+     * Out of stock = delivered date + (qty × consumption days) − 1, with days
+     * from Settings → Product Consumption and qty from the Pancake POS order.
+     * An order Pancake has no qty for is taken as qty 1 and flagged.
+     *
+     * @param  list<array<string, mixed>>  $orders
+     * @return list<array<string, mixed>>
+     */
+    private function fsdRows(array $orders, ProductCatalog $catalog, CarbonImmutable $date): array
+    {
+        $candidates = [];
+        // Days whose Pancake delivered orders are saved. Orders from other days wait
+        // until that day is synced (an hourly run picks them up) rather than guess qty 1.
+        $synced = DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
+            ->distinct()->pluck('delivered_date')->map(fn ($day) => CarbonImmutable::parse($day)->toDateString())->flip();
+
+        foreach ($orders as $order) {
+            $days = $catalog->match($order['product_name'] ?? '')?->consumption_days;
+
+            if (empty($order['order_id']) || empty($order['delivered_date']) || ! $days
+                || ! isset($synced[substr((string) $order['delivered_date'], 0, 10)])) {
+                continue;
+            }
+
+            // Days from delivery to $date, the delivery day being day 1: a whole number of units.
+            $span = (int) CarbonImmutable::parse($order['delivered_date'])->diffInDays($date, false) + 1;
+
+            if ($span >= $days && $span % $days === 0) {
+                $candidates[(string) $order['order_id']] = [$order, $days, intdiv($span, $days)];
+            }
+        }
+
+        $qty = collect(array_keys($candidates))->chunk(1000)
+            ->flatMap(fn (Collection $ids) => DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
+                ->whereIn('order_id', $ids->all())->pluck('qty', 'order_id'));
+
+        $rows = [];
+
+        foreach ($candidates as $id => [$order, $days, $units]) {
+            $known = $qty[$id] ?? null;
+
+            if ($known === null ? $units !== 1 : (int) $known !== $units) {
+                continue;
+            }
+
+            $rows[] = [
+                ...$order,
+                'qty' => $units,
+                'consumption_days_per_unit' => $days,
+                'estimated_out_of_stock_date' => $date->toDateString(),
+                'lead_type' => Lead::TYPE_FSD,
+                'qty_unknown' => $known === null,
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -321,7 +387,9 @@ class LeadGenerator
             'delivered_date' => $delivered->toDateString(),
             'consumption_days' => (int) ($row['consumption_days_per_unit'] ?? 0),
             'est_out_of_stock_date' => CarbonImmutable::parse($row['estimated_out_of_stock_date'])->toDateString(),
-            'lead_type' => ($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_FSD,
+            'lead_type' => $row['lead_type']
+                ?? (($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_FSD),
+            'qty_unknown' => (bool) ($row['qty_unknown'] ?? false),
         ];
     }
 }

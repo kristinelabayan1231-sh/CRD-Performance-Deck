@@ -51,31 +51,45 @@ class SegmentationTest extends TestCase
         ];
     }
 
-    private function fakeApi(array $rows): void
+    private function fakeApi(array $rows, array $fsdOrders = []): void
     {
-        Http::fake(['*/management/retention-stockout' => Http::response(['count' => count($rows), 'stock_outs' => $rows])]);
+        Http::fake(['*/management/retention-stockout' => Http::response(['count' => count($rows), 'stock_outs' => $rows, 'retention_detail' => $fsdOrders])]);
     }
 
-    public function test_leads_are_todays_stockouts_typed_by_order_history(): void
+    public function test_crd_leads_are_todays_crd_stockouts_and_fsd_leads_come_from_fsd_deliveries(): void
     {
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 30]);
+        // Pancake knows FSD order f1 was 2 units: Aug 7 + 2×30 − 1 = Oct 5.
+        DeliveredOrder::create(['order_id' => 'f1', 'customer_name' => 'Fe', 'phone_number' => '9178888888', 'product_raw' => 'Sinuxyl',
+            'qty' => 2, 'delivered_date' => '2026-08-07', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+        // Pancake was synced for Sep 6 too (another customer), but never for Sep 5.
+        DeliveredOrder::create(['order_id' => 'x9', 'customer_name' => 'Other', 'phone_number' => '9179999999', 'product_raw' => 'Sinuxyl',
+            'qty' => 1, 'delivered_date' => '2026-09-06', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+        $fsd = fn (string $id, string $delivered) => ['order_id' => $id, 'tracking_number' => "JT{$id}", 'customer_name' => "Customer {$id}",
+            'phone_number' => '917'.str_pad(substr(md5($id), 0, 7), 7, '0'), 'product' => 'Sinuxyl', 'delivered_date' => $delivered];
+
         $this->fakeApi([
-            $this->row('1', '9171111111', '2026-10-05'),       // 3rd order -> CRD
-            $this->row('2', '09171111111', '2026-08-01'),      // same phone, 2nd order
-            $this->row('2b', '639171111111', '2026-06-01'),    // same phone, 1st order
-            $this->row('3', '9172222222', '2026-10-05'),       // 1st order (FSD) -> New
-            $this->row('5', '9175555555', '2026-10-05'),       // 2nd order (Retention) -> New
-            $this->row('5b', '9175555555', '2026-08-01'),
+            $this->row('1', '9171111111', '2026-10-05'),
             $this->row('4', '9173333333', '2026-10-06'),       // not today
+        ], [
+            $fsd('f1', '2026-08-07'),   // 2 units (Pancake) -> today
+            $fsd('f2', '2026-09-06'),   // Pancake has no qty: 1 unit assumed -> today, flagged
+            $fsd('f3', '2026-08-07'),   // no qty: 1 unit would run out Sep 5 -> not today
+            $fsd('f4', '2026-09-07'),   // runs out Oct 6 -> not today
+            $fsd('f5', '2026-09-05'),   // day not synced from Pancake yet -> waits
         ]);
 
         $result = app(LeadGenerator::class)->generate($this->day);
 
-        $this->assertSame(3, $result['found']);
+        $this->assertSame(['1', 'f1', 'f2'], Lead::orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame([1, 2], [$result['crd'], $result['fsd']]);
         $this->assertSame(Lead::TYPE_CRD, Lead::firstWhere('order_id', '1')->lead_type);
-        $this->assertSame(Lead::TYPE_FSD, Lead::firstWhere('order_id', '3')->lead_type);
-        $this->assertSame(Lead::TYPE_FSD, Lead::firstWhere('order_id', '5')->lead_type);
-        $this->assertNull(Lead::firstWhere('order_id', '4'));
+        $this->assertSame([Lead::TYPE_FSD, 2, false], [Lead::firstWhere('order_id', 'f1')->lead_type, Lead::firstWhere('order_id', 'f1')->qty, Lead::firstWhere('order_id', 'f1')->qty_unknown]);
+        $this->assertSame([1, true], [Lead::firstWhere('order_id', 'f2')->qty, Lead::firstWhere('order_id', 'f2')->qty_unknown]);
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
+
+        // Managers see the leads Pancake had no quantity for.
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('1 FSD lead with no quantity in Pancake')->assertSee('Customer f2');
     }
 
     public function test_a_successful_sync_keeps_a_copy_of_every_delivered_order(): void

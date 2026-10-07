@@ -21,19 +21,21 @@ class WorkingDateController extends Controller
     }
 
     /**
-     * Set the day the app treats as today; blank goes back to the real date.
+     * Set the working date that starts tomorrow; blank goes back to the real date.
      */
     public function update(Request $request): RedirectResponse
     {
+        $tomorrow = WorkingDate::realToday()->addDay();
+
         $data = $request->validate([
-            'working_date' => ['nullable', 'date', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
-        ], [], ['working_date' => 'working date']);
+            'start' => ['nullable', 'date', 'before_or_equal:'.$tomorrow->toDateString()],
+        ], [], ['start' => 'start of working date']);
 
-        $date = $data['working_date'] ? CarbonImmutable::parse($data['working_date']) : null;
-        WorkingDate::set($date, $request->user());
+        $start = $data['start'] ? CarbonImmutable::parse($data['start']) : null;
+        WorkingDate::startTomorrow($start, $request->user());
 
-        return back()->with('status', $date
-            ? "Working date set to {$date->format('M j, Y')}. The whole app now shows that day as today."
+        return back()->with('status', $start
+            ? "Working date starts at {$start->format('M j, Y')} tomorrow ({$tomorrow->format('M j')}) and moves forward one day each day. Today shows {$start->subDay()->format('M j')}."
             : 'Working date cleared. The app follows the real date again.');
     }
 }
