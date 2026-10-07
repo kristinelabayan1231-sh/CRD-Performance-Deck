@@ -5,6 +5,7 @@
     'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
     'settings.pancake-pages.index' => ['Pancake Pages', 'pancake_pages.manage'],
     'settings.sales-goals.index' => ['Sales Goals', 'sales_goals.manage'],
+    'settings.working-date.index' => ['Working Date', 'sales_goals.manage'],
     'settings.connections.index' => ['Connections', 'connections.check'],
 ])
 

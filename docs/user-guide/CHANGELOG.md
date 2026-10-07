@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-07 · Settings · New "Working Date" tab (CRA Supervisor): the whole app (dashboard, tracker + backlog, weekly, productivity, conversion, hourly syncs) treats that day as today; yellow "Working date" banner on every page; "Use real date" clears it · shots: new (settings-working-date), banner on all module screenshots
 - 2026-10-07 · Segmentation Tracker · Lead type "New Customer" renamed "FSD Lead" (type filter, summary tile "FSD Leads", per-CRA split "x CRD · y FSD", dashboard "FSD" conversion %); Sept 1–7 backlog imported from the Google Sheet · shots: segmentation-tracker, 02-dashboard
 
 - 2026-10-07 · Dashboard · "Welcome, user" replaced by a "CRD Board" button: opens a fun poster (violet tape board matching the mascot, handwritten) with today + the 2 days before (Gross Sales, Net Income) and a Top Seller panel, all typed by hand and not saved; Clear and Full screen buttons; waving CRD mascot with an editable message · shots: new (crd-board)

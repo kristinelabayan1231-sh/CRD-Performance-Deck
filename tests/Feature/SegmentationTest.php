@@ -176,7 +176,8 @@ class SegmentationTest extends TestCase
 
         app(LeadGenerator::class)->generate($this->day);
         $lead = Lead::firstWhere('order_id', '1');
-        $lead->update(['status' => 'busy_callback']);
+        // A CRD type set by the sheet import must survive the order-count rule.
+        $lead->update(['status' => 'busy_callback', 'lead_type' => Lead::TYPE_CRD]);
         $this->cra('bob@gmail.com');
 
         $result = app(LeadGenerator::class)->generate($this->day);
@@ -184,6 +185,7 @@ class SegmentationTest extends TestCase
         $this->assertSame(0, $result['created']);
         $this->assertSame($alice->id, $lead->fresh()->assigned_to);
         $this->assertSame('busy_callback', $lead->fresh()->status);
+        $this->assertSame(Lead::TYPE_CRD, $lead->fresh()->lead_type);
         $this->assertSame(1, Lead::count());
     }
 

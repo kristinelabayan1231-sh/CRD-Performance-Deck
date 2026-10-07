@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -68,8 +69,9 @@ class LeadGenerator
                 }
 
                 $created += $lead->exists ? 0 : 1;
-                // Refresh order details but keep any assignment and status already set.
-                $lead->fill($data)->save();
+                // Refresh order details but keep any assignment, status and type already
+                // set (imported sheet leads carry the sheet's CRD/FSD type).
+                $lead->fill($lead->exists ? Arr::except($data, ['lead_type']) : $data)->save();
             }
         });
 

@@ -45,6 +45,10 @@ class ImportSheetLeadsTest extends TestCase
                 'order_id' => '1001', 'tracking_number' => 'JT1001', 'customer_name' => 'Ana Cruz', 'phone_number' => '9171111111',
                 'product_name' => 'Pterygium', 'qty' => 2, 'delivered_date' => '2026-08-03', 'consumption_days_per_unit' => 15,
                 'estimated_out_of_stock_date' => '2026-09-01',
+            ], [
+                'order_id' => '3003', 'tracking_number' => 'JT3003', 'customer_name' => 'Eva Sol', 'phone_number' => '9175555555',
+                'product_name' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2026-08-10', 'consumption_days_per_unit' => 30,
+                'estimated_out_of_stock_date' => '2026-09-08',
             ]],
             'repeat_detail' => [],
             'retention_detail' => [
@@ -70,6 +74,7 @@ class ImportSheetLeadsTest extends TestCase
             'CRD LEADS,Ana Cruz,2,Pterygium Drops,9171111111,August 3,65,September 1,August 25,Anna,PJR/Inactive/CBR/Drop call,NO,Warm Leads / Old Customers (16 to 30 days),09/26/2025,8:00PM-9:00PM,HINDI NAKAUSAP NI CRA,cbr,,',
             'FACEBOOK SALES LEADS,Ben Reyes,2,Sinuxyl,9172222222,August 4,64,September 1,August 25,Rej,,,,,,,,,',
             ',Cara Diaz,1,Sinuxyl,9173333333,August 18,50,September 1,August 25,Rej,Active,YES,,Sept 28,9995828454,MAY STOCKS PA,,,',
+            ',Eva Sol,1,Sinuxyl,,August 10,50,September 1,August 25,Rej,,,,,,,,,',
         );
 
         $this->import($path);
@@ -87,7 +92,10 @@ class ImportSheetLeadsTest extends TestCase
         $this->assertStringStartsWith('SHEET-9173333333-20260818', $sheetOnly->order_id);
         $this->assertSame(['active', 'yes', '2026-09-28', null, 'still_have_stocks'],
             [$sheetOnly->status, $sheetOnly->repeat_purchase, $sheetOnly->contact_date->toDateString(), $sheetOnly->contact_time, $sheetOnly->feedback]);
-        $this->assertSame(3, Lead::count());
+
+        // No phone in the sheet: matched by name and delivered date, phone taken from Shecom.
+        $this->assertSame('9175555555', Lead::firstWhere('order_id', '3003')->phone_number);
+        $this->assertSame(4, Lead::count());
     }
 
     public function test_a_batch_imports_only_that_day_and_cra_and_reruns_do_not_duplicate(): void
