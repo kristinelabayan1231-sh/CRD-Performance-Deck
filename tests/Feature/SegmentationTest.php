@@ -72,8 +72,8 @@ class SegmentationTest extends TestCase
 
         $this->assertSame(3, $result['found']);
         $this->assertSame(Lead::TYPE_CRD, Lead::firstWhere('order_id', '1')->lead_type);
-        $this->assertSame(Lead::TYPE_NEW, Lead::firstWhere('order_id', '3')->lead_type);
-        $this->assertSame(Lead::TYPE_NEW, Lead::firstWhere('order_id', '5')->lead_type);
+        $this->assertSame(Lead::TYPE_FSD, Lead::firstWhere('order_id', '3')->lead_type);
+        $this->assertSame(Lead::TYPE_FSD, Lead::firstWhere('order_id', '5')->lead_type);
         $this->assertNull(Lead::firstWhere('order_id', '4'));
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
     }
@@ -114,7 +114,7 @@ class SegmentationTest extends TestCase
         $existing = Lead::create([
             'order_id' => 'p5', 'customer_name' => 'Kept', 'phone_number' => '9175555555', 'product_name' => 'Pterygium', 'qty' => 1,
             'delivered_date' => '2026-09-20', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-10-04',
-            'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $alice->id, 'status' => 'active',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, 'status' => 'active',
         ]);
 
         $result = app(LeadGenerator::class)->generate($this->day);
@@ -162,7 +162,7 @@ class SegmentationTest extends TestCase
         $counts = Lead::whereDate('est_out_of_stock_date', $this->day)->get()->countBy('assigned_to');
         $this->assertEqualsCanonicalizing([4, 3], $counts->values()->all());
 
-        // CRD Leads were handed out before any New Customer: both CRAs got CRD first.
+        // CRD Leads were handed out before any FSD Lead: both CRAs got CRD first.
         $firstTwo = Lead::orderBy('assigned_at')->orderBy('id')->take(3)->pluck('lead_type')->unique()->all();
         $this->assertSame([Lead::TYPE_CRD], $firstTwo);
         $this->assertTrue(Lead::where('lead_type', Lead::TYPE_CRD)->pluck('assigned_to')->contains($alice->id));
@@ -412,7 +412,7 @@ class SegmentationTest extends TestCase
         app(LeadGenerator::class)->generate($this->day);
 
         $this->actingAs($this->owner)->get('/segmentation')->assertOk()
-            ->assertSeeInOrder(['Leads', 'CRD Leads', 'New Customers', 'Per CRA', 'Status Updated'])
+            ->assertSeeInOrder(['Leads', 'CRD Leads', 'FSD Leads', 'Per CRA', 'Status Updated'])
             ->assertSee('1–2')->assertSee('2 CRAs · base 2 each')->assertSee('of 3 · 3 pending · 0%');
 
         $this->actingAs($this->owner)->getJson('/segmentation/summary?date=2026-10-05')->assertOk()

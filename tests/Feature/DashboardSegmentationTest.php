@@ -46,7 +46,7 @@ class DashboardSegmentationTest extends TestCase
         return Lead::create([
             'order_id' => "o{$this->seq}", 'customer_name' => "Customer {$this->seq}", 'phone_number' => "9170000{$this->seq}",
             'product_name' => 'Pterygium Drops', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 15,
-            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $cra->id, ...$fields,
+            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id, ...$fields,
         ]);
     }
 
@@ -75,7 +75,7 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Processed']['value'], $kpis['Processed']['previous'], $kpis['Processed']['change'], $kpis['Processed']['good']]);
         // Converted 2 of 5 = 40%; retained 1 of 2 CRD = 50%; new 1 of 3 = 33%.
         $this->assertSame('40%', $kpis['Converted']['value']);
-        $this->assertSame([50.0, 33.0], [$today['retained'], $today['new_converted']]);
+        $this->assertSame([50.0, 33.0], [$today['retained'], $today['fsd_converted']]);
         // Went cold 1 of 5 = 20%, up from 0: bad, since lower is better.
         $this->assertSame(['20%', false], [$kpis['Went cold']['value'], $kpis['Went cold']['good']]);
         $this->assertSame('1/5', $kpis['Went cold']['count']);

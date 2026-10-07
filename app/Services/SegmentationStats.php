@@ -14,7 +14,7 @@ use Illuminate\Support\Collection;
  *
  * Processed = status set. Unprocessed = no status yet.
  * Converted = Repeat Purchase "yes", or "no" with feedback PURCHASED.
- * Retained = converted CRD (returning) leads; New converted = converted New Customer leads.
+ * Retained = converted CRD (returning) leads; FSD converted = converted FSD leads.
  */
 class SegmentationStats
 {
@@ -67,7 +67,7 @@ class SegmentationStats
                     count: number_format($now['cold']).'/'.number_format($now['leads'])),
             ],
             'retained' => $now['crd'] ? round($now['crd_converted'] / $now['crd'] * 100) : 0,
-            'new_converted' => $now['new'] ? round($now['new_converted'] / $now['new'] * 100) : 0,
+            'fsd_converted' => $now['fsd'] ? round($now['fsd_converted'] / $now['fsd'] * 100) : 0,
             'series' => $this->series($ids, $chartFrom ?? $from, $to, $today),
             'tags' => [
                 ['label' => 'Hot', 'value' => $now['hot'], 'color' => '#E0663F'],
@@ -95,13 +95,13 @@ class SegmentationStats
             ->selectRaw('sum(case when customer_tag in (?, ?) then 1 else 0 end) as cold', self::COLD)
             ->selectRaw("sum(case when customer_tag = 'high_value' then 1 else 0 end) as high_value")
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as new', [Lead::TYPE_NEW])
+            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
             ->first();
 
         $c = $this->scope($ids, $from, $to)->converted()
             ->selectRaw('count(*) as converted')
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd_converted', [Lead::TYPE_CRD])
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as new_converted', [Lead::TYPE_NEW])
+            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd_converted', [Lead::TYPE_FSD])
             ->first();
 
         return collect([...$t->getAttributes(), ...$c->getAttributes()])->map(fn ($v) => (int) ($v ?? 0))->all();

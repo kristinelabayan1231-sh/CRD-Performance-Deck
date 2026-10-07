@@ -142,7 +142,7 @@ class SegmentationController extends Controller
         $summary = (clone $scope)
             ->selectRaw('count(*) as total')
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as new', [Lead::TYPE_NEW])
+            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
             ->selectRaw('sum(case when status is not null then 1 else 0 end) as updated')
             ->first();
 
@@ -154,7 +154,7 @@ class SegmentationController extends Controller
         $tiles = [
             'total' => ['value' => number_format($total), 'note' => null],
             'crd' => ['value' => number_format((int) $summary->crd), 'note' => null],
-            'new' => ['value' => number_format((int) $summary->new), 'note' => null],
+            'fsd' => ['value' => number_format((int) $summary->fsd), 'note' => null],
         ];
 
         if ($canViewAll) {
@@ -224,7 +224,7 @@ class SegmentationController extends Controller
                 'name' => $cra->displayName(),
                 'total' => (int) $mine->sum('total'),
                 'crd' => (int) $mine->where('lead_type', Lead::TYPE_CRD)->sum('total'),
-                'new' => (int) $mine->where('lead_type', Lead::TYPE_NEW)->sum('total'),
+                'fsd' => (int) $mine->where('lead_type', Lead::TYPE_FSD)->sum('total'),
             ];
         });
 
@@ -332,7 +332,7 @@ class SegmentationController extends Controller
             return back()->withErrors(['sync' => "Couldn't load leads from the API: {$e->getMessage()}"]);
         }
 
-        $message = "Synced {$date->format('M j, Y')}: {$result['found']} leads ({$result['crd']} CRD, {$result['new']} new), {$result['assigned']} newly assigned";
+        $message = "Synced {$date->format('M j, Y')}: {$result['found']} leads ({$result['crd']} CRD, {$result['fsd']} FSD), {$result['assigned']} newly assigned";
         $message .= $result['unassigned'] ? ", {$result['unassigned']} unassigned." : '.';
 
         if (LeadGenerator::cras()->isEmpty()) {

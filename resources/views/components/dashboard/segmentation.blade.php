@@ -58,7 +58,7 @@
                             </span>
                         </p>
                         @if ($kpi['label'] === 'Converted')
-                            <p class="relative mt-0.5 truncate text-[10px] text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · New <span class="font-semibold text-white">{{ $p['new_converted'] }}%</span></p>
+                            <p class="relative mt-0.5 truncate text-[10px] text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · FSD <span class="font-semibold text-white">{{ $p['fsd_converted'] }}%</span></p>
                         @endif
                     </div>
                 @endforeach

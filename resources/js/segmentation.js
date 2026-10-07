@@ -181,7 +181,7 @@ function renderPerCra(tile) {
         name.textContent = row.name;
         const split = document.createElement('p');
         split.className = 'text-xs text-muted';
-        split.textContent = `${row.crd} CRD · ${row.new} New`;
+        split.textContent = `${row.crd} CRD · ${row.fsd} FSD`;
         info.append(name, split);
 
         const right = document.createElement('div');

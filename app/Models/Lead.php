@@ -20,11 +20,11 @@ class Lead extends Model
 {
     public const TYPE_CRD = 'crd';
 
-    public const TYPE_NEW = 'new';
+    public const TYPE_FSD = 'fsd';
 
     public const TYPES = [
         self::TYPE_CRD => 'CRD Lead',
-        self::TYPE_NEW => 'New Customer',
+        self::TYPE_FSD => 'FSD Lead',
     ];
 
     protected function casts(): array
