@@ -119,6 +119,16 @@ class SheetLeadImporter
         $report = ['saved' => 0, 'created' => 0, 'matched' => 0, 'unmatched' => [], 'warnings' => []];
         $usedOrderIds = [];
 
+        // Look the batch's leads up in one query: a remote database costs a round trip per query.
+        $lookedUp = collect($rows)
+            ->flatMap(fn (array $row) => [(string) ($this->findOrder($row, [])['order_id'] ?? ''), $this->sheetOrderId($row)])
+            ->filter()->unique()->values();
+        $known = $lookedUp->chunk(500)
+            ->flatMap(fn (Collection $ids) => Lead::whereIn('order_id', $ids->all())->get())
+            ->keyBy('order_id');
+        $lookedUp = $lookedUp->flip();
+        $find = fn (string $orderId) => $known[$orderId] ?? (isset($lookedUp[$orderId]) ? null : Lead::firstWhere('order_id', $orderId));
+
         foreach ($rows as $row) {
             $where = "line {$row['line']} ({$row['customer_name']})";
             $craId = $craIds[strtolower($row['cra'])] ?? null;
@@ -132,13 +142,13 @@ class SheetLeadImporter
             $order = $this->findOrder($row, $usedOrderIds);
             $orderId = $order ? (string) $order['order_id'] : $this->sheetOrderId($row);
 
-            $existing = Lead::firstWhere('order_id', $orderId);
+            $existing = $find($orderId);
 
             if ($existing && ! $existing->est_out_of_stock_date->isSameDay($row['est_out_of_stock_date'])) {
                 $report['warnings'][] = "{$where}: order {$orderId} is already a lead for {$existing->est_out_of_stock_date->toDateString()}; used a sheet ID instead.";
                 $order = null;
                 $orderId = $this->sheetOrderId($row);
-                $existing = Lead::firstWhere('order_id', $orderId);
+                $existing = $find($orderId);
             }
 
             $usedOrderIds[$orderId] = true;
