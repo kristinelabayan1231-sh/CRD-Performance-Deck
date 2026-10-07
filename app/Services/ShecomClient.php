@@ -15,21 +15,44 @@ class ShecomClient
      */
     public function retentionStockouts(): array
     {
+        return $this->leadSources()['crd'];
+    }
+
+    /**
+     * Where the day's leads come from: CRD-delivered orders with their
+     * out-of-stock date (stock_outs) and FSD-delivered orders (no qty or
+     * out-of-stock date; the lead generator works those out). The retention
+     * numbers are kept for the dashboard on the way.
+     *
+     * @return array{crd: list<array<string, mixed>>, fsd: list<array{order_id: string, tracking_number: ?string, customer_name: string, phone_number: string, product_name: string, delivered_date: string}>}
+     */
+    public function leadSources(): array
+    {
         $report = $this->report();
         LogisticsRetention::store($report);
 
-        return $report['stock_outs'];
+        return ['crd' => $report['stock_outs'], 'fsd' => $report['fsd_orders']];
     }
 
     /**
      * The retention report, with its large per-order retention lists reduced to
-     * daily counts (by delivered date) as soon as it is read.
+     * daily counts (by delivered date) as soon as it is read. The FSD orders are
+     * kept in a slim form for the lead generator.
      *
-     * @return array{stock_outs: list<array<string, mixed>>, summary: array<string, int|float>, days: array<string, array{fb_delivered: int, fb_retained: int, crd_delivered: int, crd_again: int}>}
+     * @return array{stock_outs: list<array<string, mixed>>, fsd_orders: list<array<string, mixed>>, summary: array<string, int|float>, days: array<string, array{fb_delivered: int, fb_retained: int, crd_delivered: int, crd_again: int}>}
      */
     public function report(): array
     {
         $body = $this->fetch();
+
+        $fsdOrders = array_map(fn (array $row) => [
+            'order_id' => (string) ($row['order_id'] ?? ''),
+            'tracking_number' => $row['tracking_number'] ?? null,
+            'customer_name' => (string) ($row['customer_name'] ?? ''),
+            'phone_number' => (string) ($row['phone_number'] ?? ''),
+            'product_name' => (string) ($row['product'] ?? ''),
+            'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
+        ], $body['retention_detail'] ?? []);
 
         $days = [];
         $count = function (string $list, string $total, string $flagKey, string $flagged) use (&$body, &$days) {
@@ -52,6 +75,7 @@ class ShecomClient
 
         return [
             'stock_outs' => $body['stock_outs'] ?? [],
+            'fsd_orders' => $fsdOrders,
             'summary' => $body['retention_summary'] ?? [],
             'days' => $days,
         ];

@@ -55,7 +55,13 @@ class DashboardController extends Controller
             $conversion = $breakdown->periods($cras, Lead::today());
         }
 
-        return view('dashboard', ['segmentation' => $segmentation, 'salesGoals' => $salesGoals, 'conversion' => $conversion,
+        // Managers/supervisors: FSD leads whose quantity Pancake didn't have (qty 1 assumed).
+        $qtyUnknown = $user->can('segmentation.view_all')
+            ? Lead::where('qty_unknown', true)->whereDate('est_out_of_stock_date', '<=', Lead::today())
+                ->with('assignee')->orderByDesc('est_out_of_stock_date')->orderBy('customer_name')->get()
+            : collect();
+
+        return view('dashboard', ['qtyUnknown' => $qtyUnknown, 'segmentation' => $segmentation, 'salesGoals' => $salesGoals, 'conversion' => $conversion,
             'logistics' => $user->can('segmentation.view'), 'logisticsPeriods' => $logisticsPeriods, 'logisticsFetchedAt' => $logisticsFetchedAt]);
     }
 }

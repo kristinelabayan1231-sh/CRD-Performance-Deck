@@ -6,6 +6,22 @@
             <x-dashboard.poster />
         </div>
 
+        @if ($qtyUnknown->isNotEmpty())
+            <details role="alert" class="rounded-xl border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-3 text-sm text-[#473821]">
+                <summary class="cursor-pointer font-semibold">
+                    {{ $qtyUnknown->count() }} FSD {{ Str::plural('lead', $qtyUnknown->count()) }} with no quantity in Pancake: qty 1 assumed, so the out-of-stock date may be early.
+                </summary>
+                <ul class="mt-2 space-y-1">
+                    @foreach ($qtyUnknown->take(50) as $lead)
+                        <li>{{ $lead->est_out_of_stock_date->format('M j') }} · {{ $lead->customer_name }} · {{ $lead->product_name }} · order {{ $lead->order_id }} · {{ $lead->assignee?->displayName() ?? 'Unassigned' }}</li>
+                    @endforeach
+                    @if ($qtyUnknown->count() > 50)
+                        <li class="text-muted">…and {{ $qtyUnknown->count() - 50 }} more.</li>
+                    @endif
+                </ul>
+            </details>
+        @endif
+
         @if ($salesGoals || $conversion)
             <div class="grid gap-4 lg:grid-cols-12">
                 @if ($salesGoals)

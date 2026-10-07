@@ -32,9 +32,9 @@ return [
         'crd_monthly' => 1000000,
     ],
 
-    // A customer is a CRD Lead from this many delivered orders: the 1st order
-    // is FSD (Facebook Sales), the 2nd Retention, the 3rd onwards CRD.
-    'crd_lead_min_orders' => 3,
+    // Lead type normally comes from Shecom (CRD- or FSD-delivered order). Only
+    // when Shecom is down: a customer with this many delivered orders is a CRD Lead.
+    'crd_lead_min_orders' => 2,
 
     // "Recommended Replenishment Day" = estimated out-of-stock date minus this many days.
     'replenishment_days_before' => 7,

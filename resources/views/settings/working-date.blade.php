@@ -11,17 +11,24 @@
 
         <section class="rounded-xl bg-white p-4 shadow-sm">
             <h2 class="text-base font-semibold">Working date</h2>
-            <p class="text-sm text-muted">The day the team is working on. While set, the dashboard, Segmentation Tracker (leads and backlog), Weekly Segmentation, Segmentation Productivity and Conversion Breakdown all show this day as today, and the hourly lead and Pancake syncs fetch this day. Move it forward when the team starts the next day. Leave blank to follow the real date ({{ $realToday->format('M j, Y') }}).</p>
+            <p class="text-sm text-muted">For working through an earlier month's leads. The app runs a fixed gap behind the real date: pick the day the team starts tomorrow, and from then on the working date moves forward one day with each real day. The dashboard, Segmentation Tracker (leads, backlog, automatic lead assignment), Weekly Segmentation, Segmentation Productivity and Conversion Breakdown all follow it. Leave blank to follow the real date.</p>
+
+            @if ($workingDate)
+                <p class="mt-3 text-sm">
+                    <span class="font-semibold">Today ({{ $realToday->format('M j') }}) = {{ $workingDate->format('M j, Y') }}</span>
+                    · Tomorrow ({{ $realToday->addDay()->format('M j') }}) = {{ $workingDate->addDay()->format('M j, Y') }}, and its leads are assigned automatically.
+                </p>
+            @endif
 
             <div class="mt-5 flex flex-wrap items-end gap-3">
                 <label class="block">
-                    <span class="mb-1 block text-sm font-semibold">Working date</span>
-                    <input type="date" name="working_date" max="{{ $realToday->toDateString() }}" value="{{ old('working_date', $workingDate?->toDateString()) }}"
+                    <span class="mb-1 block text-sm font-semibold">Start of working date (tomorrow)</span>
+                    <input type="date" name="start" max="{{ $realToday->addDay()->toDateString() }}" value="{{ old('start', $workingDate?->addDay()->toDateString()) }}"
                            class="h-10 rounded-lg border border-line bg-white px-3 text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
                 </label>
                 <button type="submit" class="h-10 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700">Save</button>
                 @if ($workingDate)
-                    <button type="submit" name="working_date" value="" class="h-10 rounded-lg border border-line px-4 text-sm font-semibold text-muted transition hover:text-brand-600">Use real date</button>
+                    <button type="submit" name="start" value="" class="h-10 rounded-lg border border-line px-4 text-sm font-semibold text-muted transition hover:text-brand-600">Use real date</button>
                 @endif
             </div>
 
