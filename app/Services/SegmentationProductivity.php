@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -37,9 +38,13 @@ class SegmentationProductivity
             $days[] = $day->toDateString();
         }
 
+        // Leads worked on a real day are from its paired lead day (Settings → Working Date).
+        $lag = WorkingDate::lagDays();
         $assigned = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+            Lead::whereIn('assigned_to', $ids)
+                ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
                 ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
+            $lag,
         );
 
         $calls = $this->grouped(
@@ -173,11 +178,11 @@ class SegmentationProductivity
     /**
      * @return array<int, array<string, int>>
      */
-    private function grouped(Collection $rows): array
+    private function grouped(Collection $rows, int $shiftDays = 0): array
     {
         $out = [];
         foreach ($rows as $row) {
-            $out[(int) $row->cra][CarbonImmutable::parse($row->day)->toDateString()] = (int) $row->n;
+            $out[(int) $row->cra][CarbonImmutable::parse($row->day)->addDays($shiftDays)->toDateString()] = (int) $row->n;
         }
 
         return $out;

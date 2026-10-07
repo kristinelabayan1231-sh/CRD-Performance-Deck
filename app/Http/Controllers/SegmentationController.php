@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\Role;
 use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -89,9 +90,24 @@ class SegmentationController extends Controller
 
         $canTransfer = $user->can('segmentation.transfer');
 
+        // A CRA's first visit of the day opens with a hello and their numbers for the lead day.
+        $greeting = null;
+        $greetedKey = 'segmentation.greeted.'.$today->toDateString();
+        if ($user->role?->slug === Role::CRA && ! $request->session()->has($greetedKey)) {
+            $request->session()->put($greetedKey, true);
+            $mine = Lead::where('assigned_to', $user->id)->whereDate('est_out_of_stock_date', $today);
+            $greeting = [
+                'name' => strtok($user->displayName(), ' ') ?: $user->displayName(),
+                'total' => (clone $mine)->count(),
+                'unprocessed' => (clone $mine)->whereNull('status')->whereNull('contact_date')->count(),
+                'day' => $today,
+            ];
+        }
+
         return view('segmentation.index', [
             'unprocessed' => $unprocessed,
             'processed' => $processed,
+            'greeting' => $greeting,
             'canTransfer' => $canTransfer,
             'workload' => $canTransfer ? LeadGenerator::workload($today) : [],
             'tiles' => $this->tiles($scope, $filters, $from, $to, $cras, $canViewAll),

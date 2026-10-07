@@ -134,6 +134,24 @@ class ConversionBreakdownTest extends TestCase
         $this->assertEqualsWithDelta(4 / 24, $day['total_rate'], 1e-9);
     }
 
+    public function test_with_a_working_date_leads_are_the_paired_lead_day_and_results_stay_on_the_real_day(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        // Saved on Oct 1 with start Sept 2: the tracker is on Sept 1 today, a 30-day gap.
+        \App\Support\WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-02'));
+        $this->lead($lhea, '2026-09-01');
+        $this->lead($lhea, '2026-09-01');
+        $this->lead($lhea, '2026-09-01');
+        $this->lead($lhea, '2026-10-01');
+
+        $this->assertTrue(Lead::today()->isSameDay('2026-09-01'));
+        $day = app(ConversionBreakdown::class)->days(collect([$lhea]), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-01'))[$lhea->id]['2026-10-01'];
+        $this->assertSame(3, $day['leads']);
+
+        // Conversion opens on the real date; the working-date banner is only on the tracker.
+        $this->actingAs($this->owner)->get(route('conversion.index'))->assertOk()->assertSee('Oct 1')->assertDontSee('Working date:');
+    }
+
     public function test_sync_saves_the_order_tags(): void
     {
         $this->orders = [$this->order('CRD Lhei', [self::BROADCAST, 17], 1000)];

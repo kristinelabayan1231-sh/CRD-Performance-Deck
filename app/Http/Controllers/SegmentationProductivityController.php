@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Lead;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
 use App\Support\MonthWeeks;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,7 +38,8 @@ class SegmentationProductivityController extends Controller
     {
         $user = $request->user();
         $canViewAll = $user->can('productivity.view_all');
-        $today = Lead::today();
+        // Results are on real days (the tracker alone runs on the working date).
+        $today = WorkingDate::realToday();
 
         $filters = $request->validate([
             'view' => ['nullable', Rule::in(['day', 'week'])],

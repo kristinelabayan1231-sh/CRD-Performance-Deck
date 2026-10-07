@@ -9,6 +9,7 @@ use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
 use App\Services\SalesGoalProgress;
 use App\Services\SegmentationStats;
+use App\Support\WorkingDate;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -31,7 +32,7 @@ class DashboardController extends Controller
 
             // Company-wide retention from the logistics report; the lead sync above usually just refreshed it.
             $logistics->ensureFresh();
-            $logisticsPeriods = LogisticsRetention::periods(Lead::today());
+            $logisticsPeriods = LogisticsRetention::periods(WorkingDate::realToday());
             $logisticsFetchedAt = LogisticsRetention::fetchedAt();
         }
 
@@ -40,13 +41,15 @@ class DashboardController extends Controller
 
         if ($user->can('conversion.view')) {
             // Today's sales come from Pancake; refresh them after the page is sent when over an hour old.
-            if (PancakeSync::isStale(Lead::today()) && ! PancakeSync::isRunning(Lead::today())) {
-                $pancake->syncLater(Lead::today());
+            // Sales and conversion are on real days; only the Segmentation panel uses the working date.
+            $realToday = WorkingDate::realToday();
+            if (PancakeSync::isStale($realToday) && ! PancakeSync::isRunning($realToday)) {
+                $pancake->syncLater($realToday);
             }
 
             $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
-            $salesGoals = $goals->for($cras, Lead::today());
-            $conversion = $breakdown->periods($cras, Lead::today());
+            $salesGoals = $goals->for($cras, $realToday);
+            $conversion = $breakdown->periods($cras, $realToday);
         }
 
         // Managers/supervisors: FSD leads whose quantity Pancake didn't have (qty 1 assumed).

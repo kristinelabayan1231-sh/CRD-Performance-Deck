@@ -397,8 +397,17 @@ function initExpand() {
     });
 }
 
+// A CRA's hello pop-up, opened on their first visit of the day.
+function initGreeting() {
+    const dialog = document.getElementById('greeting-dialog');
+    if (!dialog) return;
+    dialog.querySelector('[data-greeting-close]').addEventListener('click', () => dialog.close());
+    dialog.showModal();
+}
+
 export function initSegmentation() {
     initExpand();
+    initGreeting();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();

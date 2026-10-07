@@ -1,6 +1,6 @@
 @php
     // Today and the two days before it, written like the wall poster ("OCTOBER 4, 2026"). Everything is editable.
-    $today = \App\Models\Lead::today();
+    $today = \App\Support\WorkingDate::realToday();
     $days = collect([2, 1, 0])->map(fn (int $back) => strtoupper($today->subDays($back)->format('F j, Y')));
     $field = 'poster-field w-full min-w-0 rounded-sm border-0 border-b-2 border-dashed border-transparent bg-transparent p-0 text-inherit placeholder:text-ink/25 hover:border-ink/15 focus:border-brand-500 focus:ring-0 focus:outline-none';
 @endphp
