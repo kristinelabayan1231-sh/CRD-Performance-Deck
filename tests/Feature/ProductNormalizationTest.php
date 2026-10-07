@@ -40,7 +40,7 @@ class ProductNormalizationTest extends TestCase
         $lead = Lead::create([
             'order_id' => '1', 'customer_name' => 'A', 'phone_number' => '9171', 'product_name' => 'Pterygium Eye Drops',
             'product_raw' => 'Pterygium Eye Drops', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 15,
-            'est_out_of_stock_date' => '2026-09-15', 'lead_type' => Lead::TYPE_NEW,
+            'est_out_of_stock_date' => '2026-09-15', 'lead_type' => Lead::TYPE_FSD,
         ]);
 
         $this->actingAs($owner)->post('/settings/product-consumption', ['name' => 'Pterygium'])->assertSessionHasNoErrors();

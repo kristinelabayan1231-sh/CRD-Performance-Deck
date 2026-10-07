@@ -49,7 +49,7 @@ class WeeklySegmentationTest extends TestCase
         return Lead::create([
             'order_id' => "o{$this->seq}", 'customer_name' => "Customer {$this->seq}", 'phone_number' => "9170000{$this->seq}",
             'product_name' => 'Pterygium Drops', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 15,
-            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $cra->id,
+            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id,
             'status' => $status, 'status_updated_at' => $statusAt ? CarbonImmutable::parse($statusAt, 'Asia/Manila') : null,
         ]);
     }

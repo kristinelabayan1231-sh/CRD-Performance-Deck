@@ -50,7 +50,7 @@
         <span @class([
             'rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap',
             'bg-teal/15 text-teal-700' => $lead->lead_type === \App\Models\Lead::TYPE_CRD,
-            'bg-sky/15 text-sky-800' => $lead->lead_type === \App\Models\Lead::TYPE_NEW,
+            'bg-sky/15 text-sky-800' => $lead->lead_type === \App\Models\Lead::TYPE_FSD,
         ])>{{ $lead->typeLabel() }}</span>
     </td>
     <td class="px-4 py-3">

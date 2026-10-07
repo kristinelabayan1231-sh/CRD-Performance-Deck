@@ -29,7 +29,7 @@ class GenerateLeads extends Command
         }
 
         $this->info("Leads for {$date->toDateString()}: {$result['found']} found ({$result['created']} new), "
-            ."{$result['crd']} CRD / {$result['new']} New, {$result['assigned']} assigned now, {$result['unassigned']} unassigned.");
+            ."{$result['crd']} CRD / {$result['fsd']} FSD, {$result['assigned']} assigned now, {$result['unassigned']} unassigned.");
 
         return self::SUCCESS;
     }

@@ -25,7 +25,7 @@ class LeadGenerator
      * orders (retention API + Pancake POS) and Settings → Product Consumption
      * days instead; existing leads are then left exactly as they are.
      *
-     * @return array{found: int, created: int, crd: int, new: int, assigned: int, unassigned: int, source: string, fallback_reason: ?string}
+     * @return array{found: int, created: int, crd: int, fsd: int, assigned: int, unassigned: int, source: string, fallback_reason: ?string}
      */
     public function generate(CarbonImmutable $date): array
     {
@@ -81,7 +81,7 @@ class LeadGenerator
             'found' => $leads->count(),
             'created' => $created,
             'crd' => $forDay->where('lead_type', Lead::TYPE_CRD)->count(),
-            'new' => $forDay->where('lead_type', Lead::TYPE_NEW)->count(),
+            'fsd' => $forDay->where('lead_type', Lead::TYPE_FSD)->count(),
             'assigned' => $assigned,
             'unassigned' => $forDay->whereNull('assigned_to')->count(),
             'source' => $fallbackReason === null ? 'retention_api' : 'fallback',
@@ -319,7 +319,7 @@ class LeadGenerator
             'delivered_date' => $delivered->toDateString(),
             'consumption_days' => (int) ($row['consumption_days_per_unit'] ?? 0),
             'est_out_of_stock_date' => CarbonImmutable::parse($row['estimated_out_of_stock_date'])->toDateString(),
-            'lead_type' => ($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_NEW,
+            'lead_type' => ($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_FSD,
         ];
     }
 }

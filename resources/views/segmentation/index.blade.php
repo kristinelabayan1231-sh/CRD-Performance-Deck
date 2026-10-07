@@ -100,7 +100,7 @@
     @php($tileStyles = [
         'total' => ['Leads', 'from-brand-600 to-brand-700'],
         'crd' => ['CRD Leads', 'from-[#0e8f7c] to-[#0b7d6c]'],
-        'new' => ['New Customers', 'from-[#1f8fb8] to-[#1a7fa6]'],
+        'fsd' => ['FSD Leads', 'from-[#1f8fb8] to-[#1a7fa6]'],
         'per_cra' => ['Per CRA', 'from-[#e05a5f] to-[#d1494e]'],
         'updated' => ['Status Updated', 'from-[#7429d6] to-brand-600'],
         'converted' => ['Conversion', 'from-[#11734b] to-[#0e8f7c]'],
@@ -271,7 +271,7 @@
                     <li @class(['flex items-center justify-between gap-4 px-5 py-3', 'bg-coral/10' => $row['odd']])>
                         <div class="min-w-0">
                             <p class="truncate font-medium">{{ $row['name'] }}</p>
-                            <p class="text-xs text-muted">{{ $row['crd'] }} CRD · {{ $row['new'] }} New</p>
+                            <p class="text-xs text-muted">{{ $row['crd'] }} CRD · {{ $row['fsd'] }} FSD</p>
                         </div>
                         <div class="flex items-center gap-2">
                             @if ($row['odd'])
