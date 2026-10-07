@@ -78,8 +78,11 @@ class WeeklySegmentationTest extends TestCase
             ->assertSee($handledToday->customer_name)->assertSee('Handled · carried since Oct 8')
             ->assertDontSee($handledBefore->customer_name);
 
-        // Past day views show the backlog as it was then.
-        $this->actingAs($alice)->get('/segmentation?date=2026-10-08')->assertSee($old->customer_name)->assertDontSee($handledToday->customer_name.'</', false);
+        // A past day shows only its own leads: no carry-over section.
+        $this->actingAs($alice)->get('/segmentation?date=2026-10-08')
+            ->assertSee($handledToday->customer_name)
+            ->assertDontSee('Carry-over')
+            ->assertDontSee($old->customer_name);
     }
 
     public function test_resync_never_reassigns_only_new_leads_are_assigned(): void

@@ -39,9 +39,9 @@ class SegmentationController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        // Carried-over (unprocessed) leads from earlier days, for single-day views,
-        // 50 per page: a month's backlog is thousands of rows.
-        $backlogQuery = $from->equalTo($to)
+        // Carried-over (unprocessed) leads from earlier days, on today's view only (a
+        // past day shows just its own leads), 50 per page: a month's backlog is thousands of rows.
+        $backlogQuery = $from->equalTo($to) && $from->isSameDay($today)
             ? Lead::backlogAsOf($from)
                 ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
                 ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
