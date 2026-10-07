@@ -136,6 +136,10 @@ class PancakeSync
     public function syncLater(CarbonImmutable $day, bool $force = false): void
     {
         defer(function () use ($day, $force) {
+            // The page is already sent: let the sync finish past the request time limit.
+            set_time_limit(0);
+            ignore_user_abort(true);
+
             try {
                 $this->syncIfStale($day, $force ? 0 : 60);
             } catch (Throwable $e) {

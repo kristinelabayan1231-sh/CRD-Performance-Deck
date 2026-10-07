@@ -173,9 +173,12 @@ class LeadGenerator
             }
         }
 
-        $qty = collect(array_keys($candidates))->chunk(1000)
-            ->flatMap(fn (Collection $ids) => DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
-                ->whereIn('order_id', $ids->all())->pluck('qty', 'order_id'));
+        // Merged with + so numeric order IDs stay keys (flatMap/array_merge would renumber them).
+        $qty = [];
+        foreach (array_chunk(array_keys($candidates), 1000) as $ids) {
+            $qty += DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
+                ->whereIn('order_id', array_map('strval', $ids))->pluck('qty', 'order_id')->all();
+        }
 
         $rows = [];
 
@@ -248,6 +251,10 @@ class LeadGenerator
     public function syncLater(CarbonImmutable $date): void
     {
         defer(function () use ($date) {
+            // The page is already sent: let the sync finish past the request time limit.
+            set_time_limit(0);
+            ignore_user_abort(true);
+
             try {
                 $this->syncIfStale($date);
                 Cache::forget(self::errorKey($date));
