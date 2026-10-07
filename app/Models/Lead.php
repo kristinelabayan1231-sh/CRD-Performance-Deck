@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -110,9 +111,12 @@ class Lead extends Model
      * Today's calendar date in the segmentation timezone, as a plain date in
      * the app timezone so it compares cleanly with stored dates.
      */
+    /**
+     * The app's "today": Settings → Working Date when set, else the real date.
+     */
     public static function today(): CarbonImmutable
     {
-        return CarbonImmutable::parse(CarbonImmutable::now(config('segmentation.timezone'))->toDateString());
+        return WorkingDate::get() ?? WorkingDate::realToday();
     }
 
     public function daysSinceDelivered(): int

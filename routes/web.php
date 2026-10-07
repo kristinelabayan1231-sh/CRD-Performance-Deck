@@ -13,6 +13,7 @@ use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
+use App\Http\Controllers\WorkingDateController;
 use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Support\Facades\Route;
 
@@ -89,6 +90,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('sales-goals')->name('sales-goals.')->middleware('can:sales_goals.manage')->group(function () {
             Route::get('/', [SalesGoalController::class, 'index'])->name('index');
             Route::put('/', [SalesGoalController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('working-date')->name('working-date.')->middleware('can:sales_goals.manage')->group(function () {
+            Route::get('/', [WorkingDateController::class, 'index'])->name('index');
+            Route::put('/', [WorkingDateController::class, 'update'])->name('update');
         });
 
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {

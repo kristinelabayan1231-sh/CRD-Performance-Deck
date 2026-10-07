@@ -173,16 +173,18 @@ class SheetLeadImporter
     private function findOrder(array $row, array $used): ?array
     {
         $phone = LeadGenerator::normalizePhone($row['phone_number']);
-
-        if ($phone === '') {
-            return null;
-        }
-
         $types = $row['lead_type'] === Lead::TYPE_CRD ? ['crd', 'fsd'] : ['fsd', 'crd'];
         $product = $this->catalog->match($row['product'])?->name ?? $row['product'];
 
         foreach ($types as $type) {
-            $candidates = collect($this->orders[$type][$phone] ?? [])
+            // No phone in the sheet: look the customer up by name instead.
+            $orders = $phone !== ''
+                ? $this->orders[$type][$phone] ?? []
+                : collect($this->orders[$type] ?? [])->flatten(1)
+                    ->filter(fn (array $o) => strcasecmp(trim((string) ($o['customer_name'] ?? '')), $row['customer_name']) === 0)
+                    ->all();
+
+            $candidates = collect($orders)
                 ->filter(fn (array $o) => substr((string) ($o['delivered_date'] ?? ''), 0, 10) === $row['delivered_date']->toDateString())
                 ->reject(fn (array $o) => isset($used[(string) $o['order_id']]))
                 ->unique('order_id');
@@ -239,7 +241,7 @@ class SheetLeadImporter
         return [
             'tracking_number' => ($order['tracking_number'] ?? null) ?: null,
             'customer_name' => $row['customer_name'],
-            'phone_number' => $row['phone_number'],
+            'phone_number' => $row['phone_number'] ?: (string) ($order['phone_number'] ?? ''),
             'product_name' => $product?->name ?? $row['product'],
             'product_raw' => $raw,
             'qty' => $row['qty'],
