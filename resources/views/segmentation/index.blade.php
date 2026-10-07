@@ -210,7 +210,7 @@
         <section class="mt-8 overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="backlog-title">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
                 <div>
-                    <h2 id="backlog-title" class="font-semibold">Carry-over <span class="ml-1 rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral-700">{{ $backlog->filter->carriesOver()->count() }}</span></h2>
+                    <h2 id="backlog-title" class="font-semibold">Carry-over <span class="ml-1 rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral-700">{{ number_format($carryingOver) }}</span></h2>
                     <p class="text-xs text-muted">No status, PJR, Repeat Purchase or Inactive — stays with the same CRA.</p>
                 </div>
                 @if ($canTransfer)
@@ -247,6 +247,9 @@
                     </tbody>
                 </table>
             </div>
+            @if ($backlog->hasPages())
+                <div class="border-t border-line px-4 py-3">{{ $backlog->links() }}</div>
+            @endif
         </section>
     @endif
 

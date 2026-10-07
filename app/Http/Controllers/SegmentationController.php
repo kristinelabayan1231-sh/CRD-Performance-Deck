@@ -39,22 +39,31 @@ class SegmentationController extends Controller
             ->paginate(50)
             ->withQueryString();
 
-        // Carried-over (unprocessed) leads from earlier days, for single-day views.
-        $backlog = $from->equalTo($to)
+        // Carried-over (unprocessed) leads from earlier days, for single-day views,
+        // 50 per page: a month's backlog is thousands of rows.
+        $backlogQuery = $from->equalTo($to)
             ? Lead::backlogAsOf($from)
                 ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
                 ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            : null;
+        $backlog = $backlogQuery
+            ? (clone $backlogQuery)
                 ->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
                 ->orderBy('est_out_of_stock_date')
                 ->orderBy('customer_name')
-                ->get()
+                ->paginate(50, ['*'], 'backlog_page')
+                ->withQueryString()
             : collect();
+        $carryingOver = $backlogQuery
+            ? (clone $backlogQuery)->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))->count()
+            : 0;
 
         $canTransfer = $user->can('segmentation.transfer');
 
         return view('segmentation.index', [
             'leads' => $leads,
             'backlog' => $backlog,
+            'carryingOver' => $carryingOver,
             'canTransfer' => $canTransfer,
             'workload' => $canTransfer ? LeadGenerator::workload($today) : [],
             'tiles' => $this->tiles($scope, $filters, $from, $to, $cras, $canViewAll),
