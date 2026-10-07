@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -138,7 +139,7 @@ class ConversionBreakdownTest extends TestCase
     {
         $lhea = $this->cra('Lhea', 'CRD Lhei');
         // Saved on Oct 1 with start Sept 2: the tracker is on Sept 1 today, a 30-day gap.
-        \App\Support\WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-02'));
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-02'));
         $this->lead($lhea, '2026-09-01');
         $this->lead($lhea, '2026-09-01');
         $this->lead($lhea, '2026-09-01');
@@ -150,6 +151,12 @@ class ConversionBreakdownTest extends TestCase
 
         // Conversion opens on the real date; the working-date banner is only on the tracker.
         $this->actingAs($this->owner)->get(route('conversion.index'))->assertOk()->assertSee('Oct 1')->assertDontSee('Working date:');
+
+        // The dashboard shows results by the real date, labelled with the lead days they come from.
+        $periods = app(ConversionBreakdown::class)->periods(collect([$lhea]), CarbonImmutable::parse('2026-10-01'));
+        $this->assertSame('Thu, Oct 1', $periods['today']['label']);
+        $this->assertSame('Sep 1', $periods['today']['leads_from']);
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('leads from Sep 1');
     }
 
     public function test_sync_saves_the_order_tags(): void

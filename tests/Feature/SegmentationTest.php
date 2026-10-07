@@ -60,7 +60,8 @@ class SegmentationTest extends TestCase
     {
         Product::create(['name' => 'Sinuxyl', 'consumption_days' => 30]);
         // Pancake knows FSD order f1 was 2 units: Aug 7 + 2×30 − 1 = Oct 5.
-        DeliveredOrder::create(['order_id' => 'f1', 'customer_name' => 'Fe', 'phone_number' => '9178888888', 'product_raw' => 'Sinuxyl',
+        // Real order IDs are numeric strings (they must stay keys when looked up).
+        DeliveredOrder::create(['order_id' => '1350001', 'customer_name' => 'Fe', 'phone_number' => '9178888888', 'product_raw' => 'Sinuxyl',
             'qty' => 2, 'delivered_date' => '2026-08-07', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
         // Pancake was synced for Sep 6 too (another customer), but never for Sep 5.
         DeliveredOrder::create(['order_id' => 'x9', 'customer_name' => 'Other', 'phone_number' => '9179999999', 'product_raw' => 'Sinuxyl',
@@ -72,7 +73,7 @@ class SegmentationTest extends TestCase
             $this->row('1', '9171111111', '2026-10-05'),
             $this->row('4', '9173333333', '2026-10-06'),       // not today
         ], [
-            $fsd('f1', '2026-08-07'),   // 2 units (Pancake) -> today
+            $fsd('1350001', '2026-08-07'),   // 2 units (Pancake) -> today
             $fsd('f2', '2026-09-06'),   // Pancake has no qty: 1 unit assumed -> today, flagged
             $fsd('f3', '2026-08-07'),   // no qty: 1 unit would run out Sep 5 -> not today
             $fsd('f4', '2026-09-07'),   // runs out Oct 6 -> not today
@@ -81,10 +82,10 @@ class SegmentationTest extends TestCase
 
         $result = app(LeadGenerator::class)->generate($this->day);
 
-        $this->assertSame(['1', 'f1', 'f2'], Lead::orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame(['1', '1350001', 'f2'], Lead::orderBy('order_id')->pluck('order_id')->all());
         $this->assertSame([1, 2], [$result['crd'], $result['fsd']]);
         $this->assertSame(Lead::TYPE_CRD, Lead::firstWhere('order_id', '1')->lead_type);
-        $this->assertSame([Lead::TYPE_FSD, 2, false], [Lead::firstWhere('order_id', 'f1')->lead_type, Lead::firstWhere('order_id', 'f1')->qty, Lead::firstWhere('order_id', 'f1')->qty_unknown]);
+        $this->assertSame([Lead::TYPE_FSD, 2, false], [Lead::firstWhere('order_id', '1350001')->lead_type, Lead::firstWhere('order_id', '1350001')->qty, Lead::firstWhere('order_id', '1350001')->qty_unknown]);
         $this->assertSame([1, true], [Lead::firstWhere('order_id', 'f2')->qty, Lead::firstWhere('order_id', 'f2')->qty_unknown]);
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
 
