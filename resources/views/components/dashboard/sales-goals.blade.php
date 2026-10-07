@@ -55,7 +55,7 @@
             </div>
         </article>
 
-        {{-- Goal per CRA for the picked day, week so far or month so far --}}
+        {{-- Goal per CRA for the picked day, its week (1–7, 8–14 … 29–31) or its month --}}
         <article class="rounded-xl bg-white p-4 shadow-sm md:col-span-5">
             <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
                 <p class="flex items-center gap-2 text-xs font-medium text-muted">
@@ -63,7 +63,7 @@
                         <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>
                     </span>
                     Goal per CRA · {{ $goals['range']['label'] }}
-                    @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($goals['range']['from'], $goals['today']))
+                    @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($goals['range']['from'], $goals['range']['to']))
                         <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
                     @endif
                 </p>

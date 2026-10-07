@@ -76,7 +76,7 @@ class ConversionBreakdown
     }
 
     /**
-     * Total conv % per CRA for today, this week (1–7, 8–14… from the 1st) and this month so far, for the dashboard.
+     * Total conv % per CRA for the day, its week (1–7, 8–14… from the 1st) and its month, for the dashboard.
      *
      * @param  Collection<int, User>  $cras
      * @return array<string, array{name: string, label: string, leads_from: ?string, team: array<string, int|float|null>, rows: Collection<int, array{cra: User, totals: array<string, int|float|null>}>}>
@@ -85,12 +85,14 @@ class ConversionBreakdown
     {
         $month = $today->startOfMonth();
         $week = MonthWeeks::for($month)[MonthWeeks::containing($month, $today) - 1];
-        $days = $this->days($cras, $month, $today);
+        $monthEnd = $month->endOfMonth()->startOfDay();
+        $days = $this->days($cras, $month, $monthEnd);
 
+        // Weeks are fixed 7-day buckets from the 1st (1–7, 8–14 … 29–31); months are whole months.
         $ranges = [
             'today' => ['Today', $today, $today, $today->format('D, M j')],
-            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['start']->format('M j').($today->isSameDay($week['start']) ? '' : '–'.$today->format('j'))],
-            'month' => ['Month', $month, $today, $month->format('F Y')],
+            'week' => ['Week', $week['start'], $week['end'], 'Week '.$week['number'].' · '.$week['label']],
+            'month' => ['Month', $month, $monthEnd, $month->format('F Y')],
         ];
 
         return collect($ranges)->map(function (array $range) use ($cras, $days) {

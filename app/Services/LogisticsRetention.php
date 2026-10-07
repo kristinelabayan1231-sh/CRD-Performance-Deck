@@ -102,8 +102,9 @@ class LogisticsRetention
 
         $ranges = [
             'today' => ['Today', $today, $today, $today->format('D, M j')],
-            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['start']->format('M j').($today->isSameDay($week['start']) ? '' : '–'.$today->format('j'))],
-            'month' => ['Month', $month, $today, $month->format('F Y')],
+            // Weeks are fixed 7-day buckets from the 1st (1–7, 8–14 … 29–31); months are whole months.
+            'week' => ['Week', $week['start'], $week['end'], 'Week '.$week['number'].' · '.$week['label']],
+            'month' => ['Month', $month, $month->endOfMonth()->startOfDay(), $month->format('F Y')],
             'all' => ['All time', null, null, $first ? 'Since '.CarbonImmutable::parse($first)->format('M j, Y') : 'All deliveries'],
         ];
 
