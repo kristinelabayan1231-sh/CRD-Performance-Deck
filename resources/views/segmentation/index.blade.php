@@ -1,8 +1,7 @@
-<x-layouts.app title="Segmentation Tracker" fit>
+<x-layouts.app title="Segmentation Tracker">
     @php($quota = config('segmentation.leads_per_cra'))
 
-    {{-- Fits the window on large screens: only the Unprocessed / Processed lists scroll. --}}
-    <div class="flex min-h-0 flex-1 flex-col">
+    <div class="flex flex-col">
         <div class="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-4">
             <h1 class="text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
 
@@ -84,7 +83,7 @@
         @endif
 
         {{-- The selected day's leads: what's left to do first, what's done below. --}}
-        <div class="flex min-h-0 flex-1 flex-col gap-3">
+        <div class="flex flex-col gap-3">
             @if ($unprocessed)
                 @include('segmentation._section', [
                     'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Unprocessed', 'dot' => 'bg-coral',
@@ -143,21 +142,18 @@
         </dialog>
     @endisset
 
-    {{-- Note editor (one dialog shared by every row) --}}
-    <dialog id="note-dialog" class="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
-        <form method="dialog" class="p-5" data-note-form>
-            <h2 class="text-base font-semibold">Note</h2>
-            <p class="text-sm text-muted" data-note-title></p>
-            <textarea name="notes" rows="6" maxlength="5000" placeholder="Add a note…"
-                      class="mt-3 w-full rounded-lg border border-line p-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none"></textarea>
-            <p data-note-error role="alert" class="mt-1 hidden text-sm text-coral-700"></p>
-            <div class="mt-4 flex items-center justify-between gap-2">
-                <button type="button" data-note-delete class="rounded-lg px-3 py-2 text-sm font-medium text-coral-700 hover:bg-coral/10">Delete note</button>
-                <div class="flex gap-2">
-                    <button type="button" data-note-cancel class="rounded-lg border border-line px-4 py-2 text-sm font-medium hover:border-brand-400">Cancel</button>
-                    <button type="submit" class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Save</button>
-                </div>
+    {{-- Full view of one list (opened from a section's expand arrows) --}}
+    <dialog id="expand-dialog" aria-labelledby="expand-title" class="m-auto h-[90dvh] w-[min(96rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
+        <div class="flex h-full flex-col">
+            <div class="flex shrink-0 items-center justify-between gap-4 border-b border-line px-5 py-3">
+                <h2 id="expand-title" class="text-base font-semibold" data-expand-title></h2>
+                <button type="button" data-expand-close aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
+                    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
             </div>
-        </form>
+            <iframe title="Full list" class="min-h-0 w-full flex-1 border-0" src="about:blank"></iframe>
+        </div>
     </dialog>
+
+    @include('segmentation._note-dialog')
 </x-layouts.app>

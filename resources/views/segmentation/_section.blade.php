@@ -1,20 +1,27 @@
-{{-- One list of leads (Unprocessed or Processed): its own scroll area and pages. --}}
+{{-- One list of leads (Unprocessed or Processed), 5 per page. --}}
 @php($visibleOptional = collect($optionalColumns)->reject(fn ($c) => $c['coming_soon'] ?? false))
 
-<section aria-labelledby="{{ $id }}-title" class="flex min-h-48 flex-col overflow-hidden rounded-xl bg-white shadow-sm lg:min-h-0 lg:flex-1">
+<section aria-labelledby="{{ $id }}-title" class="flex flex-col overflow-hidden rounded-xl bg-white shadow-sm">
     <header class="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2.5">
         <span aria-hidden="true" class="size-2.5 rounded-full {{ $dot }}"></span>
         <h2 id="{{ $id }}-title" class="font-semibold">{{ $title }}</h2>
         <span class="rounded-full bg-canvas px-2 py-0.5 text-xs font-semibold tabular-nums text-muted">{{ number_format($leads->total()) }}</span>
         <p class="ml-2 hidden text-xs text-muted sm:block">{{ $hint }}</p>
+        @if (! request()->boolean('full'))
+            <button type="button" title="Full view" aria-label="Open {{ $title }} in full view"
+                    data-expand-title="{{ $title }}" data-expand-src="{{ request()->fullUrlWithQuery(['show' => $id, 'full' => 1, 'page' => null, 'processed_page' => null]) }}"
+                    class="ml-auto grid size-8 place-items-center rounded-lg text-muted hover:bg-canvas hover:text-brand-600">
+                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>
+            </button>
+        @endif
     </header>
 
     @if ($leads->isEmpty())
         <p class="px-4 py-10 text-center text-sm text-muted">{{ $empty }}</p>
     @else
-        <div class="min-h-0 flex-1 overflow-auto">
+        <div class="overflow-x-auto">
             <table class="w-max min-w-full text-left text-sm">
-                <thead class="sticky top-0 z-20 bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
                         <th class="px-4 py-3 text-right font-semibold">Qty</th>

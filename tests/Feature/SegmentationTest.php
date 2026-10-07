@@ -378,6 +378,11 @@ class SegmentationTest extends TestCase
 
         $this->actingAs($alice)->get('/segmentation?show=processed')
             ->assertSee('Status Sam')->assertDontSee('Waiting Wendy');
+
+        // Each list opens in full in a pop-up: just that list, no tiles or filters.
+        $this->actingAs($alice)->get('/segmentation')->assertSee('Open Unprocessed in full view')->assertSee('id="expand-dialog"', false);
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1')->assertOk()
+            ->assertSee('Waiting Wendy')->assertDontSee('Status Sam')->assertDontSee('data-live-summary', false);
     }
 
     public function test_opening_the_tracker_syncs_today_automatically_once_an_hour(): void
