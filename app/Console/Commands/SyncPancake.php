@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Lead;
 use App\Services\PancakeSync;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Throwable;
@@ -20,7 +20,8 @@ class SyncPancake extends Command
 
     public function handle(PancakeSync $sync): int
     {
-        $today = Lead::today();
+        // Pancake activity happens on real days, whatever the tracker's working date.
+        $today = WorkingDate::realToday();
 
         if ($this->option('from')) {
             $from = CarbonImmutable::parse($this->option('from'));

@@ -7,6 +7,7 @@ use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\MonthWeeks;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -16,7 +17,8 @@ use Illuminate\Support\Collection;
  * Orders BC / SC = the CRA's own Pancake POS orders that day tagged "CRD - BROADCAST" / "CRD - SEGMENTATION"
  * (canceled and deleted orders don't count). Gross BC / SC = those orders' totals.
  * Engagements = the CRA's Pancake customer engagements (Chat → Analytics → Engagements).
- * Leads = Segmentation Tracker leads assigned to the CRA for that lead day (base 70; actual count shown).
+ * Leads = Segmentation Tracker leads assigned to the CRA for the lead day worked that day (base 70; actual
+ * count shown). With a working date set, that's the lead day the gap points to (Oct 7 → Sept 7).
  * BC conv % = Orders BC ÷ Engagements. SC conv % = Orders SC ÷ Leads.
  * Total conv % = (Orders BC + Orders SC) ÷ (Engagements + Leads). Gross sales = Gross BC + Gross SC.
  */
@@ -33,11 +35,14 @@ class ConversionBreakdown
         $ids = $cras->pluck('id');
         $accounts = self::accounts($cras);
 
+        // Leads worked on a real day are from its paired lead day (Settings → Working Date).
+        $lag = WorkingDate::lagDays();
         $leads = [];
-        Lead::whereIn('assigned_to', $ids)->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+        Lead::whereIn('assigned_to', $ids)
+            ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
             ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get()
-            ->each(function ($row) use (&$leads) {
-                $leads[(int) $row->cra][CarbonImmutable::parse($row->day)->toDateString()] = (int) $row->n;
+            ->each(function ($row) use (&$leads, $lag) {
+                $leads[(int) $row->cra][CarbonImmutable::parse($row->day)->addDays($lag)->toDateString()] = (int) $row->n;
             });
 
         $engagements = [];

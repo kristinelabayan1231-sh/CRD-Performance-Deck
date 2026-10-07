@@ -11,7 +11,7 @@
 
         <section class="rounded-xl bg-white p-4 shadow-sm">
             <h2 class="text-base font-semibold">Working date</h2>
-            <p class="text-sm text-muted">For working through an earlier month's leads. The app runs a fixed gap behind the real date: pick the day the team starts tomorrow, and from then on the working date moves forward one day with each real day. The dashboard, Segmentation Tracker (leads, backlog, automatic lead assignment), Weekly Segmentation, Segmentation Productivity and Conversion Breakdown all follow it. Leave blank to follow the real date.</p>
+            <p class="text-sm text-muted">For working through an earlier month's leads. The app runs a fixed gap behind the real date: pick the day the team starts tomorrow, and from then on the working date moves forward one day with each real day. Only the Segmentation Tracker (leads, automatic lead assignment, Weekly Segmentation) and the dashboard's Segmentation Tracker panel follow it. Sales, conversion and productivity stay on the real date: what a CRA does today counts today, and the "Leads" in conversion are that day's paired lead day (e.g. Oct 7 → Sept 7). Leave blank to follow the real date.</p>
 
             @if ($workingDate)
                 <p class="mt-3 text-sm">

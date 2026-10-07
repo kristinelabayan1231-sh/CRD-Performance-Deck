@@ -52,6 +52,26 @@ class WorkingDate
     }
 
     /**
+     * How many days the working date is behind the real date (0 when not set).
+     * Results (sales, conversion) happen on real days; the leads worked that day
+     * are from the lead day this many days earlier.
+     */
+    public static function lagDays(): int
+    {
+        $working = self::get();
+
+        return $working ? (int) $working->diffInDays(self::realToday(), false) : 0;
+    }
+
+    /**
+     * The lead day whose leads the CRAs work on real day $day.
+     */
+    public static function leadDayFor(CarbonImmutable $day): CarbonImmutable
+    {
+        return $day->subDays(self::lagDays());
+    }
+
+    /**
      * Today's date in the segmentation timezone, ignoring the working date.
      */
     public static function realToday(): CarbonImmutable
