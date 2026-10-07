@@ -6,7 +6,7 @@
     trend  processed #0E8F7C · unprocessed #E0663F
     tags   Hot #E0663F · Cold #2F6FD6 · Warm #C9970E · High value #8B3FF0 (ring order), untagged #E6E1E8
 --}}
-<section {{ $attributes }} aria-labelledby="seg-dash-title" data-tabs="dashboard.segmentation">
+<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="seg-dash-title" data-tabs="dashboard.segmentation">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
             <h2 id="seg-dash-title" class="text-base font-semibold">Segmentation Tracker</h2>

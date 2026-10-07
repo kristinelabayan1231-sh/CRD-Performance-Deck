@@ -6,7 +6,7 @@
     Conversion Breakdown on the dashboard: Total conv % per CRA = (Orders BC + Orders SC) ÷ (Engagements + Leads).
     Bars are brand purple, scaled to the period's highest rate; the ink tick is the team rate.
 --}}
-<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col']) }} aria-labelledby="conv-dash-title" data-tabs="dashboard.conversion">
+<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="conv-dash-title" data-tabs="dashboard.conversion">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-2">
         <h2 id="conv-dash-title" class="text-base font-semibold">Conversion</h2>
         <div class="flex items-center gap-2">

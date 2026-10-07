@@ -6,7 +6,7 @@
 @endphp
 
 {{-- Live from Logistics: the logistics website's Retention Summary, from the Shecom retention report (by delivered date). --}}
-<section {{ $attributes }} aria-labelledby="logistics-title" data-tabs="dashboard.logistics">
+<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="logistics-title" data-tabs="dashboard.logistics">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
         <h2 id="logistics-title" class="flex items-center gap-2 text-base font-semibold">
             Live from Logistics

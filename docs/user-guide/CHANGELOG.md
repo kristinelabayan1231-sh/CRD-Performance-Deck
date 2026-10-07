@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-08 · Dashboard · Grouped into Results (real date: Sales Goals, Conversion), Logistics (company-wide) and Leads (Segmentation Tracker, working date); each module in its own frame with its own period tabs inside · shots: 02-dashboard
+
 - 2026-10-08 · Dashboard · With a working date, Conversion (Today/Week/Month) and Daily goal per CRA show the real date plus a yellow "leads from Sep 8" tag for the lead days worked · shots: 02-dashboard
 
 - 2026-10-08 · Segmentation Tracker · CRAs get a "Hey <name>!" pop-up on their first visit each day: their lead count for the lead day and how many are unprocessed, with "Show unprocessed" / "Let's go" · shots: new (tracker-greeting)

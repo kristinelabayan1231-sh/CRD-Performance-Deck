@@ -1,6 +1,12 @@
 <x-layouts.app title="Performance Deck">
-    {{-- One screen: sales goals + conversion on top, Segmentation Tracker below. --}}
-    <div class="space-y-4">
+    {{--
+        Three groups, each module in its own frame with its own period tabs:
+        results (real date) · logistics (company-wide) · leads (the tracker's working date).
+    --}}
+    @php($realToday = \App\Support\WorkingDate::realToday())
+    @php($workingDate = \App\Support\WorkingDate::get())
+    @php($eyebrow = 'mb-2 flex flex-wrap items-baseline gap-x-2 text-[11px] font-semibold tracking-wider text-muted uppercase')
+    <div class="space-y-6">
         <div class="flex items-center gap-3">
             <h1 class="text-xl font-semibold">Performance Deck</h1>
             <x-dashboard.poster />
@@ -23,22 +29,40 @@
         @endif
 
         @if ($salesGoals || $conversion)
-            <div class="grid gap-4 lg:grid-cols-12">
-                @if ($salesGoals)
-                    <x-dashboard.sales-goals :goals="$salesGoals" :class="$conversion ? 'lg:col-span-8' : 'lg:col-span-12'" />
-                @endif
-                @if ($conversion)
-                    <x-dashboard.conversion :periods="$conversion" class="lg:col-span-4" />
-                @endif
+            <div>
+                <p class="{{ $eyebrow }}">
+                    <span>Results</span>
+                    <span class="font-medium normal-case tracking-normal">· Pancake sales and conversion by the real date, {{ $realToday->format('D, M j') }}</span>
+                </p>
+                <div class="grid gap-4 lg:grid-cols-12">
+                    @if ($salesGoals)
+                        <x-dashboard.sales-goals :goals="$salesGoals" :class="$conversion ? 'lg:col-span-8' : 'lg:col-span-12'" />
+                    @endif
+                    @if ($conversion)
+                        <x-dashboard.conversion :periods="$conversion" class="lg:col-span-4" />
+                    @endif
+                </div>
             </div>
         @endif
 
         @if ($logistics)
-            <x-dashboard.logistics :periods="$logisticsPeriods" :fetched-at="$logisticsFetchedAt" />
+            <div>
+                <p class="{{ $eyebrow }}">
+                    <span>Logistics</span>
+                    <span class="font-medium normal-case tracking-normal">· Company-wide, by delivery date</span>
+                </p>
+                <x-dashboard.logistics :periods="$logisticsPeriods" :fetched-at="$logisticsFetchedAt" />
+            </div>
         @endif
 
         @if ($segmentation)
-            <x-dashboard.segmentation :periods="$segmentation" />
+            <div>
+                <p class="{{ $eyebrow }}">
+                    <span>Leads</span>
+                    <span class="font-medium normal-case tracking-normal">· Segmentation Tracker by lead day{{ $workingDate ? ', working date '.$workingDate->format('D, M j') : '' }}</span>
+                </p>
+                <x-dashboard.segmentation :periods="$segmentation" />
+            </div>
         @endif
 
         @if (! $segmentation && ! $salesGoals)

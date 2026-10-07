@@ -13,7 +13,7 @@
     Sales goals on the dashboard (goals from Settings → Sales Goals; sales = Conversion Breakdown gross).
     Bars use brand purple; the pace tick is ink. Goal hit / ahead / behind use teal and coral with a text label.
 --}}
-<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col']) }} aria-labelledby="goals-title">
+<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="goals-title">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
         <h2 id="goals-title" class="text-base font-semibold">Sales Goals</h2>
         <div class="flex items-center gap-3 text-xs">
