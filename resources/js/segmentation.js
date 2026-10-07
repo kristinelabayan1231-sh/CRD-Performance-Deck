@@ -33,10 +33,11 @@ function applyHidden(keys) {
 }
 
 function initColumns() {
+    // Hidden columns also apply in the full-view pop-up, which has no picker.
+    applyHidden(readHidden());
+
     const picker = document.querySelector('[data-column-picker]');
     if (!picker) return;
-
-    applyHidden(readHidden());
 
     picker.addEventListener('change', (event) => {
         const box = event.target.closest('[data-column-toggle]');
@@ -372,7 +373,32 @@ function initNotes() {
     dialog.querySelector('[data-note-cancel]').addEventListener('click', () => dialog.close());
 }
 
+// Expand: open a section's full list in a pop-up (an embedded page); refresh on close.
+function initExpand() {
+    const dialog = document.getElementById('expand-dialog');
+    if (!dialog) return;
+    const frame = dialog.querySelector('iframe');
+    let opened = false;
+
+    document.querySelectorAll('[data-expand-src]').forEach((button) =>
+        button.addEventListener('click', () => {
+            dialog.querySelector('[data-expand-title]').textContent = button.dataset.expandTitle;
+            frame.src = button.dataset.expandSrc;
+            opened = true;
+            dialog.showModal();
+        }),
+    );
+
+    dialog.querySelector('[data-expand-close]').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('close', () => {
+        frame.src = 'about:blank';
+        // Changes made in the pop-up move customers between the lists.
+        if (opened) window.location.reload();
+    });
+}
+
 export function initSegmentation() {
+    initExpand();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();

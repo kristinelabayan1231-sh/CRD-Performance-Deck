@@ -16,6 +16,12 @@ use Throwable;
 
 class SegmentationController extends Controller
 {
+    /** Customers per page in the Unprocessed and Processed lists. */
+    private const PER_PAGE = 5;
+
+    /** Customers per page in a list's full-view pop-up. */
+    private const FULL_PER_PAGE = 50;
+
     public function index(Request $request, LeadGenerator $generator): View
     {
         $user = $request->user();
@@ -40,13 +46,30 @@ class SegmentationController extends Controller
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name');
 
+        // full=1: one list on its own, for the section's full-view pop-up.
+        $full = $request->boolean('full') && $show !== 'all';
+        $perPage = $full ? self::FULL_PER_PAGE : self::PER_PAGE;
+
         $unprocessed = in_array($show, ['all', 'unprocessed'], true)
-            ? (clone $listed)->whereNull('status')->whereNull('contact_date')->paginate(50)->withQueryString()
+            ? (clone $listed)->whereNull('status')->whereNull('contact_date')->paginate($perPage)->withQueryString()
             : null;
         $processed = in_array($show, ['all', 'processed'], true)
             ? (clone $listed)->where(fn (Builder $q) => $q->whereNotNull('status')->orWhereNotNull('contact_date'))
-                ->paginate(50, ['*'], 'processed_page')->withQueryString()
+                ->paginate($perPage, ['*'], 'processed_page')->withQueryString()
             : null;
+
+        if ($full) {
+            return view('segmentation.full', [
+                'leads' => $unprocessed ?? $processed,
+                'show' => $show,
+                'canManage' => $user->can('segmentation.manage'),
+                'canViewAll' => $canViewAll,
+                'cras' => LeadGenerator::cras(),
+                'statuses' => config('segmentation.statuses'),
+                'optionalColumns' => config('segmentation.optional_columns'),
+                'today' => $today,
+            ]);
+        }
 
         // Carry-over (earlier days' unprocessed leads under today) is turned off for now
         // to keep the page simple. To bring it back, restore this block and pass $backlog.
