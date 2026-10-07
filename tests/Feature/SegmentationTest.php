@@ -360,9 +360,11 @@ class SegmentationTest extends TestCase
         $this->cra('alice@gmail.com');
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
 
-        $this->actingAs($this->owner)->get('/segmentation')->assertOk()->assertSee('Customer 1')->assertSee('Auto-synced');
+        // The sync runs after the page is sent; the next load shows the leads.
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk();
         $this->assertNotNull(Lead::first()->assigned_to);
         Http::assertSentCount(1);
+        $this->actingAs($this->owner)->get('/segmentation')->assertSee('Customer 1')->assertSee('Auto-synced');
 
         // Fresh for an hour: no extra API calls.
         $this->travel(30)->minutes();
@@ -379,12 +381,16 @@ class SegmentationTest extends TestCase
         $alice = $this->cra('alice@gmail.com');
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
 
-        $this->actingAs($alice)->get('/segmentation')->assertOk()->assertSee('Customer 1');
+        $this->actingAs($alice)->get('/segmentation')->assertOk();
+
+        $this->actingAs($alice)->get('/segmentation')->assertSee('Customer 1');
     }
 
     public function test_tracker_still_loads_when_automatic_sync_fails(): void
     {
         Http::fake(['*' => Http::response(['error' => 'Invalid or missing API key.'], 401)]);
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk();
 
         $this->actingAs($this->owner)->get('/segmentation')
             ->assertOk()

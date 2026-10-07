@@ -66,9 +66,14 @@ class LeadGenerator
 
         $created = 0;
 
-        DB::transaction(function () use ($leads, &$created, $fallbackReason) {
+        // One query for the leads that already exist; only changed ones are written back.
+        $existing = $leads->pluck('order_id')->chunk(1000)
+            ->flatMap(fn (Collection $ids) => Lead::whereIn('order_id', $ids->all())->get())
+            ->keyBy('order_id');
+
+        DB::transaction(function () use ($leads, &$created, $fallbackReason, $existing) {
             foreach ($leads as $data) {
-                $lead = Lead::firstOrNew(['order_id' => $data['order_id']]);
+                $lead = $existing[$data['order_id']] ?? new Lead(['order_id' => $data['order_id']]);
 
                 // Fallback numbers are estimates: never move or change a lead that already exists.
                 if ($lead->exists && $fallbackReason !== null) {
@@ -235,6 +240,37 @@ class LeadGenerator
      * result, or null when the last sync is still fresh or another sync is
      * already running.
      */
+    /**
+     * syncIfStale() after the page has been sent, so a slow or failing sync
+     * (Shecom, a remote database, a short request time limit) never breaks the
+     * page. A failure is kept for lastSyncError().
+     */
+    public function syncLater(CarbonImmutable $date): void
+    {
+        defer(function () use ($date) {
+            try {
+                $this->syncIfStale($date);
+                Cache::forget(self::errorKey($date));
+            } catch (Throwable $e) {
+                Log::warning('Automatic lead sync failed', ['date' => $date->toDateString(), 'message' => $e->getMessage()]);
+                Cache::put(self::errorKey($date), $e->getMessage(), now()->addDay());
+            }
+        }, 'lead-sync-'.$date->toDateString());
+    }
+
+    /**
+     * Why the last automatic sync of $date failed, if it did.
+     */
+    public static function lastSyncError(CarbonImmutable $date): ?string
+    {
+        return Cache::get(self::errorKey($date));
+    }
+
+    private static function errorKey(CarbonImmutable $date): string
+    {
+        return 'segmentation.sync_error.'.$date->toDateString();
+    }
+
     public function syncIfStale(CarbonImmutable $date, int $maxAgeMinutes = 60): ?array
     {
         $last = self::lastSync($date);
