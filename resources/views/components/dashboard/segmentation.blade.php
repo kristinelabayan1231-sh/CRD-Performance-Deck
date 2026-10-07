@@ -1,4 +1,6 @@
-@props(['periods'])
+@props(['periods', 'active' => 'today'])
+{{-- One period, picked by the dashboard's shared Today / Week / Month switch. --}}
+@php($periods = [$active => $periods[$active]])
 
 {{--
     Segmentation Tracker on the dashboard: 4 KPI cards, then trend / tags / top CRAs.
@@ -6,25 +8,18 @@
     trend  processed #0E8F7C · unprocessed #E0663F
     tags   Hot #E0663F · Cold #2F6FD6 · Warm #C9970E · High value #8B3FF0 (ring order), untagged #E6E1E8
 --}}
-<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="seg-dash-title" data-tabs="dashboard.segmentation">
+<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="seg-dash-title">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2">
             <h2 id="seg-dash-title" class="text-base font-semibold">Segmentation Tracker</h2>
-            {{-- The tracker runs on the working date (e.g. a month behind); the rest of the dashboard is the real date. --}}
-            @if ($workingDate = \App\Support\WorkingDate::get())
-                <span class="rounded-full border border-[#e0b400]/60 bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#473821]"
-                      title="Leads by lead day. Sales and conversion elsewhere on the dashboard are by the real date.">
-                    {{ $workingDate->format('F') }} lead data · lead day {{ $workingDate->format('M j') }} (real date {{ \App\Support\WorkingDate::realToday()->format('M j') }})
-                </span>
-            @endif
+            {{-- Lead days (the tracker's working date, e.g. a month behind); the rest of the dashboard is by the real date. --}}
+            @php($p = reset($periods))
+            <span @class(['rounded-full px-2.5 py-0.5 text-xs font-semibold', 'border border-[#e0b400]/60 bg-[#fff6d6] text-[#473821]' => \App\Support\WorkingDate::lagDays() > 0, 'bg-canvas text-muted' => \App\Support\WorkingDate::lagDays() === 0])
+                  title="Leads by lead day. Sales and conversion elsewhere on the dashboard are by the real date.">
+                Lead {{ str_contains($p['label'], '–') ? 'days' : 'day' }} {{ $p['label'] }}
+            </span>
         </div>
         <div class="flex items-center gap-3">
-            <div class="flex rounded-lg bg-white p-0.5 text-xs font-semibold shadow-sm" role="tablist" aria-label="Period">
-                @foreach ($periods as $key => $p)
-                    <button type="button" role="tab" data-tab="{{ $key }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}"
-                            class="rounded-md px-2.5 py-1 text-muted transition aria-selected:bg-brand-600 aria-selected:text-white">{{ $p['name'] }}</button>
-                @endforeach
-            </div>
             <a href="{{ route('segmentation.index') }}" class="text-xs font-semibold text-brand-600 hover:underline">Open &rarr;</a>
         </div>
     </header>

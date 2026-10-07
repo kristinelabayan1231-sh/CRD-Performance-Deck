@@ -1,29 +1,26 @@
-@props(['periods', 'fetchedAt'])
+@props(['periods', 'fetchedAt', 'active' => 'today'])
 
 @php
     $pct = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 2).'%';
-    $default = 'month';
+    // One period, picked by the dashboard's shared Today / Week / Month switch.
+    $default = $active;
+    $periods = $periods ? [$active => $periods[$active]] : $periods;
 @endphp
 
 {{-- Live from Logistics: the logistics website's Retention Summary, from the Shecom retention report (by delivered date). --}}
-<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="logistics-title" data-tabs="dashboard.logistics">
+<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="logistics-title">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
         <h2 id="logistics-title" class="flex items-center gap-2 text-base font-semibold">
             Live from Logistics
+            @if ($periods)
+                <span class="rounded-full bg-canvas px-2.5 py-0.5 text-xs font-semibold text-muted">{{ $periods[$active]['label'] }}</span>
+            @endif
             <span class="text-xs font-normal text-ink/80">
                 @if ($fetchedAt)
                     · Updated {{ $fetchedAt->timezone(config('segmentation.timezone'))->format('M j, g:i A') }}
                 @endif
             </span>
         </h2>
-        @if ($periods)
-            <div class="flex rounded-lg bg-white p-0.5 text-xs font-semibold shadow-sm" role="tablist" aria-label="Period">
-                @foreach ($periods as $key => $p)
-                    <button type="button" role="tab" data-tab="{{ $key }}" aria-selected="{{ $key === $default ? 'true' : 'false' }}"
-                            class="rounded-md px-2.5 py-1 text-muted transition aria-selected:bg-brand-600 aria-selected:text-white">{{ $p['name'] }}</button>
-                @endforeach
-            </div>
-        @endif
     </header>
 
     @if (! $periods)

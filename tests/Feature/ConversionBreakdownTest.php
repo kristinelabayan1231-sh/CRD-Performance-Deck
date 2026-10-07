@@ -157,6 +157,13 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame('Thu, Oct 1', $periods['today']['label']);
         $this->assertSame('Sep 1', $periods['today']['leads_from']);
         $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('leads from Sep 1');
+
+        // One date picker moves every section: results on Sep 30, leads on its paired lead day Aug 31.
+        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-09-30']))->assertOk()
+            ->assertSee('Total conv % per CRA · Wed, Sep 30')
+            ->assertSee('Goal per CRA · Wed, Sep 30')
+            ->assertSee('lead day Mon, Aug 31');
+        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-10-02']))->assertSessionHasErrors('date');
     }
 
     public function test_sync_saves_the_order_tags(): void

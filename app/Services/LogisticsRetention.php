@@ -101,7 +101,8 @@ class LogisticsRetention
         $first = array_key_first($data['days']);
 
         $ranges = [
-            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['label']],
+            'today' => ['Today', $today, $today, $today->format('D, M j')],
+            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['start']->format('M j').($today->isSameDay($week['start']) ? '' : '–'.$today->format('j'))],
             'month' => ['Month', $month, $today, $month->format('F Y')],
             'all' => ['All time', null, null, $first ? 'Since '.CarbonImmutable::parse($first)->format('M j, Y') : 'All deliveries'],
         ];

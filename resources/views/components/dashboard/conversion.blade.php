@@ -1,4 +1,6 @@
-@props(['periods'])
+@props(['periods', 'active' => 'today'])
+{{-- One period, picked by the dashboard's shared Today / Week / Month switch. --}}
+@php($periods = [$active => $periods[$active]])
 
 @php($pct = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 2).'%')
 
@@ -6,16 +8,10 @@
     Conversion Breakdown on the dashboard: Total conv % per CRA = (Orders BC + Orders SC) ÷ (Engagements + Leads).
     Bars are brand purple, scaled to the period's highest rate; the ink tick is the team rate.
 --}}
-<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="conv-dash-title" data-tabs="dashboard.conversion">
+<section {{ $attributes->merge(['class' => 'flex min-w-0 flex-col rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="conv-dash-title">
     <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-2">
         <h2 id="conv-dash-title" class="text-base font-semibold">Conversion</h2>
         <div class="flex items-center gap-2">
-            <div class="flex rounded-lg bg-white p-0.5 text-xs font-semibold shadow-sm" role="tablist" aria-label="Period">
-                @foreach ($periods as $key => $p)
-                    <button type="button" role="tab" data-tab="{{ $key }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}"
-                            class="rounded-md px-2.5 py-1 text-muted transition aria-selected:bg-brand-600 aria-selected:text-white">{{ $p['name'] }}</button>
-                @endforeach
-            </div>
             <a href="{{ route('conversion.index') }}" class="text-xs font-semibold text-brand-600 hover:underline">Open &rarr;</a>
         </div>
     </header>

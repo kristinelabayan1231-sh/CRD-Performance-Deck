@@ -89,7 +89,7 @@ class ConversionBreakdown
 
         $ranges = [
             'today' => ['Today', $today, $today, $today->format('D, M j')],
-            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['label']],
+            'week' => ['Week', $week['start'], $today, 'Week '.$week['number'].' · '.$week['start']->format('M j').($today->isSameDay($week['start']) ? '' : '–'.$today->format('j'))],
             'month' => ['Month', $month, $today, $month->format('F Y')],
         ];
 
