@@ -29,27 +29,7 @@ class ShecomClient
      */
     public function report(): array
     {
-        $key = config('services.shecom.key');
-
-        if (! $key) {
-            throw new RuntimeException('SHECOM_API_KEY is not set in .env.');
-        }
-
-        // The full report is about 18 MB of JSON (~150 MB once decoded), above PHP's default 128 MB.
-        $this->raiseMemoryLimit(config('services.shecom.memory_limit'));
-
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->timeout(180)
-            ->retry(2, 2000, throw: false)
-            ->get(rtrim(config('services.shecom.url'), '/').'/management/retention-stockout');
-
-        if ($response->failed()) {
-            throw new RuntimeException("Retention API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
-        }
-
-        $body = json_decode($response->body(), true) ?: [];
-        unset($response);
+        $body = $this->fetch();
 
         $days = [];
         $count = function (string $list, string $total, string $flagKey, string $flagged) use (&$body, &$days) {
@@ -75,6 +55,58 @@ class ShecomClient
             'summary' => $body['retention_summary'] ?? [],
             'days' => $days,
         ];
+    }
+
+    /**
+     * Every delivered order, split by the team that sold it: CRD (repeat
+     * orders, plus the out-of-stock list) and FSD (Facebook Sales).
+     *
+     * @return array{crd: list<array<string, mixed>>, fsd: list<array<string, mixed>>}
+     */
+    public function deliveredOrders(): array
+    {
+        return self::splitDelivered($this->fetch());
+    }
+
+    /**
+     * @param  array<string, mixed>  $body  the decoded retention report
+     * @return array{crd: list<array<string, mixed>>, fsd: list<array<string, mixed>>}
+     */
+    public static function splitDelivered(array $body): array
+    {
+        return [
+            'crd' => [...($body['stock_outs'] ?? []), ...($body['repeat_detail'] ?? [])],
+            'fsd' => $body['retention_detail'] ?? [],
+        ];
+    }
+
+    /**
+     * The decoded retention report.
+     *
+     * @return array<string, mixed>
+     */
+    private function fetch(): array
+    {
+        $key = config('services.shecom.key');
+
+        if (! $key) {
+            throw new RuntimeException('SHECOM_API_KEY is not set in .env.');
+        }
+
+        // The full report is about 18 MB of JSON (~150 MB once decoded), above PHP's default 128 MB.
+        $this->raiseMemoryLimit(config('services.shecom.memory_limit'));
+
+        $response = Http::withToken($key)
+            ->acceptJson()
+            ->timeout(180)
+            ->retry(2, 2000, throw: false)
+            ->get(rtrim(config('services.shecom.url'), '/').'/management/retention-stockout');
+
+        if ($response->failed()) {
+            throw new RuntimeException("Retention API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
+        }
+
+        return json_decode($response->body(), true) ?: [];
     }
 
     private function raiseMemoryLimit(string $limit): void
