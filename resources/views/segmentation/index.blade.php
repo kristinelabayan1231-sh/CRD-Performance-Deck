@@ -155,5 +155,34 @@
         </div>
     </dialog>
 
+    {{-- A CRA's hello on their first visit of the day --}}
+    @if ($greeting)
+        <dialog id="greeting-dialog" data-open-on-load aria-labelledby="greeting-title" class="m-auto w-[min(24rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">
+            <div class="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-5 text-white">
+                <p class="text-sm font-medium text-white/80">{{ $greeting['day']->format('l, M j') }} leads</p>
+                <h2 id="greeting-title" class="mt-1 text-2xl font-bold">Hey {{ $greeting['name'] }}!</h2>
+            </div>
+            <div class="space-y-3 px-6 py-5">
+                <p class="text-base">You have <strong class="tabular-nums">{{ $greeting['total'] }}</strong> {{ Str::plural('lead', $greeting['total']) }} for today.</p>
+                @if ($greeting['total'] > 0)
+                    <p class="flex items-center gap-2 text-base">
+                        <span aria-hidden="true" class="size-2.5 rounded-full {{ $greeting['unprocessed'] ? 'bg-coral' : 'bg-teal' }}"></span>
+                        @if ($greeting['unprocessed'])
+                            <span><strong class="tabular-nums">{{ $greeting['unprocessed'] }}</strong> unprocessed</span>
+                        @else
+                            <span>All processed. Nice work!</span>
+                        @endif
+                    </p>
+                @endif
+                <div class="flex justify-end gap-2 pt-2">
+                    @if ($greeting['unprocessed'])
+                        <a href="{{ route('segmentation.index', ['show' => 'unprocessed']) }}" class="rounded-lg border border-line px-4 py-2 text-sm font-semibold hover:border-brand-400 hover:text-brand-600">Show unprocessed</a>
+                    @endif
+                    <button type="button" data-greeting-close class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Let's go</button>
+                </div>
+            </div>
+        </dialog>
+    @endif
+
     @include('segmentation._note-dialog')
 </x-layouts.app>

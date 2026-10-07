@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-08 · Segmentation Tracker · CRAs get a "Hey <name>!" pop-up on their first visit each day: their lead count for the lead day and how many are unprocessed, with "Show unprocessed" / "Let's go" · shots: new (tracker-greeting)
+
 - 2026-10-08 · All modules · Working date now applies to the Segmentation Tracker only (and the dashboard's Segmentation panel, labelled "<Month> lead data · lead day …"); Productivity, Conversion Breakdown and the rest of the dashboard use the real date; conversion "Leads" / productivity "Assigned" use the paired lead day (real day minus the gap); working-date banner shows on tracker pages only · shots: 02-dashboard, segmentation-tracker
 
 - 2026-10-07 · Segmentation Tracker · Redesign: the selected day's leads split into Unprocessed (top, no status and no contact date) and Processed (below); Show filter All / Unprocessed / Processed (Backlogs disabled); 5 customers per page in each list, with an expand (slanted arrows) button that opens the full list (50 per page) in a pop-up; pagination in the app's light style; filters moved beside the Daily / Weekly tabs, icons only except Type and Status; carry-over list turned off for now · shots: segmentation-tracker

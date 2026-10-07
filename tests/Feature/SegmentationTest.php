@@ -385,6 +385,24 @@ class SegmentationTest extends TestCase
             ->assertSee('Waiting Wendy')->assertDontSee('Status Sam')->assertDontSee('data-live-summary', false);
     }
 
+    public function test_a_cra_is_greeted_with_their_numbers_once_a_day(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $rose = User::create(['email' => 'rose@example.com', 'display_name' => 'Rose-An', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        foreach (['1' => null, '2' => null, '3' => 'active'] as $id => $status) {
+            Lead::create(['order_id' => $id, 'customer_name' => "C{$id}", 'phone_number' => '917'.$id, 'product_name' => 'Sinuxyl', 'qty' => 1,
+                'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+                'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $rose->id, 'status' => $status]);
+        }
+
+        $this->actingAs($rose)->get('/segmentation')->assertOk()
+            ->assertSee('Hey Rose-An!')->assertSeeInOrder(['You have', '3', 'leads for today', '2', 'unprocessed'], false);
+        $this->actingAs($rose)->get('/segmentation')->assertDontSee('Hey Rose-An!');
+
+        // Supervisors aren't greeted.
+        $this->actingAs($this->owner)->get('/segmentation')->assertDontSee('id="greeting-dialog"', false);
+    }
+
     public function test_opening_the_tracker_syncs_today_automatically_once_an_hour(): void
     {
         $this->cra('alice@gmail.com');
