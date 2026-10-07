@@ -63,6 +63,9 @@
                         <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>
                     </span>
                     Daily goal per CRA · {{ $goals['today']->format('D, M j') }}
+                    @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($goals['today']))
+                        <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Today's Pancake sales, made while working these lead days.">leads from {{ $leadsFrom }}</span>
+                    @endif
                 </p>
                 <p class="text-[11px] text-muted">Goal {{ $short($goals['general_daily']) }} per CRA</p>
             </div>

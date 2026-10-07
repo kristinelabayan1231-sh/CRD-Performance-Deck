@@ -72,6 +72,26 @@ class WorkingDate
     }
 
     /**
+     * "Sep 8" / "Sep 1–7" / "Sep 1 – Oct 1": the lead days paired with real days
+     * $from–$to, or null when no working date is set.
+     */
+    public static function leadDaysLabel(CarbonImmutable $from, ?CarbonImmutable $to = null): ?string
+    {
+        if (self::lagDays() === 0) {
+            return null;
+        }
+
+        $to = self::leadDayFor($to ?? $from);
+        $from = self::leadDayFor($from);
+
+        return match (true) {
+            $from->isSameDay($to) => $from->format('M j'),
+            $from->isSameMonth($to) => $from->format('M j').'–'.$to->format('j'),
+            default => $from->format('M j').' – '.$to->format('M j'),
+        };
+    }
+
+    /**
      * Today's date in the segmentation timezone, ignoring the working date.
      */
     public static function realToday(): CarbonImmutable

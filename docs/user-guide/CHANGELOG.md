@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-08 · Dashboard · With a working date, Conversion (Today/Week/Month) and Daily goal per CRA show the real date plus a yellow "leads from Sep 8" tag for the lead days worked · shots: 02-dashboard
+
 - 2026-10-08 · Segmentation Tracker · CRAs get a "Hey <name>!" pop-up on their first visit each day: their lead count for the lead day and how many are unprocessed, with "Show unprocessed" / "Let's go" · shots: new (tracker-greeting)
 
 - 2026-10-08 · All modules · Working date now applies to the Segmentation Tracker only (and the dashboard's Segmentation panel, labelled "<Month> lead data · lead day …"); Productivity, Conversion Breakdown and the rest of the dashboard use the real date; conversion "Leads" / productivity "Assigned" use the paired lead day (real day minus the gap); working-date banner shows on tracker pages only · shots: 02-dashboard, segmentation-tracker

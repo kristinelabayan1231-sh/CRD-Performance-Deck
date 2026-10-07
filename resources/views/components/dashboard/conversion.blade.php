@@ -29,6 +29,9 @@
                         <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4Z"/></svg>
                     </span>
                     Total conv % per CRA · {{ $p['label'] }}
+                    @if ($p['leads_from'])
+                        <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Results are by the real date; the leads worked are from the paired lead days.">leads from {{ $p['leads_from'] }}</span>
+                    @endif
                 </p>
                 <p class="text-[11px] text-muted" title="{{ number_format($p['team']['orders']) }} orders of {{ number_format($p['team']['reach']) }} engagements + leads">
                     Team <span class="font-semibold text-ink tabular-nums">{{ $pct($p['team']['total_rate']) }}</span>

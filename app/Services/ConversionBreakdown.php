@@ -79,7 +79,7 @@ class ConversionBreakdown
      * Total conv % per CRA for today, this week (1–7, 8–14… from the 1st) and this month so far, for the dashboard.
      *
      * @param  Collection<int, User>  $cras
-     * @return array<string, array{name: string, label: string, team: array<string, int|float|null>, rows: Collection<int, array{cra: User, totals: array<string, int|float|null>}>}>
+     * @return array<string, array{name: string, label: string, leads_from: ?string, team: array<string, int|float|null>, rows: Collection<int, array{cra: User, totals: array<string, int|float|null>}>}>
      */
     public function periods(Collection $cras, CarbonImmutable $today): array
     {
@@ -100,7 +100,7 @@ class ConversionBreakdown
                 'totals' => self::sum(array_filter($days[$cra->id] ?? [], fn (string $day) => $day >= $from->toDateString() && $day <= $to->toDateString(), ARRAY_FILTER_USE_KEY)),
             ])->sortByDesc(fn (array $row) => $row['totals']['total_rate'] ?? -1)->values();
 
-            return ['name' => $name, 'label' => $label, 'team' => self::sum($rows->pluck('totals')), 'rows' => $rows];
+            return ['name' => $name, 'label' => $label, 'leads_from' => WorkingDate::leadDaysLabel($from, $to), 'team' => self::sum($rows->pluck('totals')), 'rows' => $rows];
         })->all();
     }
 
