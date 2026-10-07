@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Services\SalesGoalProgress;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,7 +157,18 @@ class ConversionBreakdownTest extends TestCase
         $periods = app(ConversionBreakdown::class)->periods(collect([$lhea]), CarbonImmutable::parse('2026-10-01'));
         $this->assertSame('Thu, Oct 1', $periods['today']['label']);
         $this->assertSame('Sep 1', $periods['today']['leads_from']);
+        // Weeks are whole 7-day buckets from the 1st, whatever the day.
+        $this->assertSame('Week 1 · Oct 1–7', $periods['week']['label']);
+        $goals = app(SalesGoalProgress::class)->for(collect([$lhea]), CarbonImmutable::parse('2026-10-01'), 'week');
+        $this->assertSame(['Week 1 · Oct 1–7', 7], [$goals['range']['label'], $goals['range']['days']]);
         $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('leads from Sep 1');
+
+        // One date picker moves every section: results on Sep 30, leads on its paired lead day Aug 31.
+        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-09-30']))->assertOk()
+            ->assertSee('Total conv % per CRA · Wed, Sep 30')
+            ->assertSee('Goal per CRA · Wed, Sep 30')
+            ->assertSee('lead day Mon, Aug 31');
+        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-10-02']))->assertSessionHasErrors('date');
     }
 
     public function test_sync_saves_the_order_tags(): void

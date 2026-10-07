@@ -70,7 +70,8 @@ class LogisticsRetentionTest extends TestCase
     {
         $owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
 
-        $this->actingAs($owner)->get(route('dashboard'))
+        // The dashboard's shared period switch: Month shows October so far.
+        $this->actingAs($owner)->get(route('dashboard', ['period' => 'month']))
             ->assertOk()
             ->assertSee('Live from Logistics')
             ->assertSeeInOrder(['FB delivered', 'Retained by CRD', 'Retention rate', 'CRD delivered', 'Ordered again', 'Repeat rate'])
