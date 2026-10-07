@@ -62,6 +62,9 @@ class SegmentationTest extends TestCase
         // Pancake knows FSD order f1 was 2 units: Aug 7 + 2×30 − 1 = Oct 5.
         DeliveredOrder::create(['order_id' => 'f1', 'customer_name' => 'Fe', 'phone_number' => '9178888888', 'product_raw' => 'Sinuxyl',
             'qty' => 2, 'delivered_date' => '2026-08-07', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+        // Pancake was synced for Sep 6 too (another customer), but never for Sep 5.
+        DeliveredOrder::create(['order_id' => 'x9', 'customer_name' => 'Other', 'phone_number' => '9179999999', 'product_raw' => 'Sinuxyl',
+            'qty' => 1, 'delivered_date' => '2026-09-06', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
         $fsd = fn (string $id, string $delivered) => ['order_id' => $id, 'tracking_number' => "JT{$id}", 'customer_name' => "Customer {$id}",
             'phone_number' => '917'.str_pad(substr(md5($id), 0, 7), 7, '0'), 'product' => 'Sinuxyl', 'delivered_date' => $delivered];
 
@@ -73,6 +76,7 @@ class SegmentationTest extends TestCase
             $fsd('f2', '2026-09-06'),   // Pancake has no qty: 1 unit assumed -> today, flagged
             $fsd('f3', '2026-08-07'),   // no qty: 1 unit would run out Sep 5 -> not today
             $fsd('f4', '2026-09-07'),   // runs out Oct 6 -> not today
+            $fsd('f5', '2026-09-05'),   // day not synced from Pancake yet -> waits
         ]);
 
         $result = app(LeadGenerator::class)->generate($this->day);

@@ -147,11 +147,16 @@ class LeadGenerator
     private function fsdRows(array $orders, ProductCatalog $catalog, CarbonImmutable $date): array
     {
         $candidates = [];
+        // Days whose Pancake delivered orders are saved. Orders from other days wait
+        // until that day is synced (an hourly run picks them up) rather than guess qty 1.
+        $synced = DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
+            ->distinct()->pluck('delivered_date')->map(fn ($day) => CarbonImmutable::parse($day)->toDateString())->flip();
 
         foreach ($orders as $order) {
             $days = $catalog->match($order['product_name'] ?? '')?->consumption_days;
 
-            if (empty($order['order_id']) || empty($order['delivered_date']) || ! $days) {
+            if (empty($order['order_id']) || empty($order['delivered_date']) || ! $days
+                || ! isset($synced[substr((string) $order['delivered_date'], 0, 10)])) {
                 continue;
             }
 
