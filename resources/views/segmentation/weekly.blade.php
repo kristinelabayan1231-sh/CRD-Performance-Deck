@@ -1,7 +1,7 @@
 <x-layouts.app title="Weekly Segmentation">
     @php($control = 'h-10 rounded-lg border border-line bg-white px-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
-    <h1 class="mb-4 text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Handled vs. unprocessed leads per CRA, week by week.</span></h1>
+    <h1 class="mb-4 text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Catered vs. pending leads per CRA, week by week.</span></h1>
 
     @include('segmentation._tabs')
 
@@ -49,8 +49,8 @@
         @foreach ([
             ['Assigned', number_format($totals['assigned']), $week['label'], 'from-brand-600 to-brand-700'],
             ['Catered', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-[#0e8f7c] to-[#0b7d6c]'],
-            ['Unprocessed', number_format($totals['unprocessed']), 'from past days this week', 'from-[#e05a5f] to-[#d1494e]'],
-            ['Backlog now', number_format($totals['backlog']), 'all unprocessed, any week', 'from-[#7429d6] to-brand-600'],
+            ['Pending', number_format($totals['unprocessed']), 'from past days this week', 'from-[#e05a5f] to-[#d1494e]'],
+            ['Backlog now', number_format($totals['backlog']), 'all pending, any week', 'from-[#7429d6] to-brand-600'],
         ] as [$label, $value, $note, $gradient])
             <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} px-4 py-3 text-white shadow-sm">
                 <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
@@ -61,14 +61,14 @@
         @endforeach
     </div>
 
-    {{-- Per CRA: handled / assigned for each day of the week --}}
+    {{-- Per CRA: catered / assigned for each day of the week --}}
     <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="weekly-title">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-            <h2 id="weekly-title" class="font-semibold">Handled per CRA · {{ $week['label'] }}, {{ $month->format('Y') }}</h2>
+            <h2 id="weekly-title" class="font-semibold">Catered per CRA · {{ $week['label'] }}, {{ $month->format('Y') }}</h2>
             <p class="flex flex-wrap gap-3 text-xs text-muted">
-                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-teal/40"></span>All handled</span>
-                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-[#ffe5a0]"></span>Some unprocessed</span>
-                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-coral/40"></span>None handled</span>
+                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-teal/40"></span>All catered</span>
+                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-[#ffe5a0]"></span>Some pending</span>
+                <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-coral/40"></span>None catered</span>
                 <span class="flex items-center gap-1"><span class="size-2.5 rounded-sm bg-sky/30"></span>Today</span>
             </p>
         </div>
@@ -87,9 +87,9 @@
                                 </th>
                             @endforeach
                             <th class="px-3 py-3 text-right font-semibold">Assigned</th>
-                            <th class="px-3 py-3 text-right font-semibold">Handled</th>
-                            <th class="px-3 py-3 text-right font-semibold">Unprocessed</th>
-                            <th class="px-4 py-3 text-right font-semibold">Handled %</th>
+                            <th class="px-3 py-3 text-right font-semibold">Catered</th>
+                            <th class="px-3 py-3 text-right font-semibold">Pending</th>
+                            <th class="px-4 py-3 text-right font-semibold">Catered %</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-line">
@@ -110,7 +110,7 @@
                                             'bg-coral/20 text-coral-700' => $cell['state'] === 'missed',
                                             'bg-sky/20 text-sky-900' => $cell['state'] === 'today',
                                             'text-muted' => $cell['state'] === 'none',
-                                        ]) title="{{ $cell['handled'] }} handled of {{ $cell['assigned'] }} assigned">
+                                        ]) title="{{ $cell['handled'] }} catered of {{ $cell['assigned'] }} assigned">
                                             {{ $cell['future'] ? '—' : $cell['handled'].' / '.$cell['assigned'] }}
                                         </span>
                                     </td>
@@ -124,7 +124,7 @@
                     </tbody>
                 </table>
             </div>
-            <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day shows handled / assigned. A lead is handled once its status is set; today's open leads count as in progress, not unprocessed.</p>
+            <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day shows catered / assigned. A lead is catered once its status is set; today's open leads count as in progress, not pending.</p>
         @endif
     </section>
 
@@ -180,7 +180,7 @@
                                     <td class="px-4 py-3 tabular-nums"><a href="tel:{{ $lead->phone_number }}" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a></td>
                                     <td class="px-4 py-3">{{ $lead->typeLabel() }}</td>
                                     <td class="px-4 py-3">
-                                        <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-coral-700">{{ $lead->statusLabel() ?? 'Unprocessed' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
+                                        <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-coral-700">{{ $lead->statusLabel() ?? 'Pending' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
                                         @if ($lead->transfers->first())
                                             <span class="ml-1 text-xs text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
                                         @endif

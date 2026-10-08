@@ -374,16 +374,102 @@ class SegmentationTest extends TestCase
             'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id]);
 
         $this->actingAs($alice)->get('/segmentation')->assertOk()
-            ->assertSeeInOrder(['Unprocessed', 'Waiting Wendy', 'Processed', 'Called Carla', 'Status Sam'])
+            ->assertSeeInOrder(['Pending', 'Waiting Wendy', 'Catered', 'Called Carla', 'Status Sam'])
             ->assertDontSee('Yesterday Yuri');
 
         $this->actingAs($alice)->get('/segmentation?show=processed')
             ->assertSee('Status Sam')->assertDontSee('Waiting Wendy');
 
         // Each list opens in full in a pop-up: just that list, no tiles or filters.
-        $this->actingAs($alice)->get('/segmentation')->assertSee('Open Unprocessed in full view')->assertSee('id="expand-dialog"', false);
+        $this->actingAs($alice)->get('/segmentation')->assertSee('Open Pending in full view')->assertSee('id="expand-dialog"', false);
         $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1')->assertOk()
             ->assertSee('Waiting Wendy')->assertDontSee('Status Sam')->assertDontSee('data-live-summary', false);
+    }
+
+    public function test_choosing_pjr_tags_the_customer_no_verbal_conv(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $lead = Lead::create([
+            'order_id' => '1', 'customer_name' => 'Pat', 'phone_number' => '9171', 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, 'customer_tag' => 'hot',
+        ]);
+
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'active'])
+            ->assertOk()->assertJson(['customer_tag' => 'hot']);
+
+        // PJR replaces the tag, and the response carries it so the row's tag cell can follow.
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'pjr_drop_call'])
+            ->assertOk()->assertJson(['customer_tag' => 'no_verbal_conv']);
+        $this->assertSame('no_verbal_conv', $lead->refresh()->customer_tag);
+    }
+
+    public function test_a_cra_searches_their_leads_across_every_lead_day(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $make = fn (string $id, string $name, string $phone, string $day, User $cra) => Lead::create([
+            'order_id' => $id, 'customer_name' => $name, 'phone_number' => $phone, 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => $day,
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id,
+        ]);
+        $make('1374748', 'Marcelina Dado', '9171234567', '2026-09-20', $alice);
+        $make('2', 'Today Tess', '9179999999', '2026-10-05', $alice);
+        $make('3', 'Marcelina Other', '9175550000', '2026-10-05', $bob);
+
+        // By name, from a lead day other than the one on screen; Bob's lead stays hidden.
+        $this->actingAs($alice)->get('/segmentation?q=marcelina')->assertOk()
+            ->assertSee('Marcelina Dado')->assertDontSee('Marcelina Other')->assertDontSee('Today Tess')
+            ->assertSee('Search results for');
+        // By contact number in another format, and by order number.
+        $this->actingAs($alice)->get('/segmentation?q='.urlencode('+63 917 123'))->assertSee('Marcelina Dado')->assertDontSee('Today Tess');
+        $this->actingAs($alice)->get('/segmentation?q=1374748')->assertSee('Marcelina Dado');
+        // Tiles count the search results.
+        $this->actingAs($alice)->getJson(route('segmentation.summary', ['q' => 'marcelina']))->assertJsonPath('total.value', '1');
+    }
+
+    public function test_a_cra_marks_a_lead_processed_and_back_without_a_status_or_contact_date(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $make = fn (string $id, string $name, User $cra) => Lead::create([
+            'order_id' => $id, 'customer_name' => $name, 'phone_number' => '917'.$id, 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id,
+        ]);
+        $wendy = $make('1', 'Waiting Wendy', $alice);
+        $bobs = $make('2', 'Bobs Lead', $bob);
+
+        // Unprocessed rows offer "Mark as processed" on right-click.
+        $this->actingAs($alice)->get('/segmentation')->assertSee('data-mark="processed"', false);
+
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $wendy), ['processed' => true])->assertOk();
+
+        $wendy->refresh();
+        $this->assertSame($alice->id, $wendy->processed_by);
+        $this->assertNull($wendy->status);
+        $this->assertNull($wendy->contact_date);
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed')->assertDontSee('Waiting Wendy');
+        // Marked rows offer "Mark as unprocessed".
+        $this->actingAs($alice)->get('/segmentation?show=processed')->assertSee('Waiting Wendy')->assertSee('data-mark="unprocessed"', false);
+
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $wendy), ['processed' => false])->assertOk();
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed')->assertSee('Waiting Wendy');
+
+        // A lead processed by its status and date of contact can be unmarked too: both are cleared (the page confirms first).
+        $wendy->forceFill(['status' => 'active', 'contact_date' => '2026-10-05'])->save();
+        $this->actingAs($alice)->get('/segmentation?show=processed')->assertSee('data-clears="status Active and date of contact Oct 5"', false);
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $wendy), ['processed' => false])->assertOk();
+        $wendy->refresh();
+        $this->assertNull($wendy->status);
+        $this->assertNull($wendy->contact_date);
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed')->assertSee('Waiting Wendy');
+
+        // Only the CRA holding the lead (or a manager) can mark it.
+        $this->actingAs($alice)->patchJson(route('segmentation.update', $bobs), ['processed' => true])->assertForbidden();
+        $this->assertNull($bobs->refresh()->processed_at);
     }
 
     public function test_a_cra_is_greeted_with_their_numbers_once_a_day(): void
@@ -397,7 +483,7 @@ class SegmentationTest extends TestCase
         }
 
         $this->actingAs($rose)->get('/segmentation')->assertOk()
-            ->assertSee('Hey Rose-An!')->assertSeeInOrder(['You have', '3', 'leads for today', '2', 'unprocessed'], false);
+            ->assertSee('Hey Rose-An!')->assertSeeInOrder(['You have', '3', 'leads for today', '2', 'pending'], false);
         $this->actingAs($rose)->get('/segmentation')->assertDontSee('Hey Rose-An!');
 
         // Supervisors aren't greeted.

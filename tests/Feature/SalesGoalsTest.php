@@ -142,7 +142,9 @@ class SalesGoalsTest extends TestCase
             ->assertSeeText('₱38,500 of ₱1,000,000')
             ->assertSee('Total conv % per CRA')
             ->assertDontSee('accounts')
-            ->assertSee('Regina');
+            ->assertSee('Regina')
+            // Sales still needed per CRA: Lhea 77k − 38.5k; Regina hasn't sold yet.
+            ->assertSeeTextInOrder(['Lhea', '₱38.5k left', 'Regina', '₱77k left']);
 
         $this->actingAs($lhea)->get(route('dashboard'))
             ->assertOk()

@@ -5,6 +5,20 @@
 <form method="GET" action="{{ route('segmentation.index') }}" class="flex flex-wrap items-center gap-2">
     <input type="hidden" name="show" value="{{ $filters['show'] }}">
 
+    {{-- Search: name, contact # or order #, across every lead day (Enter to search) --}}
+    <label class="relative" title="Search leads">
+        <span class="sr-only">Search leads</span>
+        <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
+        <input type="search" name="q" value="{{ $filters['q'] }}" placeholder="Search name, contact # or order #" maxlength="100"
+               @class([$field, 'w-64 pr-8 pl-8 [&::-webkit-search-cancel-button]:hidden', 'border-brand-500 ring-2 ring-brand-200' => $filters['q']])>
+        @if ($filters['q'])
+            <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" title="Clear search" aria-label="Clear search"
+               class="absolute top-1/2 right-2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted hover:text-brand-600">
+                <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+            </a>
+        @endif
+    </label>
+
     <label class="relative" title="Month">
         <span class="sr-only">Month</span>
         <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4"/></svg>
@@ -48,7 +62,7 @@
 
     {{-- Which lists to show --}}
     <div class="flex h-9 items-center rounded-lg border border-line bg-white p-0.5 text-xs font-semibold" role="group" aria-label="Show">
-        @foreach (['all' => 'All', 'unprocessed' => 'Unprocessed', 'processed' => 'Processed'] as $value => $label)
+        @foreach (['all' => 'All', 'unprocessed' => 'Pending', 'processed' => 'Catered'] as $value => $label)
             <a href="{{ request()->fullUrlWithQuery(['show' => $value, 'page' => null, 'processed_page' => null]) }}"
                @if ($filters['show'] === $value) aria-current="true" @endif
                @class([

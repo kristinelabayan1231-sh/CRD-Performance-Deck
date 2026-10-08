@@ -38,10 +38,58 @@ class Lead extends Model
             'est_out_of_stock_date' => 'immutable_date',
             'assigned_at' => 'datetime',
             'status_updated_at' => 'datetime',
+            'processed_at' => 'datetime',
             'contact_date' => 'immutable_date',
             'callback_date' => 'immutable_date',
             'notes_updated_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Tracker search: customer name, order number, or contact number (any format: 0917…, +63 917…, 917…).
+     */
+    public function scopeSearch(Builder $query, string $term): Builder
+    {
+        $digits = preg_replace('/\D/', '', $term);
+        // Phone numbers are stored in mixed formats, so match on the part after 0 / 63.
+        $phone = preg_replace('/^(63|0)/', '', $digits);
+        $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term).'%';
+
+        return $query->where(fn (Builder $q) => $q
+            ->where('customer_name', 'like', $like)
+            ->orWhere('order_id', 'like', $like)
+            ->when(strlen($phone) >= 4, fn (Builder $q) => $q->orWhere('phone_number', 'like', '%'.$phone.'%')));
+    }
+
+    /**
+     * Still to do in the tracker: no status, no contact date, and not marked as processed.
+     */
+    public function scopeUnprocessed(Builder $query): Builder
+    {
+        return $query->whereNull('status')->whereNull('contact_date')->whereNull('processed_at');
+    }
+
+    public function scopeProcessed(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNotNull('status')->orWhereNotNull('contact_date')->orWhereNotNull('processed_at'));
+    }
+
+    public function isProcessed(): bool
+    {
+        return $this->status !== null || $this->contact_date !== null || $this->processed_at !== null;
+    }
+
+    /**
+     * What "Unmark processed" clears besides the mark, e.g. "status Active and date of contact Oct 5"; null when nothing.
+     */
+    public function unmarkClears(): ?string
+    {
+        $parts = array_filter([
+            $this->status !== null ? 'status '.$this->statusLabel() : null,
+            $this->contact_date !== null ? 'date of contact '.$this->contact_date->format('M j') : null,
+        ]);
+
+        return $parts ? implode(' and ', $parts) : null;
     }
 
     /**

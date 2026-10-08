@@ -1,7 +1,10 @@
 {{-- One lead row. Expects $lead plus the parent's $canManage, $cras, $visibleOptional, $canTransfer; pass backlogRow => true for carried-over leads. --}}
 @php($canEdit = $canManage || $lead->assigned_to === auth()->id())
 @php($transferable = ($backlogRow ?? false) && $canTransfer && $lead->carriesOver() && $lead->assigned_to)
-<tr class="align-middle hover:bg-canvas/30">
+{{-- Right-click opens Mark as processed / Unmark processed (segmentation.js) for leads this user can edit. --}}
+<tr class="align-middle hover:bg-canvas/30"
+    @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
+        data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
     <td class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
@@ -31,7 +34,7 @@
                 'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
                 'bg-coral/15 text-coral-700' => $lead->carriesOver(),
                 'bg-teal/15 text-teal-700' => ! $lead->carriesOver(),
-            ])>{{ $lead->carriesOver() ? ($lead->statusLabel() ?? 'Unprocessed') : 'Handled · carried' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
+            ])>{{ $lead->carriesOver() ? ($lead->statusLabel() ?? 'Pending') : 'Catered · carried' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
             @if ($lead->transfers->first())
                 <span class="mt-1 ml-1 inline-block text-[11px] text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
             @endif

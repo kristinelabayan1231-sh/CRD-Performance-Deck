@@ -36,6 +36,9 @@ class ConversionBreakdownTest extends TestCase
     /** Orders the fake POS API returns. */
     private array $orders = [];
 
+    /** Orders the fake POS API returns for "changed on this day" (updateStatus=updated_at). */
+    private array $changed = [];
+
     /** Orders the fake Shecom sales API returns; null makes it fail. */
     private ?array $sales = [];
 
@@ -55,6 +58,7 @@ class ConversionBreakdownTest extends TestCase
 
         Http::fake(function (Request $request) {
             return match (true) {
+                str_contains($request->url(), 'updateStatus=updated_at') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->changed]),
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
                 str_contains($request->url(), 'customer_engagements') => Http::response(['success' => true, 'users_engagements' => $this->engagements]),
                 str_contains($request->url(), 'management/sales') => $this->sales === null
@@ -222,6 +226,58 @@ class ConversionBreakdownTest extends TestCase
         $day = app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01'];
         $this->assertSame(1, $day['sc_orders']);
         $this->assertEqualsWithDelta(1999.0, $day['sc_gross'], 0.001);
+    }
+
+    public function test_a_tag_added_days_later_is_picked_up_on_the_next_sync(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+        $this->assertSame(0, app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01']['orders']);
+
+        // Two days later the CRA tags the Oct 1 order CRD - SEGMENTATION; Pancake lists it as changed that day.
+        $this->travelTo(CarbonImmutable::parse('2026-10-03 12:00', 'Asia/Manila'));
+        $this->orders = [];
+        $this->changed = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [17, self::SEGMENTATION], 'status' => 2, 'status_name' => 'confirmed']];
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-03'));
+
+        $day = app(ConversionBreakdown::class)->days(collect([$lhea]), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-01'))[$lhea->id]['2026-10-01'];
+        $this->assertSame(1, $day['sc_orders']);
+        $this->assertEqualsWithDelta(999.0, $day['sc_gross'], 0.001);
+    }
+
+    public function test_header_lists_order_issues_and_a_cra_sees_only_their_own(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $this->cra('Regina', 'CRD Rej Vergara');
+        $this->cra('Newbie', null);
+        $this->orders = [
+            $this->order('CRD Lhei', [17], 999),                                      // no CRD tag
+            $this->order('CRD Lhei', [self::BROADCAST, self::SEGMENTATION], 500),     // both CRD tags
+            $this->order('CRD Lhei', [self::SEGMENTATION], 800),                      // fine
+            $this->order('CRD Lhei', [17], 700, status: 6),                           // canceled: not an issue
+            $this->order('CRD Rej Vergara', [], 1200),                                // Regina: no CRD tag
+        ];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
+            ->assertSeeText('4 issues')
+            ->assertSeeText('2 no crd tag, 1 both crd tags, 1 no pancake account')
+            ->assertSee('id="issues-dialog"', false)
+            ->assertSeeInOrder(['Lhea', 'No CRD tag', 'Both CRD tags', 'Newbie', 'No Pancake account', 'Regina', 'No CRD tag']);
+
+        $this->actingAs($lhea)->get(route('conversion.index'))->assertOk()
+            ->assertSeeText('2 issues')->assertDontSee('Regina');
+    }
+
+    public function test_header_says_so_when_there_are_no_issues(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$this->order('CRD Lhei', [self::SEGMENTATION], 800)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
+            ->assertSeeText('No order issues')->assertDontSee('id="issues-dialog"', false);
     }
 
     public function test_rates_are_blank_without_engagements_or_leads(): void

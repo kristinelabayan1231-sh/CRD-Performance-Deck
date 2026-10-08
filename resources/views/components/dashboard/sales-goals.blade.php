@@ -72,7 +72,8 @@
             <ul class="space-y-2">
                 @forelse ($goals['cras'] as $row)
                     @php($hit = $row['progress'] !== null && $row['progress'] >= 1)
-                    <li class="grid grid-cols-[minmax(0,6rem)_1fr_auto] items-center gap-2.5 text-sm" title="{{ $row['cra']->displayName() }}: {{ $peso($row['sales']) }} of {{ $peso($row['goal']) }}">
+                    @php($left = max(0, $row['goal'] - $row['sales']))
+                    <li class="grid grid-cols-[minmax(0,6rem)_1fr_auto] items-center gap-2.5 text-sm" title="{{ $row['cra']->displayName() }}: {{ $peso($row['sales']) }} of {{ $peso($row['goal']) }}{{ $left > 0 ? ', '.$peso($left).' left' : '' }}">
                         <span class="truncate font-medium">{{ $row['cra']->displayName() }}</span>
                         <span class="relative h-2 rounded-full bg-canvas" role="progressbar" aria-label="{{ $row['cra']->displayName() }} daily goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round(min(1, $row['progress'] ?? 0) * 100) }}">
                             <span @class(['absolute inset-y-0 left-0 rounded-full', 'bg-teal-700' => $hit, 'bg-brand-600' => ! $hit]) style="width: {{ min(100, ($row['progress'] ?? 0) * 100) }}%"></span>
@@ -80,6 +81,8 @@
                         <span class="flex items-baseline gap-2 tabular-nums">
                             <span @class(['w-12 text-right font-semibold', 'text-teal-700' => $hit])>{{ $pct($row['progress']) }}</span>
                             <span class="hidden w-24 text-right text-[11px] text-muted sm:inline">{{ $short($row['sales']) }} / {{ $short($row['goal']) }}@if ($row['own_goal'])<span title="This CRA has their own daily goal">*</span>@endif</span>
+                            {{-- Sales still needed to reach the goal --}}
+                            <span @class(['w-16 text-right text-[11px] font-semibold', 'text-teal-700' => $left <= 0, 'text-coral-700' => $left > 0])>{{ $left > 0 ? $short($left).' left' : 'Goal hit' }}</span>
                         </span>
                     </li>
                 @empty
