@@ -168,6 +168,35 @@ class PancakeClient
     }
 
     /**
+     * Every POS order changed on $day (segmentation timezone), whenever it was created: only its id,
+     * tags and status. Catches CRD tags added or changed days after the order was placed.
+     *
+     * @return list<array{display_id?: int|string, id?: string, tags?: list<mixed>, status?: int, status_name?: string}>
+     */
+    public function updatedOrders(CarbonImmutable $day): array
+    {
+        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
+        $orders = [];
+        $page = 1;
+
+        do {
+            $body = $this->posPage([
+                'page_size' => 200,
+                'page_number' => $page,
+                'startDateTime' => $start->getTimestamp(),
+                'endDateTime' => $start->endOfDay()->getTimestamp(),
+                'updateStatus' => 'updated_at',
+            ], ['id', 'display_id', 'tags', 'status', 'status_name']);
+
+            array_push($orders, ...($body['data'] ?? []));
+            $totalPages = (int) ($body['total_pages'] ?? 1);
+            $page++;
+        } while ($page <= $totalPages);
+
+        return $orders;
+    }
+
+    /**
      * Every POS order created on $day (segmentation timezone), trimmed to the
      * fields Segmentation Productivity uses; full orders are large.
      *

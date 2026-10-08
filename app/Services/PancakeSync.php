@@ -67,9 +67,55 @@ class PancakeSync
         // Gross sales without the child (TSD) row; Pancake's totals stay in use if Shecom is down.
         $sales = rescue(fn () => $this->syncSales($day, $day), 0);
 
+        // Older orders whose CRD tag or status changed on this day (tags are often added later).
+        rescue(fn () => $this->refreshTags($day));
+
         Cache::put(self::syncKey($day), now()->toIso8601String(), now()->addDays(40));
 
         return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered, 'sales' => $sales];
+    }
+
+    /**
+     * Update tags and status on saved orders that Pancake shows as changed on $day. Each order keeps its
+     * own tags, so a customer can be broadcast on one order and segmentation on the next.
+     *
+     * @return int orders updated
+     */
+    public function refreshTags(CarbonImmutable $day): int
+    {
+        $changed = collect($this->client->updatedOrders($day))
+            ->filter(fn (array $order) => ! empty($order['display_id'] ?? $order['id'] ?? null))
+            ->mapWithKeys(function (array $order) {
+                $tagIds = collect($order['tags'] ?? [])
+                    ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
+                    ->filter()->values()->all();
+
+                return [(string) ($order['display_id'] ?? $order['id']) => [
+                    'tags' => $tagIds,
+                    'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
+                    'status' => isset($order['status']) ? (int) $order['status'] : null,
+                    'status_name' => $order['status_name'] ?? null,
+                ]];
+            });
+
+        $updated = 0;
+
+        foreach ($changed->keys()->chunk(500) as $ids) {
+            PancakeOrder::whereIn('pancake_order_id', $ids->values())
+                ->get(['id', 'pancake_order_id', 'tags', 'conversion_type', 'status', 'status_name'])
+                ->each(function (PancakeOrder $order) use ($changed, &$updated) {
+                    $fresh = $changed[$order->pancake_order_id];
+
+                    if ($order->tags === $fresh['tags'] && $order->status === $fresh['status']) {
+                        return;
+                    }
+
+                    $order->forceFill($fresh)->save();
+                    $updated++;
+                });
+        }
+
+        return $updated;
     }
 
     /**

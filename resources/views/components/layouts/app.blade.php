@@ -57,7 +57,12 @@
                         onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')">
                     <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
-                <div class="hidden lg:block"></div>
+                {{-- Problems in the CRAs' orders (supervisors: every CRA; a CRA: their own) --}}
+                <div class="flex min-w-0 flex-1 items-center">
+                    @isset($craIssues)
+                        <x-cra-issues :issues="$craIssues" />
+                    @endisset
+                </div>
 
                 <div class="flex items-center gap-3">
                     <x-avatar :user="$user" class="size-8" />
