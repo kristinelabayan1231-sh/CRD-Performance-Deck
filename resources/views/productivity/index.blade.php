@@ -404,11 +404,12 @@
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
                 <div><dt class="font-semibold text-ink">Assigned transactions</dt><dd>Segmentation Tracker leads assigned to the CRA for that lead day. The base is {{ $base }}; the actual count is used.</dd></div>
                 <div><dt class="font-semibold text-ink">Answered (calls &amp; chat)</dt><dd>Tracker leads with that Contact Date, plus the CRA's Pancake customer engagements (Chat → Analytics → Engagements) across all pages.</dd></div>
-                <div><dt class="font-semibold text-ink">Assigned lead conversion</dt><dd>Customers with a Pancake order that day who are in the CRA's assigned leads with Repeat Purchase = Yes.</dd></div>
-                <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>Customers on the CRA's own Pancake orders that day who aren't on any assigned leads list. Canceled and deleted orders don't count.</dd></div>
+                <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION. Canceled and deleted orders don't count.</dd></div>
+                <div><dt class="font-semibold text-ink">Assigned lead conversion</dt><dd>Confirmed orders whose customer is on the CRA's assigned leads.</dd></div>
+                <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>All other confirmed orders.</dd></div>
                 <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>Total confirmed orders ÷ Answered.</dd></div>
                 <div><dt class="font-semibold text-ink">Pick-up rate</dt><dd>Answered ÷ Assigned transactions.</dd></div>
-                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales come from Conversion Breakdown: the totals of the CRA's own Pancake orders tagged CRD - BROADCAST plus CRD - SEGMENTATION. Canceled and deleted orders don't count. AOV = Gross sales ÷ Total confirmed orders.</dd></div>
+                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales come from Conversion Breakdown: the CRA's own orders tagged CRD - BROADCAST plus CRD - SEGMENTATION, at Shecom's sales (without the child TSD row). Canceled and deleted orders don't count. AOV = Gross sales ÷ Total confirmed orders.</dd></div>
             </dl>
         </details>
     </div>

@@ -108,16 +108,16 @@ class SegmentationProductivityTest extends TestCase
             ['user_id' => 'u-x', 'name' => 'Someone Else', 'total_engagement' => 40],
         ];
         $this->orders = [
-            // Repeat Purchase = Yes lead buys, even through another seller: assigned lead conversion.
-            $this->order('+63 917 000 0001', 'Someone Else'),
-            // Lhea's own orders for a customer outside every leads list, twice: one Pancake conversion.
-            // Tagged CRD - BROADCAST and CRD - SEGMENTATION, so both are gross sales.
-            $this->order('09998887777', 'CRD  Lhei', tags: [397]),
+            // Confirmed = Lhea's own orders tagged CRD - SEGMENTATION or CRD - BROADCAST. Her own lead's customer: assigned lead conversion.
+            $this->order('09170000002', 'CRD Lhei', tags: [398]),
+            // Anyone else, counted per order: a customer outside every list three times (one broadcast), and another CRA's lead.
             $this->order('639998887777', 'CRD Lhei', tags: [398]),
-            // Another CRA's lead and Lhea's lead without Repeat Purchase = Yes: neither conversion.
-            $this->order('09170000004', 'CRD Lhei'),
-            $this->order('09170000002', 'CRD Lhei'),
-            // Canceled orders don't count.
+            $this->order('09998887777', 'CRD  LHEI', tags: [398]),
+            $this->order('09170000004', 'CRD Lhei', tags: [398]),
+            $this->order('09998887777', 'CRD Lhei', tags: [397]),
+            // Not Lhea's: another seller's sale to her Repeat Purchase = Yes lead. Untagged and canceled don't count.
+            $this->order('+63 917 000 0001', 'Someone Else', tags: [398]),
+            $this->order('09170000003', 'CRD Lhei'),
             $this->order('09111111111', 'CRD Lhei', status: 6, tags: [398]),
         ];
 
@@ -130,12 +130,12 @@ class SegmentationProductivityTest extends TestCase
         $this->assertSame(5, $day['chat']);
         $this->assertSame(7, $day['answered']);
         $this->assertSame(1, $day['alc']);
-        $this->assertSame(1, $day['pc']);
-        $this->assertSame(2, $day['confirmed']);
-        $this->assertEqualsWithDelta(2 / 7, $day['conversion_rate'], 1e-9);
+        $this->assertSame(4, $day['pc']);
+        $this->assertSame(5, $day['confirmed']);
+        $this->assertEqualsWithDelta(5 / 7, $day['conversion_rate'], 1e-9);
         $this->assertEqualsWithDelta(7 / 4, $day['pickup_rate'], 1e-9);
-        // Sales: Lhea's two tagged orders, 800 each; untagged and canceled orders add nothing.
-        $this->assertEqualsWithDelta(1600.0, $day['gross'], 0.001);
+        // Sales: Lhea's five tagged orders (segmentation + broadcast), 800 each; untagged and canceled add nothing.
+        $this->assertEqualsWithDelta(4000.0, $day['gross'], 0.001);
         $this->assertEqualsWithDelta(800.0, $day['aov'], 0.001);
     }
 

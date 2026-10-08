@@ -15,9 +15,8 @@ use Illuminate\Support\Collection;
  *
  * Assigned transactions = Segmentation Tracker leads assigned to the CRA for that lead day (base 70; actual count shown).
  * Answered = tracker leads with that Contact Date + Pancake customer engagements of the CRA's Pancake account.
- * Assigned lead conversion = customers with a Pancake order that day who are in the CRA's leads with Repeat Purchase = Yes.
- * Pancake conversion = customers on the CRA's own Pancake orders that day who are not in any CRA's assigned leads.
- * Total confirmed = both conversions. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
+ * Total confirmed = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION (canceled and deleted don't count).
+ * Of those, assigned lead conversion = the customer is on the CRA's assigned leads; Pancake conversion = everyone else. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
  * Gross sales = Conversion Breakdown's gross: the CRA's orders tagged CRD - BROADCAST + CRD - SEGMENTATION. AOV = gross ÷ confirmed.
  */
 class SegmentationProductivity
@@ -123,7 +122,8 @@ class SegmentationProductivity
     }
 
     /**
-     * Customers converted per CRA per day: [assigned lead conversion, Pancake conversion].
+     * Confirmed orders per CRA per day, split [assigned lead conversion, Pancake conversion]: the CRA's own
+     * orders tagged CRD - BROADCAST or CRD - SEGMENTATION, by whether the customer is on that CRA's assigned leads.
      *
      * @param  Collection<int, int>  $ids
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
@@ -131,45 +131,37 @@ class SegmentationProductivity
      */
     private function conversions(Collection $ids, Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
     {
+        if ($accounts->isEmpty()) {
+            return [[], []];
+        }
+
         $orders = PancakeOrder::counted()
+            ->whereIn('seller_name', $accounts->keys())
+            ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'phone_key']);
+            ->get(['ordered_on', 'seller_name', 'phone_key']);
 
         if ($orders->isEmpty()) {
             return [[], []];
         }
 
-        // Customers the CRA marked Repeat Purchase = Yes; the most recent assignment wins a shared number.
-        $repeatBuyers = Lead::whereIn('assigned_to', $ids)->where('repeat_purchase', 'yes')
-            ->orderBy('assigned_at')->orderBy('id')
-            ->get(['phone_number', 'assigned_to'])
-            ->mapWithKeys(fn (Lead $lead) => [LeadGenerator::normalizePhone($lead->phone_number) => $lead->assigned_to])
-            ->forget('');
-
-        // Every customer on anyone's assigned leads list.
-        $assignedPhones = Lead::whereNotNull('assigned_to')->pluck('phone_number')
-            ->map(fn (string $phone) => LeadGenerator::normalizePhone($phone))
-            ->filter()->flip();
+        // Each CRA's own leads, as "cra id|phone".
+        $ownLeads = Lead::whereIn('assigned_to', $ids)->get(['phone_number', 'assigned_to'])
+            ->map(fn (Lead $lead) => $lead->assigned_to.'|'.LeadGenerator::normalizePhone($lead->phone_number))
+            ->flip();
 
         $alc = [];
         $pc = [];
 
-        foreach ($orders->groupBy(fn (PancakeOrder $order) => $order->ordered_on->toDateString()) as $day => $dayOrders) {
-            // Assigned lead conversion: any seller, counted once per customer.
-            $dayOrders->filter(fn (PancakeOrder $order) => $order->phone_key && isset($repeatBuyers[$order->phone_key]))
-                ->groupBy('phone_key')
-                ->each(function (Collection $theirs, string $phone) use ($repeatBuyers, &$alc, $day) {
-                    $cra = $repeatBuyers[$phone];
-                    $alc[$cra][$day] = ($alc[$cra][$day] ?? 0) + 1;
-                });
+        foreach ($orders as $order) {
+            $cra = $accounts[$order->seller_name];
+            $day = $order->ordered_on->toDateString();
 
-            // Pancake conversion: the CRA's own orders for customers outside every leads list.
-            $dayOrders->filter(fn (PancakeOrder $order) => isset($accounts[$order->seller_name])
-                    && ! ($order->phone_key && isset($assignedPhones[$order->phone_key])))
-                ->groupBy(fn (PancakeOrder $order) => $accounts[$order->seller_name])
-                ->each(function (Collection $mine, int $cra) use (&$pc, $day) {
-                    $pc[$cra][$day] = $mine->map(fn (PancakeOrder $order) => $order->phone_key ?: 'order:'.$order->pancake_order_id)->unique()->count();
-                });
+            if ($order->phone_key && isset($ownLeads[$cra.'|'.$order->phone_key])) {
+                $alc[$cra][$day] = ($alc[$cra][$day] ?? 0) + 1;
+            } else {
+                $pc[$cra][$day] = ($pc[$cra][$day] ?? 0) + 1;
+            }
         }
 
         return [$alc, $pc];
