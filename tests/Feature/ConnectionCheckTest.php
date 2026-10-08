@@ -36,6 +36,7 @@ class ConnectionCheckTest extends TestCase
             ->assertOk()
             ->assertSee('Pancake POS orders · API key (used for syncs)')
             ->assertSee('api_key is invalid')
+            ->assertSee('12 stock-outs')
             ->assertSee('Shecom sales API')
             ->assertSee('2 orders today')
             ->assertSee('1 of 1 pages OK')
