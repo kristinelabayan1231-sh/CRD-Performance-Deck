@@ -60,7 +60,7 @@ class SegmentationStats
             'label' => $from->equalTo($to) ? $from->format('M j') : $from->format('M j').'–'.($from->isSameMonth($to) ? $to->format('j') : $to->format('M j')),
             'kpis' => [
                 $this->kpi('Leads', $now['leads'], $before['leads'], 'count', higherIsBetter: true),
-                $this->kpi('Processed', $pct($now, 'processed'), $pct($before, 'processed'), 'percent', higherIsBetter: true),
+                $this->kpi('Catered', $pct($now, 'processed'), $pct($before, 'processed'), 'percent', higherIsBetter: true),
                 $this->kpi('Converted', $pct($now, 'converted'), $pct($before, 'converted'), 'percent', higherIsBetter: true),
                 // Cold = leads tagged Cold / CanPro Cold, shown as a share and as "cold/leads".
                 $this->kpi('Went cold', $pct($now, 'cold'), $pct($before, 'cold'), 'percent', higherIsBetter: false,

@@ -71,8 +71,8 @@ class DashboardSegmentationTest extends TestCase
         // Leads 5 vs 4 yesterday: +25%, up and good.
         $this->assertSame(['value' => '5', 'previous' => '4', 'change' => '+25%', 'direction' => 'up', 'good' => true],
             array_intersect_key($kpis['Leads'], array_flip(['value', 'previous', 'change', 'direction', 'good'])));
-        // Processed 40% vs 100%: -60 pts, down and bad.
-        $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Processed']['value'], $kpis['Processed']['previous'], $kpis['Processed']['change'], $kpis['Processed']['good']]);
+        // Catered 40% vs 100%: -60 pts, down and bad.
+        $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Catered']['value'], $kpis['Catered']['previous'], $kpis['Catered']['change'], $kpis['Catered']['good']]);
         // Converted 2 of 5 = 40%; retained 1 of 2 CRD = 50%; new 1 of 3 = 33%.
         $this->assertSame('40%', $kpis['Converted']['value']);
         $this->assertSame([50.0, 33.0], [$today['retained'], $today['fsd_converted']]);
@@ -114,7 +114,7 @@ class DashboardSegmentationTest extends TestCase
         $this->actingAs($this->owner)->get('/dashboard')->assertOk()
             ->assertSee('Segmentation Tracker')
             ->assertSeeInOrder(['Today', 'Week', 'Month'])
-            ->assertSeeInOrder(['Leads', 'Processed', 'Converted', 'Went cold'])
+            ->assertSeeInOrder(['Leads', 'Catered', 'Converted', 'Went cold'])
             ->assertSee('Daily trend')->assertSee('Customer tags')->assertSee('Top CRAs')
             ->assertSee('Retained')
             ->assertSee('Alice')->assertSee('Bob')
