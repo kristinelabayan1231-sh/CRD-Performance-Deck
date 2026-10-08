@@ -76,8 +76,8 @@ class WeeklySegmentationTest extends TestCase
 
         $this->actingAs($alice)->get('/segmentation')->assertOk()
             ->assertSee('Carry-over')
-            ->assertSee($old->customer_name)->assertSee('Unprocessed since Oct 7')
-            ->assertSee($handledToday->customer_name)->assertSee('Handled · carried since Oct 8')
+            ->assertSee($old->customer_name)->assertSee('Pending since Oct 7')
+            ->assertSee($handledToday->customer_name)->assertSee('Catered · carried since Oct 8')
             ->assertDontSee($handledBefore->customer_name);
 
         // A past day shows only its own leads: no carry-over section.
@@ -126,7 +126,7 @@ class WeeklySegmentationTest extends TestCase
             ->assertSee('1 / 1')   // Bob on Oct 8
             ->assertSee('Carry-over customers')
             ->assertSee($missed->customer_name)
-            ->assertSee('Unprocessed since Oct 8');
+            ->assertSee('Pending since Oct 8');
 
         $rows = $response->viewData('rows')->keyBy(fn ($r) => $r['cra']->id);
         $this->assertSame(['assigned' => 3, 'handled' => 1, 'unprocessed' => 1, 'in_progress' => 1],
@@ -232,7 +232,7 @@ class WeeklySegmentationTest extends TestCase
         $this->markTestSkipped('The tracker\'s carry-over list is turned off for now (SegmentationController).');
 
         $page = $this->actingAs($alice)->get('/segmentation')->assertOk()
-            ->assertSee('Unprocessed since Oct 8')
+            ->assertSee('Pending since Oct 8')
             ->assertSee('PJR/Inactive/CBR/Drop call since Oct 8')
             ->assertSee('Repeat Purchase since Oct 8')
             ->assertSee('Inactive since Oct 8');

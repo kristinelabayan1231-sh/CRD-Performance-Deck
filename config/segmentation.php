@@ -59,6 +59,11 @@ return [
         'blocked' => ['Blocked', 'bg-[#3d3d3d] text-white'],
     ],
 
+    // Picking one of these statuses sets the lead's Customer Tagging too: status => customer_tags key.
+    'status_tags' => [
+        'pjr_drop_call' => 'no_verbal_conv',
+    ],
+
     // Leads with no status, or one of these statuses, carry over to the next
     // day with the same CRA until their status changes to something else.
     'carry_over_statuses' => ['pjr_drop_call', 'repeat_purchase', 'inactive'],

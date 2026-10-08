@@ -7,6 +7,18 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-09 · All pages (header) · Order issues: a red pill in the top bar ("33 issues · 33 no crd tag") lists problems in the CRAs' orders this month — No CRD tag (own order without CRD - BROADCAST/SEGMENTATION), Both CRD tags, No Pancake account; the zoom button opens all issues grouped by CRA (date, order #, customer, amount) with how to fix each; green "No order issues" when clean. Supervisors see every CRA, a CRA only their own · shots: new (header-issues), all module shots (header)
+- 2026-10-09 · Productivity / Conversion / Dashboard · Each sync also picks up tag and status changes made that day on older orders, so every day uses the orders' latest CRD tags · shots: —
+
+- 2026-10-09 · Segmentation Tracker / Weekly / Dashboard · Wording: Unprocessed → **Pending**, Processed / Handled → **Catered** everywhere (tracker lists, Show filter, right-click "Mark as catered" / "Unmark catered", CRA greeting "N pending", carried labels "Pending since…" / "Catered · carried", Weekly tiles, table, legend and note, dashboard trend legend). Supersedes the "Mark as processed" wording in the lines below · shots: segmentation-tracker, weekly-segmentation, 02-dashboard
+
+- 2026-10-09 · Segmentation Tracker · Search box (first in the filter bar): customer name, contact # (any format) or order #, across every lead day; CRAs search only their own leads; tiles follow the search; blue "Search results for …" bar with Clear search · shots: segmentation-tracker
+- 2026-10-09 · Segmentation Tracker · Choosing status PJR/Inactive/CBR/Drop call sets Customer Tagging to NO VERBAL CONV automatically (the row's tag updates at once) · shots: —
+
+- 2026-10-09 · Segmentation Tracker · Right-click a customer row → "Mark as processed": it moves from Unprocessed to Processed at once (no reload) without setting a status or contact date; right-click any Processed row → "Unmark processed" to bring it back (for a lead with a status or date of contact, it confirms, then clears them). Status Updated tile, dashboard and Weekly "Catered" still count statuses only · shots: new (tracker-mark-processed), segmentation-tracker
+
+- 2026-10-09 · Dashboard · Goal per CRA shows each CRA's remaining sales to the goal in red ("₱52.3k left"), or "Goal hit" in teal · shots: 02-dashboard
+
 - 2026-10-08 · Segmentation Productivity · Total confirmed orders = the CRA's own orders tagged CRD - BROADCAST or CRD - SEGMENTATION (per order, same orders as Conversion Breakdown); assigned lead conversion = those whose customer is on the CRA's leads, Pancake conversion = the rest (Repeat Purchase no longer matters) · shots: productivity
 
 - 2026-10-08 · Weekly Segmentation / Dashboard · Renamed: Weekly tile "Handled" → "Catered"; dashboard Segmentation Tracker KPI and trend legend "Processed" → "Catered" · shots: weekly-segmentation, 02-dashboard

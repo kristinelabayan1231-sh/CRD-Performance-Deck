@@ -82,20 +82,27 @@
             </p>
         @endif
 
+        @if ($filters['q'])
+            <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
+                Search results for <strong>“{{ $filters['q'] }}”</strong> across all lead days{{ $canViewAll ? '' : ' in your leads' }}.
+                <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Clear search</a>
+            </p>
+        @endif
+
         {{-- The selected day's leads: what's left to do first, what's done below. --}}
         <div class="flex flex-col gap-3">
             @if ($unprocessed)
                 @include('segmentation._section', [
-                    'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Unprocessed', 'dot' => 'bg-coral',
-                    'hint' => 'No status and no contact date yet: pick a customer and process them.',
-                    'empty' => $canManage ? 'Nothing left to process for this filter. Past days only have leads if they were synced then: use Sync now to fill one in.' : 'Nothing left to process for this filter.',
+                    'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending', 'dot' => 'bg-coral',
+                    'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.',
+                    'empty' => $canManage ? 'Nothing pending for this filter. Past days only have leads if they were synced then: use Sync now to fill one in.' : 'Nothing pending for this filter.',
                 ])
             @endif
             @if ($processed)
                 @include('segmentation._section', [
-                    'leads' => $processed, 'id' => 'processed', 'title' => 'Processed', 'dot' => 'bg-teal',
-                    'hint' => 'Status or contact date set.',
-                    'empty' => 'No processed customers for this filter yet.',
+                    'leads' => $processed, 'id' => 'processed', 'title' => 'Catered', 'dot' => 'bg-teal',
+                    'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.',
+                    'empty' => 'No catered customers for this filter yet.',
                 ])
             @endif
         </div>
@@ -168,15 +175,15 @@
                     <p class="flex items-center gap-2 text-base">
                         <span aria-hidden="true" class="size-2.5 rounded-full {{ $greeting['unprocessed'] ? 'bg-coral' : 'bg-teal' }}"></span>
                         @if ($greeting['unprocessed'])
-                            <span><strong class="tabular-nums">{{ $greeting['unprocessed'] }}</strong> unprocessed</span>
+                            <span><strong class="tabular-nums">{{ $greeting['unprocessed'] }}</strong> pending</span>
                         @else
-                            <span>All processed. Nice work!</span>
+                            <span>All catered. Nice work!</span>
                         @endif
                     </p>
                 @endif
                 <div class="flex justify-end gap-2 pt-2">
                     @if ($greeting['unprocessed'])
-                        <a href="{{ route('segmentation.index', ['show' => 'unprocessed']) }}" class="rounded-lg border border-line px-4 py-2 text-sm font-semibold hover:border-brand-400 hover:text-brand-600">Show unprocessed</a>
+                        <a href="{{ route('segmentation.index', ['show' => 'unprocessed']) }}" class="rounded-lg border border-line px-4 py-2 text-sm font-semibold hover:border-brand-400 hover:text-brand-600">Show pending</a>
                     @endif
                     <button type="button" data-greeting-close class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Let's go</button>
                 </div>

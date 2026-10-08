@@ -1,4 +1,5 @@
-// Segmentation Tracker: auto-saving cells, hide/unhide columns, Sheets-style notes.
+        // Rows the user can't edit keep the browser's own menu.
+        if (!target) return close();// Segmentation Tracker: auto-saving cells, hide/unhide columns, Sheets-style notes.
 
 const COLUMNS_KEY = 'segmentation.hiddenColumns';
 
@@ -114,6 +115,14 @@ function initAutosave() {
             field.dataset.saved = field.value;
             flash(field, true);
             if (['status', 'assigned_to', 'repeat_purchase', 'feedback'].includes(field.name)) refreshSummary();
+            // A status can set the tag too (PJR → NO VERBAL CONV): show it in the same row.
+            const tag = field.name === 'status' && field.closest('tr')?.querySelector('select[name=customer_tag]');
+            if (tag && result.customer_tag !== undefined && tag.value !== (result.customer_tag ?? '')) {
+                tag.value = result.customer_tag ?? '';
+                tag.dataset.saved = tag.value;
+                recolor(tag);
+                flash(tag, true);
+            }
             // Optionally mirror a returned value elsewhere on the page (e.g. a renamed user).
             if (form.dataset.updateText && result.display_name !== undefined) {
                 document.querySelectorAll(form.dataset.updateText).forEach((el) => (el.textContent = result.display_name));
@@ -373,6 +382,89 @@ function initNotes() {
     dialog.querySelector('[data-note-cancel]').addEventListener('click', () => dialog.close());
 }
 
+// Reload the Pending and Catered lists in place (pages, counts and order from the server).
+async function refreshSections() {
+    const response = await fetch(window.location.href, { headers: { Accept: 'text/html' } });
+    if (!response.ok) throw new Error(`Couldn't reload the lists (HTTP ${response.status}).`);
+    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+    document.querySelectorAll('[data-lead-section]').forEach((section) => {
+        const fresh = page.querySelector(`[data-lead-section="${CSS.escape(section.dataset.leadSection)}"]`);
+        if (fresh) section.replaceWith(document.importNode(fresh, true));
+    });
+}
+
+// Right-click a lead row: Mark as catered (Pending list) or Unmark catered (Catered list).
+function initRowMenu() {
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    menu.className = 'fixed z-50 min-w-48 overflow-hidden rounded-lg border border-line bg-white py-1 text-sm shadow-lg';
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.className = 'flex w-full items-center gap-2 px-3 py-2 text-left font-medium hover:bg-brand-50 focus-visible:bg-brand-50 focus-visible:outline-none';
+    menu.append(item);
+    document.body.append(menu);
+
+    let row = null;
+    const close = () => {
+        menu.hidden = true;
+        row = null;
+    };
+
+    document.addEventListener('contextmenu', (event) => {
+        const target = event.target.closest('tr[data-lead-row]');
+        // Rows the user can't edit (no data-lead-row) keep the browser's own menu.
+        if (!target) return close();
+        event.preventDefault();
+        row = target;
+        const toProcessed = row.dataset.mark === 'processed';
+        item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
+        item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
+        menu.hidden = false;
+        // At the pointer; from the keyboard (menu key), under the row's first cell.
+        const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : (() => {
+            const rect = row.cells[0].getBoundingClientRect();
+            return { x: rect.left + 16, y: rect.bottom };
+        })();
+        menu.style.left = `${Math.min(at.x, window.innerWidth - menu.offsetWidth - 8)}px`;
+        menu.style.top = `${Math.min(at.y, window.innerHeight - menu.offsetHeight - 8)}px`;
+        item.focus();
+    });
+
+    item.addEventListener('click', async () => {
+        const target = row;
+        if (!target) return;
+        const processed = target.dataset.mark === 'processed';
+        close();
+
+        // Unmarking a lead with a status or date of contact clears them: confirm first.
+        if (!processed && target.dataset.clears
+            && !confirm(`Move ${target.dataset.customer} back to Pending? This clears its ${target.dataset.clears}.`)) return;
+
+        const data = new FormData();
+        data.append('_method', 'PATCH');
+        data.append('_token', document.querySelector('meta[name=csrf-token]')?.content || '');
+        data.append('processed', processed ? '1' : '0');
+
+        target.style.transition = 'opacity 200ms';
+        target.style.opacity = '0.35';
+        try {
+            await send(target.dataset.updateUrl, data);
+            await refreshSections();
+            refreshSummary();
+        } catch (error) {
+            target.style.opacity = '';
+            alert(error.message);
+        }
+    });
+
+    document.addEventListener('click', (event) => !menu.contains(event.target) && close());
+    document.addEventListener('keydown', (event) => event.key === 'Escape' && close());
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+}
+
 // Expand: open a section's full list in a pop-up (an embedded page); refresh on close.
 function initExpand() {
     const dialog = document.getElementById('expand-dialog');
@@ -380,14 +472,15 @@ function initExpand() {
     const frame = dialog.querySelector('iframe');
     let opened = false;
 
-    document.querySelectorAll('[data-expand-src]').forEach((button) =>
-        button.addEventListener('click', () => {
-            dialog.querySelector('[data-expand-title]').textContent = button.dataset.expandTitle;
-            frame.src = button.dataset.expandSrc;
-            opened = true;
-            dialog.showModal();
-        }),
-    );
+    // Delegated: the lists are swapped in place after Mark as processed.
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-expand-src]');
+        if (!button) return;
+        dialog.querySelector('[data-expand-title]').textContent = button.dataset.expandTitle;
+        frame.src = button.dataset.expandSrc;
+        opened = true;
+        dialog.showModal();
+    });
 
     dialog.querySelector('[data-expand-close]').addEventListener('click', () => dialog.close());
     dialog.addEventListener('close', () => {
@@ -408,6 +501,7 @@ function initGreeting() {
 export function initSegmentation() {
     initExpand();
     initGreeting();
+    if (document.querySelector('[data-lead-section]')) initRowMenu();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();

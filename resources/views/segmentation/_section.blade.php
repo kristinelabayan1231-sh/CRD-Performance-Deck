@@ -1,7 +1,7 @@
 {{-- One list of leads (Unprocessed or Processed), 5 per page. --}}
 @php($visibleOptional = collect($optionalColumns)->reject(fn ($c) => $c['coming_soon'] ?? false))
 
-<section aria-labelledby="{{ $id }}-title" class="flex flex-col overflow-hidden rounded-xl bg-white shadow-sm">
+<section aria-labelledby="{{ $id }}-title" data-lead-section="{{ $id }}" class="flex flex-col overflow-hidden rounded-xl bg-white shadow-sm">
     <header class="flex shrink-0 items-center gap-2 border-b border-line px-4 py-2.5">
         <span aria-hidden="true" class="size-2.5 rounded-full {{ $dot }}"></span>
         <h2 id="{{ $id }}-title" class="font-semibold">{{ $title }}</h2>

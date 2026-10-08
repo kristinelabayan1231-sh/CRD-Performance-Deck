@@ -38,7 +38,7 @@ class SegmentationController extends Controller
         $cras = LeadGenerator::cras();
 
         // The selected day's leads in two lists: still to do (no status and no contact
-        // date yet) and processed. "show" narrows the page to one of them.
+        // date, not marked as processed) and processed. "show" narrows the page to one of them.
         $show = $filters['show'];
         $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
@@ -52,10 +52,10 @@ class SegmentationController extends Controller
         $perPage = $full ? self::FULL_PER_PAGE : self::PER_PAGE;
 
         $unprocessed = in_array($show, ['all', 'unprocessed'], true)
-            ? (clone $listed)->whereNull('status')->whereNull('contact_date')->paginate($perPage)->withQueryString()
+            ? (clone $listed)->unprocessed()->paginate($perPage)->withQueryString()
             : null;
         $processed = in_array($show, ['all', 'processed'], true)
-            ? (clone $listed)->where(fn (Builder $q) => $q->whereNotNull('status')->orWhereNotNull('contact_date'))
+            ? (clone $listed)->processed()
                 ->paginate($perPage, ['*'], 'processed_page')->withQueryString()
             : null;
 
@@ -99,7 +99,7 @@ class SegmentationController extends Controller
             $greeting = [
                 'name' => strtok($user->displayName(), ' ') ?: $user->displayName(),
                 'total' => (clone $mine)->count(),
-                'unprocessed' => (clone $mine)->whereNull('status')->whereNull('contact_date')->count(),
+                'unprocessed' => (clone $mine)->unprocessed()->count(),
                 'day' => $today,
             ];
         }
@@ -152,8 +152,10 @@ class SegmentationController extends Controller
             'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
             'status' => ['nullable', 'string'],
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
         $filters['show'] ??= 'all';
+        $filters['q'] = trim((string) ($filters['q'] ?? '')) ?: null;
 
         // A specific date wins; otherwise a whole month; default is today.
         if (! empty($filters['date'])) {
@@ -176,7 +178,9 @@ class SegmentationController extends Controller
     private function scope(array $filters, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return Lead::query()
-            ->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+            // A search looks through every lead day; otherwise the date or month picked.
+            ->when($filters['q'], fn (Builder $q, string $term) => $q->search($term),
+                fn (Builder $q) => $q->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to))
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type));
@@ -310,6 +314,7 @@ class SegmentationController extends Controller
             'feedback' => $in('feedback'),
             'callback_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'processed' => ['sometimes', 'boolean'],
         ], [
             'assigned_to.in' => 'Leads can only be assigned to active CRAs.',
             'feedback.in' => "That Customer's Feedback option isn't available.",
@@ -343,6 +348,27 @@ class SegmentationController extends Controller
                 'status_updated_by' => $user->id,
                 'status_updated_at' => now(),
             ]);
+
+            // Some statuses imply a tag (PJR → NO VERBAL CONV).
+            if ($tag = config('segmentation.status_tags')[$data['status']] ?? null) {
+                $lead->customer_tag = $tag;
+            }
+        }
+
+        // Right-click → Mark as processed / Unmark processed. Unmarking brings the lead back to
+        // Unprocessed, so it also clears what made it processed: the status and date of contact.
+        if (array_key_exists('processed', $data)) {
+            $lead->forceFill([
+                'processed_at' => $data['processed'] ? now() : null,
+                'processed_by' => $data['processed'] ? $user->id : null,
+            ]);
+
+            if (! $data['processed']) {
+                $lead->forceFill([
+                    'contact_date' => null,
+                    ...($lead->status !== null ? ['status' => null, 'status_updated_by' => $user->id, 'status_updated_at' => now()] : []),
+                ]);
+            }
         }
 
         $lead->save();
@@ -352,6 +378,8 @@ class SegmentationController extends Controller
 
             return response()->json([
                 'saved' => true,
+                // The page mirrors it into the row's Customer Tagging cell (it can follow the status).
+                'customer_tag' => $lead->customer_tag,
                 'notes' => $lead->notes,
                 'notes_meta' => $this->notesMeta($lead),
             ]);
