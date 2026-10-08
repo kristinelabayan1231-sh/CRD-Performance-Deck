@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-08 · Conversion Breakdown / Segmentation Productivity / Dashboard · Gross sales now use each order's sales from Shecom, which leaves out the child (TSD) row; Pancake's total is used only until Shecom has the order. Untagged orders still don't count until the CRA adds CRD - BROADCAST or CRD - SEGMENTATION. Settings → Connections has a new "Shecom sales API" row · shots: settings-connections (if covered)
+
 - 2026-10-08 · Dashboard · One date picker and one Today / Week / Month switch at the top drive every section (replacing each section's own tabs; Logistics loses All time); Goal per CRA becomes day / week-to-date / month-to-date (daily goal × days); each frame shows its range; Back to today button · shots: 02-dashboard
 
 - 2026-10-08 · Dashboard · Grouped into Results (real date: Sales Goals, Conversion), Logistics (company-wide) and Leads (Segmentation Tracker, working date); each module in its own frame with its own period tabs inside · shots: 02-dashboard

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PancakePage;
+use App\Support\WorkingDate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -14,7 +15,7 @@ use Throwable;
  */
 class ConnectionChecker
 {
-    public function __construct(private PancakeClient $pancake) {}
+    public function __construct(private PancakeClient $pancake, private ShecomClient $shecom) {}
 
     /**
      * @return list<array{name: string, ok: bool, details: string, seconds: float}>
@@ -29,6 +30,8 @@ class ConnectionChecker
 
                 return $response->successful() ? number_format((int) $response->json('count')).' stock-outs' : $this->refused($response->status(), $response->json('error'));
             }),
+            // Gross sales per order (without the child TSD row), today's orders only.
+            $this->check('Shecom sales API', fn () => number_format(count($this->shecom->sales(WorkingDate::realToday(), WorkingDate::realToday()))).' orders today'),
             ...$this->pancakePos(),
             $this->pancakeChat(),
             // Some APIs only accept known addresses; this is the one the server calls out from.

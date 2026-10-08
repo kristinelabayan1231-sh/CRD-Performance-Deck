@@ -15,13 +15,13 @@ use function Illuminate\Support\defer;
 
 class PancakeSync
 {
-    public function __construct(private PancakeClient $client) {}
+    public function __construct(private PancakeClient $client, private ShecomClient $shecom) {}
 
     /**
      * Copy one day's chat engagements and POS orders from Pancake. Rows are
      * updated in place by their Pancake id; nothing is deleted.
      *
-     * @return array{staff: int, orders: int, delivered: int}
+     * @return array{staff: int, orders: int, delivered: int, sales: int}
      */
     public function sync(CarbonImmutable $day): array
     {
@@ -64,9 +64,29 @@ class PancakeSync
             }
         });
 
+        // Gross sales without the child (TSD) row; Pancake's totals stay in use if Shecom is down.
+        $sales = rescue(fn () => $this->syncSales($day, $day), 0);
+
         Cache::put(self::syncKey($day), now()->toIso8601String(), now()->addDays(40));
 
-        return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered];
+        return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered, 'sales' => $sales];
+    }
+
+    /**
+     * Save Shecom's sales on the orders dated $from–$to. Shecom's order id is
+     * Pancake's display_id, which pancake_order_id holds.
+     *
+     * @return int orders given a Shecom amount
+     */
+    public function syncSales(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $sales = collect($this->shecom->sales($from, $to));
+
+        // One update per distinct amount; a day has only a few dozen.
+        return $sales->keys()->groupBy(fn (string $id) => (string) $sales[$id])
+            ->sum(fn ($ids, string $amount) => $ids->chunk(1000)->sum(
+                fn ($chunk) => PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update(['shecom_sales' => $amount])
+            ));
     }
 
     /**

@@ -19,6 +19,7 @@ use Illuminate\Support\Collection;
  * Engagements = the CRA's Pancake customer engagements (Chat → Analytics → Engagements).
  * Leads = Segmentation Tracker leads assigned to the CRA for the lead day worked that day (base 70; actual
  * count shown). With a working date set, that's the lead day the gap points to (Oct 7 → Sept 7).
+ * Gross uses Shecom's sales per order, which leaves out the child (TSD) row; Pancake's total until it is synced.
  * BC conv % = Orders BC ÷ Engagements. SC conv % = Orders SC ÷ Leads.
  * Total conv % = (Orders BC + Orders SC) ÷ (Engagements + Leads). Gross sales = Gross BC + Gross SC.
  */
@@ -124,14 +125,14 @@ class ConversionBreakdown
             ->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->get(['ordered_on', 'seller_name', 'conversion_type', 'total_price'])
+            ->get(['ordered_on', 'seller_name', 'conversion_type', 'total_price', 'shecom_sales'])
             ->each(function (PancakeOrder $order) use (&$out, $accounts) {
                 $cra = $accounts[$order->seller_name];
                 $day = $order->ordered_on->toDateString();
                 $prefix = $order->conversion_type === PancakeOrder::BROADCAST ? 'bc' : 'sc';
                 $out[$cra][$day] ??= ['bc_orders' => 0, 'sc_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0];
                 $out[$cra][$day]["{$prefix}_orders"]++;
-                $out[$cra][$day]["{$prefix}_gross"] += (float) $order->total_price;
+                $out[$cra][$day]["{$prefix}_gross"] += $order->sales();
             });
 
         return $out;

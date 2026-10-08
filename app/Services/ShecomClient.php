@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -102,6 +103,39 @@ class ShecomClient
             'crd' => [...($body['stock_outs'] ?? []), ...($body['repeat_detail'] ?? [])],
             'fsd' => $body['retention_detail'] ?? [],
         ];
+    }
+
+    /**
+     * Each order's sales for orders dated $from–$to, by order id. Shecom leaves
+     * out the child row (TSD only), so this is the CRA's own sale.
+     *
+     * @return array<string, float> order id => sales
+     */
+    public function sales(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $key = config('services.shecom.sales_key');
+
+        if (! $key) {
+            throw new RuntimeException('SHECOM_SALES_API_KEY is not set in .env.');
+        }
+
+        $response = Http::withToken($key)
+            ->acceptJson()
+            ->timeout(120)
+            ->retry(2, 2000, throw: false)
+            ->get(rtrim(config('services.shecom.url'), '/').'/management/sales', [
+                'date_from' => $from->toDateString(),
+                'date_to' => $to->toDateString(),
+            ]);
+
+        if ($response->failed()) {
+            throw new RuntimeException("Sales API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
+        }
+
+        return collect($response->json('orders') ?? [])
+            ->filter(fn (array $order) => ($order['order_id'] ?? '') !== '' && is_numeric($order['sales'] ?? null))
+            ->mapWithKeys(fn (array $order) => [(string) $order['order_id'] => (float) $order['sales']])
+            ->all();
     }
 
     /**

@@ -36,12 +36,16 @@ class ConversionBreakdownTest extends TestCase
     /** Orders the fake POS API returns. */
     private array $orders = [];
 
+    /** Orders the fake Shecom sales API returns; null makes it fail. */
+    private ?array $sales = [];
+
     protected function setUp(): void
     {
         parent::setUp();
 
         config([
             'services.shecom.key' => 'test-key',
+            'services.shecom.sales_key' => 'sales-key',
             'services.pancake.key' => 'pos-key',
             'services.pancake.shop_id' => '1',
         ]);
@@ -53,6 +57,9 @@ class ConversionBreakdownTest extends TestCase
             return match (true) {
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
                 str_contains($request->url(), 'customer_engagements') => Http::response(['success' => true, 'users_engagements' => $this->engagements]),
+                str_contains($request->url(), 'management/sales') => $this->sales === null
+                    ? Http::response(['error' => 'down'], 500)
+                    : Http::response(['count' => count($this->sales), 'orders' => $this->sales]),
                 default => Http::response(['count' => 0, 'stock_outs' => []]),
             };
         });
@@ -181,6 +188,40 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame([self::BROADCAST, 17], $order->tags);
         $this->assertSame(PancakeOrder::BROADCAST, $order->conversion_type);
         Http::assertSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm') && str_contains(urldecode($request->url()), 'fields[]=tags'));
+    }
+
+    public function test_gross_uses_shecom_sales_which_leave_out_the_child_row(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [
+            // Pancake's 1999 includes a 1000 child (TSD) row; Shecom's 999 doesn't.
+            $withChild = $this->order('CRD Lhei', [self::SEGMENTATION], 1999),
+            // Not in Shecom yet: Pancake's total stands.
+            $this->order('CRD Lhei', [self::BROADCAST], 799),
+        ];
+        $this->sales = [['order_id' => (string) $withChild['display_id'], 'date' => '2026-10-01', 'sales' => '999', 'assigned_seller' => 'CRD Lhei']];
+
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $day = app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01'];
+        $this->assertEqualsWithDelta(999.0, $day['sc_gross'], 0.001);
+        $this->assertEqualsWithDelta(799.0, $day['bc_gross'], 0.001);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales')
+            && $request['date_from'] === '2026-10-01' && $request['date_to'] === '2026-10-01'
+            && $request->hasHeader('Authorization', 'Bearer sales-key'));
+    }
+
+    public function test_pancake_totals_stay_when_shecom_sales_are_down(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$this->order('CRD Lhei', [self::SEGMENTATION], 1999)];
+        $this->sales = null;
+
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $day = app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01'];
+        $this->assertSame(1, $day['sc_orders']);
+        $this->assertEqualsWithDelta(1999.0, $day['sc_gross'], 0.001);
     }
 
     public function test_rates_are_blank_without_engagements_or_leads(): void

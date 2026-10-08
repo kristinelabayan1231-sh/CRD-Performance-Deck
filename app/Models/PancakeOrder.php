@@ -30,8 +30,17 @@ class PancakeOrder extends Model
             'ordered_at' => 'datetime',
             'status' => 'integer',
             'total_price' => 'decimal:2',
+            'shecom_sales' => 'decimal:2',
             'tags' => 'array',
         ];
+    }
+
+    /**
+     * The CRA's sale: Shecom's amount (without the child TSD row) once synced, else Pancake's total.
+     */
+    public function sales(): float
+    {
+        return (float) ($this->shecom_sales ?? $this->total_price);
     }
 
     public function scopeCounted(Builder $query): Builder
