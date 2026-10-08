@@ -79,11 +79,11 @@
                     <figcaption class="mb-2 flex items-center justify-between text-sm">
                         <span class="font-semibold">Daily trend</span>
                         <span class="flex gap-3 text-xs text-muted">
-                            <span class="flex items-center gap-1"><span class="h-0.5 w-3 rounded bg-[#0E8F7C]"></span>Processed</span>
+                            <span class="flex items-center gap-1"><span class="h-0.5 w-3 rounded bg-[#0E8F7C]"></span>Catered</span>
                             <span class="flex items-center gap-1"><span class="h-0.5 w-3 rounded bg-[#E0663F]"></span>Unprocessed</span>
                         </span>
                     </figcaption>
-                    <svg viewBox="0 0 320 140" class="h-auto w-full" role="img" aria-label="Processed and unprocessed leads per day, {{ $p['label'] }}">
+                    <svg viewBox="0 0 320 140" class="h-auto w-full" role="img" aria-label="Catered and unprocessed leads per day, {{ $p['label'] }}">
                         @foreach ([0, $yMax / 2, $yMax] as $tick)
                             <line x1="30" x2="312" y1="{{ $y($tick) }}" y2="{{ $y($tick) }}" stroke="#ebe6ee" stroke-width="1" />
                             <text x="24" y="{{ $y($tick) + 3 }}" text-anchor="end" class="fill-muted text-[9px]">{{ (int) $tick }}</text>
@@ -97,7 +97,7 @@
                                 <g class="group">
                                     {{-- Wide invisible hit area per day, with a tooltip --}}
                                     <rect x="{{ $x($i) - ($n > 1 ? 141 / ($n - 1) : 141) }}" y="0" width="{{ $n > 1 ? 282 / ($n - 1) : 282 }}" height="130" fill="transparent">
-                                        <title>{{ $pt['label'] }}: {{ $pt['processed'] }} processed · {{ $pt['unprocessed'] }} unprocessed</title>
+                                        <title>{{ $pt['label'] }}: {{ $pt['processed'] }} catered · {{ $pt['unprocessed'] }} unprocessed</title>
                                     </rect>
                                     <line x1="{{ $x($i) }}" x2="{{ $x($i) }}" y1="10" y2="120" stroke="#d9bdff" stroke-width="1" class="pointer-events-none opacity-0 group-hover:opacity-100" />
                                     <circle cx="{{ $x($i) }}" cy="{{ $y($pt['processed']) }}" r="4" fill="#0E8F7C" stroke="#fff" stroke-width="2" class="pointer-events-none" />
@@ -154,7 +154,7 @@
                             <thead class="text-muted">
                                 <tr class="border-b border-line">
                                     <th class="pb-1.5 text-left font-medium">CRA</th>
-                                    <th class="pb-1.5 text-right font-medium" title="Processed">Done</th>
+                                    <th class="pb-1.5 text-right font-medium" title="Catered">Done</th>
                                     <th class="pb-1.5 text-right font-medium" title="Unprocessed">Open</th>
                                     <th class="pb-1.5 text-right font-medium" title="Converted">Conv.</th>
                                 </tr>

@@ -48,7 +48,7 @@
     <div class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach ([
             ['Assigned', number_format($totals['assigned']), $week['label'], 'from-brand-600 to-brand-700'],
-            ['Handled', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-[#0e8f7c] to-[#0b7d6c]'],
+            ['Catered', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-[#0e8f7c] to-[#0b7d6c]'],
             ['Unprocessed', number_format($totals['unprocessed']), 'from past days this week', 'from-[#e05a5f] to-[#d1494e]'],
             ['Backlog now', number_format($totals['backlog']), 'all unprocessed, any week', 'from-[#7429d6] to-brand-600'],
         ] as [$label, $value, $note, $gradient])
