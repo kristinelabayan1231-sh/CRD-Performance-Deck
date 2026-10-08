@@ -16,10 +16,13 @@ class ConnectionCheckTest extends TestCase
 
     public function test_super_admin_runs_the_check_from_settings(): void
     {
-        config(['services.pancake.access_token' => null, 'services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
+        config(['services.pancake.access_token' => null, 'services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1', 'services.shecom.sales_key' => 'sales-key']);
         PancakePage::create(['name' => 'Trusted Eye Care', 'page_id' => '1001', 'access_token' => 't']);
         Http::fake(fn (Request $request) => match (true) {
             str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => false, 'message' => 'api_key is invalid', 'error_code' => 105], 403),
+            str_contains($request->url(), 'management/sales') => Http::response(['count' => 2, 'orders' => [
+                ['order_id' => '1', 'sales' => '999'], ['order_id' => '2', 'sales' => '499'],
+            ]]),
             str_contains($request->url(), 'customer_engagements') => Http::response(['success' => true, 'users_engagements' => []]),
             str_contains($request->url(), 'ipify') => Http::response('203.0.113.7'),
             default => Http::response(['count' => 12, 'stock_outs' => []]),
@@ -33,6 +36,9 @@ class ConnectionCheckTest extends TestCase
             ->assertOk()
             ->assertSee('Pancake POS orders · API key (used for syncs)')
             ->assertSee('api_key is invalid')
+            ->assertSee('12 stock-outs')
+            ->assertSee('Shecom sales API')
+            ->assertSee('2 orders today')
             ->assertSee('1 of 1 pages OK')
             ->assertSee('203.0.113.7');
     }

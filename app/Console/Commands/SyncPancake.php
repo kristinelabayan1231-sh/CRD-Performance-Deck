@@ -14,7 +14,8 @@ class SyncPancake extends Command
         {--date= : Day to sync (YYYY-MM-DD, or "yesterday"). Defaults to today in the segmentation timezone.}
         {--from= : First day of a range to backfill (YYYY-MM-DD)}
         {--to= : Last day of the range (YYYY-MM-DD). Defaults to today.}
-        {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}';
+        {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
+        {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
@@ -34,6 +35,12 @@ class SyncPancake extends Command
             };
         }
 
+        if ($this->option('sales')) {
+            $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
+
+            return self::SUCCESS;
+        }
+
         $failed = false;
 
         for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
@@ -45,7 +52,7 @@ class SyncPancake extends Command
                 }
 
                 $result = $sync->sync($day);
-                $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered.");
+                $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered, {$result['sales']} Shecom sales.");
             } catch (Throwable $e) {
                 $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
                 $failed = true;

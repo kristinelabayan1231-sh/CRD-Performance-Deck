@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PancakePage;
+use App\Support\WorkingDate;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -14,7 +15,7 @@ use Throwable;
  */
 class ConnectionChecker
 {
-    public function __construct(private PancakeClient $pancake) {}
+    public function __construct(private PancakeClient $pancake, private ShecomClient $shecom) {}
 
     /**
      * @return list<array{name: string, ok: bool, details: string, seconds: float}>
@@ -24,11 +25,21 @@ class ConnectionChecker
         return [
             $this->check('Database', fn () => DB::connection()->getDriverName().' · '.DB::connection()->getDatabaseName().' · '.DB::table('users')->count().' users'),
             $this->check('Shecom retention API', function () {
+                // The report is ~18 MB: stream it and read only its start, where the count is.
                 $response = Http::withToken((string) config('services.shecom.key'))->acceptJson()->timeout(60)
+                    ->withOptions(['stream' => true])
                     ->get(rtrim(config('services.shecom.url'), '/').'/management/retention-stockout');
 
-                return $response->successful() ? number_format((int) $response->json('count')).' stock-outs' : $this->refused($response->status(), $response->json('error'));
+                if ($response->failed()) {
+                    $this->refused($response->status(), $response->json('error'));
+                }
+
+                return preg_match('/^\s*\{\s*"count"\s*:\s*(\d+)/', $response->toPsrResponse()->getBody()->read(100), $match)
+                    ? number_format((int) $match[1]).' stock-outs'
+                    : 'connected';
             }),
+            // Gross sales per order (without the child TSD row), today's orders only.
+            $this->check('Shecom sales API', fn () => number_format(count($this->shecom->sales(WorkingDate::realToday(), WorkingDate::realToday()))).' orders today'),
             ...$this->pancakePos(),
             $this->pancakeChat(),
             // Some APIs only accept known addresses; this is the one the server calls out from.
