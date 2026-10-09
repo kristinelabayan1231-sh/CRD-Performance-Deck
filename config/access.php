@@ -19,6 +19,7 @@ $modules = [
     'Settings · Product Consumption' => [
         'product_consumption.view' => 'View products and their keywords',
         'product_consumption.manage' => 'Add, edit and delete products',
+        'product_consumption.srp' => 'Set each product\'s SRP (sets its CLTV in the Customer Database)',
     ],
     'Settings · Pancake Pages' => [
         'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
@@ -42,6 +43,9 @@ $modules = [
     'Conversion Breakdown' => [
         'conversion.view' => 'View own broadcast and segmentation conversions',
         'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
+    ],
+    'Customer Database' => [
+        'customers.view' => 'View every FSD- and CRD-delivered customer, their orders and product CLTV',
     ],
 ];
 

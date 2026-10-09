@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\LogisticsOrder;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
@@ -31,6 +32,7 @@ class ShecomClient
     {
         $report = $this->report();
         LogisticsRetention::store($report);
+        LogisticsOrder::remember($report['delivered']);
 
         return ['crd' => $report['stock_outs'], 'fsd' => $report['fsd_orders']];
     }
@@ -38,9 +40,9 @@ class ShecomClient
     /**
      * The retention report, with its large per-order retention lists reduced to
      * daily counts (by delivered date) as soon as it is read. The FSD orders are
-     * kept in a slim form for the lead generator.
+     * kept in a slim form for the lead generator, and every delivered order for the Customer Database.
      *
-     * @return array{stock_outs: list<array<string, mixed>>, fsd_orders: list<array<string, mixed>>, summary: array<string, int|float>, days: array<string, array{fb_delivered: int, fb_retained: int, crd_delivered: int, crd_again: int}>}
+     * @return array{stock_outs: list<array<string, mixed>>, fsd_orders: list<array<string, mixed>>, delivered: list<array<string, mixed>>, summary: array<string, int|float>, days: array<string, array{fb_delivered: int, fb_retained: int, crd_delivered: int, crd_again: int}>}
      */
     public function report(): array
     {
@@ -54,6 +56,8 @@ class ShecomClient
             'product_name' => (string) ($row['product'] ?? ''),
             'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
         ], $body['retention_detail'] ?? []);
+
+        $delivered = self::deliveredForCustomers($body);
 
         $days = [];
         $count = function (string $list, string $total, string $flagKey, string $flagged) use (&$body, &$days) {
@@ -77,9 +81,42 @@ class ShecomClient
         return [
             'stock_outs' => $body['stock_outs'] ?? [],
             'fsd_orders' => $fsdOrders,
+            'delivered' => $delivered,
             'summary' => $body['retention_summary'] ?? [],
             'days' => $days,
         ];
+    }
+
+    /**
+     * Every FSD- and CRD-delivered order, slimmed for the Customer Database. A CRD order on
+     * both the out-of-stock list and the repeat list is kept once, with its qty.
+     *
+     * @param  array<string, mixed>  $body  the decoded retention report
+     * @return list<array{order_id: string, team: string, customer_name: string, phone_number: string, product: string, qty: ?int, delivered_date: string}>
+     */
+    private static function deliveredForCustomers(array $body): array
+    {
+        $slim = fn (string $team) => fn (array $row) => [
+            'order_id' => (string) ($row['order_id'] ?? ''),
+            'team' => $team,
+            'customer_name' => trim((string) ($row['customer_name'] ?? '')),
+            'phone_number' => (string) ($row['phone_number'] ?? ''),
+            'product' => trim((string) ($row['product_name'] ?? $row['product'] ?? '')),
+            'qty' => isset($row['qty']) ? max(1, (int) $row['qty']) : null,
+            'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
+        ];
+
+        $orders = [];
+
+        foreach ([
+            ...array_map($slim(LogisticsOrder::TEAM_CRD), $body['stock_outs'] ?? []),
+            ...array_map($slim(LogisticsOrder::TEAM_CRD), $body['repeat_detail'] ?? []),
+            ...array_map($slim(LogisticsOrder::TEAM_FSD), $body['retention_detail'] ?? []),
+        ] as $order) {
+            $orders[$order['order_id']] ??= $order;
+        }
+
+        return array_values($orders);
     }
 
     /**

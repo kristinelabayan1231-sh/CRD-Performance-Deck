@@ -10,6 +10,13 @@
             <div class="flex items-center gap-3">
                 <h1 class="text-xl font-semibold">Performance Deck</h1>
                 <x-dashboard.poster />
+                {{-- Checks every minute and reloads when a sync has saved new data (resources/js/live.js). --}}
+                <span data-live-url="{{ route('dashboard.live') }}" data-live-version="{{ $version }}"
+                      title="Updates by itself when new data comes in. Pancake syncs every 10 minutes."
+                      class="inline-flex items-center gap-1.5 rounded-full bg-teal/10 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                    <span class="size-2 animate-pulse rounded-full bg-teal" aria-hidden="true"></span>
+                    Live{{ $pancakeSyncedAt ? ' · Pancake '.$pancakeSyncedAt->timezone(config('segmentation.timezone'))->format('g:i A') : '' }}
+                </span>
             </div>
 
             {{-- One date and one period for every section below. --}}

@@ -1,3 +1,5 @@
+import { initCustomers } from './customers';
+import { initLive } from './live';
 import { initPoster } from './poster';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
@@ -8,4 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initTooltips();
     initSegmentation();
     initPoster();
+    initLive();
+    initCustomers();
 });

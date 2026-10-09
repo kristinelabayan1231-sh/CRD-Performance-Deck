@@ -9,6 +9,7 @@ use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
 use App\Services\SalesGoalProgress;
 use App\Services\SegmentationStats;
+use App\Support\DashboardVersion;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -54,7 +55,7 @@ class DashboardController extends Controller
         $conversion = null;
 
         if ($user->can('conversion.view')) {
-            // Today's sales come from Pancake; refresh them after the page is sent when over an hour old.
+            // Today's sales come from Pancake; refresh them after the page is sent when over ten minutes old.
             if (PancakeSync::isStale($realToday) && ! PancakeSync::isRunning($realToday)) {
                 $pancake->syncLater($realToday);
             }
@@ -74,6 +75,7 @@ class DashboardController extends Controller
             'qtyUnknown' => $qtyUnknown, 'segmentation' => $segmentation, 'salesGoals' => $salesGoals, 'conversion' => $conversion,
             'logistics' => $user->can('segmentation.view'), 'logisticsPeriods' => $logisticsPeriods, 'logisticsFetchedAt' => $logisticsFetchedAt,
             'day' => $day, 'period' => $period, 'leadDay' => $leadDay, 'realToday' => $realToday,
+            'version' => DashboardVersion::current(), 'pancakeSyncedAt' => PancakeSync::lastSync($realToday),
         ]);
     }
 }

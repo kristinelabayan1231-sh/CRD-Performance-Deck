@@ -49,6 +49,35 @@ class ProductConsumptionTest extends TestCase
         $this->actingAs($this->owner)->get('/settings/product-consumption')->assertSee('Sinuxyl')->assertSee('Sinuvex');
     }
 
+    public function test_srp_is_saved_and_sets_the_cltv(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => 'CanPro', 'srp' => '499'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame(14970.0, $product->cltv());
+
+        $this->actingAs($this->owner)->get('/settings/product-consumption')->assertSee('₱14,970');
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'srp' => '-1'])
+            ->assertSessionHasErrorsIn("product{$product->id}", ['srp']);
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'srp' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->cltv());
+    }
+
+    public function test_a_supervisor_can_set_only_the_srp(): void
+    {
+        $product = Product::create(['name' => 'CanPro', 'keywords' => 'Can Pro', 'consumption_days' => 10]);
+        $supervisor = User::create(['email' => 'sup@gmail.com', 'role_id' => Role::where('slug', Role::CRA_SUPERVISOR)->value('id'), 'is_active' => true]);
+
+        $this->actingAs($supervisor)->get('/settings/product-consumption')
+            ->assertOk()->assertSee(route('settings.product-consumption.srp', $product))->assertDontSee('Add product');
+
+        $this->actingAs($supervisor)->patch(route('settings.product-consumption.srp', $product), ['srp' => '499', 'name' => 'Renamed'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['CanPro', '499.00'], [$product->fresh()->name, $product->fresh()->srp]);
+
+        $this->actingAs($supervisor)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Renamed'])->assertForbidden();
+    }
+
     public function test_consumption_days_are_saved_and_must_be_a_sensible_number(): void
     {
         $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => 'CanPro', 'consumption_days' => '10'])->assertSessionHasNoErrors();

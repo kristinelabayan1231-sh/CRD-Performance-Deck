@@ -15,7 +15,8 @@ class SyncPancake extends Command
         {--from= : First day of a range to backfill (YYYY-MM-DD)}
         {--to= : Last day of the range (YYYY-MM-DD). Defaults to today.}
         {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
-        {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}';
+        {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
+        {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
@@ -41,6 +42,16 @@ class SyncPancake extends Command
             return self::SUCCESS;
         }
 
+        if ($this->option('tags')) {
+            $this->info("Pancake flagged orders: {$sync->recheckIssues()} updated.");
+
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                $this->info("Pancake {$day->toDateString()}: {$sync->refreshTags($day)} orders with changed tags or status.");
+            }
+
+            return self::SUCCESS;
+        }
+
         $failed = false;
 
         for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
@@ -53,6 +64,10 @@ class SyncPancake extends Command
 
                 $result = $sync->sync($day);
                 $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered, {$result['sales']} Shecom sales.");
+
+                if ($result['engagement_error']) {
+                    $this->warn("Pancake {$day->toDateString()}: engagements kept from the last good sync. {$result['engagement_error']}");
+                }
             } catch (Throwable $e) {
                 $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
                 $failed = true;

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\LogisticsOrder;
 use App\Support\MonthWeeks;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -80,7 +81,9 @@ class LogisticsRetention
 
     public function refresh(): void
     {
-        self::store($this->client->report());
+        $report = $this->client->report();
+        self::store($report);
+        LogisticsOrder::remember($report['delivered']);
     }
 
     /**
