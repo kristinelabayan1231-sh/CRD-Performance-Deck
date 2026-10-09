@@ -59,8 +59,8 @@ return [
         'blocked' => ['Blocked', 'bg-[#3d3d3d] text-white'],
     ],
 
-    // Picking one of these statuses sets the lead's Customer Tagging too: status => customer_tags key.
-    'status_tags' => [
+    // Picking one of these statuses sets the lead's Customer's Feedback too: status => feedback key.
+    'status_feedback' => [
         'pjr_drop_call' => 'no_verbal_conv',
     ],
 

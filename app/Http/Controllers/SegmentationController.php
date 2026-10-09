@@ -349,9 +349,9 @@ class SegmentationController extends Controller
                 'status_updated_at' => now(),
             ]);
 
-            // Some statuses imply a tag (PJR → NO VERBAL CONV).
-            if ($tag = config('segmentation.status_tags')[$data['status']] ?? null) {
-                $lead->customer_tag = $tag;
+            // Some statuses imply the feedback (PJR → NO VERBAL CONV).
+            if ($feedback = config('segmentation.status_feedback')[$data['status']] ?? null) {
+                $lead->feedback = $feedback;
             }
         }
 
@@ -378,8 +378,8 @@ class SegmentationController extends Controller
 
             return response()->json([
                 'saved' => true,
-                // The page mirrors it into the row's Customer Tagging cell (it can follow the status).
-                'customer_tag' => $lead->customer_tag,
+                // The page mirrors it into the row's Customer's Feedback cell (it can follow the status).
+                'feedback' => $lead->feedback,
                 'notes' => $lead->notes,
                 'notes_meta' => $this->notesMeta($lead),
             ]);
