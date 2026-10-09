@@ -13,6 +13,14 @@
             </span>
         </header>
 
+        @if ($history['checked'] < $history['total'])
+            <div role="status" class="rounded-lg border border-line bg-white px-4 py-3 text-sm">
+                Checking CRD customers' orders before {{ \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y') }} in Pancake:
+                <span class="font-semibold tabular-nums">{{ number_format($history['checked']) }} of {{ number_format($history['total']) }}</span> done.
+                Until a customer is checked, an earlier CRA order doesn't count yet, so they may show as Retained instead of Repeat.
+            </div>
+        @endif
+
         @if ($errors->any())
             <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
         @endif
@@ -22,8 +30,8 @@
             @foreach ([
                 [null, 'Customers', $counts['all'], 'text-ink', 'Everyone with an FSD or CRD delivery'.($range['from'] ? ' in the period' : '')],
                 ['crd', 'CRD Leads', $counts['crd'], 'text-brand-600', 'A delivery handled by a CRA'.($range['from'] ? ' in the period' : '')],
-                ['retained', 'Retained', $counts['retained'], 'text-teal-700', 'Their only CRA-handled order so far'],
-                ['repeat', 'Repeat Customers', $counts['repeat'], 'text-violet', 'An earlier CRA-handled order too'],
+                ['retained', 'Retained', $counts['retained'], 'text-teal-700', 'Their first CRA-handled order ever'],
+                ['repeat', 'Repeat Customers', $counts['repeat'], 'text-violet', 'An earlier CRA-handled order too, any year'],
             ] as [$key, $label, $value, $color, $hint])
                 <a href="{{ $query(['segment' => $key, 'page' => null]) }}" @if ($segment === $key) aria-current="true" @endif
                    @class(['flex flex-col gap-0.5 rounded-xl bg-white p-4 shadow-sm ring-2 transition hover:ring-brand-200', 'ring-brand-500' => $segment === $key, 'ring-transparent' => $segment !== $key])>

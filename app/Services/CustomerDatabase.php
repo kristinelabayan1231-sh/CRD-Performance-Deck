@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerHistory;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
@@ -158,15 +159,19 @@ class CustomerDatabase
 
         $orders = $orders->sortByDesc(fn (array $o) => ($o['date'] ?? $o['delivered_on'])?->toDateString())->values();
         $deliveredOrders = $orders->whereNotNull('delivered_on');
+        $history = CustomerHistory::firstWhere('phone_key', $phoneKey);
         $craOrders = $deliveredOrders->where('by_cra', true)->count();
         $latest = $delivered->first();
 
         return [
             'name' => $latest->customer_name ?: 'Unknown',
             'phone' => $latest->phone_number,
-            'segment' => self::segmentFor($craOrders),
+            'segment' => self::segmentFor($craOrders + ($history->prior_cra_orders ?? 0), $craOrders),
             'purchases' => $deliveredOrders->count(),
             'cra_orders' => $craOrders,
+            // CRA-handled orders before the database's first day; null until Pancake has been checked.
+            'prior_cra_orders' => $history?->prior_cra_orders,
+            'prior_last_ordered_on' => $history?->prior_last_ordered_on,
             'total_spent' => (float) $deliveredOrders->sum('amount'),
             'statuses' => collect($statuses)
                 ->map(function (array $status, int $code) use ($orders) {
@@ -189,6 +194,89 @@ class CustomerDatabase
                 'status_classes' => $statuses[$o['status']][1] ?? 'bg-canvas text-muted',
             ])->all(),
         ];
+    }
+
+    /**
+     * Contact numbers with a CRA-handled delivery whose earlier history hasn't been checked in Pancake yet.
+     *
+     * @return list<string>
+     */
+    public function uncheckedHistories(int $limit): array
+    {
+        [$total] = $this->craOrdersSql(null, null, withPrior: false);
+
+        return $this->grouped([])
+            ->whereNotExists(fn ($q) => $q->from('customer_histories')->whereColumn('customer_histories.phone_key', 'lo.phone_key'))
+            ->havingRaw("{$total['sql']} >= 1", $total['bindings'])
+            ->orderByDesc('last_delivered')
+            ->limit($limit)
+            ->pluck('phone_key')->all();
+    }
+
+    /**
+     * Search each customer's whole order history in Pancake and save how many CRA-handled orders
+     * were delivered before the database's first day. Numbers whose search fails are retried later.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return int customers checked
+     */
+    public function checkHistories(array $phoneKeys, PancakeClient $client): int
+    {
+        $before = CarbonImmutable::parse(config('customers.delivered_from'));
+        $delivered = config('customers.delivered_statuses');
+        $now = now();
+
+        $rows = collect($client->ordersByPhone($phoneKeys))->map(function (array $orders, string $phone) use ($before, $delivered, $now) {
+            $prior = collect($orders)->filter(function (array $order) use ($before, $delivered) {
+                $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
+                $orderedOn = isset($order['inserted_at'])
+                    ? CarbonImmutable::parse($order['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->startOfDay()
+                    : null;
+
+                return $orderedOn?->lessThan($before)
+                    && in_array((int) ($order['status'] ?? -1), $delivered, true)
+                    && $this->isCraSeller(isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null);
+            });
+
+            return [
+                'phone_key' => $phone,
+                'prior_cra_orders' => $prior->count(),
+                'prior_last_ordered_on' => $prior->max(fn (array $o) => CarbonImmutable::parse($o['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString()),
+                'checked_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        })->values();
+
+        foreach ($rows->chunk(500) as $chunk) {
+            CustomerHistory::upsert($chunk->all(), ['phone_key'], ['prior_cra_orders', 'prior_last_ordered_on', 'checked_at', 'updated_at']);
+        }
+
+        return $rows->count();
+    }
+
+    /**
+     * How far the earlier-history check has got: customers with a CRA-handled delivery, and how many are checked.
+     *
+     * @return array{checked: int, total: int}
+     */
+    public function historyProgress(): array
+    {
+        [$total] = $this->craOrdersSql(null, null, withPrior: false);
+        $crd = DB::query()->fromSub($this->grouped([])->havingRaw("{$total['sql']} >= 1", $total['bindings']), 'c');
+
+        return [
+            'checked' => (clone $crd)->whereExists(fn ($q) => $q->from('customer_histories')->whereColumn('customer_histories.phone_key', 'c.phone_key'))->count(),
+            'total' => $crd->count(),
+        ];
+    }
+
+    /**
+     * Whether a seller (staff key) is a CRA's Pancake account or one of the CRD team's accounts.
+     */
+    private function isCraSeller(?string $seller): bool
+    {
+        return $seller !== null && ($this->craAccounts()->has($seller) || PancakeOrder::isCrdAccount($seller));
     }
 
     /**
@@ -284,6 +372,8 @@ class CustomerDatabase
 
         return DB::table('logistics_orders as lo')
             ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
+            // One row per customer: their CRA-handled orders before the first covered day.
+            ->leftJoin('customer_histories as ch', 'ch.phone_key', '=', 'lo.phone_key')
             ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
             ->when($from || $search !== '', fn (Builder $q) => $q->whereIn('lo.phone_key', $this->matching($from, $to, $search)))
             ->groupBy('lo.phone_key')
@@ -316,11 +406,12 @@ class CustomerDatabase
 
     /**
      * SQL counting a customer's CRA-handled delivered orders: up to the period's end (the period's
-     * one and any earlier ones), and within the period. Without a period both cover every order.
+     * one and any earlier ones, including those before the first covered day found in Pancake
+     * unless !$withPrior), and within the period. Without a period both cover every order.
      *
      * @return array{0: array{sql: string, bindings: list<string>}, 1: array{sql: string, bindings: list<string>}}
      */
-    private function craOrdersSql(?CarbonImmutable $from, ?CarbonImmutable $to): array
+    private function craOrdersSql(?CarbonImmutable $from, ?CarbonImmutable $to, bool $withPrior = true): array
     {
         $accounts = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...PancakeOrder::crdAccounts()]));
         $bySeller = $accounts ? ' or po.seller_name in ('.implode(', ', array_fill(0, count($accounts), '?')).')' : '';
@@ -330,12 +421,16 @@ class CustomerDatabase
             'bindings' => [...$accounts, ...$dates],
         ];
 
+        $prior = fn (array $count) => $withPrior
+            ? ['sql' => "({$count['sql']} + coalesce(max(ch.prior_cra_orders), 0))", 'bindings' => $count['bindings']]
+            : $count;
+
         if (! $from) {
-            return [$count('', []), $count('', [])];
+            return [$prior($count('', [])), $count('', [])];
         }
 
         return [
-            $count(' and lo.delivered_date <= ?', [$to->toDateString()]),
+            $prior($count(' and lo.delivered_date <= ?', [$to->toDateString()])),
             $count(' and lo.delivered_date between ? and ?', [$from->toDateString(), $to->toDateString()]),
         ];
     }

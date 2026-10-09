@@ -14,6 +14,7 @@ use App\Services\PancakeSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -241,5 +242,36 @@ class CustomerDatabaseTest extends TestCase
         $this->assertSame(['crd', 'pos', '9176666666', '2026-01-01'], [$delivery->team, $delivery->source, $delivery->phone_key, $delivery->delivered_date->toDateString()]);
         $this->assertSame('1200.00', PancakeOrder::firstWhere('pancake_order_id', '9001')->total_price);
         $this->assertSame('2026-03-02', Setting::value(BackfillCustomerDatabase::DONE_THROUGH));
+    }
+
+    public function test_crd_orders_before_the_first_day_found_in_pancake_make_a_customer_repeat(): void
+    {
+        config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
+        $order = fn (string $at, int $status, string $seller, string $phone = '09174444444') => [
+            'display_id' => uniqid(), 'inserted_at' => $at, 'status' => $status, 'bill_phone_number' => $phone, 'assigning_seller' => ['name' => $seller],
+        ];
+        Http::fake(fn (Request $request) => Http::response(['success' => true, 'total_pages' => 1, 'data' => str_contains($request->url(), 'search=9174444444&') ? [
+            $order('2025-11-24T03:48:41', 3, 'CRD Rej Vergara'),        // counts: delivered, CRD account, before Jan 1
+            $order('2025-12-01T03:00:00', 6, 'CRD Rej Vergara'),        // canceled
+            $order('2025-10-01T03:00:00', 3, 'Angel Mirador'),          // not a CRA
+            $order('2026-02-01T03:00:00', 3, 'CRD Lhei'),               // not before Jan 1
+            $order('2025-09-01T03:00:00', 3, 'CRD Lhei', '09990000000'), // another customer (number in a note)
+        ] : []]));
+        $this->customers();
+
+        // Dan has one CRA-handled delivery this year: Retained until his history is checked.
+        $this->actingAs($this->owner)->get(route('customers.index'))
+            ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 3, 'repeat' => 1])
+            ->assertSee('0 of 4');
+
+        $this->artisan('customers:check-history')->expectsOutputToContain('4 of 4 CRD customers done')->assertSuccessful();
+        $this->artisan('customers:check-history')->expectsOutputToContain('is checked')->assertSuccessful();
+        Cache::flush();
+
+        $this->actingAs($this->owner)->get(route('customers.index'))
+            ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 2, 'repeat' => 2])
+            ->assertDontSee('Checking CRD customers');
+        $this->actingAs($this->owner)->get(route('customers.show', '9174444444'))
+            ->assertSeeInOrder(['Dan Lim', 'Repeat Customer', 'Before Jan 1, 2026:', '1 CRA-handled order', 'last Nov 24, 2025']);
     }
 }
