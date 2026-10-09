@@ -80,9 +80,9 @@
 
     {{-- Churn rate --}}
     <article class="flex min-w-0 flex-col justify-between gap-1 rounded-xl bg-white p-4 shadow-sm"
-             title="Customers lost ÷ CRD customers whose product ran out in this period × 100. Lost = no order since that delivery. Lower is better.">
+             title="CRD customers lost ÷ CRD customers due × 100. Due = their {{ $churn['grace_days'] }} days to reorder after running out ended in this period; lost = no order in that time. Lower is better.">
         <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Churn rate</p>
         <p @class(['text-3xl font-bold tabular-nums', 'text-coral-700' => ($churn['rate'] ?? 0) > 0])>{{ $pct($churn['rate'], 2) }}</p>
-        <p class="text-xs text-muted tabular-nums">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} who ran out</p>
+        <p class="text-xs text-muted tabular-nums">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · no reorder {{ $churn['grace_days'] }}d after running out</p>
     </article>
 </section>

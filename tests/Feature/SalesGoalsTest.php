@@ -200,7 +200,7 @@ class SalesGoalsTest extends TestCase
             ->assertOk()->assertSee('5001')->assertSee('5002')->assertDontSee('5003');
     }
 
-    public function test_churn_counts_customers_who_ran_out_and_have_not_ordered_since(): void
+    public function test_churn_counts_customers_with_no_reorder_within_30_days_of_running_out(): void
     {
         $delivered = function (string $phone, string $day, int $qty, int $days) {
             DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Unlisted product',
@@ -210,20 +210,24 @@ class SalesGoalsTest extends TestCase
             'pancake_order_id' => uniqid(), 'ordered_on' => $day, 'phone_key' => $phone, 'status' => $status, 'total_price' => 500,
         ]);
 
-        $delivered('09171111111', '2026-09-20', 1, 15);  // ran out Oct 4, no order since: lost
-        $delivered('9172222222', '2026-09-25', 1, 10);   // ran out Oct 4, ordered Oct 5: back
-        $ordered('9172222222', '2026-10-05');
-        $delivered('9173333333', '2026-09-20', 2, 30);   // runs out Nov 18: not in October
-        $delivered('9174444444', '2026-09-26', 1, 10);   // ran out Oct 5, only a canceled order since: lost
-        $ordered('9174444444', '2026-10-06', status: 6);
-        $delivered('9175555555', '2026-09-20', 1, 15);   // ran out Oct 4, delivered again Oct 8: back
+        // Ran out Sep 3–4, so their 30 days to reorder ended Oct 3–4, inside October.
+        $delivered('09171111111', '2026-08-20', 1, 15);  // no order since: lost
+        $delivered('9172222222', '2026-08-25', 1, 10);   // ordered Sep 20: back
+        $ordered('9172222222', '2026-09-20');
+        $delivered('9174444444', '2026-08-26', 1, 10);   // only a canceled order: lost
+        $ordered('9174444444', '2026-09-10', status: 6);
+        $delivered('9175555555', '2026-08-20', 1, 15);   // delivered again Sep 25: back
         LogisticsOrder::remember([['order_id' => 'L1', 'team' => 'crd', 'customer_name' => 'E', 'phone_number' => '9175555555',
-            'product' => 'X', 'qty' => null, 'delivered_date' => '2026-10-08']]);
+            'product' => 'X', 'qty' => null, 'delivered_date' => '2026-09-25']]);
+        $delivered('9176666666', '2026-08-20', 1, 15);   // came back Oct 5, after the 30 days: lost
+        $ordered('9176666666', '2026-10-05');
+        // Ran out Sep 25: still inside their 30 days, not counted yet.
+        $delivered('9173333333', '2026-09-11', 1, 15);
 
         $churn = app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
-        $this->assertSame(['customers' => 4, 'lost' => 2, 'rate' => 0.5], $churn);
+        $this->assertSame(['customers' => 5, 'lost' => 3, 'rate' => 0.6, 'grace_days' => 30], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['Churn rate', '50.00%', '2 lost of 4 who ran out']);
+            ->assertSeeTextInOrder(['Churn rate', '60.00%', '3 lost of 5']);
     }
 }

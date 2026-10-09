@@ -9,30 +9,32 @@ use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 
 /**
- * Churn rate = customers lost ÷ customers who ran out × 100.
+ * Churn rate = customers lost ÷ customers due × 100.
  *
- * Customers who ran out = CRD-delivered customers (the logistics out-of-stock list) whose product
- * ran out between $from and $to (up to today): delivered date + qty × consumption days − 1.
- * Lost = no order since that delivery: no Pancake POS order (not canceled or deleted) placed
- * after it and no later delivery. A customer counts once, by their latest delivery that ran out
- * in the range; one who reorders later stops counting as lost.
+ * A CRD-delivered customer (the logistics out-of-stock list) runs out on delivered date + qty ×
+ * consumption days − 1 and has config customers.churn_grace_days (30) to order again. Customers
+ * due in $from–$to = those whose grace ended in the range (up to today). Lost = no Pancake POS
+ * order (not canceled or deleted) and no new delivery between that delivery and the end of the
+ * grace. A customer counts once, by their latest delivery whose grace ended in the range, so a
+ * past range's churn doesn't change later.
  */
 class CustomerChurn
 {
     /**
-     * @return array{customers: int, lost: int, rate: ?float}
+     * @return array{customers: int, lost: int, rate: ?float, grace_days: int}
      */
     public function for(CarbonImmutable $from, CarbonImmutable $to): array
     {
+        $grace = (int) config('customers.churn_grace_days');
         $to = $to->min(WorkingDate::realToday());
         $catalog = new ProductCatalog;
-        $ranOut = [];
+        $due = [];
 
         // Supplies of a year or more are rare; look back far enough to catch them.
         DeliveredOrder::where('source', DeliveredOrder::SOURCE_SHECOM)
-            ->whereDate('delivered_date', '>=', $from->subYear())->whereDate('delivered_date', '<=', $to)
+            ->whereDate('delivered_date', '>=', $from->subYear()->subDays($grace))->whereDate('delivered_date', '<=', $to)
             ->get(['phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
-            ->each(function (DeliveredOrder $order) use ($catalog, $from, $to, &$ranOut) {
+            ->each(function (DeliveredOrder $order) use ($catalog, $from, $to, $grace, &$due) {
                 $days = $catalog->match($order->product_raw)?->consumption_days ?: $order->consumption_days_per_unit;
                 $phone = LeadGenerator::normalizePhone($order->phone_number);
 
@@ -40,40 +42,38 @@ class CustomerChurn
                     return;
                 }
 
-                $outOfStock = $order->delivered_date->addDays($order->qty * $days - 1);
+                $deadline = $order->delivered_date->addDays($order->qty * $days - 1 + $grace);
 
-                if ($outOfStock->betweenIncluded($from, $to)
-                    && (! isset($ranOut[$phone]) || $order->delivered_date->greaterThan($ranOut[$phone]))) {
-                    $ranOut[$phone] = $order->delivered_date;
+                if ($deadline->betweenIncluded($from, $to)
+                    && (! isset($due[$phone]) || $order->delivered_date->greaterThan($due[$phone]['delivered']))) {
+                    $due[$phone] = ['delivered' => $order->delivered_date, 'deadline' => $deadline];
                 }
             });
 
-        if ($ranOut === []) {
-            return ['customers' => 0, 'lost' => 0, 'rate' => null];
+        if ($due === []) {
+            return ['customers' => 0, 'lost' => 0, 'rate' => null, 'grace_days' => $grace];
         }
 
-        $phones = array_map('strval', array_keys($ranOut));
-        $lastOrdered = [];
+        $since = collect($due)->min(fn (array $d) => $d['delivered'])->toDateString();
+        $orders = [];
 
-        foreach (array_chunk($phones, 1000) as $chunk) {
-            PancakeOrder::counted()->whereIn('phone_key', $chunk)
-                ->selectRaw('phone_key, max(ordered_on) as last_on')->groupBy('phone_key')->get()
-                ->each(function ($row) use (&$lastOrdered) {
-                    $lastOrdered[$row->phone_key] = CarbonImmutable::parse($row->last_on);
+        // Every later order or delivery of these customers, to see whether one fell inside their window.
+        foreach (array_chunk(array_map('strval', array_keys($due)), 1000) as $chunk) {
+            PancakeOrder::counted()->whereIn('phone_key', $chunk)->whereDate('ordered_on', '>', $since)
+                ->get(['phone_key', 'ordered_on'])
+                ->each(function (PancakeOrder $order) use (&$orders) {
+                    $orders[$order->phone_key][] = $order->ordered_on;
                 });
-            LogisticsOrder::whereIn('phone_key', $chunk)
-                ->selectRaw('phone_key, max(delivered_date) as last_on')->groupBy('phone_key')->get()
-                ->each(function ($row) use (&$lastOrdered) {
-                    $delivered = CarbonImmutable::parse($row->last_on);
-                    $known = $lastOrdered[$row->phone_key] ?? null;
-                    $lastOrdered[$row->phone_key] = $known && $known->greaterThan($delivered) ? $known : $delivered;
+            LogisticsOrder::whereIn('phone_key', $chunk)->whereDate('delivered_date', '>', $since)
+                ->get(['phone_key', 'delivered_date'])
+                ->each(function (LogisticsOrder $order) use (&$orders) {
+                    $orders[$order->phone_key][] = $order->delivered_date;
                 });
         }
 
-        // An order placed after the delivery that ran out, or a later delivery, means they came back.
-        $lost = collect($ranOut)->filter(fn (CarbonImmutable $delivered, $phone) => ! isset($lastOrdered[(string) $phone])
-            || $lastOrdered[(string) $phone]->lessThanOrEqualTo($delivered))->count();
+        $lost = collect($due)->reject(fn (array $d, $phone) => collect($orders[(string) $phone] ?? [])
+            ->contains(fn (CarbonImmutable $day) => $day->greaterThan($d['delivered']) && $day->lessThanOrEqualTo($d['deadline'])))->count();
 
-        return ['customers' => count($ranOut), 'lost' => $lost, 'rate' => $lost / count($ranOut)];
+        return ['customers' => count($due), 'lost' => $lost, 'rate' => $lost / count($due), 'grace_days' => $grace];
     }
 }
