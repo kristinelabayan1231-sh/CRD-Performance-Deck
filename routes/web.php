@@ -4,7 +4,9 @@ use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
+use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\RoleController;
@@ -26,6 +28,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::redirect('/', '/dashboard');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
     Route::post('/logout', [GoogleController::class, 'logout'])->name('logout');
 
     Route::prefix('user-access')->group(function () {
@@ -68,6 +71,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/sync', [ConversionBreakdownController::class, 'sync'])->middleware('can:conversion.view_all')->name('sync');
     });
 
+    Route::prefix('customers')->name('customers.')->middleware('can:customers.view')->group(function () {
+        Route::get('/', [CustomerDatabaseController::class, 'index'])->name('index');
+        Route::get('/{phoneKey}', [CustomerDatabaseController::class, 'show'])->where('phoneKey', '[0-9]+')->name('show');
+    });
+
     Route::prefix('settings')->name('settings.')->group(function () {
         // The first Settings tab this user may open.
         Route::get('/', fn () => redirect()->route(
@@ -104,6 +112,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
         Route::prefix('product-consumption')->name('product-consumption.')->group(function () {
             Route::get('/', [ProductConsumptionController::class, 'index'])->middleware('can:product_consumption.view')->name('index');
+            Route::patch('/{product}/srp', [ProductConsumptionController::class, 'updateSrp'])->middleware('can:product_consumption.srp')->name('srp');
 
             Route::middleware('can:product_consumption.manage')->group(function () {
                 Route::post('/', [ProductConsumptionController::class, 'store'])->name('store');

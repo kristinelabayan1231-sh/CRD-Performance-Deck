@@ -16,10 +16,18 @@ Schedule::command('leads:generate')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping();
 
-// Segmentation Productivity: today's Pancake engagements and orders every
-// hour, and yesterday's once more after midnight so its totals are final.
+// Dashboard, Conversion Breakdown and Segmentation Productivity: today's Pancake
+// engagements, orders and tags every ten minutes, and yesterday's once more
+// after midnight so its totals are final.
 Schedule::command('pancake:sync')
-    ->hourly()
+    ->everyTenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping();
+
+// A full sync can take over ten minutes (Pancake sends whole orders), so the
+// header's order issues get their own quick refresh: fixed tags clear in minutes.
+Schedule::command('pancake:sync --tags')
+    ->everyFiveMinutes()
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping();
 
@@ -27,3 +35,11 @@ Schedule::command('pancake:sync --date=yesterday')
     ->dailyAt('00:30')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping();
+
+// Customer Database: one-time backfill from Pancake POS, a few days per run, oldest
+// first in 2-month windows from January; once it reaches yesterday it does nothing.
+Schedule::command('customers:backfill')
+    ->everyFifteenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping()
+    ->runInBackground();

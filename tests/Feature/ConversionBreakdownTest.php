@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\Role;
@@ -39,6 +40,12 @@ class ConversionBreakdownTest extends TestCase
     /** Orders the fake POS API returns for "changed on this day" (updateStatus=updated_at). */
     private array $changed = [];
 
+    /** Orders the fake POS order search returns (search=<order number>), as Pancake has them now. */
+    private array $current = [];
+
+    /** Whether the fake engagement API fails. */
+    private bool $engagementsDown = false;
+
     /** Orders the fake Shecom sales API returns; null makes it fail. */
     private ?array $sales = [];
 
@@ -59,8 +66,13 @@ class ConversionBreakdownTest extends TestCase
         Http::fake(function (Request $request) {
             return match (true) {
                 str_contains($request->url(), 'updateStatus=updated_at') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->changed]),
+                str_contains($request->url(), 'search=') => Http::response(['success' => true, 'total_pages' => 1, 'data' => array_values(array_filter(
+                    $this->current, fn (array $order) => str_contains($request->url(), 'search='.$order['display_id'].'&')
+                ))]),
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
-                str_contains($request->url(), 'customer_engagements') => Http::response(['success' => true, 'users_engagements' => $this->engagements]),
+                str_contains($request->url(), 'customer_engagements') => $this->engagementsDown
+                    ? Http::response(['success' => false], 500)
+                    : Http::response(['success' => true, 'users_engagements' => $this->engagements]),
                 str_contains($request->url(), 'management/sales') => $this->sales === null
                     ? Http::response(['error' => 'down'], 500)
                     : Http::response(['count' => count($this->sales), 'orders' => $this->sales]),
@@ -268,6 +280,51 @@ class ConversionBreakdownTest extends TestCase
 
         $this->actingAs($lhea)->get(route('conversion.index'))->assertOk()
             ->assertSeeText('2 issues')->assertDontSee('Regina');
+    }
+
+    public function test_a_tag_fixed_in_pancake_clears_from_the_header_and_the_dashboard_reloads(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSeeText('1 no crd tag');
+        $before = $this->getJson(route('dashboard.live'))->assertOk()->json('version');
+
+        // The CRA tags it in Pancake, but it isn't in Pancake's changed-orders list: the flagged order is looked up itself.
+        $this->travel(11)->minutes();
+        $this->current = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [17, self::SEGMENTATION], 'status' => 2, 'status_name' => 'confirmed']];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->assertSame(PancakeOrder::SEGMENTATION, PancakeOrder::sole()->conversion_type);
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSeeText('No order issues');
+        $this->assertNotSame($before, $this->getJson(route('dashboard.live'))->json('version'));
+    }
+
+    public function test_the_quick_tag_refresh_clears_a_fixed_order_without_a_full_sync(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->current = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::BROADCAST], 'status' => 2, 'status_name' => 'confirmed']];
+        $this->artisan('pancake:sync --tags')->assertSuccessful();
+
+        $this->assertSame(PancakeOrder::BROADCAST, PancakeOrder::sole()->conversion_type);
+    }
+
+    public function test_orders_still_sync_when_a_page_engagements_fail(): void
+    {
+        $this->engagements = [['user_id' => 'u1', 'name' => 'CRD Lhei', 'total_engagement' => 40]];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->engagementsDown = true;
+        $this->orders = [$this->order('CRD Lhei', [self::SEGMENTATION], 800)];
+        $result = app(PancakeSync::class)->sync(Lead::today());
+
+        $this->assertNotNull($result['engagement_error']);
+        $this->assertSame(1, PancakeOrder::count());
+        $this->assertSame(40, PancakeEngagement::sole()->engagements);
+        $this->assertFalse(PancakeSync::isStale(Lead::today()));
     }
 
     public function test_header_says_so_when_there_are_no_issues(): void

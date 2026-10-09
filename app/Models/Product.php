@@ -6,14 +6,23 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'keywords', 'consumption_days', 'created_by'])]
+#[Fillable(['name', 'keywords', 'consumption_days', 'srp', 'created_by'])]
 class Product extends Model
 {
     protected function casts(): array
     {
         return [
             'consumption_days' => 'integer',
+            'srp' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Customer lifetime value: SRP × 30 units (config customers.cltv_units); null without an SRP.
+     */
+    public function cltv(): ?float
+    {
+        return $this->srp === null ? null : (float) $this->srp * config('customers.cltv_units');
     }
 
     /**

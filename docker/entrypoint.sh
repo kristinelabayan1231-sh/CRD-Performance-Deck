@@ -22,7 +22,7 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-# Hourly lead + Pancake syncs (routes/console.php). Render's free plan sleeps
+# Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php). Render's free plan sleeps
 # when idle, which pauses this until the next visit.
 php artisan schedule:work &
 

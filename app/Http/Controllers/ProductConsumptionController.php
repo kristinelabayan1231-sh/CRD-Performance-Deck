@@ -36,6 +36,21 @@ class ProductConsumptionController extends Controller
         return back()->with('status', "Product \"{$product->name}\" updated.");
     }
 
+    /**
+     * Only the SRP, for roles that may price products but not regroup them.
+     */
+    public function updateSrp(Request $request, Product $product): RedirectResponse
+    {
+        $request->merge(['srp' => filled($request->input('srp')) ? $request->input('srp') : null]);
+        $data = $request->validateWithBag("product{$product->id}", [
+            'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+        ]);
+
+        $product->update($data);
+
+        return back()->with('status', "SRP of \"{$product->name}\" updated.");
+    }
+
     public function destroy(Product $product): RedirectResponse
     {
         $product->delete();
@@ -45,7 +60,7 @@ class ProductConsumptionController extends Controller
     }
 
     /**
-     * @return array{name: string, keywords: ?string, consumption_days: ?int}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
@@ -54,6 +69,7 @@ class ProductConsumptionController extends Controller
             'name' => trim((string) $request->input('name')),
             'keywords' => $keywords ?: null,
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
+            'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
         ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
@@ -63,6 +79,7 @@ class ProductConsumptionController extends Controller
             'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product)],
             'keywords' => ['nullable', 'string', 'max:1000'],
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);
