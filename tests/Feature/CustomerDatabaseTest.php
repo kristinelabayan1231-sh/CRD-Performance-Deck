@@ -131,6 +131,10 @@ class CustomerDatabaseTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('customers.index', ['search' => '+63 917 222']))
             ->assertSee('Ben Reyes')->assertSee('₱1,700.00')->assertDontSee('Ana Cruz');
+
+        // Names match whatever the case.
+        $this->actingAs($this->owner)->get(route('customers.index', ['search' => 'eve sant']))
+            ->assertSee('Eve Santos')->assertDontSee('Ben Reyes');
     }
 
     public function test_profile_breaks_orders_down_by_status_and_marks_reached_cltv(): void

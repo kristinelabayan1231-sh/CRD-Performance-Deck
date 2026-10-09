@@ -310,7 +310,7 @@ class CustomerDatabase
         return DB::table('logistics_orders')->select('phone_key')->distinct()
             ->when($from, fn (Builder $q) => $q->whereBetween('delivered_date', [$from->toDateString(), $to->toDateString()]))
             ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $q) => $q
-                ->where('customer_name', 'like', $like)
+                ->whereLike('customer_name', $like, caseSensitive: false)
                 ->when(strlen($phone) >= 4, fn (Builder $q) => $q->orWhere('phone_key', 'like', '%'.$phone.'%'))));
     }
 

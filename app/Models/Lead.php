@@ -56,8 +56,9 @@ class Lead extends Model
         $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $term).'%';
 
         return $query->where(fn (Builder $q) => $q
-            ->where('customer_name', 'like', $like)
-            ->orWhere('order_id', 'like', $like)
+            // Case-insensitive on every database (Postgres LIKE is case-sensitive).
+            ->whereLike('customer_name', $like, caseSensitive: false)
+            ->orWhereLike('order_id', $like, caseSensitive: false)
             ->when(strlen($phone) >= 4, fn (Builder $q) => $q->orWhere('phone_number', 'like', '%'.$phone.'%')));
     }
 
