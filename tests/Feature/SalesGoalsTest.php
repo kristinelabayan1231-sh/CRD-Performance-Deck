@@ -228,6 +228,7 @@ class SalesGoalsTest extends TestCase
         $this->assertSame(['customers' => 5, 'lost' => 3, 'rate' => 0.6, 'grace_days' => 30], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['Churn rate', '60.00%', '3 lost of 5']);
+            ->assertSeeTextInOrder(['Churn rate', '60.00%', '3 lost of 5'])
+            ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again']);
     }
 }

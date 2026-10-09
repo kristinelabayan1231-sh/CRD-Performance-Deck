@@ -104,5 +104,33 @@
         @if (! $segmentation && ! $results)
             <div class="rounded-xl bg-white p-6 text-muted shadow-sm">No modules are available to you yet.</div>
         @endif
+
+        @if ($results || $segmentation)
+            @php($grace = config('customers.churn_grace_days'))
+            <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
+                <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
+                <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
+                    <div class="sm:col-span-2"><dt class="font-semibold text-ink">Dates</dt><dd>Every section uses the month picked (January–December, from the 1st to today for the current month) or the From–To range. Sales, orders and logistics are by the real date; the Segmentation Tracker uses the paired lead days (Settings → Working Date).</dd></div>
+                    @if ($results)
+                        <div><dt class="font-semibold text-ink">CRD monthly goal</dt><dd>Gross sales of every CRA ÷ the CRD monthly goal ({{ '₱'.number_format(\App\Support\SalesGoals::crdMonthly()) }}, Settings → Sales Goals). Pace = day of the month ÷ days in the month. For a From–To range that isn't a whole month, the goal is prorated: monthly goal × days picked ÷ days in the month.</dd></div>
+                        <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Totals of the CRAs' own Pancake POS orders tagged CRD - BROADCAST or CRD - SEGMENTATION, using Shecom's sales per order (without the child TSD row) once synced, else Pancake's total.</dd></div>
+                        <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRAs' own Pancake POS orders tagged CRD - BROADCAST (BC) or CRD - SEGMENTATION (SC), by order date. Canceled and deleted orders don't count. Click the tile to see them.</dd></div>
+                        <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>(BC orders + SC orders) ÷ (Pancake engagements + Segmentation Tracker leads) × 100.</dd></div>
+                        <div><dt class="font-semibold text-ink">AOV (average order value)</dt><dd>Gross sales ÷ total confirmed orders.</dd></div>
+                        <div><dt class="font-semibold text-ink">Churn rate</dt><dd>
+                            Customers lost ÷ customers due × 100. A CRD-delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $grace }} days to order again.
+                            Due = customers whose {{ $grace }} days ended in the dates picked. Lost = no Pancake order (not canceled) and no new delivery in that time.
+                            Example: 6,000 due and 50 lost = 50 ÷ 6,000 × 100 = 0.83%. Lower is better.
+                        </dd></div>
+                        <div><dt class="font-semibold text-ink">Goal per CRA</dt><dd>The CRA's gross sales ÷ (their daily goal × days in the dates picked). Daily goal = their own, else the general {{ '₱'.number_format(\App\Support\SalesGoals::craDaily()) }}. Left = goal − sales.</dd></div>
+                        <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's (BC + SC orders) ÷ (their engagements + their leads) × 100. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
+                    @endif
+                    @if ($segmentation)
+                        <div><dt class="font-semibold text-ink">Live from Logistics</dt><dd>From the logistics retention report, by delivered date. Retention rate = Retained by CRD ÷ FB delivered. Repeat rate = Actual Order (CRD-delivered customers who placed another CRD order) ÷ CRD delivered.</dd></div>
+                        <div><dt class="font-semibold text-ink">Segmentation Tracker</dt><dd>Leads = leads for the lead days. Catered = leads with a status ÷ leads. Converted = Repeat Purchase Yes, or No with feedback PURCHASED, ÷ leads. Went cold = leads tagged Cold or CanPro Cold ÷ leads. Each is compared with the same number of days just before.</dd></div>
+                    @endif
+                </dl>
+            </details>
+        @endif
     </div>
 </x-layouts.app>
