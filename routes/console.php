@@ -11,10 +11,13 @@ Artisan::command('inspire', function () {
 // Sync and assign today's Segmentation Tracker leads every hour (catches
 // late-recorded orders and newly added CRAs). The tracker page also syncs
 // on open when the last sync is over an hour old.
+// Each "already running" lock expires a little after the job's usual run time (minutes),
+// so a run cut off by a deploy or restart doesn't block the job for the default 24 hours
+// (the locks live in the database cache and survive restarts).
 Schedule::command('leads:generate')
     ->hourly()
     ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 // Dashboard, Conversion Breakdown and Segmentation Productivity: today's Pancake
 // engagements, orders and tags every ten minutes, and yesterday's once more
@@ -22,24 +25,24 @@ Schedule::command('leads:generate')
 Schedule::command('pancake:sync')
     ->everyTenMinutes()
     ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 // A full sync can take over ten minutes (Pancake sends whole orders), so the
 // header's order issues get their own quick refresh: fixed tags clear in minutes.
 Schedule::command('pancake:sync --tags')
     ->everyFiveMinutes()
     ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping();
+    ->withoutOverlapping(10);
 
 Schedule::command('pancake:sync --date=yesterday')
     ->dailyAt('00:30')
     ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 // Customer Database: one-time backfill from Pancake POS, a few days per run, oldest
 // first in 2-month windows from January; once it reaches yesterday it does nothing.
 Schedule::command('customers:backfill')
     ->everyFifteenMinutes()
     ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping()
+    ->withoutOverlapping(45)
     ->runInBackground();
