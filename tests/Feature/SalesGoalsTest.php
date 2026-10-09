@@ -2,10 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeliveredOrder;
+use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\CustomerChurn;
 use App\Services\SalesGoalProgress;
+use App\Support\DashboardRange;
 use App\Support\SalesGoals;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -105,18 +109,30 @@ class SalesGoalsTest extends TestCase
         $this->sale('CRD LHEI', '2026-10-10', 9999, status: 6);
         $this->sale('CRD LHEI', '2026-09-30', 9999);
 
-        $goals = app(SalesGoalProgress::class)->for(collect([$lhea, $regina]), CarbonImmutable::parse('2026-10-10'));
+        // Month to date (Oct 1–10): the whole monthly goal, paced by day 10 of 31.
+        $goals = app(SalesGoalProgress::class)->for(collect([$lhea, $regina]), DashboardRange::fromFilters([], CarbonImmutable::parse('2026-10-10')));
 
         $this->assertEqualsWithDelta(202000.0, $goals['month']['sales'], 0.001);
         $this->assertEqualsWithDelta(0.202, $goals['month']['progress'], 1e-9);
         $this->assertEqualsWithDelta(10 / 31, $goals['month']['pace'], 1e-9);
         $this->assertEqualsWithDelta(798000.0, $goals['month']['remaining'], 0.001);
+        $this->assertSame([4, 202000.0], [$goals['team']['orders'], (float) $goals['team']['gross']]);
 
+        // Per CRA over the 10 days: Lhea ₱77k of 10 × ₱77k; Regina ₱125k of 10 × her own ₱50k.
         $byName = $goals['cras']->keyBy(fn ($row) => $row['cra']->display_name);
-        // Lhea hits the general ₱77,000; Regina is measured against her own ₱50,000.
+        $this->assertEqualsWithDelta(0.1, $byName['Lhea']['progress'], 1e-9);
+        $this->assertEqualsWithDelta(0.25, $byName['Regina']['progress'], 1e-9);
+        $this->assertTrue($byName['Regina']['own_goal']);
+
+        // A one-day range: the monthly goal prorated to 1 day of 31; per CRA one day's goal.
+        $day = app(SalesGoalProgress::class)->for(collect([$lhea, $regina]), DashboardRange::fromFilters(['from' => '2026-10-10', 'to' => '2026-10-10'], CarbonImmutable::parse('2026-10-10')));
+        $this->assertTrue($day['month']['prorated']);
+        $this->assertNull($day['month']['pace']);
+        $this->assertEqualsWithDelta(1000000 / 31, $day['month']['goal'], 0.001);
+        $this->assertEqualsWithDelta(102000.0, $day['month']['sales'], 0.001);
+        $byName = $day['cras']->keyBy(fn ($row) => $row['cra']->display_name);
         $this->assertEqualsWithDelta(1.0, $byName['Lhea']['progress'], 1e-9);
         $this->assertEqualsWithDelta(0.5, $byName['Regina']['progress'], 1e-9);
-        $this->assertTrue($byName['Regina']['own_goal']);
     }
 
     public function test_dashboard_has_the_crd_board_with_today_and_the_two_days_before(): void
@@ -139,16 +155,75 @@ class SalesGoalsTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSee('CRD monthly goal · October 2026')
-            ->assertSeeText('₱38,500 of ₱1,000,000')
-            ->assertSee('Total conv % per CRA')
+            ->assertSeeText('₱38,500 gross of ₱1,000,000')
+            ->assertSeeTextInOrder(['Total confirmed orders', '1', 'Conversion rate', 'AOV', '₱38,500', 'Churn rate'])
+            ->assertSee(route('conversion.orders'))
+            ->assertSee('Goal &amp; conversion per CRA', false)
             ->assertDontSee('accounts')
-            ->assertSee('Regina')
-            // Sales still needed per CRA: Lhea 77k − 38.5k; Regina hasn't sold yet.
+            // Month to date, Oct 1–10: sales still needed per CRA, Lhea 10 × 77k − 38.5k; Regina hasn't sold yet.
+            ->assertSeeTextInOrder(['Lhea', '₱731.5k left', 'Regina', '₱770k left']);
+
+        // One day picked: one day's goal.
+        $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-10', 'to' => '2026-10-10']))
+            ->assertOk()
             ->assertSeeTextInOrder(['Lhea', '₱38.5k left', 'Regina', '₱77k left']);
 
         $this->actingAs($lhea)->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('50.0%')
-            ->assertViewHas('salesGoals', fn ($goals) => $goals['cras']->pluck('cra.id')->all() === [$lhea->id]);
+            ->assertSee('Your confirmed orders')
+            ->assertViewHas('results', fn ($results) => $results['cras']->pluck('cra.id')->all() === [$lhea->id]);
+    }
+
+    public function test_confirmed_orders_page_lists_the_tagged_orders_and_a_cra_sees_their_own(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        $this->cra('Regina', 'CRD REJ VERGARA');
+        $this->sale('CRD LHEI', '2026-10-10', 1000, PancakeOrder::BROADCAST);
+        $this->sale('CRD LHEI', '2026-10-09', 3000);
+        $this->sale('CRD REJ VERGARA', '2026-10-08', 2000);
+        // Not confirmed: untagged, canceled, last month.
+        $this->sale('CRD LHEI', '2026-10-10', 9999, type: null);
+        $this->sale('CRD LHEI', '2026-10-10', 9999, status: 6);
+        $this->sale('CRD LHEI', '2026-09-30', 9999);
+
+        $this->actingAs($this->owner)->get(route('conversion.orders'))
+            ->assertOk()
+            ->assertSeeTextInOrder(['Confirmed orders', '3', 'Gross sales', '₱6,000.00', 'AOV', '₱2,000.00'])
+            ->assertSeeTextInOrder(['5001', 'Lhea', 'Broadcast', '₱1,000.00', '5002', 'Segmentation', '5003', 'Regina'])
+            ->assertDontSee('₱9,999.00');
+
+        // The dashboard's dates carry over: Oct 9 only.
+        $this->actingAs($this->owner)->get(route('conversion.orders', ['from' => '2026-10-09', 'to' => '2026-10-09']))
+            ->assertSee('5002')->assertDontSee('5001')->assertDontSee('5003');
+
+        $this->actingAs($lhea)->get(route('conversion.orders'))
+            ->assertOk()->assertSee('5001')->assertSee('5002')->assertDontSee('5003');
+    }
+
+    public function test_churn_counts_customers_who_ran_out_and_have_not_ordered_since(): void
+    {
+        $delivered = function (string $phone, string $day, int $qty, int $days) {
+            DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Unlisted product',
+                'qty' => $qty, 'delivered_date' => $day, 'consumption_days_per_unit' => $days, 'source' => DeliveredOrder::SOURCE_SHECOM]);
+        };
+        $ordered = fn (string $phone, string $day, int $status = 3) => PancakeOrder::create([
+            'pancake_order_id' => uniqid(), 'ordered_on' => $day, 'phone_key' => $phone, 'status' => $status, 'total_price' => 500,
+        ]);
+
+        $delivered('09171111111', '2026-09-20', 1, 15);  // ran out Oct 4, no order since: lost
+        $delivered('9172222222', '2026-09-25', 1, 10);   // ran out Oct 4, ordered Oct 5: back
+        $ordered('9172222222', '2026-10-05');
+        $delivered('9173333333', '2026-09-20', 2, 30);   // runs out Nov 18: not in October
+        $delivered('9174444444', '2026-09-26', 1, 10);   // ran out Oct 5, only a canceled order since: lost
+        $ordered('9174444444', '2026-10-06', status: 6);
+        $delivered('9175555555', '2026-09-20', 1, 15);   // ran out Oct 4, delivered again Oct 8: back
+        LogisticsOrder::remember([['order_id' => 'L1', 'team' => 'crd', 'customer_name' => 'E', 'phone_number' => '9175555555',
+            'product' => 'X', 'qty' => null, 'delivered_date' => '2026-10-08']]);
+
+        $churn = app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
+        $this->assertSame(['customers' => 4, 'lost' => 2, 'rate' => 0.5], $churn);
+
+        $this->actingAs($this->owner)->get(route('dashboard'))
+            ->assertSeeTextInOrder(['Churn rate', '50.00%', '2 lost of 4 who ran out']);
     }
 }

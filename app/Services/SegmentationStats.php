@@ -4,13 +4,12 @@ namespace App\Services;
 
 use App\Models\Lead;
 use App\Models\User;
-use App\Support\MonthWeeks;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * Dashboard numbers for the Segmentation Tracker, per period.
+ * Dashboard numbers for the Segmentation Tracker, for a range of lead days.
  *
  * Processed = status set. Unprocessed = no status yet.
  * Converted = Repeat Purchase "yes", or "no" with feedback PURCHASED.
@@ -25,23 +24,17 @@ class SegmentationStats
     private const COLD = ['cold', 'canpro_cold'];
 
     /**
-     * Today / this week / this month, each compared with the period just before it.
+     * Lead days $from–$to, compared with the same number of days just before. A single day's
+     * trend line shows the week up to it.
      *
      * @param  Collection<int, User>  $cras  CRAs included (a CRA sees only themselves)
      */
-    public function periods(Collection $cras, ?CarbonImmutable $today = null): array
+    public function range(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $today ??= Lead::today();
-        $month = $today->startOfMonth();
-        $week = MonthWeeks::for($month)[MonthWeeks::containing($month, $today) - 1];
-        $weekDays = $week['start']->diffInDays($week['end']) + 1;
-        $prevMonth = $month->subMonth();
+        $days = (int) $from->diffInDays($to) + 1;
 
-        return [
-            'today' => $this->period('Today', $today, $today, $today->subDay(), $today->subDay(), $cras, $today, chartFrom: $today->subDays(6)),
-            'week' => $this->period('Week', $week['start'], $week['end'], $week['start']->subDays($weekDays), $week['start']->subDay(), $cras, $today),
-            'month' => $this->period('Month', $month, $month->endOfMonth()->startOfDay(), $prevMonth, $prevMonth->endOfMonth()->startOfDay(), $cras, $today),
-        ];
+        return $this->period('Range', $from, $to, $from->subDays($days), $from->subDay(), $cras, $to,
+            chartFrom: $days === 1 ? $from->subDays(6) : null);
     }
 
     private function period(

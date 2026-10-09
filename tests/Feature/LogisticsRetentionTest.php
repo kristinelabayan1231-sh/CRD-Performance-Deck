@@ -49,29 +49,27 @@ class LogisticsRetentionTest extends TestCase
         $this->assertSame(['fb_delivered' => 1, 'fb_retained' => 1, 'crd_delivered' => 0, 'crd_again' => 0], LogisticsRetention::cached()['days']['2026-10-02']);
     }
 
-    public function test_tiles_count_by_delivered_date_for_week_month_and_all_time(): void
+    public function test_tiles_count_by_delivered_date_in_the_range(): void
     {
         app(LogisticsRetention::class)->refresh();
 
-        $periods = LogisticsRetention::periods(CarbonImmutable::parse('2026-10-06'));
+        // October so far: 3 FB delivered, 1 retained; 2 CRD delivered, 1 ordered again.
+        $october = LogisticsRetention::range(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-06'), 'Oct 1–6');
+        $this->assertSame([3, 1, 2, 1], [$october['fb_delivered'], $october['fb_retained'], $october['crd_delivered'], $october['crd_again']]);
+        $this->assertEqualsWithDelta(1 / 3, $october['retention_rate'], 1e-9);
+        $this->assertEqualsWithDelta(1 / 2, $october['repeat_rate'], 1e-9);
+        $this->assertSame('Oct 1–6', $october['label']);
 
-        // Week 1 (Oct 1–7) and October so far: 3 FB delivered, 1 retained; 2 CRD delivered, 1 ordered again.
-        foreach (['week', 'month'] as $key) {
-            $this->assertSame([3, 1, 2, 1], [$periods[$key]['fb_delivered'], $periods[$key]['fb_retained'], $periods[$key]['crd_delivered'], $periods[$key]['crd_again']]);
-            $this->assertEqualsWithDelta(1 / 3, $periods[$key]['retention_rate'], 1e-9);
-            $this->assertEqualsWithDelta(1 / 2, $periods[$key]['repeat_rate'], 1e-9);
-        }
-
-        $this->assertSame([5, 2, 3, 1], [$periods['all']['fb_delivered'], $periods['all']['fb_retained'], $periods['all']['crd_delivered'], $periods['all']['crd_again']]);
-        $this->assertSame('Since Aug 30, 2026', $periods['all']['label']);
+        $all = LogisticsRetention::range(CarbonImmutable::parse('2026-08-01'), CarbonImmutable::parse('2026-10-06'), 'Aug 1 – Oct 6');
+        $this->assertSame([5, 2, 3, 1], [$all['fb_delivered'], $all['fb_retained'], $all['crd_delivered'], $all['crd_again']]);
     }
 
     public function test_dashboard_shows_the_tiles_labelled_live_from_logistics(): void
     {
         $owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
 
-        // The dashboard's shared period switch: Month shows October so far.
-        $this->actingAs($owner)->get(route('dashboard', ['period' => 'month']))
+        // The dashboard's month: October so far.
+        $this->actingAs($owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSee('Live from Logistics')
             ->assertSeeInOrder(['FB delivered', 'Retained by CRD', 'Retention rate', 'CRD delivered', 'Actual Order', 'Repeat rate'])

@@ -2,7 +2,7 @@
 
 @php
     $pct = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 2).'%';
-    // One period, picked by the dashboard's shared Today / Week / Month switch.
+    // The dashboard's month (to date) or From–To range.
     $default = $active;
     $periods = $periods ? [$active => $periods[$active]] : $periods;
 @endphp

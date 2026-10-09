@@ -1,5 +1,5 @@
 @props(['periods', 'active' => 'today'])
-{{-- One period, picked by the dashboard's shared Today / Week / Month switch. --}}
+{{-- The dashboard's month (to date) or From–To range. --}}
 @php($periods = [$active => $periods[$active]])
 
 {{--
