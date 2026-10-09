@@ -386,22 +386,26 @@ class SegmentationTest extends TestCase
             ->assertSee('Waiting Wendy')->assertDontSee('Status Sam')->assertDontSee('data-live-summary', false);
     }
 
-    public function test_choosing_pjr_tags_the_customer_no_verbal_conv(): void
+    public function test_choosing_pjr_sets_the_feedback_to_no_verbal_conv(): void
     {
         $alice = $this->cra('alice@gmail.com');
         $lead = Lead::create([
             'order_id' => '1', 'customer_name' => 'Pat', 'phone_number' => '9171', 'product_name' => 'Sinuxyl', 'qty' => 1,
             'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
-            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, 'customer_tag' => 'hot',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, 'customer_tag' => 'hot', 'feedback' => 'no_budget',
         ]);
 
         $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'active'])
-            ->assertOk()->assertJson(['customer_tag' => 'hot']);
+            ->assertOk()->assertJson(['feedback' => 'no_budget']);
 
-        // PJR replaces the tag, and the response carries it so the row's tag cell can follow.
+        // PJR replaces the feedback (a real Customer's Feedback option), and the response carries it so the row's
+        // feedback cell can follow. Customer Tagging is left alone.
         $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'pjr_drop_call'])
-            ->assertOk()->assertJson(['customer_tag' => 'no_verbal_conv']);
-        $this->assertSame('no_verbal_conv', $lead->refresh()->customer_tag);
+            ->assertOk()->assertJson(['feedback' => 'no_verbal_conv']);
+        $lead->refresh();
+        $this->assertArrayHasKey($lead->feedback, config('segmentation.feedback'));
+        $this->assertSame('no_verbal_conv', $lead->feedback);
+        $this->assertSame('hot', $lead->customer_tag);
     }
 
     public function test_a_cra_searches_their_leads_across_every_lead_day(): void

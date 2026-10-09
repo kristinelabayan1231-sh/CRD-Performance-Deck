@@ -1,5 +1,4 @@
-        // Rows the user can't edit keep the browser's own menu.
-        if (!target) return close();// Segmentation Tracker: auto-saving cells, hide/unhide columns, Sheets-style notes.
+// Segmentation Tracker: auto-saving cells, hide/unhide columns, Sheets-style notes.
 
 const COLUMNS_KEY = 'segmentation.hiddenColumns';
 
@@ -115,13 +114,13 @@ function initAutosave() {
             field.dataset.saved = field.value;
             flash(field, true);
             if (['status', 'assigned_to', 'repeat_purchase', 'feedback'].includes(field.name)) refreshSummary();
-            // A status can set the tag too (PJR → NO VERBAL CONV): show it in the same row.
-            const tag = field.name === 'status' && field.closest('tr')?.querySelector('select[name=customer_tag]');
-            if (tag && result.customer_tag !== undefined && tag.value !== (result.customer_tag ?? '')) {
-                tag.value = result.customer_tag ?? '';
-                tag.dataset.saved = tag.value;
-                recolor(tag);
-                flash(tag, true);
+            // A status can set the feedback too (PJR → NO VERBAL CONV): show it in the same row.
+            const feedback = field.name === 'status' && field.closest('tr')?.querySelector('select[name=feedback]');
+            if (feedback && result.feedback !== undefined && feedback.value !== (result.feedback ?? '')) {
+                feedback.value = result.feedback ?? '';
+                feedback.dataset.saved = feedback.value;
+                recolor(feedback);
+                flash(feedback, true);
             }
             // Optionally mirror a returned value elsewhere on the page (e.g. a renamed user).
             if (form.dataset.updateText && result.display_name !== undefined) {
