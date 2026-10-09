@@ -154,7 +154,7 @@
                             <thead class="text-muted">
                                 <tr class="border-b border-line">
                                     <th class="pb-1.5 text-left font-medium">CRA</th>
-                                    <th class="pb-1.5 text-right font-medium" title="Catered">Done</th>
+                                    <th class="pb-1.5 text-right font-medium">Catered</th>
                                     <th class="pb-1.5 text-right font-medium" title="Pending">Open</th>
                                     <th class="pb-1.5 text-right font-medium" title="Converted">Conv.</th>
                                 </tr>

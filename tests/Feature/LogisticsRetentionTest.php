@@ -74,7 +74,7 @@ class LogisticsRetentionTest extends TestCase
         $this->actingAs($owner)->get(route('dashboard', ['period' => 'month']))
             ->assertOk()
             ->assertSee('Live from Logistics')
-            ->assertSeeInOrder(['FB delivered', 'Retained by CRD', 'Retention rate', 'CRD delivered', 'Ordered again', 'Repeat rate'])
+            ->assertSeeInOrder(['FB delivered', 'Retained by CRD', 'Retention rate', 'CRD delivered', 'Actual Order', 'Repeat rate'])
             ->assertSee('33.33%');
     }
 }

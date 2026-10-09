@@ -38,8 +38,8 @@
                     ['repeat', 'Retained by CRD', number_format($p['fb_retained']), 'Later resold by CRD', 'FB-delivered customers who later bought again through CRD.', 'bg-[#e3f3f9]', 'text-[#0c5a7d]'],
                     ['percent', 'Retention rate', $pct($p['retention_rate']), 'Retained ÷ FB delivered', 'Retained by CRD ÷ Total FB delivered.', 'bg-gradient-to-br from-[#1f8fb8] to-[#1a7fa6] text-white', null],
                     ['truck', 'CRD delivered', number_format($p['crd_delivered']), 'CRD orders', 'CRD orders delivered in this period.', 'bg-[#ddf3ee]', 'text-[#0b6b5d]'],
-                    ['repeat', 'Ordered again', number_format($p['crd_again']), 'Bought again via CRD', 'CRD-delivered customers who placed another CRD order after delivery.', 'bg-[#ddf3ee]', 'text-[#0b6b5d]'],
-                    ['percent', 'Repeat rate', $pct($p['repeat_rate']), 'Again ÷ CRD delivered', 'Ordered again via CRD ÷ Total CRD delivered.', 'bg-gradient-to-br from-[#0e8f7c] to-[#0b7d6c] text-white', null],
+                    ['repeat', 'Actual Order', number_format($p['crd_again']), null, 'CRD-delivered customers who placed another CRD order after delivery.', 'bg-[#ddf3ee]', 'text-[#0b6b5d]'],
+                    ['percent', 'Repeat rate', $pct($p['repeat_rate']), 'Actual ÷ CRD delivered', 'Actual Order ÷ Total CRD delivered.', 'bg-gradient-to-br from-[#0e8f7c] to-[#0b7d6c] text-white', null],
                 ] as [$icon, $label, $value, $note, $help, $surface, $valueColor])
                     <div class="relative min-w-0 overflow-hidden rounded-xl p-3 shadow-sm {{ $surface }}" title="{{ $help }} ({{ $p['label'] }}, by delivered date)">
                         @if (! $valueColor)
@@ -50,7 +50,9 @@
                             <span class="truncate">{{ $label }}</span>
                         </p>
                         <p class="relative text-2xl font-bold tabular-nums {{ $valueColor }}">{{ $value }}</p>
-                        <p @class(['relative truncate text-[11px]', 'text-ink/80' => $valueColor, 'text-white' => ! $valueColor])>{{ $note }}</p>
+                        @if ($note)
+                            <p @class(['relative truncate text-[11px]', 'text-ink/80' => $valueColor, 'text-white' => ! $valueColor])>{{ $note }}</p>
+                        @endif
                     </div>
                 @endforeach
             </div>
