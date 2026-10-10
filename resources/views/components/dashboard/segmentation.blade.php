@@ -62,7 +62,7 @@
                             </span>
                         </p>
                         @if ($kpi['label'] === 'Converted')
-                            <p class="relative mt-0.5 truncate text-[10px] text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · FSD <span class="font-semibold text-white">{{ $p['fsd_converted'] }}%</span></p>
+                            <p class="relative mt-0.5 text-[10px] leading-snug text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · FSD <span class="font-semibold text-white">{{ $p['fsd_converted'] }}%</span></p>
                         @endif
                     </div>
                 @endforeach
@@ -116,10 +116,10 @@
                 @php($circ = 2 * M_PI * 36)
                 @php($slices = collect($p['tags'])->push(['label' => 'Untagged', 'value' => $p['untagged'], 'color' => '#E6E1E8'])->filter(fn ($s) => $s['value'] > 0)->values())
                 @php($gap = $slices->count() > 1 ? 2 : 0)
-                <figure class="min-w-0 rounded-xl bg-white p-4 shadow-sm lg:col-span-2">
+                <figure class="flex min-w-0 flex-col rounded-xl bg-white p-4 shadow-sm lg:col-span-2">
                     <figcaption class="mb-2 text-sm font-semibold">Customer tags</figcaption>
-                    <div class="flex flex-col items-center gap-2">
-                        <svg viewBox="0 0 100 100" class="size-20 shrink-0 -rotate-90" role="img" aria-label="Leads by customer tag, {{ $p['label'] }}">
+                    <div class="flex h-full flex-col items-center justify-center gap-3">
+                        <svg viewBox="0 0 100 100" class="size-32 shrink-0 -rotate-90" role="img" aria-label="Leads by customer tag, {{ $p['label'] }}">
                             <circle cx="50" cy="50" r="36" fill="none" stroke="#f2edf3" stroke-width="14" />
                             @php($offset = 0)
                             @foreach ($slices as $s)
@@ -132,7 +132,7 @@
                             @endforeach
                             <text x="50" y="50" text-anchor="middle" dominant-baseline="central" transform="rotate(90 50 50)" class="fill-ink text-[16px] font-bold">{{ number_format($p['leads']) }}</text>
                         </svg>
-                        <ul class="w-full min-w-0 space-y-0.5 text-[11px]">
+                        <ul class="w-full min-w-0 space-y-1 text-xs">
                             @foreach ($p['tags'] as $s)
                                 <li class="flex items-center justify-between gap-2">
                                     <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm" style="background: {{ $s['color'] }}"></span>{{ $s['label'] }}</span>

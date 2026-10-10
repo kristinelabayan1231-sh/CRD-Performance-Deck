@@ -21,6 +21,10 @@
         'funnel' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 5h18l-7 8v6l-4 2v-8z"/>',
         'database' => '<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>',
         'calendar' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4"/>',
+        'pie' => '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v9h9a9 9 0 1 1-9-9Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>',
+        'bulb' => '<path stroke-linecap="round" stroke-linejoin="round" d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/>',
+        'tag' => '<path stroke-linecap="round" stroke-linejoin="round" d="M3 12V4h8l10 10-8 8L3 12Z"/><circle cx="7.5" cy="8.5" r="1.5"/>',
+        'box' => '<path stroke-linecap="round" stroke-linejoin="round" d="M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8"/>',
     ];
 @endphp
 

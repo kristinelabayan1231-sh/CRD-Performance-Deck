@@ -1,6 +1,6 @@
 <div @class(['flex shrink-0 border-b border-line', 'mb-3' => ! isset($toolbar), 'mb-2' => isset($toolbar)])>
     <nav class="-mb-px flex gap-1 overflow-x-auto" aria-label="Segmentation Tracker sections">
-        @foreach (['segmentation.index' => 'Daily', 'segmentation.weekly' => 'Weekly Segmentation'] as $route => $label)
+        @foreach (['segmentation.index' => 'Daily', 'segmentation.weekly' => 'Weekly Segmentation', 'segmentation.overview' => 'Summary'] as $route => $label)
             <a href="{{ route($route) }}" @if (request()->routeIs($route)) aria-current="page" @endif
                @class([
                    'shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition',

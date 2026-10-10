@@ -14,6 +14,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationProductivityController;
+use App\Http\Controllers\SegmentationSummaryController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
 use App\Http\Controllers\WorkingDateController;
@@ -57,6 +58,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [SegmentationController::class, 'index'])->name('index');
         Route::get('/summary', [SegmentationController::class, 'summary'])->name('summary');
         Route::get('/weekly', [WeeklySegmentationController::class, 'index'])->name('weekly');
+        Route::get('/overview', [SegmentationSummaryController::class, 'index'])->name('overview');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::post('/sync', [SegmentationController::class, 'sync'])->middleware('can:segmentation.manage')->name('sync');
