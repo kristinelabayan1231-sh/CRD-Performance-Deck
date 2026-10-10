@@ -335,8 +335,12 @@ class PancakeClient
                     continue;
                 }
 
-                // The search also matches phone numbers and notes; keep the order with this number.
-                $order = collect($response->json('data') ?? [])->first(fn ($order) => (string) ($order['display_id'] ?? '') === $number);
+                // The search also matches phone numbers and notes; keep the order with this number. With an
+                // access token the number is display_id; with the API key there is no display_id and id
+                // (= system_id) is the number.
+                $order = collect($response->json('data') ?? [])
+                    ->map(fn (array $order) => [...$order, 'display_id' => $order['display_id'] ?? $order['system_id'] ?? $order['id'] ?? null])
+                    ->first(fn (array $order) => (string) ($order['display_id'] ?? '') === $number);
 
                 if ($order) {
                     if ($full) {
