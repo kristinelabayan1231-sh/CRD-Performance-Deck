@@ -176,8 +176,9 @@ class ConversionBreakdownController extends Controller
                 ->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
                 ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
                 ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-                ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')
-                ->get(['pancake_order_id', 'ordered_on', 'customer_name', 'page_name', 'conversion_type', 'total_price', 'shecom_sales'])
+                // First to most recent, by when the order was created in Pancake.
+                ->orderBy('ordered_at')->orderBy('id')
+                ->get(['pancake_order_id', 'ordered_on', 'ordered_at', 'customer_name', 'page_name', 'conversion_type', 'total_price', 'shecom_sales'])
             : collect();
         $gross = fn (string $type) => $orders->where('conversion_type', $type)->sum(fn (PancakeOrder $order) => $order->sales());
 

@@ -196,12 +196,13 @@ class ConversionBreakdownTest extends TestCase
     {
         $lhea = $this->cra('Lhea', 'CRD Lhei');
         $regina = $this->cra('Regina', 'CRD Rej Vergara');
-        $make = fn (string $id, string $seller, ?string $type, float $total, int $status = 2) => PancakeOrder::create([
-            'pancake_order_id' => $id, 'ordered_on' => '2026-10-01', 'seller_name' => $seller, 'customer_name' => "Buyer {$id}",
+        $make = fn (string $id, string $seller, ?string $type, float $total, int $status = 2, string $at = '2026-10-01 02:00:00') => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => '2026-10-01', 'ordered_at' => $at, 'seller_name' => $seller, 'customer_name' => "Buyer {$id}",
             'page_name' => 'Trusted Eye Care', 'status' => $status, 'total_price' => $total, 'conversion_type' => $type,
         ]);
-        $make('B1', 'CRD LHEI', PancakeOrder::BROADCAST, 1000);
-        $make('S1', 'CRD LHEI', PancakeOrder::SEGMENTATION, 2000);
+        // S1 was created first (9:15 AM Manila), B1 later (2:30 PM): listed in that order.
+        $make('B1', 'CRD LHEI', PancakeOrder::BROADCAST, 1000, at: '2026-10-01 06:30:00');
+        $make('S1', 'CRD LHEI', PancakeOrder::SEGMENTATION, 2000, at: '2026-10-01 01:15:00');
         $make('S2', 'CRD LHEI', PancakeOrder::SEGMENTATION, 5000, status: 6);       // canceled
         $make('U1', 'CRD LHEI', null, 7000);                                         // untagged
         $make('R1', 'CRD REJ VERGARA', PancakeOrder::SEGMENTATION, 3000);            // another CRA
@@ -215,8 +216,8 @@ class ConversionBreakdownTest extends TestCase
             // Adds up to the ₱3,000 gross sales shown for Lhea.
             ->assertSeeInOrder(['Lhea', '2 orders', 'Gross BC', '₱1,000.00', 'Gross SC', '₱2,000.00', 'Gross sales', '₱3,000.00'])
             ->assertSeeInOrder(['Order ID', 'Customer name', 'Page name', 'Tagging', 'Amount'])
-            ->assertSeeInOrder(['B1', 'Buyer B1', 'Trusted Eye Care', 'CRD - BROADCAST', '₱1,000.00'])
-            ->assertSeeInOrder(['S1', 'Buyer S1', 'CRD - SEGMENTATION', '₱2,000.00'])
+            ->assertSeeInOrder(['Oct 1, 9:15 AM', 'S1', 'Buyer S1', 'Trusted Eye Care', 'CRD - SEGMENTATION', '₱2,000.00',
+                'Oct 1, 2:30 PM', 'B1', 'Buyer B1', 'CRD - BROADCAST', '₱1,000.00'])
             ->assertDontSee('S2')->assertDontSee('U1')->assertDontSee('R1');
 
         // A CRA can open only their own orders.

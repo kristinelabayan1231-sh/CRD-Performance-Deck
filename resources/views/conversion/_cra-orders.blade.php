@@ -39,7 +39,7 @@
             <table class="w-full min-w-[680px] text-left text-sm">
                 <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
-                        <th class="px-3 py-2 font-semibold">Date</th>
+                        <th class="px-3 py-2 font-semibold">Created</th>
                         <th class="px-3 py-2 font-semibold">Order ID</th>
                         <th class="px-3 py-2 font-semibold">Customer name</th>
                         <th class="px-3 py-2 font-semibold">Page name</th>
@@ -50,7 +50,7 @@
                 <tbody class="divide-y divide-line">
                     @foreach ($orders as $order)
                         <tr>
-                            <td class="px-3 py-2 whitespace-nowrap tabular-nums">{{ $order->ordered_on->format('M j') }}</td>
+                            <td class="px-3 py-2 whitespace-nowrap tabular-nums">{{ $order->ordered_at?->timezone(config('segmentation.timezone'))->format('M j, g:i A') ?? $order->ordered_on->format('M j') }}</td>
                             <td class="px-3 py-2 tabular-nums">{{ $order->pancake_order_id }}</td>
                             <td class="px-3 py-2">{{ $order->customer_name ?: '—' }}</td>
                             <td class="px-3 py-2">{{ $order->page_name ?: '—' }}</td>
@@ -67,6 +67,6 @@
                 </tfoot>
             </table>
         </div>
-        <p class="text-xs text-muted">Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Canceled and deleted orders aren't counted.</p>
+        <p class="text-xs text-muted">Oldest first, by when the order was created in Pancake. Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Canceled and deleted orders aren't counted.</p>
     @endif
 </div>
