@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\Product;
 use App\Models\Role;
 use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
@@ -117,6 +118,7 @@ class SegmentationController extends Controller
             'canViewAll' => $canViewAll,
             'canManage' => $user->can('segmentation.manage'),
             'statuses' => config('segmentation.statuses'),
+            'products' => Product::orderBy('name')->pluck('name'),
             'optionalColumns' => config('segmentation.optional_columns'),
             'today' => $today,
             'lastSync' => LeadGenerator::lastSync(CarbonImmutable::parse($filters['date'] ?? $today)),
@@ -150,6 +152,7 @@ class SegmentationController extends Controller
             'date' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
+            'product' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string'],
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
             'q' => ['nullable', 'string', 'max:100'],
@@ -183,7 +186,8 @@ class SegmentationController extends Controller
                 fn (Builder $q) => $q->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to))
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
-            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type));
+            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product));
     }
 
     /**
@@ -234,10 +238,11 @@ class SegmentationController extends Controller
             $tiles['per_cra'] = [
                 'value' => $value,
                 'note' => $note,
-                // Shown in the Per CRA pop-up; always covers every CRA for the date/month and type filters.
+                // Shown in the Per CRA pop-up; always covers every CRA for the date/month, type and product filters.
                 'breakdown' => $breakdown,
                 'period' => ($from->equalTo($to) ? $from->format('M j, Y') : $from->format('F Y'))
-                    .(! empty($filters['type']) ? ' · '.Lead::TYPES[$filters['type']].'s' : ''),
+                    .(! empty($filters['type']) ? ' · '.Lead::TYPES[$filters['type']].'s' : '')
+                .(! empty($filters['product']) ? ' · '.$filters['product'] : ''),
             ];
         }
 
@@ -264,6 +269,7 @@ class SegmentationController extends Controller
     {
         $rows = Lead::whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->whereIn('assigned_to', $cras->pluck('id'))
             ->selectRaw('assigned_to, lead_type, count(*) as total')
             ->groupBy('assigned_to', 'lead_type')

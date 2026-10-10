@@ -386,6 +386,27 @@ class SegmentationTest extends TestCase
             ->assertSee('Waiting Wendy')->assertDontSee('Status Sam')->assertDontSee('data-live-summary', false);
     }
 
+    public function test_product_filter_narrows_the_lists_and_tiles(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        Product::create(['name' => 'Sinuxyl']);
+        Product::create(['name' => 'CanPro']);
+        foreach ([['1', 'Sinus Sam', 'Sinuxyl'], ['2', 'Canny Carla', 'CanPro'], ['3', 'Canny Cora', 'CanPro']] as [$id, $name, $product]) {
+            Lead::create(['order_id' => $id, 'customer_name' => $name, 'phone_number' => '917'.$id, 'product_name' => $product, 'qty' => 1,
+                'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+                'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id]);
+        }
+
+        $this->actingAs($this->owner)->get('/segmentation')->assertOk()
+            ->assertSee('All products')->assertSee('<option value="CanPro"', false)
+            ->assertDontSee('aria-label="Show"', false);
+
+        $this->actingAs($this->owner)->get('/segmentation?product=CanPro')->assertOk()
+            ->assertSee('Canny Carla')->assertSee('Canny Cora')->assertDontSee('Sinus Sam')
+            ->assertViewHas('tiles', fn (array $tiles) => $tiles['total']['value'] === '2');
+    }
+
     public function test_choosing_pjr_sets_the_feedback_to_no_verbal_conv(): void
     {
         $alice = $this->cra('alice@gmail.com');
