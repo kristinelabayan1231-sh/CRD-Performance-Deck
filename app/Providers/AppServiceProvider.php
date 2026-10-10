@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\User;
 use App\Services\CraIssues;
 use App\Services\PancakeSync;
+use App\Support\SegmentationOptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -29,6 +30,9 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::define('roles.manage', fn (User $user) => $user->isSuperAdmin());
+
+        // Dropdown choices edited in Settings → Segmentation Tracker (none until the settings table exists).
+        rescue(fn () => SegmentationOptions::apply(), report: false);
 
         // Header issues (untagged CRA orders and the like) on every app page. While any are shown,
         // they're looked up in Pancake again after the page is sent, so fixed ones clear on a refresh.

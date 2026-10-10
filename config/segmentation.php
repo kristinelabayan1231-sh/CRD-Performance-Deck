@@ -127,6 +127,42 @@ return [
     ],
 
     /*
+    |--------------------------------------------------------------------------
+    | Editable dropdowns
+    |--------------------------------------------------------------------------
+    |
+    | Lists that Settings → Segmentation Tracker can change (saved choices
+    | replace the defaults above). 'column' is the lead field holding the key;
+    | 'locked' keys are used by the deck's rules, so they can be renamed and
+    | recoloured but not removed.
+    |
+    */
+
+    'editable_lists' => [
+        'statuses' => ['label' => 'Status', 'column' => 'status', 'locked' => ['inactive', 'pjr_drop_call', 'repeat_purchase']],
+        'repeat_purchase' => ['label' => 'Repeat Purchase?', 'column' => 'repeat_purchase', 'locked' => ['yes', 'no']],
+        'customer_tags' => ['label' => 'Customer Tagging', 'column' => 'customer_tag', 'locked' => ['hot', 'warm', 'cold', 'high_value', 'canpro_hot', 'canpro_warm', 'canpro_cold']],
+        'feedback' => ['label' => "Customer's Feedback", 'column' => 'feedback', 'locked' => ['no_verbal_conv', 'purchased', 'still_have_stocks']],
+    ],
+
+    // Badge colours an edited choice can use: name => badge classes.
+    'option_colors' => [
+        'Green' => 'bg-[#d4edbc] text-[#11734b]',
+        'Gray' => 'bg-[#e6e6e6] text-[#3d3d3d]',
+        'Lavender' => 'bg-[#e6cff2] text-[#5a3286]',
+        'Brown' => 'bg-[#753800] text-[#ffcfc9]',
+        'Dark brown' => 'bg-[#753800] text-[#ffe5a0]',
+        'Steel blue' => 'bg-[#c6dbe1] text-[#0a53a8]',
+        'Light blue' => 'bg-[#bfe1f6] text-[#0a53a8]',
+        'Blue' => 'bg-[#0a53a8] text-white',
+        'Pink' => 'bg-[#ffcfc9] text-[#b10202]',
+        'Red' => 'bg-[#b10202] text-[#ffcfc9]',
+        'Orange' => 'bg-[#ef6a3a] text-[#3b0d00]',
+        'Yellow' => 'bg-[#ffe5a0] text-[#473821]',
+        'Charcoal' => 'bg-[#3d3d3d] text-white',
+    ],
+
+    /*
     | A lead counts as converted when Repeat Purchase is "yes", or Repeat
     | Purchase is "no" and Customer's Feedback is "purchased".
     */

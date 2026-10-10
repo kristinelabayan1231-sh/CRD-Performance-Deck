@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
+use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
@@ -14,6 +15,7 @@ use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
+use App\Http\Controllers\SegmentationOptionController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\SegmentationSummaryController;
 use App\Http\Controllers\UserAccessController;
@@ -80,7 +82,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::prefix('customers')->name('customers.')->middleware('can:customers.view')->group(function () {
         Route::get('/', [CustomerDatabaseController::class, 'index'])->name('index');
+        Route::get('/churn', CustomerChurnController::class)->name('churn');
         Route::get('/{phoneKey}', [CustomerDatabaseController::class, 'show'])->where('phoneKey', '[0-9]+')->name('show');
+        Route::post('/{phoneKey}/merge', [CustomerDatabaseController::class, 'merge'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('merge');
+        Route::delete('/{phoneKey}/merge', [CustomerDatabaseController::class, 'separate'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('separate');
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
@@ -91,6 +96,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('pancake_pages.manage') => 'settings.pancake-pages.index',
                 request()->user()->can('pancake_accounts.manage') => 'settings.pancake-accounts.index',
                 request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
+                request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
@@ -116,6 +122,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('working-date')->name('working-date.')->middleware('can:sales_goals.manage')->group(function () {
             Route::get('/', [WorkingDateController::class, 'index'])->name('index');
             Route::put('/', [WorkingDateController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('segmentation-tracker')->name('segmentation-options.')->middleware('can:segmentation_options.manage')->group(function () {
+            Route::get('/', [SegmentationOptionController::class, 'index'])->name('index');
+            Route::put('/{list}', [SegmentationOptionController::class, 'update'])->where('list', '[a-z_]+')->name('update');
         });
 
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {

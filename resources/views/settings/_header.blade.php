@@ -7,6 +7,7 @@
     'settings.pancake-accounts.index' => ['Pancake Accounts', 'pancake_accounts.manage'],
     'settings.sales-goals.index' => ['Sales Goals', 'sales_goals.manage'],
     'settings.working-date.index' => ['Working Date', 'sales_goals.manage'],
+    'settings.segmentation-options.index' => ['Segmentation Tracker', 'segmentation_options.manage'],
     'settings.connections.index' => ['Connections', 'connections.check'],
 ])
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerHistory;
+use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
 use App\Services\CustomerDatabase;
 use App\Services\LogisticsRetention;
@@ -11,6 +12,7 @@ use App\Services\PancakeSync;
 use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
@@ -62,12 +64,17 @@ class CustomerDatabaseController extends Controller
      */
     public function show(CustomerDatabase $customers, PancakeSync $pancake, PancakeClient $client, string $phoneKey): View
     {
+        $members = CustomerLink::membersOf(CustomerLink::primaryFor($phoneKey));
+
         // Delivered orders the backfill hasn't reached yet: fetch them so every amount shows.
-        $customers->fetchMissingOrders($phoneKey, $pancake);
+        foreach ($members as $member) {
+            $customers->fetchMissingOrders($member, $pancake);
+        }
 
         // Their orders before the first covered day, if the scheduled check hasn't reached them yet.
-        if (! CustomerHistory::where('phone_key', $phoneKey)->exists()) {
-            rescue(fn () => $customers->checkHistories([$phoneKey], $client));
+        $unchecked = array_values(array_diff($members, CustomerHistory::whereIn('phone_key', $members)->pluck('phone_key')->all()));
+        if ($unchecked) {
+            rescue(fn () => $customers->checkHistories($unchecked, $client));
         }
 
         $profile = $customers->profile($phoneKey);
@@ -75,6 +82,31 @@ class CustomerDatabaseController extends Controller
         abort_if($profile === null, 404);
 
         return view('customers._profile', ['customer' => $profile]);
+    }
+
+    /**
+     * Confirm another customer (same name, different number) as this same customer: one row from now on.
+     */
+    public function merge(Request $request, CustomerDatabase $customers, string $phoneKey): RedirectResponse
+    {
+        $data = $request->validate(['other' => ['required', 'string', 'regex:/^[0-9]+$/']]);
+        abort_unless(LogisticsOrder::where('phone_key', $phoneKey)->exists() && LogisticsOrder::where('phone_key', $data['other'])->exists(), 404);
+
+        $customers->merge($phoneKey, $data['other'], $request->user()->id);
+
+        return back()->with('status', 'Merged: the customer now shows as one row with both numbers.');
+    }
+
+    /**
+     * Undo a merge: the number becomes a customer of its own again.
+     */
+    public function separate(CustomerDatabase $customers, string $phoneKey): RedirectResponse
+    {
+        abort_unless(CustomerLink::where('phone_key', $phoneKey)->exists(), 404);
+
+        $customers->separate($phoneKey);
+
+        return back()->with('status', 'Separated: that number is its own customer again.');
     }
 
     /**

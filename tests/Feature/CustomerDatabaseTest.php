@@ -67,6 +67,49 @@ class CustomerDatabaseTest extends TestCase
         }
     }
 
+    public function test_customers_with_the_same_name_can_be_merged_into_one_row_and_separated_again(): void
+    {
+        // Rose Ramirez on two numbers: CRD-delivered on each, so together she is a Repeat Customer.
+        $this->delivered('R1', 'crd', 'Rose Ramirez', '09543081031', '2026-09-20', pos: [1000, 3, null, []]);
+        $this->delivered('R2', 'crd', 'Rose Ramirez', '09453173793', '2026-10-09', pos: [500, 3, null, []]);
+        // A generic name is never suggested.
+        $this->delivered('F1', 'fsd', 'Facebook User', '9170000001', '2026-10-09');
+        $this->delivered('F2', 'fsd', 'Facebook User', '9170000002', '2026-10-09');
+
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 4)
+            ->assertSeeInOrder(['Rose Ramirez', 'Possible match', '09543081031', 'Rose Ramirez', 'Possible match', '09453173793'])
+            ->assertViewHas('customers', fn ($page) => collect($page->items())->where('customer_name', 'Facebook User')->sum('possible_matches') === 0);
+
+        $this->actingAs($this->owner)->get(route('customers.show', '9543081031'))->assertOk()
+            ->assertSeeInOrder(['Possibly the same customer', '09453173793', '1 delivery', 'Same customer']);
+
+        // Only users allowed to merge can.
+        $cra = User::firstWhere('email', 'anna@gmail.com');
+        $cra->role->update(['permissions' => ['customers.view']]);
+        $this->actingAs($cra)->post(route('customers.merge', '9543081031'), ['other' => '9453173793'])->assertForbidden();
+
+        $this->actingAs($this->owner)->from(route('customers.index'))->post(route('customers.merge', '9543081031'), ['other' => '9453173793'])
+            ->assertRedirect(route('customers.index'));
+
+        // One row, both numbers, orders combined: 2 deliveries, ₱1,500, two CRA-handled orders → Repeat Customer.
+        $this->actingAs($this->owner)->get(route('customers.index'))
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 3 && $counts['repeat'] === 1)
+            ->assertSeeInOrder(['Rose Ramirez', 'Repeat Customer', '09543081031 / 09453173793', '2', '₱1,500.00'])
+            ->assertViewHas('customers', fn ($page) => collect($page->items())->sum('possible_matches') === 0);
+        // Found by either number, still whole; the second number opens the same customer.
+        $this->actingAs($this->owner)->get(route('customers.index', ['search' => '0945317']))
+            ->assertSee('09543081031 / 09453173793')->assertSee('₱1,500.00');
+        $this->actingAs($this->owner)->get(route('customers.show', '9453173793'))->assertOk()
+            ->assertSeeInOrder(['Rose Ramirez', '09543081031 / 09453173793', 'Contact numbers', '09543081031', 'main', '09453173793', 'Separate']);
+
+        $this->actingAs($this->owner)->from(route('customers.index'))->delete(route('customers.separate', '9453173793'))
+            ->assertRedirect(route('customers.index'));
+        $this->actingAs($this->owner)->get(route('customers.index'))
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 4)
+            ->assertSeeInOrder(['Rose Ramirez', 'Possible match', '09543081031', 'Rose Ramirez', 'Possible match', '09453173793']);
+    }
+
     public function test_a_user_without_the_permission_is_refused(): void
     {
         $user = User::create(['email' => 'u@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
