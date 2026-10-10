@@ -70,7 +70,7 @@ class CraIssues
 
         $both = [config('segmentation.conversion_tags.broadcast'), config('segmentation.conversion_tags.segmentation')];
 
-        $orders = PancakeOrder::counted()
+        $orders = PancakeOrder::counted()->crdProducts()
             ->whereIn('seller_name', $accounts->keys())
             ->whereDate('ordered_on', '>=', $today->startOfMonth())->whereDate('ordered_on', '<=', $today)
             ->where(fn ($q) => $q->whereNull('conversion_type')

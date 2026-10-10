@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\LeadGenerator;
+use App\Services\ProductCatalog;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,7 +14,7 @@ use Illuminate\Support\Collection;
  * An FSD- or CRD-delivered order for the Customer Database: from the logistics retention
  * report, or from Pancake POS deliveries for the days before the report starts.
  */
-#[Fillable(['order_id', 'team', 'source', 'customer_name', 'phone_number', 'phone_key', 'product', 'qty', 'delivered_date'])]
+#[Fillable(['order_id', 'team', 'source', 'customer_name', 'phone_number', 'phone_key', 'product', 'qty', 'non_crd', 'delivered_date'])]
 class LogisticsOrder extends Model
 {
     public const TEAM_FSD = 'fsd';
@@ -28,6 +29,7 @@ class LogisticsOrder extends Model
     {
         return [
             'qty' => 'integer',
+            'non_crd' => 'boolean',
             'delivered_date' => 'immutable_date',
         ];
     }
@@ -58,12 +60,15 @@ class LogisticsOrder extends Model
         $now = now();
         $saved = 0;
         $from = self::coveredFrom();
+        $catalog = new ProductCatalog;
 
         collect($rows)
             ->map(fn (array $row) => [
                 ...$row,
                 'source' => $row['source'] ?? self::SOURCE_LOGISTICS,
                 'phone_key' => LeadGenerator::normalizePhone($row['phone_number']),
+                // Only non-CRD products (e.g. NutriLay): left out of the Customer Database.
+                'non_crd' => $catalog->onlyNonCrdText($row['product'] ?? null),
             ])
             ->filter(fn (array $row) => $row['order_id'] !== '' && $row['delivered_date'] >= $from && $row['phone_key'] !== '')
             ->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])

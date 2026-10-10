@@ -60,6 +60,7 @@
                             <th class="px-4 py-3 font-semibold">Consumption days</th>
                             <th class="px-4 py-3 font-semibold">SRP</th>
                             <th class="px-4 py-3 font-semibold">CLTV</th>
+                            <th class="px-4 py-3 font-semibold" title="Off for products that aren't the CRD team's: orders with only these products are left out of leads, sales and the Customer Database.">CRD product</th>
                             <th class="px-4 py-3 font-semibold">Updated</th>
                             @if ($canManage)
                                 <th class="px-4 py-3 text-right font-semibold">Actions</th>
@@ -116,11 +117,26 @@
                                     @endif
                                 @endif
                                 <td class="px-4 py-3 whitespace-nowrap tabular-nums text-muted">{{ $product->cltv() !== null ? '₱'.number_format($product->cltv()) : '—' }}</td>
+                                <td class="px-4 py-3">
+                                    @if ($canManage)
+                                        {{-- Ticked = not the CRD team's product: confirm, since untouched leads for its orders are removed --}}
+                                        <label class="inline-flex items-center gap-2 text-sm whitespace-nowrap">
+                                            <input form="product-{{ $product->id }}" type="checkbox" name="not_crd" value="1" @checked($bag->any() ? old('not_crd') : $product->not_crd)
+                                                   class="size-4 rounded border-line text-coral focus:ring-coral/40">
+                                            Not a CRD product
+                                        </label>
+                                    @elseif ($product->not_crd)
+                                        <span class="rounded-full bg-[#e6e6e6] px-2 py-0.5 text-xs font-semibold text-[#3d3d3d]">Not a CRD product</span>
+                                    @else
+                                        <span class="text-xs text-muted">CRD</span>
+                                    @endif
+                                </td>
                                 <td class="px-4 py-3 text-muted">{{ $product->updated_at?->diffForHumans() }}</td>
                                 @if ($canManage)
                                     <td class="px-4 py-3">
                                         <div class="flex justify-end gap-2">
-                                            <form id="product-{{ $product->id }}" method="POST" action="{{ route('settings.product-consumption.update', $product) }}">
+                                            <form id="product-{{ $product->id }}" method="POST" action="{{ route('settings.product-consumption.update', $product) }}"
+                                                  onsubmit="return ! document.querySelector('[form=product-{{ $product->id }}][name=not_crd]').checked || {{ $product->not_crd ? 'true' : 'false' }} || confirm('Mark {{ e(addslashes($product->name)) }} as not a CRD product? Orders with only this product leave leads, sales and the Customer Database, and its leads nobody has worked on yet are removed.')">
                                                 @csrf @method('PATCH')
                                                 <button type="submit" class="h-10 rounded-lg border border-line px-3 font-medium hover:border-brand-400 hover:text-brand-600">Save</button>
                                             </form>

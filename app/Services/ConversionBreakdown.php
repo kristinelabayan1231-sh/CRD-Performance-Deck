@@ -90,7 +90,7 @@ class ConversionBreakdown
 
         $out = [];
 
-        PancakeOrder::whereIn('seller_name', $accounts->keys())
+        PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
             ->get(['ordered_on', 'seller_name', 'conversion_type', 'status', 'total_price', 'shecom_sales'])

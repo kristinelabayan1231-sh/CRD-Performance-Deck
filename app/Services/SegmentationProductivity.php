@@ -135,7 +135,7 @@ class SegmentationProductivity
             return [[], []];
         }
 
-        $orders = PancakeOrder::counted()
+        $orders = PancakeOrder::counted()->crdProducts()
             ->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)

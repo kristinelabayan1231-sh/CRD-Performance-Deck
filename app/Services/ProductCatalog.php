@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LogisticsOrder;
+use App\Models\PancakeOrder;
 use App\Models\Product;
 use Illuminate\Support\Collection;
 
@@ -53,6 +55,93 @@ class ProductCatalog
         });
 
         return $changed;
+    }
+
+    /**
+     * Whether every product named is a non-CRD product (Settings → Product Consumption: "Not a CRD
+     * product"). An order with any other product, or a product not in Settings, is CRD's.
+     *
+     * @param  list<?string>  $names
+     */
+    public function onlyNonCrd(array $names): bool
+    {
+        $names = array_values(array_filter(array_map(fn (?string $name) => trim((string) $name), $names), fn (string $name) => $name !== ''));
+
+        return $names !== [] && collect($names)->every(fn (string $name) => (bool) $this->match($name)?->not_crd);
+    }
+
+    /**
+     * onlyNonCrd() for a product text that may list several products ("CanPro, NutriLay").
+     */
+    public function onlyNonCrdText(?string $products): bool
+    {
+        return $this->onlyNonCrd(preg_split('/\s*(?:,|\+|&|\/|\band\b)\s*/i', (string) $products) ?: []);
+    }
+
+    /**
+     * Tag every saved order whose products are all non-CRD (and untag the rest), after the
+     * products change. Logistics orders go by their product text, Pancake orders by their items.
+     *
+     * @return array{pancake: int, logistics: int} orders now tagged
+     */
+    public function flagNonCrdOrders(): array
+    {
+        $this->keywords = null;
+
+        if (! Product::where('not_crd', true)->exists()) {
+            PancakeOrder::where('non_crd', true)->update(['non_crd' => false]);
+            LogisticsOrder::where('non_crd', true)->update(['non_crd' => false]);
+
+            return ['pancake' => 0, 'logistics' => 0];
+        }
+
+        $products = LogisticsOrder::query()->distinct()->pluck('product')
+            ->filter(fn (?string $product) => $this->onlyNonCrdText($product))->values();
+        LogisticsOrder::where('non_crd', true)->whereNotIn('product', $products)->update(['non_crd' => false]);
+        foreach ($products->chunk(500) as $chunk) {
+            LogisticsOrder::whereIn('product', $chunk->all())->update(['non_crd' => true]);
+        }
+
+        $flagged = [];
+        PancakeOrder::query()->select(['id', 'items'])->chunkById(5000, function ($orders) use (&$flagged) {
+            foreach ($orders as $order) {
+                if ($this->onlyNonCrd(array_column($order->items ?? [], 'name'))) {
+                    $flagged[] = $order->id;
+                }
+            }
+        });
+        PancakeOrder::where('non_crd', true)->update(['non_crd' => false]);
+        foreach (array_chunk($flagged, 1000) as $ids) {
+            PancakeOrder::whereIn('id', $ids)->update(['non_crd' => true]);
+        }
+
+        return ['pancake' => count($flagged), 'logistics' => LogisticsOrder::where('non_crd', true)->count()];
+    }
+
+    /**
+     * Remove Segmentation Tracker leads for non-CRD orders that nobody has worked on yet
+     * (no status, tracking field, note, transfer or processing). Worked leads stay.
+     *
+     * @return int leads removed
+     */
+    public function removeUntouchedNonCrdLeads(): int
+    {
+        $this->keywords = null;
+
+        $ids = Lead::query()
+            ->whereNull('status')->whereNull('processed_at')->whereNull('notes')
+            ->whereNull('repeat_purchase')->whereNull('customer_tag')->whereNull('feedback')
+            ->whereNull('contact_date')->whereNull('contact_time')->whereNull('callback_date')
+            ->whereDoesntHave('transfers')
+            ->get(['id', 'product_raw', 'product_name'])
+            ->filter(fn (Lead $lead) => $this->onlyNonCrdText($lead->product_raw ?? $lead->product_name))
+            ->pluck('id');
+
+        foreach ($ids->chunk(500) as $chunk) {
+            Lead::whereIn('id', $chunk->all())->delete();
+        }
+
+        return $ids->count();
     }
 
     public static function squash(string $value): string

@@ -56,6 +56,21 @@ class SegmentationTest extends TestCase
         Http::fake(['*/management/retention-stockout' => Http::response(['count' => count($rows), 'stock_outs' => $rows, 'retention_detail' => $fsdOrders])]);
     }
 
+    public function test_orders_of_non_crd_products_only_never_become_leads(): void
+    {
+        Product::create(['name' => 'NutriLay', 'consumption_days' => 15, 'not_crd' => true]);
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
+        $this->fakeApi([
+            $this->row('1', '9171111111', '2026-10-05', 'NutriLay Powder'),
+            $this->row('2', '9172222222', '2026-10-05', 'NutriLay, Pterygium Drops'),
+            $this->row('3', '9173333333', '2026-10-05'),
+        ]);
+
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->assertSame(['2', '3'], Lead::orderBy('order_id')->pluck('order_id')->all());
+    }
+
     public function test_crd_leads_are_todays_crd_stockouts_and_fsd_leads_come_from_fsd_deliveries(): void
     {
         Product::create(['name' => 'Sinuxyl', 'consumption_days' => 30]);
