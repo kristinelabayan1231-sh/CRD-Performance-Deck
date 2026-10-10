@@ -30,6 +30,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::define('roles.manage', fn (User $user) => $user->isSuperAdmin());
+        Gate::define('product_qty.manage', fn (User $user) => $user->isSuperAdmin());
 
         // Dropdown choices edited in Settings → Segmentation Tracker (none until the settings table exists).
         rescue(fn () => SegmentationOptions::apply(), report: false);

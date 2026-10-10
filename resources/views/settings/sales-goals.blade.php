@@ -1,8 +1,6 @@
 @php($control = 'h-10 w-full rounded-lg border border-line bg-white pr-3 pl-7 text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
-<x-layouts.app title="Sales Goals">
-    @include('settings._header')
-
+<x-layouts.settings title="Sales Goals">
     @if ($errors->any())
         <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
     @endif
@@ -90,4 +88,4 @@
             <button type="submit" class="h-11 rounded-lg bg-brand-600 px-4 font-semibold text-white shadow-sm transition hover:bg-brand-700">Save goals</button>
         </div>
     </form>
-</x-layouts.app>
+</x-layouts.settings>

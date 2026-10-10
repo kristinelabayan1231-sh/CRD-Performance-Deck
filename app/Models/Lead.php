@@ -111,8 +111,7 @@ class Lead extends Model
 
     /**
      * Carry-over as of the start of $day: assigned leads from earlier lead days
-     * that had no status, or a carry-over status (PJR, Repeat Purchase,
-     * Inactive). Rows updated during $day stay listed for that day so they
+     * that had no status, or a carry-over status (PJR, Inactive). Rows updated during $day stay listed for that day so they
      * don't vanish while a CRA works on them.
      */
     public function scopeBacklogAsOf(Builder $query, CarbonImmutable $day): Builder

@@ -1,8 +1,6 @@
 @php($control = 'h-10 w-full rounded-lg border border-line bg-white px-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
-<x-layouts.app title="Segmentation Tracker Choices">
-    @include('settings._header')
-
+<x-layouts.settings title="Segmentation Tracker Choices">
     <p class="mb-4 text-sm text-muted">The choices CRAs pick from in the Segmentation Tracker. Rename or recolour any choice; leads keep it. A choice can be removed only while no lead uses it, and choices marked <span class="font-semibold text-ink">Used by rules</span> (conversions, carry-over, hot/warm/cold) can only be renamed.</p>
 
     <div class="space-y-4">
@@ -116,4 +114,4 @@
             color.addEventListener('change', sync);
         });
     </script>
-</x-layouts.app>
+</x-layouts.settings>

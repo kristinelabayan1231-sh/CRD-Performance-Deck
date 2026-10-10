@@ -7,6 +7,14 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-10 · Customer Database, Segmentation Tracker · New High AOV CVR & VIP tab: CRA-handled customers (merged numbers as one) with AOV (total spent ÷ delivered orders) ₱999+ = High AOV, or who reached a product's CLTV (units × SRP ≥ SRP × 30) = VIP (black row, gold text, VIP pill). Tiles High AOV / VIP / No CRA yet; filters search, View (Per customer / Per order), Show (High AOV & VIP / High AOV / VIP), Assigning seller (Mine, No CRA yet, each CRA). Columns: Order ID, Assigning seller, Customer, Phone number, Total # of orders, Amount, Point of contact (CHAT / CALL / SMS/TEXT), Current AOV, PU/Reseller (Personal Use / Reseller), Remarks (VIP). CRAs claim their customers (new permissions customers.high_value.view/edit for CRAs; customers.high_value.assign for CRA Supervisors to set anyone). Leads of a customer with a CRA go to that CRA; a new High AOV / VIP customer gets the CRA their lead lands on · shots: new (customer-high-value, customer-high-value-orders)
+
+- 2026-10-10 · Segmentation Tracker · "Repeat Purchase" removed from the Status choices (the Repeat Purchase? column already records it); leads that had it are now Active · shots: segmentation-tracker (status dropdown), settings-segmentation-options
+
+- 2026-10-10 · Settings · Sub tabs moved from the top row to a vertical nav on the left, grouped: Products (Product Consumption, Product Qty), Pancake (Pages, Accounts), Goals (Sales Goals, Working Date), Modules (Segmentation Tracker), System (Connections); on phones they show as a scrolling row above the page · shots: every settings-* shot
+
+- 2026-10-10 · Customer Database, Settings · Customer pop-up order history lists products without qty ("CanPro Guyabano Oil" instead of "1 × CanPro Guyabano Oil"). New Settings → Product Qty tab (Super Admins only): an On/Off switch per user to show the qty again; Off for everyone by default · shots: customer-profile, new (settings-product-qty)
+
 - 2026-10-10 · Settings · New Segmentation Tracker sub tab: edit the tracker's dropdown choices for Status, Repeat Purchase?, Customer Tagging and Customer's Feedback: rename, pick a badge colour (live preview), add new choices at the end, remove unused ones. Choices leads still use, or the deck's rules use (conversions, carry-over, hot/warm/cold), can only be renamed. New permission segmentation_options.manage (CRA Supervisors and Super Admins) · shots: new (settings-segmentation-options)
 - 2026-10-10 · Customer Database · Customer pop-up header: QTY renamed to Purchase Frequency · shots: customer-profile
 

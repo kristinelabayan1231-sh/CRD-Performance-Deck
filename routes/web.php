@@ -8,10 +8,12 @@ use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
+use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
+use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
@@ -80,6 +82,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/sync', [ConversionBreakdownController::class, 'sync'])->middleware('can:conversion.view_all')->name('sync');
     });
 
+    // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
+    Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
+    Route::patch('/customers/high-value/{phoneKey}', [HighValueCustomerController::class, 'update'])->where('phoneKey', '[0-9]+')
+        ->middleware('can:customers.high_value.edit')->name('customers.high-value.update');
+
     Route::prefix('customers')->name('customers.')->middleware('can:customers.view')->group(function () {
         Route::get('/', [CustomerDatabaseController::class, 'index'])->name('index');
         Route::get('/churn', CustomerChurnController::class)->name('churn');
@@ -127,6 +134,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('segmentation-tracker')->name('segmentation-options.')->middleware('can:segmentation_options.manage')->group(function () {
             Route::get('/', [SegmentationOptionController::class, 'index'])->name('index');
             Route::put('/{list}', [SegmentationOptionController::class, 'update'])->where('list', '[a-z_]+')->name('update');
+        });
+
+        Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {
+            Route::get('/', [ProductQtyDisplayController::class, 'index'])->name('index');
+            Route::patch('/{user}', [ProductQtyDisplayController::class, 'update'])->name('update');
         });
 
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {

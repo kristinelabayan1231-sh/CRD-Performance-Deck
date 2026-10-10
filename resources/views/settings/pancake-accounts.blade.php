@@ -5,9 +5,7 @@
     $chip = 'rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-ink shadow-sm ring-1 ring-line';
 @endphp
 
-<x-layouts.app title="Pancake Accounts">
-    @include('settings._header')
-
+<x-layouts.settings title="Pancake Accounts">
     @if ($errors->any())
         <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
     @endif
@@ -127,4 +125,4 @@
             </div>
         </x-panel>
     </div>
-</x-layouts.app>
+</x-layouts.settings>

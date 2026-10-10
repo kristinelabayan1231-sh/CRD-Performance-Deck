@@ -1,6 +1,4 @@
-<x-layouts.app title="Product Consumption">
-    @include('settings._header')
-
+<x-layouts.settings title="Product Consumption">
     @php($canManage = auth()->user()->can('product_consumption.manage'))
     {{-- Roles that may only price products get an SRP field per row. --}}
     @php($canSetSrp = ! $canManage && auth()->user()->can('product_consumption.srp'))
@@ -141,4 +139,4 @@
             </div>
         @endif
     </section>
-</x-layouts.app>
+</x-layouts.settings>

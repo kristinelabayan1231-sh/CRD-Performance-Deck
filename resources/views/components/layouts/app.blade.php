@@ -41,9 +41,9 @@
                 @can('conversion.view')
                     <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
                 @endcan
-                @can('customers.view')
-                    <x-nav-link :href="route('customers.index')" :active="request()->routeIs('customers.*')" icon="database">Customer Database</x-nav-link>
-                @endcan
+                @canany(['customers.view', 'customers.high_value.view'])
+                    <x-nav-link :href="route($user->can('customers.view') ? 'customers.index' : 'customers.high-value')" :active="request()->routeIs('customers.*')" icon="database">Customer Database</x-nav-link>
+                @endcanany
                 @can('user_access.view')
                     <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                 @endcan

@@ -210,7 +210,7 @@ class WeeklySegmentationTest extends TestCase
         $this->assertSame(2, Lead::where('assigned_to', $bob->id)->count());
     }
 
-    public function test_pjr_repeat_purchase_inactive_and_no_status_carry_over(): void
+    public function test_pjr_inactive_and_no_status_carry_over(): void
     {
         $alice = $this->user('alice@gmail.com', Role::CRA);
         $bob = $this->user('bob@gmail.com', Role::CRA);
@@ -218,7 +218,6 @@ class WeeklySegmentationTest extends TestCase
         $carry = [
             'none' => $this->lead($alice, '2026-10-08'),
             'pjr' => $this->lead($alice, '2026-10-08', 'pjr_drop_call', $at),
-            'repeat' => $this->lead($alice, '2026-10-08', 'repeat_purchase', $at),
             'inactive' => $this->lead($alice, '2026-10-08', 'inactive', $at),
         ];
         $done = [
@@ -234,7 +233,6 @@ class WeeklySegmentationTest extends TestCase
         $page = $this->actingAs($alice)->get('/segmentation')->assertOk()
             ->assertSee('Pending since Oct 8')
             ->assertSee('PJR/Inactive/CBR/Drop call since Oct 8')
-            ->assertSee('Repeat Purchase since Oct 8')
             ->assertSee('Inactive since Oct 8');
         foreach ($done as $lead) {
             $page->assertDontSee($lead->customer_name.'<', false);
