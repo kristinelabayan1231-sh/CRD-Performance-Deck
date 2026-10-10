@@ -118,6 +118,7 @@
                             <div><dt class="font-semibold text-ink">Retained and Repeat Customers</dt><dd>As in the Customer Database, for customers delivered in the dates picked: Retained = their delivery handled by a CRA is their first CRA-handled order ever; Repeat = they had an earlier CRA-handled order too (any year). Click a tile to see them.</dd></div>
                         @endif
                         <div><dt class="font-semibold text-ink">Goal per CRA</dt><dd>The CRA's gross sales ÷ (their daily goal × days in the dates picked). Daily goal = their own, else the general {{ '₱'.number_format(\App\Support\SalesGoals::craDaily()) }}. Left = goal − sales.</dd></div>
+                        <div><dt class="font-semibold text-ink">Top product sales per CRA</dt><dd>The product with the most of the CRA's gross sales in the dates picked. Each order item is matched to a Settings → Product Consumption product; an order with several products is split by quantity × SRP.</dd></div>
                         <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's (BC + SC orders) ÷ (their engagements + their leads) × 100. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
                     @endif
                     @if ($segmentation)

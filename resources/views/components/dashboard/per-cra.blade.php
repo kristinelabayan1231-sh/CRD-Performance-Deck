@@ -29,7 +29,7 @@
     </x-slot:actions>
 
     <div class="overflow-x-auto rounded-xl bg-white p-4 shadow-sm">
-        <table class="w-full min-w-[640px] text-sm">
+        <table class="w-full min-w-[820px] text-sm">
             <thead class="text-[11px] tracking-wide text-muted uppercase">
                 <tr>
                     <th class="pb-2 text-left font-semibold">CRA</th>
@@ -37,6 +37,7 @@
                     <th class="pb-2 text-right font-semibold">Sales / goal</th>
                     <th class="pb-2 text-right font-semibold">Left</th>
                     <th class="pb-2 pl-6 text-left font-semibold" colspan="2">Conv %</th>
+                    <th class="pb-2 pl-6 text-left font-semibold">Top product sales</th>
                 </tr>
             </thead>
             <tbody>
@@ -63,14 +64,23 @@
                             </span>
                         </td>
                         <td class="w-16 py-2 text-right font-semibold tabular-nums">{{ $pct($t['total_rate'], 2) }}</td>
+                        {{-- Best-selling product in their gross sales, e.g. CanPro ₱20,000 --}}
+                        <td class="py-2 pl-6 text-sm whitespace-nowrap" @if ($row['top_product']) title="{{ $row['top_product']['name'] }}: {{ $peso($row['top_product']['amount']) }} of {{ $peso($row['sales']) }} gross sales" @endif>
+                            @if ($row['top_product'])
+                                <span class="font-medium">{{ $row['top_product']['name'] }}</span>
+                                <span class="ml-1 font-semibold tabular-nums">{{ $peso($row['top_product']['amount']) }}</span>
+                            @else
+                                <span class="text-xs text-muted">No sales yet</span>
+                            @endif
+                        </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="py-4 text-sm text-muted">No active CRAs yet.</td></tr>
+                    <tr><td colspan="8" class="py-4 text-sm text-muted">No active CRAs yet.</td></tr>
                 @endforelse
             </tbody>
         </table>
         <p class="mt-2 text-[11px] text-muted">
-            Conv % = (BC + SC orders) ÷ (engagements + leads).
+            Conv % = (BC + SC orders) ÷ (engagements + leads). Top product sales = the product with the most of their gross sales.
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
         </p>
     </div>

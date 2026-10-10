@@ -149,7 +149,7 @@
         {{-- Funnel board: one row per CRA --}}
         <x-panel :title="'Conversion Breakdown per CRA · '.$period['label']" icon="funnel" title-id="board-title" :tinted="false" body-class="">
             <x-slot:badges>
-                <span class="text-xs text-muted">Changes are against {{ $prevName }}. Click a column heading to sort.</span>
+                <span class="text-xs text-muted">Changes are against {{ $prevName }}. Click a column heading to sort, or a CRA's gross sales to see their orders.</span>
             </x-slot:badges>
             <x-slot:actions>
                 <span class="flex flex-wrap gap-3 text-muted">
@@ -213,7 +213,13 @@
                                     @php($type = $sorts[$key][1])
                                     @php($d = $delta($n[$key], $b[$key], $type))
                                     <td @class(['px-3 py-3 text-right', 'border-l border-line' => in_array($key, ['engagements', 'leads', 'total_rate']), 'font-semibold' => $type === 'percent' || $key === 'gross'])>
-                                        {{ $fmt($n[$key], $type) }}
+                                        @if ($key === 'gross')
+                                            {{-- Opens the orders behind this amount --}}
+                                            <button type="button" data-cra-orders="{{ route('conversion.cra-orders', ['cra' => $row['cra'], 'from' => $period['from']->toDateString(), 'to' => $period['to']->toDateString()]) }}"
+                                                    title="See {{ $row['cra']->displayName() }}'s orders" class="cursor-pointer text-brand-700 underline decoration-dotted underline-offset-4 hover:text-brand-600">{{ $fmt($n[$key], $type) }}</button>
+                                        @else
+                                            {{ $fmt($n[$key], $type) }}
+                                        @endif
                                         @if (($type === 'percent' || $key === 'gross') && $d['text'] !== 'no comparison')
                                             <span class="block text-[11px] font-medium {{ $deltaClass($d) }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
                                         @endif
@@ -264,4 +270,16 @@
             </dl>
         </details>
     </div>
+    {{-- A CRA's orders behind their gross sales, loaded when the amount is clicked --}}
+    <dialog id="cra-orders-dialog" aria-labelledby="cra-orders-title" class="m-auto max-h-[90dvh] w-[min(64rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
+        <div class="flex max-h-[90dvh] flex-col">
+            <div class="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-3 text-white">
+                <h2 id="cra-orders-title" class="text-base font-bold">Orders in gross sales</h2>
+                <button type="button" data-cra-orders-close aria-label="Close" class="rounded-lg p-1.5 text-white/80 hover:bg-white/15 hover:text-white">
+                    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <div data-cra-orders-body class="min-h-0 overflow-y-auto p-5"></div>
+        </div>
+    </dialog>
 </x-layouts.app>

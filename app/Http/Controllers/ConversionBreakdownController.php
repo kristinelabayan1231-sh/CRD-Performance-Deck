@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
@@ -150,6 +151,42 @@ class ConversionBreakdownController extends Controller
             'allCras' => $allCras,
             'canViewAll' => $user->can('conversion.view_all'),
             'statuses' => config('customers.pos_statuses'),
+        ]);
+    }
+
+    /**
+     * The orders behind one CRA's gross sales for $from–$to (the per-CRA pop-up): their own Pancake orders
+     * tagged CRD - BROADCAST or CRD - SEGMENTATION, not canceled, with the same amounts, so they add up
+     * to the Gross BC, Gross SC and Gross sales shown.
+     */
+    public function craOrders(Request $request, User $cra): View
+    {
+        $user = $request->user();
+        abort_unless($user->can('conversion.view_all') || $user->is($cra), 403);
+
+        $data = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+        ]);
+        $from = CarbonImmutable::parse($data['from']);
+        $to = CarbonImmutable::parse($data['to']);
+
+        $orders = $cra->pancake_name
+            ? PancakeOrder::counted()
+                ->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
+                ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+                ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+                ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')
+                ->get(['pancake_order_id', 'ordered_on', 'customer_name', 'page_name', 'conversion_type', 'total_price', 'shecom_sales'])
+            : collect();
+        $gross = fn (string $type) => $orders->where('conversion_type', $type)->sum(fn (PancakeOrder $order) => $order->sales());
+
+        return view('conversion._cra-orders', [
+            'cra' => $cra,
+            'orders' => $orders,
+            'period' => $from->equalTo($to) ? $from->format('D, M j, Y') : $from->format('M j').' – '.$to->format('M j, Y'),
+            'bcGross' => $gross(PancakeOrder::BROADCAST),
+            'scGross' => $gross(PancakeOrder::SEGMENTATION),
         ]);
     }
 

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DeliveredOrder;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CustomerChurn;
@@ -110,6 +111,31 @@ class SalesGoalsTest extends TestCase
 
         $this->actingAs($lhea)->get(route('settings.sales-goals.index'))->assertForbidden();
         $this->actingAs($lhea)->put(route('settings.sales-goals.update'), ['cra_daily' => 1, 'crd_monthly' => 1])->assertForbidden();
+    }
+
+    public function test_each_cras_top_product_sales_show_per_cra(): void
+    {
+        $regina = $this->cra('Regina', 'CRD REJ VERGARA');
+        $this->cra('Lhea', 'CRD LHEI');
+        Product::create(['name' => 'CanPro', 'srp' => 1000]);
+        Product::create(['name' => 'Sinuxyl', 'keywords' => 'Sinux', 'srp' => 500]);
+        $order = fn (string $id, float $total, array $items, ?string $type = PancakeOrder::SEGMENTATION, int $status = 2) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => '2026-10-05', 'seller_name' => 'CRD REJ VERGARA', 'status' => $status,
+            'total_price' => $total, 'conversion_type' => $type, 'items' => $items,
+        ]);
+        $order('T1', 15000, [['name' => 'CANPRO 60s', 'qty' => 1]], PancakeOrder::BROADCAST);
+        // CanPro ×1 (₱1,000 SRP) and Sinux Spray ×2 (₱500): split 50/50.
+        $order('T2', 10000, [['name' => 'CanPro', 'qty' => 1], ['name' => 'Sinux Spray', 'qty' => 2]]);
+        $order('T3', 9000, [['name' => 'Sinuxyl', 'qty' => 1]]);
+        $order('T4', 99000, [['name' => 'Sinuxyl', 'qty' => 9]], status: 6);  // canceled
+        $order('T5', 50000, [['name' => 'Sinuxyl', 'qty' => 5]], type: null); // not CRD-tagged
+
+        $progress = app(SalesGoalProgress::class)->for(collect([$regina]), DashboardRange::fromFilters([], CarbonImmutable::parse('2026-10-10')));
+        $this->assertSame(['name' => 'CanPro', 'amount' => 20000.0], $progress['cras']->first()['top_product']);
+
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
+            ->assertSeeInOrder(['Top product sales', 'Regina', 'CanPro', '₱20,000'])
+            ->assertSee('No sales yet');
     }
 
     public function test_progress_counts_tagged_sales_against_the_goals(): void
