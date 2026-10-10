@@ -33,7 +33,7 @@
             <nav class="px-3 pb-6 text-sm">
                 <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" icon="home">Dashboard</x-nav-link>
                 @can('segmentation.view')
-                    <x-nav-link :href="route('segmentation.index')" :active="request()->routeIs('segmentation.*')" icon="chart">Segmentation Tracker</x-nav-link>
+                    <x-nav-link :href="auth()->user()->segmentationHome()" :active="request()->routeIs('segmentation.*')" icon="chart">Segmentation Tracker</x-nav-link>
                 @endcan
                 @can('productivity.view')
                     <x-nav-link :href="route('productivity.index')" :active="request()->routeIs('productivity.*')" icon="trend">Segmentation Productivity</x-nav-link>

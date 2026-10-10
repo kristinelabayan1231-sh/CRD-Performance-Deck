@@ -72,6 +72,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('conversion-breakdown')->name('conversion.')->middleware('can:conversion.view')->group(function () {
         Route::get('/', [ConversionBreakdownController::class, 'index'])->name('index');
         Route::get('/orders', [ConversionBreakdownController::class, 'orders'])->name('orders');
+        Route::get('/cras/{cra}/orders', [ConversionBreakdownController::class, 'craOrders'])->name('cra-orders');
         Route::post('/sync', [ConversionBreakdownController::class, 'sync'])->middleware('can:conversion.view_all')->name('sync');
     });
 

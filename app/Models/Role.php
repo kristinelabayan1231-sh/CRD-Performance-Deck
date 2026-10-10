@@ -17,6 +17,12 @@ class Role extends Model
 
     public const CRA_SUPERVISOR = 'cra-supervisor';
 
+    /** Created from Settings → roles as "CRA Team Lead" (not a system role). */
+    public const CRA_TEAM_LEAD = 'cra-team-lead';
+
+    /** Roles whose Segmentation Tracker opens on the Summary tab. */
+    public const SUMMARY_FIRST = [self::CRA_SUPERVISOR, self::CRA_TEAM_LEAD];
+
     protected function casts(): array
     {
         return [

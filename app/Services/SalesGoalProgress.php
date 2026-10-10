@@ -14,12 +14,12 @@ use Illuminate\Support\Collection;
  * Monthly goal: every CRA's sales ÷ the CRD monthly goal (for a custom range that isn't a whole
  * month, the goal is prorated to its days); pace = days gone ÷ days in the month.
  * Per CRA: sales ÷ their daily goal (own, else the general CRA daily goal) × the days in the range,
- * and Total conv % = (BC + SC orders) ÷ (engagements + leads).
+ * Total conv % = (BC + SC orders) ÷ (engagements + leads), and their best-selling product (CraProductSales).
  * Team: confirmed orders, conversion rate and AOV (gross ÷ orders) of the CRAs shown.
  */
 class SalesGoalProgress
 {
-    public function __construct(private ConversionBreakdown $breakdown) {}
+    public function __construct(private ConversionBreakdown $breakdown, private CraProductSales $productSales) {}
 
     /**
      * @param  Collection<int, User>  $shown  CRAs listed per CRA (a CRA sees only themselves)
@@ -37,9 +37,12 @@ class SalesGoalProgress
         $goal = SalesGoals::crdMonthly() * ($isMonth ? 1 : $range->days() / $month->daysInMonth);
         $generalDaily = SalesGoals::craDaily();
 
-        $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily) {
+        $products = $this->productSales->for($shown, $range->from, $range->to);
+
+        $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily, $products) {
             $totals = $total($cra);
             $goal = SalesGoals::dailyFor($cra, $generalDaily) * $range->days();
+            $sold = $products[$cra->id] ?? collect();
 
             return [
                 'cra' => $cra,
@@ -48,6 +51,8 @@ class SalesGoalProgress
                 'own_goal' => $cra->daily_sales_goal !== null,
                 'progress' => SalesGoals::progress((float) $totals['gross'], $goal),
                 'totals' => $totals,
+                // Best-selling product in these sales: ['name' => …, 'amount' => …] or null.
+                'top_product' => $sold->isEmpty() ? null : ['name' => $sold->keys()->first(), 'amount' => $sold->first()],
             ];
         })->sortByDesc('progress')->values();
 

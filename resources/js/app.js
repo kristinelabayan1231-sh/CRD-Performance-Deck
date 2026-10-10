@@ -1,4 +1,5 @@
 import { initAccountLists } from './account-list';
+import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initLive } from './live';
 import { initPoster } from './poster';
@@ -14,4 +15,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initLive();
     initCustomers();
     initAccountLists();
+    initCraOrders();
 });

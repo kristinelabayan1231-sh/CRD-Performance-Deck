@@ -192,6 +192,38 @@ class ConversionBreakdownTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-02']))->assertSessionHasErrors('from');
     }
 
+    public function test_a_cras_gross_sales_open_the_orders_that_add_up_to_it(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+        $make = fn (string $id, string $seller, ?string $type, float $total, int $status = 2) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => '2026-10-01', 'seller_name' => $seller, 'customer_name' => "Buyer {$id}",
+            'page_name' => 'Trusted Eye Care', 'status' => $status, 'total_price' => $total, 'conversion_type' => $type,
+        ]);
+        $make('B1', 'CRD LHEI', PancakeOrder::BROADCAST, 1000);
+        $make('S1', 'CRD LHEI', PancakeOrder::SEGMENTATION, 2000);
+        $make('S2', 'CRD LHEI', PancakeOrder::SEGMENTATION, 5000, status: 6);       // canceled
+        $make('U1', 'CRD LHEI', null, 7000);                                         // untagged
+        $make('R1', 'CRD REJ VERGARA', PancakeOrder::SEGMENTATION, 3000);            // another CRA
+
+        $url = route('conversion.cra-orders', ['cra' => $lhea, 'from' => '2026-10-01', 'to' => '2026-10-01']);
+        $this->actingAs($this->owner)->get(route('conversion.index'))->assertOk()
+            ->assertSee('data-cra-orders="'.e($url).'"', false)
+            ->assertViewHas('rows', fn ($rows) => $rows->firstWhere('cra.id', $lhea->id)['now']['gross'] == 3000);
+
+        $this->actingAs($this->owner)->get($url)->assertOk()
+            // Adds up to the ₱3,000 gross sales shown for Lhea.
+            ->assertSeeInOrder(['Lhea', '2 orders', 'Gross BC', '₱1,000.00', 'Gross SC', '₱2,000.00', 'Gross sales', '₱3,000.00'])
+            ->assertSeeInOrder(['Order ID', 'Customer name', 'Page name', 'Tagging', 'Amount'])
+            ->assertSeeInOrder(['B1', 'Buyer B1', 'Trusted Eye Care', 'CRD - BROADCAST', '₱1,000.00'])
+            ->assertSeeInOrder(['S1', 'Buyer S1', 'CRD - SEGMENTATION', '₱2,000.00'])
+            ->assertDontSee('S2')->assertDontSee('U1')->assertDontSee('R1');
+
+        // A CRA can open only their own orders.
+        $this->actingAs($regina)->get($url)->assertForbidden();
+        $this->actingAs($lhea)->get($url)->assertOk();
+    }
+
     public function test_sync_saves_the_order_tags(): void
     {
         $this->orders = [$this->order('CRD Lhei', [self::BROADCAST, 17], 1000)];
