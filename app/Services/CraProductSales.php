@@ -32,8 +32,8 @@ class CraProductSales
         }
 
         $totals = [];
-        PancakeOrder::counted()
-            ->whereIn('seller_name', $accounts->keys())
+        // Every status, as in gross sales.
+        PancakeOrder::whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
             ->get(['seller_name', 'items', 'total_price', 'shecom_sales'])

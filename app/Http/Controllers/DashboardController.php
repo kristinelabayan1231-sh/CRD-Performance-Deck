@@ -68,7 +68,7 @@ class DashboardController extends Controller
             $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
             $results = $goals->for($cras, $range);
             // Company-wide; a few thousand deliveries to look through, so kept for a few minutes (as the Customer Database's counts).
-            $churnRate = Cache::remember("dashboard.churn.v2.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(CustomerDatabase::CACHE_MINUTES),
+            $churnRate = Cache::remember("dashboard.churn.v3.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(CustomerDatabase::CACHE_MINUTES),
                 fn () => $churn->for($range->from, $range->to));
 
             // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for a few minutes.

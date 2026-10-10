@@ -141,7 +141,7 @@ class CustomerDatabaseTest extends TestCase
         // October to date: Ana and Eve's first CRA-handled orders, Ben's second (Dan's was in September).
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
-            ->assertSeeTextInOrder(['AOV', 'Retained', '2', 'Repeat customers', '1', 'CRD customer churn', 'Churn rate'])
+            ->assertSeeTextInOrder(['AOV', 'Retained', '2', 'Repeat customers', '1', 'Customer churn', 'Overall churn rate'])
             ->assertSee(route('customers.index', ['from' => '2026-10-01', 'to' => '2026-10-09', 'segment' => 'repeat']));
 
         $cra = User::firstWhere('email', 'anna@gmail.com');

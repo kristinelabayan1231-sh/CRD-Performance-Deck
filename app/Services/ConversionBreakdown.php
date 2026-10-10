@@ -76,7 +76,8 @@ class ConversionBreakdown
     }
 
     /**
-     * Tagged orders per CRA per day: counts and gross sales for broadcast and segmentation.
+     * Tagged orders per CRA per day: counts (confirmed orders, not canceled or deleted) and gross sales
+     * (every status) for broadcast and segmentation.
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
      * @return array<int, array<string, array{bc_orders: int, sc_orders: int, bc_gross: float, sc_gross: float}>>
@@ -89,17 +90,16 @@ class ConversionBreakdown
 
         $out = [];
 
-        PancakeOrder::counted()
-            ->whereIn('seller_name', $accounts->keys())
+        PancakeOrder::whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->get(['ordered_on', 'seller_name', 'conversion_type', 'total_price', 'shecom_sales'])
+            ->get(['ordered_on', 'seller_name', 'conversion_type', 'status', 'total_price', 'shecom_sales'])
             ->each(function (PancakeOrder $order) use (&$out, $accounts) {
                 $cra = $accounts[$order->seller_name];
                 $day = $order->ordered_on->toDateString();
                 $prefix = $order->conversion_type === PancakeOrder::BROADCAST ? 'bc' : 'sc';
                 $out[$cra][$day] ??= ['bc_orders' => 0, 'sc_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0];
-                $out[$cra][$day]["{$prefix}_orders"]++;
+                $out[$cra][$day]["{$prefix}_orders"] += $order->isCounted() ? 1 : 0;
                 $out[$cra][$day]["{$prefix}_gross"] += $order->sales();
             });
 

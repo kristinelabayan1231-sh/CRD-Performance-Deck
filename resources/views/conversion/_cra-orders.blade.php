@@ -36,7 +36,7 @@
         <p class="rounded-lg border border-dashed border-line px-3 py-6 text-center text-sm text-muted">No orders tagged CRD - BROADCAST or CRD - SEGMENTATION in these dates.</p>
     @else
         <div class="overflow-x-auto rounded-lg border border-line">
-            <table class="w-full min-w-[680px] text-left text-sm">
+            <table class="w-full min-w-[780px] text-left text-sm">
                 <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-3 py-2 font-semibold">Created</th>
@@ -44,6 +44,7 @@
                         <th class="px-3 py-2 font-semibold">Customer name</th>
                         <th class="px-3 py-2 font-semibold">Page name</th>
                         <th class="px-3 py-2 font-semibold">Tagging</th>
+                        <th class="px-3 py-2 font-semibold">Status</th>
                         <th class="px-3 py-2 text-right font-semibold">Amount</th>
                     </tr>
                 </thead>
@@ -55,18 +56,22 @@
                             <td class="px-3 py-2">{{ $order->customer_name ?: '—' }}</td>
                             <td class="px-3 py-2">{{ $order->page_name ?: '—' }}</td>
                             <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $tags[$order->conversion_type][1] }}">{{ $tags[$order->conversion_type][0] }}</span></td>
+                            <td class="px-3 py-2">
+                                @php($status = $statuses[$order->status] ?? [$order->status_name ?: '—', 'bg-canvas text-muted'])
+                                <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $status[1] }}">{{ $status[0] }}</span>
+                            </td>
                             <td class="px-3 py-2 text-right tabular-nums">{{ $peso($order->sales()) }}</td>
                         </tr>
                     @endforeach
                 </tbody>
                 <tfoot class="bg-ink font-semibold text-white">
                     <tr>
-                        <td class="px-3 py-2" colspan="5">Total · {{ number_format($orders->count()) }} {{ Str::plural('order', $orders->count()) }}</td>
+                        <td class="px-3 py-2" colspan="6">Total · {{ number_format($orders->count()) }} {{ Str::plural('order', $orders->count()) }}</td>
                         <td class="px-3 py-2 text-right tabular-nums">{{ $peso($bcGross + $scGross) }}</td>
                     </tr>
                 </tfoot>
             </table>
         </div>
-        <p class="text-xs text-muted">Oldest first, by when the order was created in Pancake. Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Canceled and deleted orders aren't counted.</p>
+        <p class="text-xs text-muted">Oldest first, by when the order was created in Pancake. Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Every status counts, canceled included.</p>
     @endif
 </div>

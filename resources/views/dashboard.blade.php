@@ -105,12 +105,13 @@
                     <div class="sm:col-span-2"><dt class="font-semibold text-ink">Dates</dt><dd>Every section uses the month picked (January–December, from the 1st to today for the current month) or the From–To range. Sales, orders and logistics are by the real date; the Segmentation Tracker uses the paired lead days (Settings → Working Date).</dd></div>
                     @if ($results)
                         <div><dt class="font-semibold text-ink">CRD monthly goal (Gross Sales)</dt><dd>Gross sales of every CRA ÷ the CRD monthly goal ({{ '₱'.number_format(\App\Support\SalesGoals::crdMonthly()) }}, Settings → Sales Goals). Pace = day of the month ÷ days in the month. For a From–To range that isn't a whole month, the goal is prorated: monthly goal × days picked ÷ days in the month.</dd></div>
-                        <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Totals of the CRAs' own Pancake POS orders tagged CRD - BROADCAST or CRD - SEGMENTATION, using Shecom's sales per order (without the child TSD row) once synced, else Pancake's total.</dd></div>
+                        <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Totals of the CRAs' own Pancake POS orders tagged CRD - BROADCAST or CRD - SEGMENTATION, every status (canceled and returned included), using Shecom's sales per order (without the child TSD row) once synced, else Pancake's total.</dd></div>
                         <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRAs' own Pancake POS orders tagged CRD - BROADCAST (BC) or CRD - SEGMENTATION (SC), by order date. Canceled and deleted orders don't count. Click the tile to see them.</dd></div>
                         <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>(BC orders + SC orders) ÷ (Pancake engagements + Segmentation Tracker leads) × 100.</dd></div>
                         <div><dt class="font-semibold text-ink">AOV (average order value)</dt><dd>Gross sales ÷ total confirmed orders.</dd></div>
                         <div><dt class="font-semibold text-ink">Churn rate</dt><dd>
-                            Customers lost ÷ customers due × 100. A CRD-delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $grace }} days to order again.
+                            Customers lost ÷ customers due × 100, for CRD, FSD and overall. A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $grace }} days to order again.
+                            CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; overall counts a customer on both lists once, by their latest delivery.
                             Due = customers whose {{ $grace }} days ended in the dates picked. Lost = no Pancake order (not canceled) and no new delivery in that time.
                             Example: 6,000 due and 50 lost = 50 ÷ 6,000 × 100 = 0.83%. Lower is better.
                         </dd></div>

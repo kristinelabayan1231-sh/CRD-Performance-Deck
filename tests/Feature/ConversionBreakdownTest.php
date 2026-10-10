@@ -136,8 +136,9 @@ class ConversionBreakdownTest extends TestCase
             // Segmentation: one order, plus one with both tags (counts as segmentation).
             $this->order('CRD Lhei', [self::SEGMENTATION, 431], 1500),
             $this->order('CRD Lhei', [self::BROADCAST, self::SEGMENTATION], 500),
-            // Not counted: canceled, untagged, and another CRA's tagged order.
+            // Canceled: in gross sales (every status), not in the order counts.
             $this->order('CRD Lhei', [self::SEGMENTATION], 819, status: 6),
+            // Not counted at all: untagged, and another CRA's tagged order.
             $this->order('CRD Lhei', [17], 999),
             $this->order('CRD Rej Vergara', [self::BROADCAST], 2000),
         ];
@@ -151,8 +152,8 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame(20, $day['engagements']);
         $this->assertSame(4, $day['leads']);
         $this->assertEqualsWithDelta(1799.0, $day['bc_gross'], 0.001);
-        $this->assertEqualsWithDelta(2000.0, $day['sc_gross'], 0.001);
-        $this->assertEqualsWithDelta(3799.0, $day['gross'], 0.001);
+        $this->assertEqualsWithDelta(2819.0, $day['sc_gross'], 0.001);
+        $this->assertEqualsWithDelta(4618.0, $day['gross'], 0.001);
         $this->assertEqualsWithDelta(2 / 20, $day['bc_rate'], 1e-9);
         $this->assertEqualsWithDelta(2 / 4, $day['sc_rate'], 1e-9);
         $this->assertEqualsWithDelta(4 / 24, $day['total_rate'], 1e-9);
@@ -203,22 +204,23 @@ class ConversionBreakdownTest extends TestCase
         // S1 was created first (9:15 AM Manila), B1 later (2:30 PM): listed in that order.
         $make('B1', 'CRD LHEI', PancakeOrder::BROADCAST, 1000, at: '2026-10-01 06:30:00');
         $make('S1', 'CRD LHEI', PancakeOrder::SEGMENTATION, 2000, at: '2026-10-01 01:15:00');
-        $make('S2', 'CRD LHEI', PancakeOrder::SEGMENTATION, 5000, status: 6);       // canceled
+        $make('S2', 'CRD LHEI', PancakeOrder::SEGMENTATION, 5000, status: 6);       // canceled: in gross sales too (10 AM)
         $make('U1', 'CRD LHEI', null, 7000);                                         // untagged
         $make('R1', 'CRD REJ VERGARA', PancakeOrder::SEGMENTATION, 3000);            // another CRA
 
         $url = route('conversion.cra-orders', ['cra' => $lhea, 'from' => '2026-10-01', 'to' => '2026-10-01']);
         $this->actingAs($this->owner)->get(route('conversion.index'))->assertOk()
             ->assertSee('data-cra-orders="'.e($url).'"', false)
-            ->assertViewHas('rows', fn ($rows) => $rows->firstWhere('cra.id', $lhea->id)['now']['gross'] == 3000);
+            ->assertViewHas('rows', fn ($rows) => $rows->firstWhere('cra.id', $lhea->id)['now']['gross'] == 8000);
 
         $this->actingAs($this->owner)->get($url)->assertOk()
-            // Adds up to the ₱3,000 gross sales shown for Lhea.
-            ->assertSeeInOrder(['Lhea', '2 orders', 'Gross BC', '₱1,000.00', 'Gross SC', '₱2,000.00', 'Gross sales', '₱3,000.00'])
-            ->assertSeeInOrder(['Order ID', 'Customer name', 'Page name', 'Tagging', 'Amount'])
-            ->assertSeeInOrder(['Oct 1, 9:15 AM', 'S1', 'Buyer S1', 'Trusted Eye Care', 'CRD - SEGMENTATION', '₱2,000.00',
-                'Oct 1, 2:30 PM', 'B1', 'Buyer B1', 'CRD - BROADCAST', '₱1,000.00'])
-            ->assertDontSee('S2')->assertDontSee('U1')->assertDontSee('R1');
+            // Adds up to the ₱8,000 gross sales shown for Lhea, the canceled order included.
+            ->assertSeeInOrder(['Lhea', '3 orders', 'Gross BC', '₱1,000.00', 'Gross SC', '₱7,000.00', 'Gross sales', '₱8,000.00'])
+            ->assertSeeInOrder(['Order ID', 'Customer name', 'Page name', 'Tagging', 'Status', 'Amount'])
+            ->assertSeeInOrder(['Oct 1, 9:15 AM', 'S1', 'Buyer S1', 'Trusted Eye Care', 'CRD - SEGMENTATION', 'Shipped', '₱2,000.00',
+                'Oct 1, 10:00 AM', 'S2', 'CRD - SEGMENTATION', 'Canceled', '₱5,000.00',
+                'Oct 1, 2:30 PM', 'B1', 'Buyer B1', 'CRD - BROADCAST', 'Shipped', '₱1,000.00'])
+            ->assertDontSee('U1')->assertDontSee('R1');
 
         // A CRA can open only their own orders.
         $this->actingAs($regina)->get($url)->assertForbidden();
