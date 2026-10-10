@@ -15,6 +15,9 @@ class PancakeClient
     /** How many order numbers the last ordersByNumber() call couldn't look up (Pancake failed or didn't answer). */
     public int $lastLookupFailures = 0;
 
+    /** @var list<string> Pages whose engagements the last engagements() call skipped, with Pancake's error. */
+    public array $lastEngagementFailures = [];
+
     /** Order fields Segmentation Productivity and Conversion Breakdown use; asked for with fields[] since full orders are large. */
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
@@ -42,12 +45,16 @@ class PancakeClient
         }
 
         $staff = [];
+        $this->lastEngagementFailures = [];
 
         foreach ($pages as $page) {
             $response = $this->engagementRequest($page, $day);
 
+            // One broken page is skipped (and named) so the other pages' engagements still count.
             if ($response->failed() || ! $response->json('success')) {
-                throw new RuntimeException("Pancake engagements for page {$page->name} ({$page->page_id}) returned HTTP {$response->status()}.");
+                $this->lastEngagementFailures[] = "{$page->name} ({$page->page_id}): HTTP {$response->status()}";
+
+                continue;
             }
 
             foreach ($response->json('users_engagements') ?? [] as $row) {
@@ -60,6 +67,10 @@ class PancakeClient
                 $staff[$id] ??= ['name' => (string) ($row['name'] ?? ''), 'engagements' => 0];
                 $staff[$id]['engagements'] += (int) ($row['total_engagement'] ?? 0);
             }
+        }
+
+        if (count($this->lastEngagementFailures) === $pages->count()) {
+            throw new RuntimeException('Pancake engagements failed for every page: '.implode('; ', $this->lastEngagementFailures));
         }
 
         return $staff;
