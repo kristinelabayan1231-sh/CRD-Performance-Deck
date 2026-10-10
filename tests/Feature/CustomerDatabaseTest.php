@@ -111,6 +111,20 @@ class CustomerDatabaseTest extends TestCase
             ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 3, 'repeat' => 1]);
     }
 
+    public function test_pos_link_opens_the_shops_customer_list_with_the_number_to_paste(): void
+    {
+        $this->customers();
+        config(['services.pancake.shop_id' => '30037101']);
+
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
+            ->assertSee('href="https://pos.pancake.ph/shop/30037101/customer"', false)
+            ->assertSee('data-phone="09171111111"', false);
+
+        // No shop or no link set: no POS link.
+        config(['services.pancake.pos_customer_url' => null]);
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()->assertDontSee('Open in Pancake POS');
+    }
+
     public function test_today_retained_is_a_first_cra_order_and_repeat_has_an_earlier_one(): void
     {
         $this->customers();
@@ -244,6 +258,22 @@ class CustomerDatabaseTest extends TestCase
         $this->assertSame('2026-03-02', Setting::value(BackfillCustomerDatabase::DONE_THROUGH));
     }
 
+    public function test_a_failed_history_lookup_waits_while_the_others_are_saved(): void
+    {
+        config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
+        Http::fake(fn (Request $request) => str_contains($request->url(), 'search=9174444444&')
+            ? Http::response('Too many requests', 429)
+            : Http::response(['success' => true, 'total_pages' => 1, 'data' => []]));
+        $this->customers();
+
+        // Dan's lookup fails: the other three are saved, and Dan waits instead of being retried first every run.
+        $this->artisan('customers:check-history')->expectsOutputToContain('3 of 4 CRD customers done')->assertSuccessful();
+        $this->artisan('customers:check-history')->expectsOutputToContain('to check right now')->assertSuccessful();
+
+        $this->travel(7)->hours();
+        $this->artisan('customers:check-history')->expectsOutputToContain('Checked 0 of 1 customers')->assertSuccessful();
+    }
+
     public function test_crd_orders_before_the_first_day_found_in_pancake_make_a_customer_repeat(): void
     {
         config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
@@ -265,7 +295,7 @@ class CustomerDatabaseTest extends TestCase
             ->assertSee('0 of 4');
 
         $this->artisan('customers:check-history')->expectsOutputToContain('4 of 4 CRD customers done')->assertSuccessful();
-        $this->artisan('customers:check-history')->expectsOutputToContain('is checked')->assertSuccessful();
+        $this->artisan('customers:check-history')->expectsOutputToContain('to check right now')->assertSuccessful();
         Cache::flush();
 
         $this->actingAs($this->owner)->get(route('customers.index'))

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\PancakeAccounts;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -45,21 +46,23 @@ class PancakeOrder extends Model
     }
 
     /**
-     * The CRD team's Pancake seller accounts (config customers.crd_accounts) as staff keys.
+     * The CRD team's Pancake seller accounts (Settings → Pancake Accounts) as staff keys.
      *
      * @return list<string>
      */
     public static function crdAccounts(): array
     {
-        return array_values(array_unique(array_map(PancakeEngagement::staffKey(...), config('customers.crd_accounts'))));
+        return PancakeAccounts::crdKeys();
     }
 
     /**
-     * Whether a seller (staff key) is one of the CRD team's accounts.
+     * Whether a seller (staff key) is one of the CRD team's accounts ($accounts: crdAccounts(), when already read).
+     *
+     * @param  list<string>|null  $accounts
      */
-    public static function isCrdAccount(?string $sellerName): bool
+    public static function isCrdAccount(?string $sellerName, ?array $accounts = null): bool
     {
-        return $sellerName !== null && in_array($sellerName, self::crdAccounts(), true);
+        return $sellerName !== null && in_array($sellerName, $accounts ?? self::crdAccounts(), true);
     }
 
     public function scopeCounted(Builder $query): Builder

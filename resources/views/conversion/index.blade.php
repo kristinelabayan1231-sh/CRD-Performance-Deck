@@ -80,75 +80,95 @@
                 </fieldset>
             @endif
 
-            <fieldset>
-                <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
-                <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
-                    @foreach (['day' => 'Day', 'week' => 'Week', 'month' => 'Month'] as $value => $label)
-                        <label class="cursor-pointer">
-                            <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
-                            <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
-                        </label>
-                    @endforeach
-                </div>
-            </fieldset>
+            {{-- Dates on the right --}}
+            <div class="ml-auto flex flex-wrap items-end gap-x-6 gap-y-4">
+                <fieldset>
+                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
+                    <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
+                        @foreach (['day' => 'Day', 'week' => 'Week', 'month' => 'Month'] as $value => $label)
+                            <label class="cursor-pointer">
+                                <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
+                                <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
 
-            @if ($view === 'day')
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Day
-                    <input type="date" name="date" value="{{ $period['from']->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-            @else
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Month
-                    <input type="month" name="month" value="{{ $period['month']->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-                @if ($view === 'week')
+                @if ($view === 'day')
                     <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                        Week
-                        <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                            @foreach ($weeks as $w)
-                                <option value="{{ $w['number'] }}" @selected($w['number'] === $period['number'])>Week {{ $w['number'] }} · {{ $w['label'] }}</option>
-                            @endforeach
-                        </select>
+                        Day
+                        <input type="date" name="date" value="{{ $period['from']->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
                     </label>
+                @else
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Month
+                        <input type="month" name="month" value="{{ $period['month']->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                    @if ($view === 'week')
+                        <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                            Week
+                            <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                                @foreach ($weeks as $w)
+                                    <option value="{{ $w['number'] }}" @selected($w['number'] === $period['number'])>Week {{ $w['number'] }} · {{ $w['label'] }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    @endif
                 @endif
-            @endif
+            </div>
             <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white">Apply</button></noscript>
         </form>
 
-        {{-- Team scorecard --}}
-        <section aria-label="Team totals" class="grid grid-cols-2 overflow-hidden rounded-xl bg-white shadow-sm sm:grid-cols-4 xl:grid-cols-8">
+        {{-- Team scorecard: teal = Broadcast, purple = Segmentation, sky = total conversion, amber = gross sales --}}
+        <section aria-label="Team totals" class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
             @foreach ([
-                ['Orders BC', 'bc_orders', 'count'],
-                ['Engagements', 'engagements', 'count'],
-                ['BC conv %', 'bc_rate', 'percent'],
-                ['Orders SC', 'sc_orders', 'count'],
-                ['Leads', 'leads', 'count'],
-                ['SC conv %', 'sc_rate', 'percent'],
-                ['Total conv %', 'total_rate', 'percent'],
-                ['Gross sales', 'gross', 'money'],
-            ] as [$label, $key, $type])
+                ['Orders BC', 'bc_orders', 'count', 'from-[#0e8f7c] to-[#0b6b5d]'],
+                ['Engagements', 'engagements', 'count', 'from-[#0e8f7c] to-[#0b6b5d]'],
+                ['BC conv %', 'bc_rate', 'percent', 'from-[#0b7d6c] to-[#08594d]'],
+                ['Orders SC', 'sc_orders', 'count', 'from-brand-500 to-brand-700'],
+                ['Leads', 'leads', 'count', 'from-brand-500 to-brand-700'],
+                ['SC conv %', 'sc_rate', 'percent', 'from-brand-600 to-[#5b21b6]'],
+                ['Total conv %', 'total_rate', 'percent', 'from-[#1f8fb8] to-[#156c8c]'],
+                ['Gross sales', 'gross', 'money', 'from-[#d99a0b] to-[#a8740a]'],
+            ] as [$label, $key, $type, $gradient])
                 @php($d = $delta($total[$key], $totalBefore[$key], $type))
-                <div class="flex min-w-0 flex-col gap-0.5 border-r border-b border-line p-4">
-                    <span class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $label }}</span>
-                    <span class="text-xl font-bold tabular-nums" title="{{ $fmt($total[$key], $type) }}">{{ $type === 'money' ? '₱'.number_format($total[$key]) : $fmt($total[$key], $type) }}</span>
-                    <span class="text-xs font-semibold tabular-nums {{ $deltaClass($d) }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
+                <div class="relative flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-3.5 text-white shadow-sm {{ $gradient }}">
+                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
+                    <span class="relative text-[11px] font-semibold tracking-wide text-white/95 uppercase">{{ $label }}</span>
+                    <span class="relative text-xl font-bold tabular-nums" title="{{ $fmt($total[$key], $type) }}">{{ $type === 'money' ? '₱'.number_format($total[$key]) : $fmt($total[$key], $type) }}</span>
+                    <span @class([
+                        'relative w-fit rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                        'bg-white text-teal-700' => $d['dir'] === 'up',
+                        'bg-white text-coral-700' => $d['dir'] === 'down',
+                        'bg-white/20 text-white' => $d['dir'] === 'flat',
+                    ]) title="Change from {{ $prevName }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
                 </div>
             @endforeach
         </section>
 
         {{-- Funnel board: one row per CRA --}}
-        <section class="overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="board-title">
-            <header class="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 pb-3">
-                <div>
-                    <h2 id="board-title" class="font-semibold">Conversion Breakdown per CRA · {{ $period['label'] }}</h2>
-                    <p class="text-xs text-muted">Changes are against {{ $prevName }}. Click a column heading to sort. Leads base {{ $base }} per CRA per day; the actual count is shown.</p>
-                </div>
-                <span class="flex flex-wrap gap-3 text-xs text-muted">
+        <x-panel :title="'Conversion Breakdown per CRA · '.$period['label']" icon="funnel" title-id="board-title" :tinted="false" body-class="">
+            <x-slot:badges>
+                <span class="text-xs text-muted">Changes are against {{ $prevName }}. Click a column heading to sort.</span>
+            </x-slot:badges>
+            <x-slot:actions>
+                <span class="flex flex-wrap gap-3 text-muted">
                     <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-teal-700"></span>Broadcast (BC)</span>
                     <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-brand-600"></span>Segmentation (SC)</span>
                 </span>
-            </header>
+                <x-info label="What the arrows and colours mean">
+                    <p class="mb-2 text-sm font-semibold">Reading this table</p>
+                    <ul class="space-y-2">
+                        <li><span class="font-semibold text-teal-700">▲ green</span>: higher than {{ $prevName }} ({{ $compare['label'] }}). Rates change in percentage points (pts), gross sales in pesos.</li>
+                        <li><span class="font-semibold text-coral-700">▼ red</span>: lower than {{ $prevName }}.</li>
+                        <li><span class="font-semibold text-muted">± grey</span>: no change, or nothing to compare with.</li>
+                        <li><span class="font-semibold">Funnel bars</span>: the light bar is how many people the CRA reached (BC = Pancake engagements, SC = tracker leads); the dark part is how many of them ordered.</li>
+                        <li><span class="font-semibold">TOTAL row, “{{ number_format($total['reach']) }} reached → {{ number_format($total['orders']) }} orders”</span>: all CRAs together reached {{ number_format($total['reach']) }} people (engagements + leads) and got {{ number_format($total['orders']) }} orders from them, so Total conv % = {{ number_format($total['orders']) }} ÷ {{ number_format($total['reach']) }}.</li>
+                        <li>Leads base is {{ $base }} per CRA per day; the actual count is used.</li>
+                    </ul>
+                </x-info>
+            </x-slot:actions>
+
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[1180px] text-sm">
                     <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
@@ -218,7 +238,7 @@
                         @if ($rows->isNotEmpty())
                             <tr class="bg-ink font-semibold text-white">
                                 <td class="px-4 py-3">TOTAL</td>
-                                <td class="px-3 py-3 text-xs font-medium text-white/80">{{ number_format($total['reach']) }} reached → {{ number_format($total['orders']) }} orders</td>
+                                <td class="px-3 py-3 text-xs font-medium text-white/80" title="All CRAs reached {{ number_format($total['reach']) }} people (engagements + leads) and got {{ number_format($total['orders']) }} orders from them">{{ number_format($total['reach']) }} reached → {{ number_format($total['orders']) }} orders</td>
                                 @foreach (['engagements', 'bc_orders', 'bc_rate', 'leads', 'sc_orders', 'sc_rate', 'total_rate', 'bc_gross', 'sc_gross', 'gross'] as $key)
                                     <td @class(['px-3 py-3 text-right', 'border-l border-white/20' => in_array($key, ['engagements', 'leads', 'total_rate'])])>{{ $fmt($total[$key], $sorts[$key][1]) }}</td>
                                 @endforeach
@@ -228,7 +248,7 @@
                     </tbody>
                 </table>
             </div>
-        </section>
+        </x-panel>
 
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>

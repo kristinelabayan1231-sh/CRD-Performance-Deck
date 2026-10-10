@@ -24,6 +24,9 @@ $modules = [
     'Settings · Pancake Pages' => [
         'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
     ],
+    'Settings · Pancake Accounts' => [
+        'pancake_accounts.manage' => 'Set the CRD team\'s Pancake accounts counted by the Customer Database',
+    ],
     'Settings · Sales Goals' => [
         'sales_goals.manage' => 'Set the CRA daily sales goal and the CRD monthly sales goal',
     ],

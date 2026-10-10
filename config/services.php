@@ -50,6 +50,9 @@ return [
         // A POS user access token; used instead of the API key when set.
         'access_token' => env('PANCAKE_ACCESS_TOKEN'),
         'shop_id' => env('PANCAKE_SHOP_ID'),
+        // Pancake POS customer list ({shop} and {phone} are filled in), linked from the Customer Database. A customer opens
+        // there as a pop-up with no address of its own, so the link opens the list and copies the number to search for.
+        'pos_customer_url' => env('PANCAKE_POS_CUSTOMER_URL', 'https://pos.pancake.ph/shop/{shop}/customer'),
         // Facebook pages for chat engagements live in Settings → Pancake Pages (pancake_pages table).
     ],
 

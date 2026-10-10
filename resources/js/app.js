@@ -1,3 +1,4 @@
+import { initAccountLists } from './account-list';
 import { initCustomers } from './customers';
 import { initLive } from './live';
 import { initPoster } from './poster';
@@ -12,4 +13,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initPoster();
     initLive();
     initCustomers();
+    initAccountLists();
 });

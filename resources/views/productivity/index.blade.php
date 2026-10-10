@@ -73,51 +73,7 @@
                 </fieldset>
             @endif
 
-            <fieldset>
-                <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
-                <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
-                    @foreach (['day' => 'Day', 'week' => 'Week'] as $value => $label)
-                        <label class="cursor-pointer">
-                            <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
-                            <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
-                        </label>
-                    @endforeach
-                </div>
-            </fieldset>
-
             @php($control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
-            @if ($view === 'day')
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Day
-                    <input type="date" name="date" value="{{ $period['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Compare with
-                    <input type="date" name="compare" value="{{ $compare['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-            @else
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Month
-                    <input type="month" name="month" value="{{ $month->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Week
-                    <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                        @foreach ($weeks->filter(fn ($w) => $w['from']->isSameMonth($month)) as $w)
-                            <option value="{{ $w['number'] }}" @selected($w['key'] === $period['key'])>{{ $w['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Compare with
-                    <select name="compare" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                        @foreach ($weeks as $w)
-                            <option value="{{ $w['key'] }}" @selected($w['key'] === $compare['key'])>{{ $w['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-            @endif
-
             <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
                 Trend shows
                 <select name="metric" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
@@ -126,6 +82,52 @@
                     @endforeach
                 </select>
             </label>
+            {{-- Dates on the right --}}
+            <div class="ml-auto flex flex-wrap items-end gap-x-6 gap-y-4">
+                <fieldset>
+                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
+                    <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
+                        @foreach (['day' => 'Day', 'week' => 'Week'] as $value => $label)
+                            <label class="cursor-pointer">
+                                <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
+                                <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
+
+                @if ($view === 'day')
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Day
+                        <input type="date" name="date" value="{{ $period['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Compare with
+                        <input type="date" name="compare" value="{{ $compare['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                @else
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Month
+                        <input type="month" name="month" value="{{ $month->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Week
+                        <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                            @foreach ($weeks->filter(fn ($w) => $w['from']->isSameMonth($month)) as $w)
+                                <option value="{{ $w['number'] }}" @selected($w['key'] === $period['key'])>{{ $w['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Compare with
+                        <select name="compare" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                            @foreach ($weeks as $w)
+                                <option value="{{ $w['key'] }}" @selected($w['key'] === $compare['key'])>{{ $w['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                @endif
+            </div>
             <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white">Apply</button></noscript>
         </form>
 
@@ -136,9 +138,11 @@
                 @php($d = $delta($now['confirmed'], $row['before']['confirmed']))
                 @php($max = max(1, $now['assigned'], $now['answered']))
                 @php($focusUrl = $canViewAll ? $query(['cras' => [$row['cra']->id]]) : null)
-                <article class="relative flex min-w-0 flex-col gap-3 rounded-xl border-t-4 bg-white p-4 shadow-sm" style="border-top-color: {{ $row['color'] }}">
+                <article class="relative flex min-w-0 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm">
                     <div class="flex items-start justify-between gap-2">
-                        <h2 class="font-semibold">
+                        {{-- The dot is the CRA's colour in the charts --}}
+                        <h2 class="flex items-center gap-2 font-semibold">
+                            <span aria-hidden="true" class="size-2.5 shrink-0 rounded-full" style="background: {{ $row['color'] }}"></span>
                             @if ($focusUrl && count($selected) > 1)
                                 <a href="{{ $focusUrl }}" class="after:absolute after:inset-0 hover:text-brand-600" title="Show only {{ $row['cra']->displayName() }}">{{ $row['cra']->displayName() }}</a>
                             @else
@@ -344,11 +348,10 @@
             </div>
 
             {{-- The report as in the sheet --}}
-            <section class="overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="sheet-title">
-                <header class="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 pb-3">
-                    <h2 id="sheet-title" class="font-semibold">Segmentation Productivity Report · {{ $period['label'] }}</h2>
-                    <p class="text-xs text-muted">Assigned base {{ $base }} per CRA per day; the actual count is shown.</p>
-                </header>
+            <x-panel :title="'Segmentation Productivity Report · '.$period['label']" icon="table" title-id="sheet-title" :tinted="false" body-class="">
+                <x-slot:actions>
+                    <p class="text-muted">Assigned base {{ $base }} per CRA per day; the actual count is shown.</p>
+                </x-slot:actions>
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[920px] text-sm">
                         <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
@@ -396,7 +399,7 @@
                         </tbody>
                     </table>
                 </div>
-            </section>
+            </x-panel>
         @endif
 
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">

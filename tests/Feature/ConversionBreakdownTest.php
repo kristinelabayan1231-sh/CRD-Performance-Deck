@@ -186,7 +186,7 @@ class ConversionBreakdownTest extends TestCase
             ->assertSee('lead days Aug 30–31');
         // September picked: the whole month.
         $this->actingAs($this->owner)->get(route('dashboard', ['month' => '2026-09']))->assertOk()
-            ->assertSee('CRD monthly goal · September 2026');
+            ->assertSee('CRD monthly goal (Gross Sales) · September 2026');
         // No future months or days.
         $this->actingAs($this->owner)->get(route('dashboard', ['month' => '2026-11']))->assertSessionHasErrors('month');
         $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-02']))->assertSessionHasErrors('from');

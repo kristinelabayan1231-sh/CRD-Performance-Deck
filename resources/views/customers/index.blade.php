@@ -7,106 +7,118 @@
 <x-layouts.app title="Customer Database">
     <div class="space-y-4">
         <header class="flex flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Customer Database <span class="text-sm font-normal text-muted">· FSD and CRD delivered customers · {{ $range['label'] }}</span></h1>
-            <span class="text-xs text-muted">
-                Logistics updated {{ $fetchedAt ? $fetchedAt->timezone(config('segmentation.timezone'))->format('M j, g:i A') : 'never' }} · amounts from Pancake POS
-            </span>
+            <h1 class="text-xl font-semibold">Customer Database <span class="text-sm font-normal text-muted">· {{ $range['label'] }}</span></h1>
+            <span class="text-xs text-muted">Updated {{ $fetchedAt ? $fetchedAt->timezone(config('segmentation.timezone'))->format('M j, g:i A') : 'never' }}</span>
         </header>
 
         @if ($history['checked'] < $history['total'])
-            <div role="status" class="rounded-lg border border-line bg-white px-4 py-3 text-sm">
-                Checking CRD customers' orders before {{ \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y') }} in Pancake:
-                <span class="font-semibold tabular-nums">{{ number_format($history['checked']) }} of {{ number_format($history['total']) }}</span> done.
-                Until a customer is checked, an earlier CRA order doesn't count yet, so they may show as Retained instead of Repeat.
-            </div>
+            <p role="status" class="text-xs text-muted" title="Until a customer's older orders are checked, they may show as Retained instead of Repeat.">
+                Checking older orders in Pancake: <span class="font-semibold tabular-nums">{{ number_format($history['checked']) }} of {{ number_format($history['total']) }}</span> done.
+            </p>
         @endif
 
         @if ($errors->any())
             <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
         @endif
 
-        {{-- Tiles: click to filter --}}
+        {{-- Tiles: click to filter; the one in use sits raised with a "Showing" pill --}}
         <section aria-label="Customer counts" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
             @foreach ([
-                [null, 'Customers', $counts['all'], 'text-ink', 'Everyone with an FSD or CRD delivery'.($range['from'] ? ' in the period' : '')],
-                ['crd', 'CRD Leads', $counts['crd'], 'text-brand-600', 'A delivery handled by a CRA'.($range['from'] ? ' in the period' : '')],
-                ['retained', 'Retained', $counts['retained'], 'text-teal-700', 'Their first CRA-handled order ever'],
-                ['repeat', 'Repeat Customers', $counts['repeat'], 'text-violet', 'An earlier CRA-handled order too, any year'],
-            ] as [$key, $label, $value, $color, $hint])
-                <a href="{{ $query(['segment' => $key, 'page' => null]) }}" @if ($segment === $key) aria-current="true" @endif
-                   @class(['flex flex-col gap-0.5 rounded-xl bg-white p-4 shadow-sm ring-2 transition hover:ring-brand-200', 'ring-brand-500' => $segment === $key, 'ring-transparent' => $segment !== $key])>
-                    <span class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $label }}</span>
-                    <span class="text-2xl font-bold tabular-nums {{ $color }}">{{ number_format($value) }}</span>
-                    <span class="text-xs text-muted">{{ $hint }}</span>
+                [null, 'Customers', $counts['all'], 'from-[#4f5563] to-[#343a40]', 'Everyone with an FSD or CRD delivery'],
+                ['crd', 'CRD Leads', $counts['crd'], 'from-brand-500 to-brand-700', 'A delivery handled by a CRA'],
+                ['retained', 'Retained', $counts['retained'], 'from-[#0e8f7c] to-[#0b6b5d]', 'Their first CRA-handled order ever'],
+                ['repeat', 'Repeat Customers', $counts['repeat'], 'from-[#1f8fb8] to-[#156c8c]', 'An earlier CRA-handled order too'],
+            ] as [$key, $label, $value, $gradient, $hint])
+                <a href="{{ $query(['segment' => $key, 'page' => null]) }}" title="{{ $hint }}. Click to filter." @if ($segment === $key) aria-current="true" @endif
+                   @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white transition', $gradient, '-translate-y-1.5 shadow-xl' => $segment === $key, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => $segment !== $key])>
+                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
+                    <span class="relative flex items-center justify-between text-[11px] font-semibold tracking-wide uppercase">
+                        {{ $label }}
+                        @if ($segment === $key)
+                            <span class="rounded-full bg-white px-1.5 text-[10px] text-ink normal-case">Showing</span>
+                        @endif
+                    </span>
+                    <span class="relative text-2xl font-bold tabular-nums">{{ number_format($value) }}</span>
                 </a>
             @endforeach
         </section>
 
-        {{-- Filters --}}
-        <form method="GET" action="{{ route('customers.index') }}" class="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl bg-white p-4 shadow-sm">
-            <label class="flex min-w-56 flex-1 flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                Search
-                <input type="search" name="search" value="{{ $filters['search'] ?? '' }}" maxlength="100" placeholder="Customer name or contact number" class="{{ $control }} text-ink normal-case">
-            </label>
-
-            <fieldset>
-                <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Delivered</legend>
-                <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
-                    @foreach ($periods as $value => $label)
-                        <label class="cursor-pointer">
-                            {{-- A button clears the From–To range, which would otherwise win. --}}
-                            <input type="radio" name="period" value="{{ $value }}" class="peer sr-only" onchange="this.form.from.value = ''; this.form.to.value = ''; this.form.submit()" @checked($filters['period'] === $value)>
-                            <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
-                        </label>
-                    @endforeach
+        {{-- Filters: search, show and sort; below it Delivered on the left and the date range on the right --}}
+        <form method="GET" action="{{ route('customers.index') }}" class="flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm">
+            <div class="flex flex-wrap items-end gap-x-5 gap-y-4">
+                <div class="flex min-w-64 flex-1 flex-col gap-1.5">
+                    <label for="customer-search" class="text-xs font-semibold tracking-wide text-muted uppercase">Search</label>
+                    <div class="flex">
+                        <input id="customer-search" type="search" name="search" value="{{ $filters['search'] ?? '' }}" maxlength="100" placeholder="Customer name or contact number"
+                               class="h-9 min-w-0 flex-1 rounded-l-lg border border-r-0 border-line bg-white px-2.5 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        <button type="submit" class="flex h-9 shrink-0 items-center gap-1.5 rounded-r-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
+                            Search
+                        </button>
+                    </div>
                 </div>
-            </fieldset>
 
-            <fieldset>
-                <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Or date range</legend>
-                <div class="flex items-center gap-1.5">
-                    <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" min="{{ \App\Models\LogisticsOrder::coveredFrom() }}" max="{{ $today->toDateString() }}"
-                           aria-label="From" onchange="this.form.submit()" @class([$control, 'text-ink', 'border-brand-500 ring-2 ring-brand-200' => $filters['period'] === 'range'])>
-                    <span class="text-sm text-muted">to</span>
-                    <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" min="{{ \App\Models\LogisticsOrder::coveredFrom() }}" max="{{ $today->toDateString() }}"
-                           aria-label="To" onchange="this.form.submit()" @class([$control, 'text-ink', 'border-brand-500 ring-2 ring-brand-200' => $filters['period'] === 'range'])>
+                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                    Show
+                    <select name="segment" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                        <option value="">All customers</option>
+                        @foreach ($segments as $value => $label)
+                            <option value="{{ $value }}" @selected($segment === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+
+                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                    Sort by
+                    <select name="sort" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                        @foreach ($sorts as $value => $label)
+                            <option value="{{ $value }}" @selected(($filters['sort'] ?? 'spent') === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </label>
+            </div>
+
+            <div class="flex flex-wrap items-end gap-x-5 gap-y-4">
+                <fieldset>
+                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Delivered</legend>
+                    <div class="flex h-9 items-center rounded-lg border border-line p-0.5 text-sm font-semibold">
+                        @foreach ($periods as $value => $label)
+                            <label class="h-full cursor-pointer">
+                                {{-- A button clears the From–To range, which would otherwise win. --}}
+                                <input type="radio" name="period" value="{{ $value }}" class="peer sr-only" onchange="this.form.from.value = ''; this.form.to.value = ''; this.form.submit()" @checked($filters['period'] === $value)>
+                                <span class="grid h-full place-items-center rounded-md px-3 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
+
+                {{-- Date range on the right --}}
+                <div class="ml-auto flex flex-wrap items-end gap-x-5 gap-y-4">
+                    <fieldset>
+                        <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Or date range</legend>
+                        <div class="flex items-center gap-1.5">
+                            <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" min="{{ \App\Models\LogisticsOrder::coveredFrom() }}" max="{{ $today->toDateString() }}"
+                                   aria-label="From" onchange="this.form.submit()" @class([$control, 'text-ink', 'border-brand-500 ring-2 ring-brand-200' => $filters['period'] === 'range'])>
+                            <span class="text-sm text-muted">to</span>
+                            <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" min="{{ \App\Models\LogisticsOrder::coveredFrom() }}" max="{{ $today->toDateString() }}"
+                                   aria-label="To" onchange="this.form.submit()" @class([$control, 'text-ink', 'border-brand-500 ring-2 ring-brand-200' => $filters['period'] === 'range'])>
+                        </div>
+                    </fieldset>
+                @if (filled($filters['search'] ?? null) || $segment || $filters['period'] !== 'all')
+                    <a href="{{ route('customers.index') }}" class="h-9 content-center text-sm font-medium text-muted hover:text-brand-600">Clear</a>
+                @endif
                 </div>
-            </fieldset>
-
-            <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                Show
-                <select name="segment" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                    <option value="">All customers</option>
-                    @foreach ($segments as $value => $label)
-                        <option value="{{ $value }}" @selected($segment === $value)>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </label>
-
-            <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                Sort by
-                <select name="sort" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                    @foreach ($sorts as $value => $label)
-                        <option value="{{ $value }}" @selected(($filters['sort'] ?? 'spent') === $value)>{{ $label }}</option>
-                    @endforeach
-                </select>
-            </label>
-
-            <button type="submit" class="h-9 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700">Search</button>
+            </div>
             @if ($errors->has('to'))
                 <p role="alert" class="w-full text-sm text-coral-700">{{ $errors->first('to') }}</p>
-            @endif
-            @if (filled($filters['search'] ?? null) || $segment || $filters['period'] !== 'all')
-                <a href="{{ route('customers.index') }}" class="h-9 content-center text-sm font-medium text-muted hover:text-brand-600">Clear</a>
             @endif
         </form>
 
         {{-- Customers --}}
-        <section class="overflow-hidden rounded-xl bg-white shadow-sm">
-            <div class="flex items-center justify-between border-b border-line px-4 py-3">
-                <h2 class="text-base font-semibold">{{ $segment ? $segments[$segment] : 'All customers' }}</h2>
-                <span class="text-sm text-muted">{{ number_format($customers->total()) }} {{ Str::plural('customer', $customers->total()) }} · click a row for details</span>
-            </div>
+        <x-panel :title="$segment ? $segments[$segment] : 'All customers'" icon="database" :tinted="false" body-class="">
+            <x-slot:badges>
+                <span class="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-brand-700 tabular-nums shadow-sm">{{ number_format($customers->total()) }}</span>
+            </x-slot:badges>
 
             @if ($customers->isEmpty())
                 <p class="px-4 py-10 text-center text-sm text-muted">
@@ -116,17 +128,19 @@
             @else
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[640px] text-left text-sm">
-                        <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
+                        <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Customer name</th>
                                 <th class="px-4 py-3 font-semibold">Contact number</th>
                                 <th class="px-4 py-3 text-right font-semibold">QTY</th>
-                                <th class="px-4 py-3 text-right font-semibold">Total spent <span class="font-normal normal-case">(CLTV overall)</span></th>
+                                <th class="px-4 py-3 text-right font-semibold">Total spent</th>
+                                <th class="w-12 px-4 py-3"><span class="sr-only">Pancake POS</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
                                 @php($label = \App\Services\CustomerDatabase::segmentFor((int) $customer->cra_orders, (int) $customer->cra_in_period))
+                                @php($pos = \App\Services\CustomerDatabase::posUrl($customer->phone_number))
                                 <tr tabindex="0" role="button" data-customer-url="{{ route('customers.show', $customer->phone_key) }}"
                                     aria-label="Open {{ $customer->customer_name ?: 'customer' }}"
                                     class="cursor-pointer hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
@@ -136,13 +150,23 @@
                                             <span @class([
                                                 'ml-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap',
                                                 'bg-teal/15 text-teal-700' => $label === 'Retained',
-                                                'bg-brand-100 text-brand-700' => $label !== 'Retained',
+                                                'bg-sky/20 text-[#156c8c]' => $label !== 'Retained',
                                             ])>{{ $label }}</span>
                                         @endif
                                     </td>
                                     <td class="px-4 py-3 tabular-nums text-muted">{{ $customer->phone_number }}</td>
                                     <td class="px-4 py-3 text-right tabular-nums">{{ number_format($customer->purchases) }}</td>
                                     <td class="px-4 py-3 text-right font-semibold tabular-nums">₱{{ number_format($customer->total_spent, 2) }}</td>
+                                    <td class="px-4 py-2 text-right">
+                                        @if ($pos)
+                                            {{-- Opens Pancake POS's customer list (a new tab) and copies the number to search there; doesn't open the pop-up --}}
+                                            <a href="{{ $pos }}" target="_blank" rel="noopener" data-pos-link data-phone="{{ $customer->phone_number }}"
+                                               title="Open in Pancake POS (the number is copied: paste it in Search customer)" aria-label="Open {{ $customer->customer_name ?: 'customer' }} in Pancake POS"
+                                               class="inline-grid size-8 place-items-center rounded-lg text-muted hover:bg-brand-50 hover:text-brand-600">
+                                                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+                                            </a>
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -152,7 +176,7 @@
                     <div class="border-t border-line px-4 py-3">{{ $customers->links() }}</div>
                 @endif
             @endif
-        </section>
+        </x-panel>
 
         @php($since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y'))
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
@@ -172,10 +196,11 @@
     </div>
 
     {{-- Customer details, loaded when a row is clicked --}}
-    <dialog id="customer-dialog" aria-label="Customer details" class="m-auto max-h-[90dvh] w-[min(56rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
+    <dialog id="customer-dialog" aria-labelledby="customer-dialog-title" class="m-auto max-h-[90dvh] w-[min(56rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
         <div class="flex max-h-[90dvh] flex-col">
-            <div class="flex shrink-0 items-center justify-end border-b border-line px-5 py-2">
-                <button type="button" data-customer-close aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
+            <div class="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-3 text-white">
+                <h2 id="customer-dialog-title" class="text-base font-bold">Customer Life Time Value (CLTV)</h2>
+                <button type="button" data-customer-close aria-label="Close" class="rounded-lg p-1.5 text-white/80 hover:bg-white/15 hover:text-white">
                     <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
                 </button>
             </div>

@@ -1,4 +1,4 @@
-@props(['periods', 'active' => 'today'])
+@props(['periods', 'active' => 'today', 'note' => null])
 {{-- The dashboard's month (to date) or From–To range. --}}
 @php($periods = [$active => $periods[$active]])
 
@@ -8,21 +8,21 @@
     trend  processed #0E8F7C · unprocessed #E0663F
     tags   Hot #E0663F · Cold #2F6FD6 · Warm #C9970E · High value #8B3FF0 (ring order), untagged #E6E1E8
 --}}
-<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="seg-dash-title">
-    <header class="mb-2 flex h-8 flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap items-center gap-2">
-            <h2 id="seg-dash-title" class="text-base font-semibold">Segmentation Tracker</h2>
-            {{-- Lead days (the tracker's working date, e.g. a month behind); the rest of the dashboard is by the real date. --}}
-            @php($p = reset($periods))
-            <span @class(['rounded-full px-2.5 py-0.5 text-xs font-semibold', 'border border-[#e0b400]/60 bg-[#fff6d6] text-[#473821]' => \App\Support\WorkingDate::lagDays() > 0, 'bg-canvas text-muted' => \App\Support\WorkingDate::lagDays() === 0])
-                  title="Leads by lead day. Sales and conversion elsewhere on the dashboard are by the real date.">
-                Lead {{ str_contains($p['label'], '–') ? 'days' : 'day' }} {{ $p['label'] }}
-            </span>
-        </div>
-        <div class="flex items-center gap-3">
-            <a href="{{ route('segmentation.index') }}" class="text-xs font-semibold text-brand-600 hover:underline">Open &rarr;</a>
-        </div>
-    </header>
+@php($p = reset($periods))
+<x-panel {{ $attributes }} title="Segmentation Tracker" icon="users" title-id="seg-dash-title">
+    <x-slot:badges>
+        {{-- Lead days (the tracker's working date, e.g. a month behind); the rest of the dashboard is by the real date. --}}
+        <span @class(['rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm', 'border border-[#e0b400]/60 bg-[#fff6d6] text-[#473821]' => \App\Support\WorkingDate::lagDays() > 0, 'bg-white text-brand-700' => \App\Support\WorkingDate::lagDays() === 0])
+              title="Leads by lead day. Sales and conversion elsewhere on the dashboard are by the real date.">
+            Lead {{ str_contains($p['label'], '–') ? 'days' : 'day' }} {{ $p['label'] }}
+        </span>
+        @if ($note)
+            <span class="text-xs text-muted">{{ $note }}</span>
+        @endif
+    </x-slot:badges>
+    <x-slot:actions>
+        <a href="{{ route('segmentation.index') }}" class="font-semibold text-brand-600 hover:underline">Open &rarr;</a>
+    </x-slot:actions>
 
     @foreach ($periods as $key => $p)
         <div role="tabpanel" data-tab-panel="{{ $key }}" @unless ($loop->first) hidden @endunless class="grid gap-4 lg:grid-cols-12">
@@ -183,4 +183,4 @@
                 </div>
         </div>
     @endforeach
-</section>
+</x-panel>

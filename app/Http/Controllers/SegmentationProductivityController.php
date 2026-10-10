@@ -205,7 +205,7 @@ class SegmentationProductivityController extends Controller
     }
 
     /**
-     * Day view: the chosen day and the day to compare it with (default: the day before).
+     * Day view: the chosen day (default: today) and the day to compare it with (default: the same day).
      *
      * @return array{0: array{from: CarbonImmutable, to: CarbonImmutable, label: string, key: string}, 1: array{from: CarbonImmutable, to: CarbonImmutable, label: string, key: string}, 2: CarbonImmutable}
      */
@@ -214,7 +214,7 @@ class SegmentationProductivityController extends Controller
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString())->min($today);
         $other = isset($filters['compare']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filters['compare'])
             ? CarbonImmutable::parse($filters['compare'])->min($today)
-            : $day->subDay();
+            : $day;
 
         $make = fn (CarbonImmutable $d) => ['from' => $d, 'to' => $d, 'label' => $d->format('D, M j'), 'key' => $d->toDateString()];
 

@@ -3,8 +3,6 @@
         Three groups for one month (to date) or From–To range: results (real date) ·
         logistics (company-wide) · leads (the tracker's working date, paired lead days).
     --}}
-    @php($lagging = \App\Support\WorkingDate::lagDays() > 0)
-    @php($eyebrow = 'mb-2 flex flex-wrap items-baseline gap-x-2 text-[11px] font-semibold tracking-wider text-muted uppercase')
     <div class="space-y-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
@@ -71,34 +69,23 @@
         @endif
 
         @if ($results)
-            <div class="space-y-4">
-                <p class="{{ $eyebrow }} !mb-0">
-                    <span>Results</span>
-                    <span class="font-medium normal-case tracking-normal">· Pancake sales and conversion by the real date, {{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' (month to date)' : '' }}</span>
-                </p>
+            <x-panel title="Results" icon="target" title-id="results-title">
+                <x-slot:badges>
+                    <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' · month to date' : '' }}</span>
+                    <span class="text-xs text-muted">Pancake sales and conversion by the real date</span>
+                </x-slot:badges>
                 <x-dashboard.results :results="$results" :churn="$churn" :query="array_filter($filters)" />
-                <x-dashboard.per-cra :results="$results" />
-            </div>
+            </x-panel>
+            <x-dashboard.per-cra :results="$results" />
         @endif
 
         @if ($logistics)
-            <div>
-                <p class="{{ $eyebrow }}">
-                    <span>Logistics</span>
-                    <span class="font-medium normal-case tracking-normal">· Company-wide, by delivery date</span>
-                </p>
-                <x-dashboard.logistics :periods="$logisticsPeriod ? ['range' => $logisticsPeriod] : null" :fetched-at="$logisticsFetchedAt" active="range" />
-            </div>
+            <x-dashboard.logistics :periods="$logisticsPeriod ? ['range' => $logisticsPeriod] : null" :fetched-at="$logisticsFetchedAt" active="range" />
         @endif
 
         @if ($segmentation)
-            <div>
-                <p class="{{ $eyebrow }}">
-                    <span>Leads</span>
-                    <span class="font-medium normal-case tracking-normal">· Segmentation Tracker by lead day{{ $lagging ? ', paired with '.$range->label().': lead '.($leadFrom->equalTo($leadTo) ? 'day '.$leadFrom->format('D, M j') : 'days '.\App\Support\WorkingDate::leadDaysLabel($range->from, $range->to)) : '' }}</span>
-                </p>
-                <x-dashboard.segmentation :periods="['range' => $segmentation]" active="range" />
-            </div>
+            @php($pairedNote = \App\Support\WorkingDate::lagDays() > 0 ? 'Paired with '.$range->label().': lead '.($leadFrom->equalTo($leadTo) ? 'day '.$leadFrom->format('D, M j') : 'days '.\App\Support\WorkingDate::leadDaysLabel($range->from, $range->to)) : null)
+            <x-dashboard.segmentation :periods="['range' => $segmentation]" active="range" :note="$pairedNote" />
         @endif
 
         @if (! $segmentation && ! $results)
@@ -112,7 +99,7 @@
                 <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
                     <div class="sm:col-span-2"><dt class="font-semibold text-ink">Dates</dt><dd>Every section uses the month picked (January–December, from the 1st to today for the current month) or the From–To range. Sales, orders and logistics are by the real date; the Segmentation Tracker uses the paired lead days (Settings → Working Date).</dd></div>
                     @if ($results)
-                        <div><dt class="font-semibold text-ink">CRD monthly goal</dt><dd>Gross sales of every CRA ÷ the CRD monthly goal ({{ '₱'.number_format(\App\Support\SalesGoals::crdMonthly()) }}, Settings → Sales Goals). Pace = day of the month ÷ days in the month. For a From–To range that isn't a whole month, the goal is prorated: monthly goal × days picked ÷ days in the month.</dd></div>
+                        <div><dt class="font-semibold text-ink">CRD monthly goal (Gross Sales)</dt><dd>Gross sales of every CRA ÷ the CRD monthly goal ({{ '₱'.number_format(\App\Support\SalesGoals::crdMonthly()) }}, Settings → Sales Goals). Pace = day of the month ÷ days in the month. For a From–To range that isn't a whole month, the goal is prorated: monthly goal × days picked ÷ days in the month.</dd></div>
                         <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Totals of the CRAs' own Pancake POS orders tagged CRD - BROADCAST or CRD - SEGMENTATION, using Shecom's sales per order (without the child TSD row) once synced, else Pancake's total.</dd></div>
                         <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRAs' own Pancake POS orders tagged CRD - BROADCAST (BC) or CRD - SEGMENTATION (SC), by order date. Canceled and deleted orders don't count. Click the tile to see them.</dd></div>
                         <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>(BC orders + SC orders) ÷ (Pancake engagements + Segmentation Tracker leads) × 100.</dd></div>
