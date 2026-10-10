@@ -6,6 +6,8 @@
 
 <x-layouts.app title="Customer Database">
     <div class="space-y-4">
+        @include('customers._tabs')
+
         <header class="flex flex-wrap items-center justify-between gap-4">
             <h1 class="text-xl font-semibold">Customer Database <span class="text-sm font-normal text-muted">· {{ $range['label'] }}</span></h1>
             <span class="text-xs text-muted">Updated {{ $fetchedAt ? $fetchedAt->timezone(config('segmentation.timezone'))->format('M j, g:i A') : 'never' }}</span>
@@ -151,8 +153,13 @@
                                                 'bg-sky/20 text-[#156c8c]' => $label !== 'Retained',
                                             ])>{{ $label }}</span>
                                         @endif
+                                        @if ($customer->possible_matches ?? 0)
+                                            <span class="ml-1.5 rounded-full bg-[#ffe5a0] px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-[#473821]"
+                                                  title="{{ $customer->possible_matches }} other {{ Str::plural('customer', $customer->possible_matches) }} with the same name. Open to check if it's the same person.">Possible match</span>
+                                        @endif
                                     </td>
-                                    <td class="px-4 py-3 tabular-nums text-muted">{{ $customer->phone_number }}</td>
+                                    {{-- Every number of the customer, main number first --}}
+                                    <td class="px-4 py-3 tabular-nums text-muted">{{ implode(' / ', $customer->phone_numbers ?? [$customer->phone_number]) }}</td>
                                     <td class="px-4 py-3 text-right tabular-nums">{{ number_format($customer->purchases) }}</td>
                                     <td class="px-4 py-3 text-right font-semibold tabular-nums">₱{{ number_format($customer->total_spent, 2) }}</td>
                                 </tr>
@@ -170,7 +177,7 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Who is listed</dt><dd>Everyone with an FSD- or CRD-delivered order since {{ $since }}, one row per contact number (last 10 digits). From {{ \Carbon\CarbonImmutable::parse(config('customers.logistics_from'))->format('M j') }} the deliveries come from the logistics API; before that, from Pancake POS deliveries. Amounts, statuses and products come from Pancake POS.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Who is listed</dt><dd>Everyone with an FSD- or CRD-delivered order since {{ $since }}, one row per customer: each contact number (last 10 digits) is its own customer until numbers are merged as the same person, then they show together (number 1 / number 2) with their orders combined. From {{ \Carbon\CarbonImmutable::parse(config('customers.logistics_from'))->format('M j') }} the deliveries come from the logistics API; before that, from Pancake POS deliveries. Amounts, statuses and products come from Pancake POS.</dd></div>
                 <div><dt class="font-semibold text-ink">QTY</dt><dd>The customer's delivered orders since {{ $since }}.</dd></div>
                 <div><dt class="font-semibold text-ink">Total spent (CLTV overall)</dt><dd>The Pancake POS totals of those delivered orders.</dd></div>
                 <div><dt class="font-semibold text-ink">Handled by a CRA</dt><dd>An order logistics lists as CRD-delivered, or one sold by a CRD Pancake account (the CRD team's accounts, past CRAs too) or a CRA's own Pancake account.</dd></div>
@@ -178,6 +185,7 @@
                 <div><dt class="font-semibold text-ink">Retained</dt><dd>That CRA-handled order is their first one ever: none earlier, including before {{ $since }} (each CRD customer's full order history is checked in Pancake).</dd></div>
                 <div><dt class="font-semibold text-ink">Repeat Customers</dt><dd>They had at least one earlier CRA-handled order (any year), plus the one in the dates picked.</dd></div>
                 <div><dt class="font-semibold text-ink">Product CLTV</dt><dd>A product's CLTV = SRP × {{ config('customers.cltv_units') }} (SRP from Settings → Product Consumption). The customer's spend on it = delivered units × SRP; "Reached CLTV" once that reaches the CLTV.</dd></div>
+                <div><dt class="font-semibold text-ink">Possible match</dt><dd>Another customer has exactly the same name (generic names like Facebook User don't count). Open the customer to compare and, if it's the same person, press Same customer to merge them; Separate undoes it.</dd></div>
                 <div><dt class="font-semibold text-ink">Today / Week / Month / range</dt><dd>Pick customers by delivered date. QTY and Total spent still count all their orders since {{ $since }}. Weeks run 1–7, 8–14… from the 1st.</dd></div>
             </dl>
         </details>

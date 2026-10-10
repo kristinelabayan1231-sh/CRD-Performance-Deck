@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\DeliveredOrder;
+use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
@@ -300,6 +301,25 @@ class SalesGoalsTest extends TestCase
             ->assertSeeTextInOrder(['Customer churn', 'Reorder deadline Oct 1–10', 'Overall churn rate', '57.14%', '4 lost of 7',
                 'CRD churn rate', '40.00%', '2 lost of 5', 'FSD churn rate', '66.67%', '2 lost of 3', 'View breakdown'])
             ->assertSeeTextInOrder(['Came back in time', '3', '1', '3', 'Delivered in', 'CRD', 'Aug 5', 'FSD', 'Aug 3'])
-            ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again']);
+            ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again'])
+            ->assertSee(route('customers.churn', ['status' => 'lost', 'list' => 'all']))
+            ->assertSeeText('See customers');
+
+        // Customer Database → Churn: the same customers one by one. The CRA recorded why one didn't reorder.
+        Lead::create(['order_id' => 'lead-1', 'customer_name' => 'C', 'phone_number' => '09174444444', 'product_name' => 'Unlisted product', 'qty' => 1,
+            'delivered_date' => '2026-08-26', 'consumption_days' => 10, 'est_out_of_stock_date' => '2026-09-04', 'lead_type' => Lead::TYPE_CRD,
+            'status' => 'active', 'feedback' => 'no_budget', 'contact_date' => '2026-09-05', 'notes' => 'Will buy next payday']);
+
+        $this->actingAs($this->owner)->get(route('customers.churn'))->assertOk()
+            ->assertViewHas('counts', ['due' => 7, 'back' => 3, 'lost' => 4])
+            ->assertSeeText('Ran out → reorder by');
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'back']))->assertOk()
+            ->assertSeeTextInOrder(['9175555555', 'CRD', 'Delivery L1', 'Sep 25, 2026']);
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost']))->assertOk()
+            ->assertSeeTextInOrder(['Last ordered', 'Why no reorder'])
+            ->assertSeeTextInOrder(['9174444444', 'Aug 26, 2026', config('segmentation.feedback.no_budget.0'), 'contacted Sep 5, 2026', 'Will buy next payday'])
+            ->assertSeeTextInOrder(['9176666666', 'Oct 5, 2026', 'after the deadline', 'No tracker lead']);
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'crd']))->assertOk()
+            ->assertViewHas('counts', ['due' => 5, 'back' => 3, 'lost' => 2]);
     }
 }

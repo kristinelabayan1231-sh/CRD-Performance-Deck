@@ -30,6 +30,9 @@ $modules = [
     'Settings · Sales Goals' => [
         'sales_goals.manage' => 'Set the CRA daily sales goal and the CRD monthly sales goal',
     ],
+    'Settings · Segmentation Tracker' => [
+        'segmentation_options.manage' => 'Edit the Segmentation Tracker dropdown choices (status, repeat purchase, customer tagging, feedback)',
+    ],
     'Settings · Connections' => [
         'connections.check' => 'Run the connection check (database, Shecom, Pancake) from the server',
     ],
@@ -49,6 +52,7 @@ $modules = [
     ],
     'Customer Database' => [
         'customers.view' => 'View every FSD- and CRD-delivered customer, their orders and product CLTV',
+        'customers.merge' => 'Merge contact numbers that belong to the same customer, and undo a merge',
     ],
 ];
 

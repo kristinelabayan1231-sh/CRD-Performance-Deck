@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CustomerHistory;
+use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
@@ -21,7 +22,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Customer Database: every customer with an FSD- or CRD-delivered order in the
  * logistics retention report since config customers.delivered_from, one row
- * per contact number (last 10 digits).
+ * per contact number (last 10 digits), or per customer once numbers are merged
+ * (customer_links: a number filed under the customer's main number).
  *
  * QTY = delivered orders. Total spent = their Pancake POS totals.
  * An order is handled by a CRA when logistics lists it as CRD-delivered or its
@@ -46,6 +48,12 @@ class CustomerDatabase
         'recent' => 'Last delivered',
         'name' => 'Name',
     ];
+
+    /** Names too generic to suggest two customers are the same person. */
+    public const UNMATCHED_NAMES = ['', 'unknown', 'facebook user', 'customer', 'n/a', 'na'];
+
+    /** SQL for a delivery's customer: the main number it is merged under, else its own (needs `cl` joined). */
+    private const CUSTOMER_KEY = 'coalesce(cl.primary_phone_key, lo.phone_key)';
 
     /** Cache key prefix: a number whose earlier-history lookup failed, retried after a few hours. */
     public const HISTORY_FAILED = 'customers.history_failed.';
@@ -112,7 +120,7 @@ class CustomerDatabase
         // Kept as plain arrays: the cache doesn't unserialize objects.
         $key = [($filters['from'] ?? null)?->toDateString(), ($filters['to'] ?? null)?->toDateString(), $filters['search'] ?? null, $filters['segment'] ?? null, $filters['sort'] ?? null, $perPage, $page];
         $rows = collect(Cache::remember(self::cacheKey('list', $key), now()->addMinutes(self::CACHE_MINUTES),
-            fn () => $this->listQuery($filters)->forPage($page, $perPage)->get()->map(fn (object $row) => (array) $row)->all()))
+            fn () => $this->withNumbers($this->listQuery($filters)->forPage($page, $perPage)->get()->map(fn (object $row) => (array) $row))->all()))
             ->map(fn (array $row) => (object) $row);
 
         return (new LengthAwarePaginator($rows, $total, $perPage, $page, ['path' => Paginator::resolveCurrentPath()]))->withQueryString();
@@ -144,7 +152,80 @@ class CustomerDatabase
             default => $query->orderByDesc('total_spent')->orderByDesc('purchases'),
         };
 
-        return $query->orderBy('lo.phone_key');
+        return $query->orderBy('phone_key');
+    }
+
+    /**
+     * Each listed customer's contact numbers (main number first) and how many other customers
+     * share their name (a possible same customer to merge).
+     *
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function withNumbers(Collection $rows): Collection
+    {
+        $keys = $rows->pluck('phone_key')->map(fn ($key) => (string) $key)->all();
+        $members = CustomerLink::whereIn('primary_phone_key', $keys)->orderBy('id')->get()->groupBy('primary_phone_key');
+        $numbers = $this->phoneNumbers([...$keys, ...$members->flatten()->pluck('phone_key')->all()]);
+        $matches = $this->sameNameCustomers($rows->pluck('customer_name')->all());
+
+        return $rows->map(function (array $row) use ($members, $numbers, $matches) {
+            $key = (string) $row['phone_key'];
+            $own = [$key, ...($members[$key] ?? collect())->pluck('phone_key')->all()];
+
+            return [
+                ...$row,
+                'phone_numbers' => array_map(fn (string $phone) => $numbers[$phone] ?? $phone, $own),
+                'possible_matches' => count(array_diff($matches[self::nameKey($row['customer_name'])] ?? [], [$key])),
+            ];
+        });
+    }
+
+    /**
+     * Each number's contact number as last delivered to.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, string>
+     */
+    private function phoneNumbers(array $phoneKeys): array
+    {
+        return LogisticsOrder::whereIn('phone_key', array_values(array_unique($phoneKeys)))
+            ->orderBy('delivered_date')->pluck('phone_number', 'phone_key')->all();
+    }
+
+    /**
+     * Customers (main numbers) per name, for the names given; generic names are left out.
+     *
+     * @param  list<?string>  $names
+     * @return array<string, list<string>> name key => customer keys
+     */
+    private function sameNameCustomers(array $names): array
+    {
+        $names = array_values(array_diff(array_unique(array_map(fn (?string $name) => self::nameKey($name), $names)), self::UNMATCHED_NAMES));
+
+        if ($names === []) {
+            return [];
+        }
+
+        return DB::table('logistics_orders as lo')
+            ->leftJoin('customer_links as cl', 'cl.phone_key', '=', 'lo.phone_key')
+            ->whereIn(DB::raw('lower(trim(lo.customer_name))'), $names)
+            ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
+            ->distinct()
+            ->selectRaw('lower(trim(lo.customer_name)) as name_key')
+            ->selectRaw(self::CUSTOMER_KEY.' as customer_key')
+            ->get()
+            ->groupBy('name_key')
+            ->map(fn (Collection $rows) => $rows->pluck('customer_key')->map(fn ($key) => (string) $key)->unique()->values()->all())
+            ->all();
+    }
+
+    /**
+     * A customer name as compared for possible matches: trimmed, lower case, single spaces.
+     */
+    public static function nameKey(?string $name): string
+    {
+        return mb_strtolower(preg_replace('/\s+/', ' ', trim((string) $name)));
     }
 
     /**
@@ -173,11 +254,14 @@ class CustomerDatabase
     /**
      * Everything the customer pop-up shows, or null for an unknown contact number.
      *
-     * @return array{name: string, phone: string, segment: ?string, purchases: int, cra_orders: int, total_spent: float, statuses: list<array{label: string, classes: string, orders: int, amount: float, unpriced: int}>, products: list<array{name: string, units: int, srp: ?float, spent: ?float, cltv: ?float, progress: ?float, reached: bool}>, orders: list<array<string, mixed>>}|null
+     * @return array{phone_key: string, name: string, phone: string, numbers: list<array{phone_key: string, phone: string, main: bool}>, possible_matches: list<array{phone_key: string, phone: string, purchases: int, last_delivered: ?string}>, segment: ?string, purchases: int, cra_orders: int, total_spent: float, statuses: list<array{label: string, classes: string, orders: int, amount: float, unpriced: int}>, products: list<array{name: string, units: int, srp: ?float, spent: ?float, cltv: ?float, progress: ?float, reached: bool}>, orders: list<array<string, mixed>>}|null
      */
     public function profile(string $phoneKey): ?array
     {
-        $delivered = LogisticsOrder::covered()->where('phone_key', $phoneKey)->orderByDesc('delivered_date')->get()->keyBy('order_id');
+        // A merged customer: every one of their numbers, main number first.
+        $primary = CustomerLink::primaryFor($phoneKey);
+        $members = CustomerLink::membersOf($primary);
+        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $members)->orderByDesc('delivered_date')->get()->keyBy('order_id');
 
         if ($delivered->isEmpty()) {
             return null;
@@ -186,7 +270,7 @@ class CustomerDatabase
         // The delivered orders, plus their other POS orders (pending, canceled…) placed since the backfill start.
         $pos = PancakeOrder::query()
             ->where(fn ($q) => $q
-                ->where(fn ($q) => $q->where('phone_key', $phoneKey)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
+                ->where(fn ($q) => $q->whereIn('phone_key', $members)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
                 ->orWhereIn('pancake_order_id', $delivered->keys()->all()))
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 7))
             ->get()
@@ -229,19 +313,25 @@ class CustomerDatabase
 
         $orders = $orders->sortByDesc(fn (array $o) => ($o['date'] ?? $o['delivered_on'])?->toDateString())->values();
         $deliveredOrders = $orders->whereNotNull('delivered_on');
-        $history = CustomerHistory::firstWhere('phone_key', $phoneKey);
+        $histories = CustomerHistory::whereIn('phone_key', $members)->get();
+        $prior = $histories->isEmpty() ? null : (int) $histories->sum('prior_cra_orders');
         $craOrders = $deliveredOrders->where('by_cra', true)->count();
         $latest = $delivered->first();
+        $numbers = $this->phoneNumbers($members);
 
         return [
+            'phone_key' => $primary,
             'name' => $latest->customer_name ?: 'Unknown',
-            'phone' => $latest->phone_number,
-            'segment' => self::segmentFor($craOrders + ($history->prior_cra_orders ?? 0), $craOrders),
+            'phone' => implode(' / ', array_map(fn (string $phone) => $numbers[$phone] ?? $phone, $members)),
+            // Each number, so a merged one can be separated again.
+            'numbers' => array_map(fn (string $phone) => ['phone_key' => $phone, 'phone' => $numbers[$phone] ?? $phone, 'main' => $phone === $primary], $members),
+            'possible_matches' => $this->possibleMatches($primary, $latest->customer_name),
+            'segment' => self::segmentFor($craOrders + ($prior ?? 0), $craOrders),
             'purchases' => $deliveredOrders->count(),
             'cra_orders' => $craOrders,
             // CRA-handled orders before the database's first day; null until Pancake has been checked.
-            'prior_cra_orders' => $history?->prior_cra_orders,
-            'prior_last_ordered_on' => $history?->prior_last_ordered_on,
+            'prior_cra_orders' => $prior,
+            'prior_last_ordered_on' => $histories->max('prior_last_ordered_on'),
             'total_spent' => (float) $deliveredOrders->sum('amount'),
             'statuses' => collect($statuses)
                 ->map(function (array $status, int $code) use ($orders) {
@@ -264,6 +354,70 @@ class CustomerDatabase
                 'status_classes' => $statuses[$o['status']][1] ?? 'bg-canvas text-muted',
             ])->all(),
         ];
+    }
+
+    /**
+     * Other customers with the same name as this one, to confirm as the same person: their main number,
+     * contact numbers, deliveries and last delivery. Generic names (Unknown, Facebook User…) suggest nobody.
+     *
+     * @return list<array{phone_key: string, phone: string, purchases: int, last_delivered: ?string}>
+     */
+    public function possibleMatches(string $primary, ?string $name): array
+    {
+        $others = array_values(array_diff(($this->sameNameCustomers([$name]))[self::nameKey($name)] ?? [], [$primary]));
+
+        if ($others === []) {
+            return [];
+        }
+
+        $members = CustomerLink::whereIn('primary_phone_key', $others)->get()->groupBy('primary_phone_key');
+        $numbers = $this->phoneNumbers([...$others, ...$members->flatten()->pluck('phone_key')->all()]);
+        $stats = DB::table('logistics_orders as lo')
+            ->leftJoin('customer_links as cl', 'cl.phone_key', '=', 'lo.phone_key')
+            ->whereIn('lo.phone_key', array_keys($numbers))
+            ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
+            ->groupBy(DB::raw(self::CUSTOMER_KEY))
+            ->selectRaw(self::CUSTOMER_KEY.' as customer_key')
+            ->selectRaw('count(*) as purchases')
+            ->selectRaw('max(lo.delivered_date) as last_delivered')
+            ->get()->keyBy(fn (object $row) => (string) $row->customer_key);
+
+        return collect($others)->map(fn (string $key) => [
+            'phone_key' => $key,
+            'phone' => implode(' / ', array_map(fn (string $phone) => $numbers[$phone] ?? $phone, [$key, ...($members[$key] ?? collect())->pluck('phone_key')->all()])),
+            'purchases' => (int) ($stats[$key]->purchases ?? 0),
+            'last_delivered' => $stats[$key]->last_delivered ?? null,
+        ])->sortByDesc('last_delivered')->values()->all();
+    }
+
+    /**
+     * File $otherKey's customer (all its numbers) under $phoneKey's customer, as the same person.
+     */
+    public function merge(string $phoneKey, string $otherKey, ?int $userId): void
+    {
+        $primary = CustomerLink::primaryFor($phoneKey);
+        $other = CustomerLink::primaryFor($otherKey);
+
+        if ($primary === $other) {
+            return;
+        }
+
+        DB::transaction(function () use ($primary, $other, $userId) {
+            CustomerLink::where('primary_phone_key', $other)->update(['primary_phone_key' => $primary]);
+            CustomerLink::updateOrCreate(['phone_key' => $other], ['primary_phone_key' => $primary, 'linked_by' => $userId]);
+        });
+
+        self::flushCache();
+    }
+
+    /**
+     * Take a merged number back out of its customer, as a customer of its own again.
+     */
+    public function separate(string $phoneKey): void
+    {
+        CustomerLink::where('phone_key', $phoneKey)->delete();
+
+        self::flushCache();
     }
 
     /**
@@ -483,13 +637,20 @@ class CustomerDatabase
         $search = trim((string) ($filters['search'] ?? ''));
 
         return DB::table('logistics_orders as lo')
+            ->leftJoin('customer_links as cl', 'cl.phone_key', '=', 'lo.phone_key')
             ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
-            // One row per customer: their CRA-handled orders before the first covered day.
-            ->leftJoin('customer_histories as ch', 'ch.phone_key', '=', 'lo.phone_key')
+            // One row per customer: their CRA-handled orders before the first covered day, all their numbers together.
+            ->leftJoinSub($this->priorOrders(), 'ch', 'ch.customer_key', '=', DB::raw(self::CUSTOMER_KEY))
             ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
-            ->when($from || $search !== '', fn (Builder $q) => $q->whereIn('lo.phone_key', $this->matching($from, $to, $search)))
-            ->groupBy('lo.phone_key')
-            ->select('lo.phone_key')
+            ->when($from || $search !== '', function (Builder $q) use ($from, $to, $search) {
+                // By number (indexed), plus the other numbers of matched merged customers so their totals stay whole.
+                $numbers = $this->matching($from, $to, $search);
+                $linked = $this->linkedNumbers($numbers);
+
+                $q->where(fn (Builder $q) => $q->whereIn('lo.phone_key', $numbers)->when($linked, fn (Builder $q) => $q->orWhereIn('lo.phone_key', $linked)));
+            })
+            ->groupBy(DB::raw(self::CUSTOMER_KEY))
+            ->selectRaw(self::CUSTOMER_KEY.' as phone_key')
             ->selectRaw('max(lo.customer_name) as customer_name')
             ->selectRaw('max(lo.phone_number) as phone_number')
             ->selectRaw('count(*) as purchases')
@@ -497,6 +658,38 @@ class CustomerDatabase
             ->selectRaw('max(lo.delivered_date) as last_delivered')
             ->selectRaw("{$total['sql']} as cra_orders", $total['bindings'])
             ->selectRaw("{$inPeriod['sql']} as cra_in_period", $inPeriod['bindings']);
+    }
+
+    /**
+     * Each customer's CRA-handled orders before the first covered day, summed over their numbers.
+     */
+    private function priorOrders(): Builder
+    {
+        $key = 'coalesce(cl.primary_phone_key, h.phone_key)';
+
+        return DB::table('customer_histories as h')
+            ->leftJoin('customer_links as cl', 'cl.phone_key', '=', 'h.phone_key')
+            ->groupBy(DB::raw($key))
+            ->selectRaw("{$key} as customer_key")
+            ->selectRaw('sum(h.prior_cra_orders) as prior_cra_orders');
+    }
+
+    /**
+     * Every number of the merged customers that $numbers belong to (main numbers and the numbers merged under them).
+     *
+     * @return list<string>
+     */
+    private function linkedNumbers(Builder $numbers): array
+    {
+        if (! CustomerLink::query()->exists()) {
+            return [];
+        }
+
+        $primaries = CustomerLink::whereIn('phone_key', clone $numbers)->pluck('primary_phone_key')
+            ->merge(CustomerLink::whereIn('primary_phone_key', clone $numbers)->pluck('primary_phone_key'))
+            ->unique()->values();
+
+        return $primaries->merge(CustomerLink::whereIn('primary_phone_key', $primaries)->pluck('phone_key'))->unique()->values()->all();
     }
 
     /**

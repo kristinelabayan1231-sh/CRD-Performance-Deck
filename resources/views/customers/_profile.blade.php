@@ -44,7 +44,7 @@
         <div class="flex items-center gap-4">
             <dl class="flex gap-5 text-right">
                 <div>
-                    <dt class="text-[11px] font-semibold tracking-wide text-muted uppercase">QTY</dt>
+                    <dt class="text-[11px] font-semibold tracking-wide text-muted uppercase">Purchase Frequency</dt>
                     <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['purchases']) }}</dd>
                 </div>
                 <div>
@@ -54,6 +54,61 @@
             </dl>
         </div>
     </div>
+
+    {{-- A merged customer's numbers, and other customers with the same name to confirm as this person --}}
+    @if (count($customer['numbers']) > 1 || $customer['possible_matches'])
+        @php($canMerge = auth()->user()->can('customers.merge'))
+        <section aria-label="Contact numbers" class="space-y-3 rounded-xl border border-line p-4">
+            @if (count($customer['numbers']) > 1)
+                <div>
+                    <h3 class="{{ $heading }}">{!! $bar !!}Contact numbers</h3>
+                    <ul class="flex flex-wrap gap-2 text-sm">
+                        @foreach ($customer['numbers'] as $number)
+                            <li class="flex items-center gap-2 rounded-full bg-canvas px-3 py-1 tabular-nums">
+                                {{ $number['phone'] }}
+                                @if ($number['main'])
+                                    <span class="text-[11px] font-semibold text-muted">main</span>
+                                @elseif ($canMerge)
+                                    <form method="POST" action="{{ route('customers.separate', $number['phone_key']) }}">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-[11px] font-semibold text-coral-700 hover:underline" title="Make this number its own customer again">Separate</button>
+                                    </form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if ($customer['possible_matches'])
+                <div>
+                    <h3 class="{{ $heading }}">{!! $bar !!}Possibly the same customer</h3>
+                    <p class="mb-2 text-xs text-muted">Other customers named {{ $customer['name'] }}. If one is this same person, merge them: they'll show as one row with both numbers and their orders combined.</p>
+                    <ul class="divide-y divide-line overflow-hidden rounded-lg border border-line text-sm">
+                        @foreach ($customer['possible_matches'] as $match)
+                            <li class="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+                                <span class="tabular-nums">
+                                    <span class="font-medium">{{ $match['phone'] }}</span>
+                                    <span class="text-xs text-muted">· {{ $match['purchases'] }} {{ Str::plural('delivery', $match['purchases']) }}{{ $match['last_delivered'] ? ', last '.\Carbon\CarbonImmutable::parse($match['last_delivered'])->format('M j, Y') : '' }}</span>
+                                </span>
+                                @if ($canMerge)
+                                    <form method="POST" action="{{ route('customers.merge', $customer['phone_key']) }}">
+                                        @csrf
+                                        <input type="hidden" name="other" value="{{ $match['phone_key'] }}">
+                                        <button type="submit" class="rounded-lg bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700">Same customer</button>
+                                    </form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                    @unless ($canMerge)
+                        <p class="mt-2 text-xs text-muted">Ask a supervisor to merge them.</p>
+                    @endunless
+                </div>
+            @endif
+        </section>
+    @endif
 
     {{-- The two CLTVs, highlighted --}}
     <section aria-label="Customer lifetime value" class="grid gap-3 sm:grid-cols-2">
