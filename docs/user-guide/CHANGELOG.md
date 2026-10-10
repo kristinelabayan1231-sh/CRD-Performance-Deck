@@ -7,7 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
-- 2026-10-10 · Settings, Segmentation Tracker, Customer Database, Conversion Breakdown, Dashboard · New "CRD product" column in Settings → Product Consumption with a "Not a CRD product" checkbox (asks to confirm). Orders whose products are all non-CRD (e.g. NutriLay only) never become leads and are left out of the Customer Database (list, pop-up, Churn, High AOV CVR & VIP), gross sales, conversions, Top product sales, productivity and Order issues; an order with another product still counts. Ticking it removes that product's leads nobody has worked on yet · shots: product-consumption
+- 2026-10-10 · Settings, Segmentation Tracker, Customer Database, Conversion Breakdown, Dashboard · Settings → Product Consumption is the one list of products the deck counts: orders with none of its products never become leads and are left out of the Customer Database (list, pop-up, Churn, High AOV CVR & VIP), gross sales, conversions, Top product sales, productivity and Order issues; an order with one of them counts in full. Deleting a product (e.g. NutriLay) removes its leads nobody has worked on yet; adding one brings its orders back. Note under the Products heading explains it · shots: product-consumption
+
+
 
 - 2026-10-10 · Customer Database · Total spent counts CRA-handled orders only (CRD-delivered, or sold by a CRD/CRA Pancake account) everywhere: Customers list, customer pop-up (Customer CLTV, Product CLTV, VIP), Churn list and High AOV CVR & VIP. In High AOV CVR & VIP, Total # of orders, Current AOV and the Per order view also count CRA-handled orders only. Customers tab QTY / Purchase Frequency still counts every delivery · shots: customer-database, customer-profile, customer-churn, customer-high-value
 

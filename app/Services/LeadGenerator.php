@@ -428,8 +428,8 @@ class LeadGenerator
 
         $raw = trim($row['product_name'] ?? '');
 
-        // Orders of non-CRD products only (e.g. NutriLay) aren't CRD's to call.
-        if ($catalog->onlyNonCrdText($raw)) {
+        // Only products on the Product Consumption list are CRD's to call.
+        if ($catalog->unlistedText($raw)) {
             return null;
         }
 

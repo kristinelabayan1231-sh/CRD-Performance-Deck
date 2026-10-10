@@ -19,7 +19,7 @@ use function Illuminate\Support\defer;
 
 class PancakeSync
 {
-    /** Tells which orders are non-CRD products only; built on first use. */
+    /** Tells which orders have no product from the list; built on first use. */
     private ?ProductCatalog $catalog = null;
 
     public function __construct(private PancakeClient $client, private ShecomClient $shecom) {}
@@ -466,8 +466,8 @@ class PancakeSync
             'status_name' => $order['status_name'] ?? null,
             'total_price' => (float) ($order['total_price'] ?? 0),
             'items' => json_encode($order['items'] ?? []),
-            // Only non-CRD products (e.g. NutriLay): left out of sales, conversions and the Customer Database.
-            'non_crd' => ($this->catalog ??= new ProductCatalog)->onlyNonCrd(array_column($order['items'] ?? [], 'name')),
+            // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
+            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name')),
             'page_name' => $order['account_name'] ?? null,
             // upsert() skips model casts, so the list is stored as JSON here.
             'tags' => json_encode($tagIds),

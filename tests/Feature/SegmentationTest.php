@@ -56,9 +56,8 @@ class SegmentationTest extends TestCase
         Http::fake(['*/management/retention-stockout' => Http::response(['count' => count($rows), 'stock_outs' => $rows, 'retention_detail' => $fsdOrders])]);
     }
 
-    public function test_orders_of_non_crd_products_only_never_become_leads(): void
+    public function test_only_orders_with_a_product_on_the_list_become_leads(): void
     {
-        Product::create(['name' => 'NutriLay', 'consumption_days' => 15, 'not_crd' => true]);
         Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
         $this->fakeApi([
             $this->row('1', '9171111111', '2026-10-05', 'NutriLay Powder'),
@@ -74,6 +73,7 @@ class SegmentationTest extends TestCase
     public function test_crd_leads_are_todays_crd_stockouts_and_fsd_leads_come_from_fsd_deliveries(): void
     {
         Product::create(['name' => 'Sinuxyl', 'consumption_days' => 30]);
+        Product::create(['name' => 'Pterygium']);
         // Pancake knows FSD order f1 was 2 units: Aug 7 + 2×30 − 1 = Oct 5.
         // Real order IDs are numeric strings (they must stay keys when looked up).
         DeliveredOrder::create(['order_id' => '1350001', 'customer_name' => 'Fe', 'phone_number' => '9178888888', 'product_raw' => 'Sinuxyl',
@@ -133,7 +133,7 @@ class SegmentationTest extends TestCase
         ]);
         // Product Consumption says 10 days: Sep 16 + 2×10 − 1 = Oct 5. The saved 15 days is ignored.
         $saved('p1', '9171111111', '2026-09-16', 2, 15);
-        // No matching product: the saved 15 days apply. Sep 21 + 15 − 1 = Oct 5.
+        // Not on the Product Consumption list: never a lead, even with saved days.
         $saved('p2', '9172222222', '2026-09-21', 1, 15, 'Mystery Serum');
         // Neither: skipped.
         $saved('p3', '9173333333', '2026-09-21', 1, null, 'Mystery Serum');
@@ -150,7 +150,7 @@ class SegmentationTest extends TestCase
         $result = app(LeadGenerator::class)->generate($this->day);
 
         $this->assertSame('fallback', $result['source']);
-        $this->assertSame(['p1', 'p2'], Lead::whereDate('est_out_of_stock_date', '2026-10-05')->orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame(['p1'], Lead::whereDate('est_out_of_stock_date', '2026-10-05')->orderBy('order_id')->pluck('order_id')->all());
         $this->assertSame(10, Lead::firstWhere('order_id', 'p1')->consumption_days);
         $this->assertSame('2026-10-04', $existing->fresh()->est_out_of_stock_date->toDateString());
         $this->assertSame('Kept', $existing->fresh()->customer_name);

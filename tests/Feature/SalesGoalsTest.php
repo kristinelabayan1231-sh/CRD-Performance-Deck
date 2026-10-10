@@ -247,8 +247,10 @@ class SalesGoalsTest extends TestCase
 
     public function test_churn_counts_crd_fsd_and_overall_customers_with_no_reorder_within_30_days_of_running_out(): void
     {
+        // A listed product with no consumption days, so each delivery's own days apply.
+        Product::create(['name' => 'Crdol']);
         $delivered = function (string $phone, string $day, int $qty, int $days) {
-            DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Unlisted product',
+            DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Crdol',
                 'qty' => $qty, 'delivered_date' => $day, 'consumption_days_per_unit' => $days, 'source' => DeliveredOrder::SOURCE_SHECOM]);
         };
         // FSD: the logistics delivery, with its qty (if known) from the Pancake delivered orders.
@@ -273,7 +275,7 @@ class SalesGoalsTest extends TestCase
         $ordered('9174444444', '2026-09-10', status: 6);
         $delivered('9175555555', '2026-08-20', 1, 15);   // delivered again Sep 25: back
         LogisticsOrder::remember([['order_id' => 'L1', 'team' => 'crd', 'customer_name' => 'E', 'phone_number' => '9175555555',
-            'product' => 'X', 'qty' => null, 'delivered_date' => '2026-09-25']]);
+            'product' => 'Crdol', 'qty' => null, 'delivered_date' => '2026-09-25']]);
         $delivered('9176666666', '2026-08-20', 1, 15);   // came back Oct 5, after the 30 days: lost
         $ordered('9176666666', '2026-10-05');
         // Ran out Sep 25: still inside their 30 days, not counted yet.

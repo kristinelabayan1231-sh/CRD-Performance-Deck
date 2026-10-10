@@ -14,7 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
-class NonCrdProductsTest extends TestCase
+class UnlistedProductsTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -27,6 +27,7 @@ class NonCrdProductsTest extends TestCase
         parent::setUp();
 
         $this->travelTo(CarbonImmutable::parse('2026-10-10 10:00', 'Asia/Manila'));
+        $this->withoutDefer();
         $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
         $this->nutrilay = Product::create(['name' => 'NutriLay', 'consumption_days' => 15]);
         Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
@@ -52,14 +53,12 @@ class NonCrdProductsTest extends TestCase
         ]);
     }
 
-    private function markNutrilayNotCrd(): TestResponse
+    private function deleteNutrilay(): TestResponse
     {
-        return $this->actingAs($this->owner)->patch(route('settings.product-consumption.update', $this->nutrilay), [
-            'name' => 'NutriLay', 'keywords' => '', 'consumption_days' => 15, 'not_crd' => 1,
-        ]);
+        return $this->actingAs($this->owner)->delete(route('settings.product-consumption.destroy', $this->nutrilay));
     }
 
-    public function test_marking_a_product_not_crd_tags_its_only_orders_and_removes_its_untouched_leads(): void
+    public function test_deleting_a_product_tags_orders_with_no_listed_product_and_removes_their_untouched_leads(): void
     {
         $this->order('1', 'Nora Only', '9171111111', [['name' => 'NutriLay Powder', 'qty' => 2]], 3000);
         $this->order('2', 'Mia Mixed', '9172222222', [['name' => 'NutriLay', 'qty' => 1], ['name' => 'Pterygium', 'qty' => 1]], 2500);
@@ -67,9 +66,8 @@ class NonCrdProductsTest extends TestCase
         $worked = $this->lead('4', 'NutriLay', ['status' => 'active']);
         $mixed = $this->lead('5', 'NutriLay, Pterygium');
 
-        $this->markNutrilayNotCrd()->assertSessionHas('status', 'Product "NutriLay" updated. Removed 1 untouched lead for its orders.');
+        $this->deleteNutrilay()->assertSessionHas('status', 'Product "NutriLay" deleted. Removed 1 untouched lead whose product is no longer on the list.');
 
-        $this->assertTrue($this->nutrilay->fresh()->not_crd);
         $this->assertSame(['1'], PancakeOrder::where('non_crd', true)->pluck('pancake_order_id')->all());
         $this->assertSame(['1'], LogisticsOrder::where('non_crd', true)->pluck('order_id')->all());
         $this->assertNull($untouched->fresh());
@@ -80,17 +78,17 @@ class NonCrdProductsTest extends TestCase
         $this->order('6', 'Nora Only', '9171111111', [['name' => 'NutriLay', 'qty' => 1]], 1500);
         $this->assertTrue(LogisticsOrder::firstWhere('order_id', '6')->non_crd);
 
-        // Turning it back on untags them.
-        $this->actingAs($this->owner)->patch(route('settings.product-consumption.update', $this->nutrilay), ['name' => 'NutriLay', 'consumption_days' => 15]);
+        // Adding it back to the list brings its orders back.
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['name' => 'NutriLay', 'consumption_days' => 15]);
         $this->assertSame(0, PancakeOrder::where('non_crd', true)->count() + LogisticsOrder::where('non_crd', true)->count());
     }
 
-    public function test_non_crd_only_orders_are_left_out_of_the_customer_database_and_sales(): void
+    public function test_orders_with_no_listed_product_are_left_out_of_the_customer_database_and_sales(): void
     {
         $lhea = User::create(['email' => 'lhea@example.com', 'pancake_name' => 'CRD Lhei', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
         $this->order('1', 'Nora Only', '9171111111', [['name' => 'NutriLay', 'qty' => 1]], 3000);
         $this->order('2', 'Mia Mixed', '9172222222', [['name' => 'NutriLay', 'qty' => 1], ['name' => 'Pterygium', 'qty' => 1]], 2500);
-        $this->markNutrilayNotCrd();
+        $this->deleteNutrilay();
 
         $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
             ->assertSee('Mia Mixed')->assertSee('₱2,500.00')->assertDontSee('Nora Only')

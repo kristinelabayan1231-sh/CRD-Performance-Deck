@@ -67,8 +67,8 @@ class LogisticsOrder extends Model
                 ...$row,
                 'source' => $row['source'] ?? self::SOURCE_LOGISTICS,
                 'phone_key' => LeadGenerator::normalizePhone($row['phone_number']),
-                // Only non-CRD products (e.g. NutriLay): left out of the Customer Database.
-                'non_crd' => $catalog->onlyNonCrdText($row['product'] ?? null),
+                // No product from the Product Consumption list: left out of the Customer Database.
+                'non_crd' => $catalog->unlistedText($row['product'] ?? null),
             ])
             ->filter(fn (array $row) => $row['order_id'] !== '' && $row['delivered_date'] >= $from && $row['phone_key'] !== '')
             ->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])
