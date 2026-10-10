@@ -137,6 +137,42 @@ class PancakeClient
     }
 
     /**
+     * Every POS order of each contact number (last 10 digits), all time, found with Pancake's
+     * order search, ten numbers at a time. Numbers whose search fails are left out.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, list<array{display_id?: int|string, inserted_at?: string, status?: int, bill_phone_number?: string, assigning_seller?: array, creator?: array}>>
+     */
+    public function ordersByPhone(array $phoneKeys): array
+    {
+        $fields = ['display_id', 'id', 'inserted_at', 'status', 'bill_phone_number', 'customer', 'assigning_seller', 'creator'];
+        $found = [];
+
+        foreach (array_chunk(array_values(array_unique($phoneKeys)), 10) as $chunk) {
+            $responses = Http::pool(fn (Pool $pool) => array_map(
+                fn (string $phone) => $pool->as($phone)->timeout(60)->get($this->posOrdersUrl(['search' => $phone, 'page_size' => 200], $fields)),
+                $chunk,
+            ));
+
+            foreach ($chunk as $phone) {
+                $response = $responses[$phone] ?? null;
+
+                if (! $response instanceof Response || $response->failed() || ! $response->json('success')) {
+                    continue;
+                }
+
+                // The search also matches notes and other numbers containing these digits; keep this customer's orders.
+                $found[$phone] = collect($response->json('data') ?? [])
+                    ->filter(fn (array $order) => LeadGenerator::normalizePhone((string) ($order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? ''))) === $phone)
+                    ->map(fn (array $order) => array_intersect_key($order, array_flip($fields)))
+                    ->values()->all();
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Whole orders (orders()' shape) that became Delivered on $day and still are, for the
      * Customer Database's days before the logistics report starts.
      *

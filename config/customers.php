@@ -51,6 +51,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Churn
+    |--------------------------------------------------------------------------
+    |
+    | Days a CRD customer has after their supply runs out to order again
+    | before the dashboard's churn rate counts them as lost (like the Cold
+    | tag: no purchase 31+ days).
+    |
+    */
+
+    'churn_grace_days' => 30,
+
+    /*
+    |--------------------------------------------------------------------------
     | Pancake POS order statuses
     |--------------------------------------------------------------------------
     |

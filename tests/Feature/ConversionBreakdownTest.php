@@ -11,7 +11,6 @@ use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
-use App\Services\SalesGoalProgress;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -176,22 +175,21 @@ class ConversionBreakdownTest extends TestCase
         // Conversion opens on the real date; the working-date banner is only on the tracker.
         $this->actingAs($this->owner)->get(route('conversion.index'))->assertOk()->assertSee('Oct 1')->assertDontSee('Working date:');
 
-        // The dashboard shows results by the real date, labelled with the lead days they come from.
-        $periods = app(ConversionBreakdown::class)->periods(collect([$lhea]), CarbonImmutable::parse('2026-10-01'));
-        $this->assertSame('Thu, Oct 1', $periods['today']['label']);
-        $this->assertSame('Sep 1', $periods['today']['leads_from']);
-        // Weeks are whole 7-day buckets from the 1st, whatever the day.
-        $this->assertSame('Week 1 · Oct 1–7', $periods['week']['label']);
-        $goals = app(SalesGoalProgress::class)->for(collect([$lhea]), CarbonImmutable::parse('2026-10-01'), 'week');
-        $this->assertSame(['Week 1 · Oct 1–7', 7], [$goals['range']['label'], $goals['range']['days']]);
-        $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('leads from Sep 1');
+        // The dashboard shows results by the real date (October to date: Oct 1), labelled with the lead days they come from.
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
+            ->assertSee('leads from Sep 1')
+            ->assertSee('lead day Tue, Sep 1');
 
-        // One date picker moves every section: results on Sep 30, leads on its paired lead day Aug 31.
-        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-09-30']))->assertOk()
-            ->assertSee('Total conv % per CRA · Wed, Sep 30')
-            ->assertSee('Goal per CRA · Wed, Sep 30')
-            ->assertSee('lead day Mon, Aug 31');
-        $this->actingAs($this->owner)->get(route('dashboard', ['date' => '2026-10-02']))->assertSessionHasErrors('date');
+        // One month or range moves every section: results on Sep 29–30, leads on the paired lead days Aug 30–31.
+        $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-09-29', 'to' => '2026-09-30']))->assertOk()
+            ->assertSee('leads from Aug 30–31')
+            ->assertSee('lead days Aug 30–31');
+        // September picked: the whole month.
+        $this->actingAs($this->owner)->get(route('dashboard', ['month' => '2026-09']))->assertOk()
+            ->assertSee('CRD monthly goal · September 2026');
+        // No future months or days.
+        $this->actingAs($this->owner)->get(route('dashboard', ['month' => '2026-11']))->assertSessionHasErrors('month');
+        $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-02']))->assertSessionHasErrors('from');
     }
 
     public function test_sync_saves_the_order_tags(): void

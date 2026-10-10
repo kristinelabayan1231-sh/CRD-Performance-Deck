@@ -392,17 +392,41 @@ async function refreshSections() {
     });
 }
 
-// Right-click a lead row: Mark as catered (Pending list) or Unmark catered (Catered list).
+// Copy text to the clipboard; falls back to execCommand where the Clipboard API is unavailable (plain http).
+async function copyText(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch {
+        const area = Object.assign(document.createElement('textarea'), { value: text });
+        area.style.cssText = 'position:fixed;opacity:0';
+        document.body.append(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+    }
+}
+
+// Right-click a lead row: Copy name / Copy mobile number, and Mark as catered (Pending) or Unmark catered (Catered).
 function initRowMenu() {
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
     menu.className = 'fixed z-50 min-w-48 overflow-hidden rounded-lg border border-line bg-white py-1 text-sm shadow-lg';
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.setAttribute('role', 'menuitem');
-    item.className = 'flex w-full items-center gap-2 px-3 py-2 text-left font-medium hover:bg-brand-50 focus-visible:bg-brand-50 focus-visible:outline-none';
-    menu.append(item);
+    const itemClass = 'flex w-full items-center gap-2 px-3 py-2 text-left font-medium hover:bg-brand-50 focus-visible:bg-brand-50 focus-visible:outline-none';
+    const menuItem = (label) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'menuitem');
+        button.className = itemClass;
+        if (label) button.textContent = label;
+        return button;
+    };
+    const copyName = menuItem('Copy name');
+    const copyPhone = menuItem('Copy mobile number');
+    const divider = document.createElement('div');
+    divider.className = 'my-1 border-t border-line';
+    const item = menuItem();
+    menu.append(copyName, copyPhone, divider, item);
     document.body.append(menu);
 
     let row = null;
@@ -415,8 +439,13 @@ function initRowMenu() {
         const target = event.target.closest('tr[data-lead-row]');
         // Rows the user can't edit (no data-lead-row) keep the browser's own menu.
         if (!target) return close();
+        // Highlighted text or a field: keep the browser's menu so Copy / Paste work as usual.
+        const selection = window.getSelection();
+        if ((selection && !selection.isCollapsed && target.contains(selection.anchorNode))
+            || event.target.closest('input, textarea, select')) return close();
         event.preventDefault();
         row = target;
+        copyPhone.hidden = !row.dataset.phone;
         const toProcessed = row.dataset.mark === 'processed';
         item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
         item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
@@ -428,7 +457,18 @@ function initRowMenu() {
         })();
         menu.style.left = `${Math.min(at.x, window.innerWidth - menu.offsetWidth - 8)}px`;
         menu.style.top = `${Math.min(at.y, window.innerHeight - menu.offsetHeight - 8)}px`;
-        item.focus();
+        copyName.focus();
+    });
+
+    copyName.addEventListener('click', () => {
+        const text = row?.dataset.customer;
+        close();
+        if (text) copyText(text);
+    });
+    copyPhone.addEventListener('click', () => {
+        const text = row?.dataset.phone;
+        close();
+        if (text) copyText(text);
     });
 
     item.addEventListener('click', async () => {

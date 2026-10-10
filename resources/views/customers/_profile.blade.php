@@ -19,6 +19,17 @@
                 @endif
             </h2>
             <p class="text-sm text-muted tabular-nums">{{ $customer['phone'] }}</p>
+            @php($since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y'))
+            <p class="mt-1 text-xs text-muted">
+                @if ($customer['prior_cra_orders'] === null)
+                    Orders before {{ $since }} not checked in Pancake yet.
+                @elseif ($customer['prior_cra_orders'] > 0)
+                    Before {{ $since }}: <span class="font-semibold text-ink">{{ $customer['prior_cra_orders'] }} CRA-handled {{ Str::plural('order', $customer['prior_cra_orders']) }}</span>
+                    (last {{ $customer['prior_last_ordered_on']?->format('M j, Y') }}), counted for Retained / Repeat.
+                @else
+                    No CRA-handled orders before {{ $since }}.
+                @endif
+            </p>
         </div>
         <dl class="flex gap-6 text-right">
             <div>

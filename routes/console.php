@@ -46,3 +46,12 @@ Schedule::command('customers:backfill')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(45)
     ->runInBackground();
+
+// Customer Database: each CRD customer's earlier orders (before the first covered day),
+// looked up once in Pancake, so Retained vs Repeat counts them. New CRD customers are
+// picked up within 15 minutes.
+Schedule::command('customers:check-history')
+    ->everyFifteenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(20)
+    ->runInBackground();

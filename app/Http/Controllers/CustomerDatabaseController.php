@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CustomerHistory;
 use App\Models\LogisticsOrder;
 use App\Services\CustomerDatabase;
 use App\Services\LogisticsRetention;
+use App\Services\PancakeClient;
 use App\Services\PancakeSync;
 use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -48,16 +51,23 @@ class CustomerDatabaseController extends Controller
             'sorts' => CustomerDatabase::SORTS,
             'fetchedAt' => LogisticsRetention::fetchedAt(),
             'today' => WorkingDate::realToday(),
+            'history' => Cache::remember('customers.history_progress', now()->addMinutes(5), fn () => $customers->historyProgress()),
         ]);
     }
 
     /**
      * The customer pop-up's contents (status breakdown, product CLTV, orders).
      */
-    public function show(CustomerDatabase $customers, PancakeSync $pancake, string $phoneKey): View
+    public function show(CustomerDatabase $customers, PancakeSync $pancake, PancakeClient $client, string $phoneKey): View
     {
         // Delivered orders the backfill hasn't reached yet: fetch them so every amount shows.
         $customers->fetchMissingOrders($phoneKey, $pancake);
+
+        // Their orders before the first covered day, if the scheduled check hasn't reached them yet.
+        if (! CustomerHistory::where('phone_key', $phoneKey)->exists()) {
+            rescue(fn () => $customers->checkHistories([$phoneKey], $client));
+        }
+
         $profile = $customers->profile($phoneKey);
 
         abort_if($profile === null, 404);

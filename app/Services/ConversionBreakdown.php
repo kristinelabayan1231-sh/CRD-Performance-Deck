@@ -6,7 +6,6 @@ use App\Models\Lead;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
-use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -74,37 +73,6 @@ class ConversionBreakdown
         }
 
         return $result;
-    }
-
-    /**
-     * Total conv % per CRA for the day, its week (1–7, 8–14… from the 1st) and its month, for the dashboard.
-     *
-     * @param  Collection<int, User>  $cras
-     * @return array<string, array{name: string, label: string, leads_from: ?string, team: array<string, int|float|null>, rows: Collection<int, array{cra: User, totals: array<string, int|float|null>}>}>
-     */
-    public function periods(Collection $cras, CarbonImmutable $today): array
-    {
-        $month = $today->startOfMonth();
-        $week = MonthWeeks::for($month)[MonthWeeks::containing($month, $today) - 1];
-        $monthEnd = $month->endOfMonth()->startOfDay();
-        $days = $this->days($cras, $month, $monthEnd);
-
-        // Weeks are fixed 7-day buckets from the 1st (1–7, 8–14 … 29–31); months are whole months.
-        $ranges = [
-            'today' => ['Today', $today, $today, $today->format('D, M j')],
-            'week' => ['Week', $week['start'], $week['end'], 'Week '.$week['number'].' · '.$week['label']],
-            'month' => ['Month', $month, $monthEnd, $month->format('F Y')],
-        ];
-
-        return collect($ranges)->map(function (array $range) use ($cras, $days) {
-            [$name, $from, $to, $label] = $range;
-            $rows = $cras->map(fn (User $cra) => [
-                'cra' => $cra,
-                'totals' => self::sum(array_filter($days[$cra->id] ?? [], fn (string $day) => $day >= $from->toDateString() && $day <= $to->toDateString(), ARRAY_FILTER_USE_KEY)),
-            ])->sortByDesc(fn (array $row) => $row['totals']['total_rate'] ?? -1)->values();
-
-            return ['name' => $name, 'label' => $label, 'leads_from' => WorkingDate::leadDaysLabel($from, $to), 'team' => self::sum($rows->pluck('totals')), 'rows' => $rows];
-        })->all();
     }
 
     /**

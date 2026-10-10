@@ -13,6 +13,14 @@
             </span>
         </header>
 
+        @if ($history['checked'] < $history['total'])
+            <div role="status" class="rounded-lg border border-line bg-white px-4 py-3 text-sm">
+                Checking CRD customers' orders before {{ \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y') }} in Pancake:
+                <span class="font-semibold tabular-nums">{{ number_format($history['checked']) }} of {{ number_format($history['total']) }}</span> done.
+                Until a customer is checked, an earlier CRA order doesn't count yet, so they may show as Retained instead of Repeat.
+            </div>
+        @endif
+
         @if ($errors->any())
             <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
         @endif
@@ -22,8 +30,8 @@
             @foreach ([
                 [null, 'Customers', $counts['all'], 'text-ink', 'Everyone with an FSD or CRD delivery'.($range['from'] ? ' in the period' : '')],
                 ['crd', 'CRD Leads', $counts['crd'], 'text-brand-600', 'A delivery handled by a CRA'.($range['from'] ? ' in the period' : '')],
-                ['retained', 'Retained', $counts['retained'], 'text-teal-700', 'Their only CRA-handled order so far'],
-                ['repeat', 'Repeat Customers', $counts['repeat'], 'text-violet', 'An earlier CRA-handled order too'],
+                ['retained', 'Retained', $counts['retained'], 'text-teal-700', 'Their first CRA-handled order ever'],
+                ['repeat', 'Repeat Customers', $counts['repeat'], 'text-violet', 'An earlier CRA-handled order too, any year'],
             ] as [$key, $label, $value, $color, $hint])
                 <a href="{{ $query(['segment' => $key, 'page' => null]) }}" @if ($segment === $key) aria-current="true" @endif
                    @class(['flex flex-col gap-0.5 rounded-xl bg-white p-4 shadow-sm ring-2 transition hover:ring-brand-200', 'ring-brand-500' => $segment === $key, 'ring-transparent' => $segment !== $key])>
@@ -145,6 +153,22 @@
                 @endif
             @endif
         </section>
+
+        @php($since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y'))
+        <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
+            <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
+            <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Who is listed</dt><dd>Everyone with an FSD- or CRD-delivered order since {{ $since }}, one row per contact number (last 10 digits). From {{ \Carbon\CarbonImmutable::parse(config('customers.logistics_from'))->format('M j') }} the deliveries come from the logistics API; before that, from Pancake POS deliveries. Amounts, statuses and products come from Pancake POS.</dd></div>
+                <div><dt class="font-semibold text-ink">QTY</dt><dd>The customer's delivered orders since {{ $since }}.</dd></div>
+                <div><dt class="font-semibold text-ink">Total spent (CLTV overall)</dt><dd>The Pancake POS totals of those delivered orders.</dd></div>
+                <div><dt class="font-semibold text-ink">Handled by a CRA</dt><dd>An order logistics lists as CRD-delivered, or one sold by a CRD Pancake account (the CRD team's accounts, past CRAs too) or a CRA's own Pancake account.</dd></div>
+                <div><dt class="font-semibold text-ink">CRD Leads</dt><dd>Customers with a CRA-handled delivery in the dates picked (any time for All).</dd></div>
+                <div><dt class="font-semibold text-ink">Retained</dt><dd>That CRA-handled order is their first one ever: none earlier, including before {{ $since }} (each CRD customer's full order history is checked in Pancake).</dd></div>
+                <div><dt class="font-semibold text-ink">Repeat Customers</dt><dd>They had at least one earlier CRA-handled order (any year), plus the one in the dates picked.</dd></div>
+                <div><dt class="font-semibold text-ink">Product CLTV</dt><dd>A product's CLTV = SRP × {{ config('customers.cltv_units') }} (SRP from Settings → Product Consumption). The customer's spend on it = delivered units × SRP; "Reached CLTV" once that reaches the CLTV.</dd></div>
+                <div><dt class="font-semibold text-ink">Today / Week / Month / range</dt><dd>Pick customers by delivered date. QTY and Total spent still count all their orders since {{ $since }}. Weeks run 1–7, 8–14… from the 1st.</dd></div>
+            </dl>
+        </details>
     </div>
 
     {{-- Customer details, loaded when a row is clicked --}}

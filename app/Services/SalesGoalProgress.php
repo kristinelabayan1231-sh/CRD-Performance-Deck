@@ -3,76 +3,71 @@
 namespace App\Services;
 
 use App\Models\User;
-use App\Support\MonthWeeks;
+use App\Support\DashboardRange;
 use App\Support\SalesGoals;
-use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Dashboard progress towards the sales goals in Settings → Sales Goals.
+ * Dashboard results for the picked month (to date) or From–To range.
  *
  * Sales = Conversion Breakdown gross sales (CRD - BROADCAST + CRD - SEGMENTATION orders).
- * Monthly: every CRA's sales this month so far ÷ the CRD monthly goal; pace = days gone ÷ days in the month.
- * Per CRA: each CRA's sales for the day, its week (1–7, 8–14 … 29–31) or its month ÷ their daily goal (their
- * own goal, else the general CRA daily goal) × the days in that range.
+ * Monthly goal: every CRA's sales ÷ the CRD monthly goal (for a custom range that isn't a whole
+ * month, the goal is prorated to its days); pace = days gone ÷ days in the month.
+ * Per CRA: sales ÷ their daily goal (own, else the general CRA daily goal) × the days in the range,
+ * and Total conv % = (BC + SC orders) ÷ (engagements + leads).
+ * Team: confirmed orders, conversion rate and AOV (gross ÷ orders) of the CRAs shown.
  */
 class SalesGoalProgress
 {
     public function __construct(private ConversionBreakdown $breakdown) {}
 
     /**
-     * @param  Collection<int, User>  $shown  CRAs listed for the daily goal (a CRA sees only themselves)
-     * @param  string  $period  today | week | month: the range the per-CRA goals cover (the day, its week or its month)
-     * @return array{month: array<string, mixed>, today: CarbonImmutable, range: array{label: string, from: CarbonImmutable, to: CarbonImmutable, days: int}, cras: Collection<int, array<string, mixed>>, general_daily: float}
+     * @param  Collection<int, User>  $shown  CRAs listed per CRA (a CRA sees only themselves)
+     * @return array{month: array<string, mixed>, range: DashboardRange, team: array<string, int|float|null>, cras: Collection<int, array<string, mixed>>, general_daily: float}
      */
-    public function for(Collection $shown, CarbonImmutable $today, string $period = 'today'): array
+    public function for(Collection $shown, DashboardRange $range): array
     {
-        $month = $today->startOfMonth();
         $allCras = LeadGenerator::cras();
-        $monthEnd = $month->endOfMonth()->startOfDay();
-        $days = $this->breakdown->days($allCras->merge($shown)->unique('id'), $month, $monthEnd);
-        $monthToDate = fn (array $cra) => array_filter($cra, fn (string $day) => $day <= $today->toDateString(), ARRAY_FILTER_USE_KEY);
+        $days = $this->breakdown->days($allCras->merge($shown)->unique('id'), $range->from, $range->to);
+        $total = fn (User $cra) => ConversionBreakdown::sum($days[$cra->id] ?? []);
 
-        // Weeks are fixed 7-day buckets from the 1st (1–7, 8–14 … 29–31); months are whole months.
-        $week = MonthWeeks::for($month)[MonthWeeks::containing($month, $today) - 1];
-        [$from, $to, $label] = match ($period) {
-            'week' => [$week['start'], $week['end'], 'Week '.$week['number'].' · '.$week['label']],
-            'month' => [$month, $monthEnd, $month->format('F Y')],
-            default => [$today, $today, $today->format('D, M j')],
-        };
-        $rangeDays = (int) $from->diffInDays($to) + 1;
-        $inRange = fn (array $cra) => array_filter($cra, fn (string $day) => $day >= $from->toDateString() && $day <= $to->toDateString(), ARRAY_FILTER_USE_KEY);
-
-        $monthSales = $allCras->sum(fn (User $cra) => ConversionBreakdown::sum($monthToDate($days[$cra->id] ?? []))['gross']);
-        $monthlyGoal = SalesGoals::crdMonthly();
+        $sales = (float) $allCras->sum(fn (User $cra) => $total($cra)['gross']);
+        $month = $range->to->startOfMonth();
+        $isMonth = $range->isMonth();
+        $goal = SalesGoals::crdMonthly() * ($isMonth ? 1 : $range->days() / $month->daysInMonth);
         $generalDaily = SalesGoals::craDaily();
 
-        return [
-            'today' => $today,
-            'range' => ['label' => $label, 'from' => $from, 'to' => $to, 'days' => $rangeDays],
-            'general_daily' => $generalDaily,
-            'month' => [
-                'label' => $month->format('F Y'),
-                'sales' => $monthSales,
-                'goal' => $monthlyGoal,
-                'progress' => SalesGoals::progress($monthSales, $monthlyGoal),
-                'pace' => $today->day / $month->daysInMonth,
-                'day' => $today->day,
-                'days' => $month->daysInMonth,
-                'remaining' => max(0, $monthlyGoal - $monthSales),
-            ],
-            'cras' => $shown->map(function (User $cra) use ($days, $inRange, $rangeDays, $generalDaily) {
-                $sales = (float) ConversionBreakdown::sum($inRange($days[$cra->id] ?? []))['gross'];
-                $goal = SalesGoals::dailyFor($cra, $generalDaily) * $rangeDays;
+        $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily) {
+            $totals = $total($cra);
+            $goal = SalesGoals::dailyFor($cra, $generalDaily) * $range->days();
 
-                return [
-                    'cra' => $cra,
-                    'sales' => $sales,
-                    'goal' => $goal,
-                    'own_goal' => $cra->daily_sales_goal !== null,
-                    'progress' => SalesGoals::progress($sales, $goal),
-                ];
-            })->sortByDesc('progress')->values(),
+            return [
+                'cra' => $cra,
+                'sales' => (float) $totals['gross'],
+                'goal' => $goal,
+                'own_goal' => $cra->daily_sales_goal !== null,
+                'progress' => SalesGoals::progress((float) $totals['gross'], $goal),
+                'totals' => $totals,
+            ];
+        })->sortByDesc('progress')->values();
+
+        return [
+            'range' => $range,
+            'general_daily' => $generalDaily,
+            'team' => ConversionBreakdown::sum($cras->pluck('totals')),
+            'month' => [
+                'label' => $isMonth ? $month->format('F Y') : $range->label(),
+                'prorated' => ! $isMonth,
+                'sales' => $sales,
+                'goal' => $goal,
+                'progress' => SalesGoals::progress($sales, $goal),
+                // Where sales should be by the range's last day if spread evenly over the month.
+                'pace' => $isMonth ? $range->to->day / $month->daysInMonth : null,
+                'day' => $range->to->day,
+                'days' => $month->daysInMonth,
+                'remaining' => max(0, $goal - $sales),
+            ],
+            'cras' => $cras,
         ];
     }
 }

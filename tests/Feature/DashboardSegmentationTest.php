@@ -65,7 +65,7 @@ class DashboardSegmentationTest extends TestCase
         // Earlier this month, outside the week.
         $this->lead($this->alice, '2026-10-02', ['customer_tag' => 'canpro_cold']);
 
-        $today = app(SegmentationStats::class)->periods(LeadGenerator::cras())['today'];
+        $today = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-09'));
         $kpis = collect($today['kpis'])->keyBy('label');
 
         // Leads 5 vs 4 yesterday: +25%, up and good.
@@ -87,23 +87,24 @@ class DashboardSegmentationTest extends TestCase
         // Top CRAs: Alice first with 2 processed.
         $this->assertSame(['name' => 'Alice', 'processed' => 2, 'unprocessed' => 1, 'converted' => 2], $today['ranking'][0]);
 
-        // Today's trend covers the last 7 days, ending today.
+        // A single day's trend covers the 7 days up to it.
         $this->assertCount(7, $today['series']);
         $this->assertSame(['day' => '2026-10-08', 'label' => 'Oct 8', 'processed' => 4, 'unprocessed' => 0], $today['series'][5]);
     }
 
-    public function test_week_and_month_periods(): void
+    public function test_a_range_of_lead_days(): void
     {
         $this->lead($this->bob, '2026-10-08', ['status' => 'active']);
         $this->lead($this->alice, '2026-10-02');
 
-        $periods = app(SegmentationStats::class)->periods(LeadGenerator::cras());
+        $range = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-08'), CarbonImmutable::parse('2026-10-09'));
+        $month = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-09'));
 
-        $this->assertSame('Oct 8–14', $periods['week']['label']);
-        $this->assertSame(1, $periods['week']['leads']);
-        $this->assertCount(2, $periods['week']['series']); // Oct 8 & 9 so far; future days left out
-        $this->assertSame(2, $periods['month']['leads']);
-        $this->assertSame('Bob', $periods['week']['ranking'][0]['name']);
+        $this->assertSame('Oct 8–9', $range['label']);
+        $this->assertSame(1, $range['leads']);
+        $this->assertCount(2, $range['series']);
+        $this->assertSame('Bob', $range['ranking'][0]['name']);
+        $this->assertSame(2, $month['leads']);
     }
 
     public function test_dashboard_shows_segmentation_card_for_supervisors(): void
@@ -113,7 +114,7 @@ class DashboardSegmentationTest extends TestCase
 
         $this->actingAs($this->owner)->get('/dashboard')->assertOk()
             ->assertSee('Segmentation Tracker')
-            ->assertSeeInOrder(['Today', 'Week', 'Month'])
+            ->assertSee('Lead days Oct 1–9')
             ->assertSeeInOrder(['Leads', 'Catered', 'Converted', 'Went cold'])
             ->assertSee('Daily trend')->assertSee('Customer tags')->assertSee('Top CRAs')
             ->assertSee('Retained')
@@ -127,8 +128,8 @@ class DashboardSegmentationTest extends TestCase
         $this->lead($this->bob, '2026-10-09');
 
         $response = $this->actingAs($this->alice)->get('/dashboard')->assertOk()->assertSee('Segmentation Tracker');
-        $this->assertSame(['Alice'], array_column($response->viewData('segmentation')['today']['ranking'], 'name'));
-        $this->assertSame(1, $response->viewData('segmentation')['today']['leads']);
+        $this->assertSame(['Alice'], array_column($response->viewData('segmentation')['ranking'], 'name'));
+        $this->assertSame(1, $response->viewData('segmentation')['leads']);
     }
 
     public function test_users_without_segmentation_access_see_no_card(): void

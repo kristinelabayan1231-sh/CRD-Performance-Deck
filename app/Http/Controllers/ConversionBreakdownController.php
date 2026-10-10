@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Support\DashboardRange;
 use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -101,6 +103,53 @@ class ConversionBreakdownController extends Controller
             'lastSync' => PancakeSync::lastSync($syncDay),
             'syncing' => PancakeSync::isRunning($syncDay),
             'base' => config('segmentation.leads_per_cra'),
+        ]);
+    }
+
+    /**
+     * The confirmed orders behind the dashboard's tile: the CRAs' own orders tagged CRD - BROADCAST or
+     * CRD - SEGMENTATION (not canceled or deleted) in the dashboard's month or range. A CRA sees their own.
+     */
+    public function orders(Request $request): View
+    {
+        $user = $request->user();
+        $today = WorkingDate::realToday();
+        $filters = $request->validate([
+            'month' => ['nullable', 'date_format:Y-m', 'before_or_equal:'.$today->format('Y-m')],
+            'from' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today->toDateString()],
+            'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'cra' => ['nullable', 'integer'],
+        ]);
+        $range = DashboardRange::fromFilters($filters, $today);
+
+        $allCras = LeadGenerator::cras();
+        $shown = match (true) {
+            ! $user->can('conversion.view_all') => $allCras->where('id', $user->id),
+            filled($filters['cra'] ?? null) => $allCras->where('id', (int) $filters['cra']),
+            default => $allCras,
+        };
+        $accounts = ConversionBreakdown::accounts($shown);
+        $byId = $allCras->keyBy('id');
+
+        $query = PancakeOrder::counted()
+            ->whereIn('seller_name', $accounts->keys())
+            ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+            ->whereDate('ordered_on', '>=', $range->from)->whereDate('ordered_on', '<=', $range->to);
+
+        $all = (clone $query)->get(['total_price', 'shecom_sales']);
+        $gross = $all->sum(fn (PancakeOrder $order) => $order->sales());
+
+        return view('conversion.orders', [
+            'orders' => $query->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
+            'craFor' => fn (PancakeOrder $order) => $byId[$accounts[$order->seller_name] ?? 0] ?? null,
+            'count' => $all->count(),
+            'gross' => $gross,
+            'aov' => $all->count() ? $gross / $all->count() : null,
+            'range' => $range,
+            'filters' => $filters,
+            'allCras' => $allCras,
+            'canViewAll' => $user->can('conversion.view_all'),
+            'statuses' => config('customers.pos_statuses'),
         ]);
     }
 
