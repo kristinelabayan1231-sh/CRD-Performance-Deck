@@ -19,6 +19,9 @@ use function Illuminate\Support\defer;
 
 class PancakeSync
 {
+    /** Tells which orders are non-CRD products only; built on first use. */
+    private ?ProductCatalog $catalog = null;
+
     public function __construct(private PancakeClient $client, private ShecomClient $shecom) {}
 
     /** How old (minutes) a day's sync may be before pages and the dashboard refresh it. */
@@ -167,7 +170,7 @@ class PancakeSync
                 $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
                 ['pancake_order_id'],
                 ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
-                    'phone_key', 'status', 'status_name', 'total_price', 'items', 'page_name', 'tags', 'conversion_type', 'updated_at'],
+                    'phone_key', 'status', 'status_name', 'total_price', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type', 'updated_at'],
             );
         }
     }
@@ -463,6 +466,8 @@ class PancakeSync
             'status_name' => $order['status_name'] ?? null,
             'total_price' => (float) ($order['total_price'] ?? 0),
             'items' => json_encode($order['items'] ?? []),
+            // Only non-CRD products (e.g. NutriLay): left out of sales, conversions and the Customer Database.
+            'non_crd' => ($this->catalog ??= new ProductCatalog)->onlyNonCrd(array_column($order['items'] ?? [], 'name')),
             'page_name' => $order['account_name'] ?? null,
             // upsert() skips model casts, so the list is stored as JSON here.
             'tags' => json_encode($tagIds),

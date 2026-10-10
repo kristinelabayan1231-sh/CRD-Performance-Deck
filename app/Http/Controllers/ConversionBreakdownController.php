@@ -132,7 +132,7 @@ class ConversionBreakdownController extends Controller
         $accounts = ConversionBreakdown::accounts($shown);
         $byId = $allCras->keyBy('id');
 
-        $query = PancakeOrder::whereIn('seller_name', $accounts->keys())
+        $query = PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $range->from)->whereDate('ordered_on', '<=', $range->to);
 
@@ -174,7 +174,7 @@ class ConversionBreakdownController extends Controller
         $to = CarbonImmutable::parse($data['to']);
 
         $orders = $cra->pancake_name
-            ? PancakeOrder::where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
+            ? PancakeOrder::crdProducts()->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
                 ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
                 ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
                 // First to most recent, by when the order was created in Pancake.

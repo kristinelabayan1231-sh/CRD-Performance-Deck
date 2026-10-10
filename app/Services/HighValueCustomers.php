@@ -99,10 +99,10 @@ class HighValueCustomers
 
         $owner = $this->numbersOf($keys);
         $numbers = array_keys($owner);
-        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'team', 'phone_key', 'product', 'qty']);
+        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'team', 'phone_key', 'product', 'qty', 'non_crd']);
         $inPancake = PancakeOrder::whereIn('pancake_order_id', $delivered->pluck('order_id'))->pluck('pancake_order_id')->flip();
 
-        $pos = PancakeOrder::query()
+        $pos = PancakeOrder::crdProducts()
             ->whereIn('status', config('customers.delivered_statuses'))
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->whereIn('phone_key', $numbers)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
@@ -120,7 +120,7 @@ class HighValueCustomers
             }
         }
         // Delivered orders Pancake has no copy of yet count with logistics' product and qty.
-        foreach ($delivered->reject(fn (LogisticsOrder $order) => isset($inPancake[$order->order_id]) || $order->team !== LogisticsOrder::TEAM_CRD) as $order) {
+        foreach ($delivered->reject(fn (LogisticsOrder $order) => isset($inPancake[$order->order_id]) || $order->team !== LogisticsOrder::TEAM_CRD || $order->non_crd) as $order) {
             $orders->push(['key' => $owner[$order->phone_key], 'items' => [['name' => $order->product, 'qty' => $order->qty ?? 1]], 'amount' => null]);
         }
 
@@ -259,7 +259,8 @@ class HighValueCustomers
 
         return $query->from('logistics_orders as lo')
             ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
-            ->whereRaw($handled['sql'], $handled['bindings']);
+            ->whereRaw($handled['sql'], $handled['bindings'])
+            ->whereRaw(CustomerDatabase::CRD_PRODUCTS);
     }
 
     /**

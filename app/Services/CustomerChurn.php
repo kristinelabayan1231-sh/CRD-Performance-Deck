@@ -97,6 +97,11 @@ class CustomerChurn
             ->whereDate('delivered_date', '>=', $since)->whereDate('delivered_date', '<=', $to)
             ->toBase()->get(['order_id', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
             ->each(function (object $order) use ($consider, $catalog) {
+                // Non-CRD products only (e.g. NutriLay) aren't CRD's customers to keep.
+                if ($catalog->onlyNonCrdText((string) $order->product_raw)) {
+                    return;
+                }
+
                 $product = $catalog->match((string) $order->product_raw);
                 $consider(
                     'crd',
@@ -111,7 +116,7 @@ class CustomerChurn
 
         // FSD in batches, each with its qty from the Pancake delivered orders.
         $days = [];
-        LogisticsOrder::where('team', LogisticsOrder::TEAM_FSD)
+        LogisticsOrder::where('team', LogisticsOrder::TEAM_FSD)->where('non_crd', false)
             ->whereDate('delivered_date', '>=', $since)->whereDate('delivered_date', '<=', $to)
             ->toBase()->select(['id', 'order_id', 'phone_key', 'product', 'delivered_date'])
             ->chunkById(5000, function ($orders) use ($consider, $catalog, &$days) {
@@ -161,12 +166,12 @@ class CustomerChurn
         $orders = [];
 
         foreach (array_chunk(array_map('strval', array_keys($due)), 1000) as $chunk) {
-            PancakeOrder::counted()->whereIn('phone_key', $chunk)->whereDate('ordered_on', '>', $since)
+            PancakeOrder::counted()->crdProducts()->whereIn('phone_key', $chunk)->whereDate('ordered_on', '>', $since)
                 ->toBase()->get(['phone_key', 'pancake_order_id', 'ordered_on'])
                 ->each(function (object $order) use (&$orders) {
                     $orders[$order->phone_key][] = ['order_id' => (string) $order->pancake_order_id, 'date' => substr((string) $order->ordered_on, 0, 10), 'source' => 'order'];
                 });
-            LogisticsOrder::whereIn('phone_key', $chunk)->whereDate('delivered_date', '>', $since)
+            LogisticsOrder::where('non_crd', false)->whereIn('phone_key', $chunk)->whereDate('delivered_date', '>', $since)
                 ->toBase()->get(['phone_key', 'order_id', 'delivered_date'])
                 ->each(function (object $order) use (&$orders) {
                     $orders[$order->phone_key][] = ['order_id' => (string) $order->order_id, 'date' => substr((string) $order->delivered_date, 0, 10), 'source' => 'delivery'];

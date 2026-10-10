@@ -102,6 +102,7 @@ class ChurnCustomerList
             ->join('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
             ->whereIn('lo.phone_key', $phones)
             ->whereRaw($handled['sql'], $handled['bindings'])
+            ->whereRaw(CustomerDatabase::CRD_PRODUCTS)
             ->groupBy('lo.phone_key')
             ->selectRaw('lo.phone_key, sum(po.total_price) as spent')
             ->pluck('spent', 'phone_key');

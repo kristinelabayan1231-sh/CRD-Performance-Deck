@@ -427,6 +427,12 @@ class LeadGenerator
         }
 
         $raw = trim($row['product_name'] ?? '');
+
+        // Orders of non-CRD products only (e.g. NutriLay) aren't CRD's to call.
+        if ($catalog->onlyNonCrdText($raw)) {
+            return null;
+        }
+
         $product = $catalog->match($raw);
 
         $delivered = CarbonImmutable::parse($row['delivered_date'])->startOfDay();

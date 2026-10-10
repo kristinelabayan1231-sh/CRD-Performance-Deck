@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Services\CustomerDatabase;
 use App\Services\ProductCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,9 +32,29 @@ class ProductConsumptionController extends Controller
     public function update(Request $request, Product $product): RedirectResponse
     {
         $product->update($this->validated($request, $product));
-        app(ProductCatalog::class)->renormalizeLeads();
+        $catalog = app(ProductCatalog::class);
+        $catalog->renormalizeLeads();
+        $removed = $this->refreshNonCrd($catalog, $product);
 
-        return back()->with('status', "Product \"{$product->name}\" updated.");
+        return back()->with('status', "Product \"{$product->name}\" updated.".($removed ? " Removed {$removed} untouched ".str('lead')->plural($removed).' for its orders.' : ''));
+    }
+
+    /**
+     * When a product's keywords or "Not a CRD product" changed, re-tag the orders (left out of leads,
+     * sales and the Customer Database) and drop the untouched leads for its orders.
+     *
+     * @return int leads removed
+     */
+    private function refreshNonCrd(ProductCatalog $catalog, Product $product): int
+    {
+        if (! $product->wasChanged('not_crd') && ! ($product->not_crd && $product->wasChanged(['name', 'keywords']))) {
+            return 0;
+        }
+
+        $catalog->flagNonCrdOrders();
+        CustomerDatabase::flushCache();
+
+        return $product->not_crd ? $catalog->removeUntouchedNonCrdLeads() : 0;
     }
 
     /**
@@ -56,11 +77,16 @@ class ProductConsumptionController extends Controller
         $product->delete();
         app(ProductCatalog::class)->renormalizeLeads();
 
+        if ($product->not_crd) {
+            app(ProductCatalog::class)->flagNonCrdOrders();
+            CustomerDatabase::flushCache();
+        }
+
         return back()->with('status', "Product \"{$product->name}\" deleted.");
     }
 
     /**
-     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string, not_crd: bool}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
@@ -70,6 +96,7 @@ class ProductConsumptionController extends Controller
             'keywords' => $keywords ?: null,
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
+            'not_crd' => $request->boolean('not_crd'),
         ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
@@ -80,6 +107,7 @@ class ProductConsumptionController extends Controller
             'keywords' => ['nullable', 'string', 'max:1000'],
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'not_crd' => ['boolean'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);

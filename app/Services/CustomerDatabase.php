@@ -56,6 +56,12 @@ class CustomerDatabase
     /** SQL for a delivery's customer: the main number it is merged under, else its own (needs `cl` joined). */
     private const CUSTOMER_KEY = 'coalesce(cl.primary_phone_key, lo.phone_key)';
 
+    /**
+     * SQL keeping deliveries with a CRD product (needs `lo` and `po`): Pancake's items decide when
+     * there is a copy, else logistics' product. NutriLay-only orders and the like are left out.
+     */
+    public const CRD_PRODUCTS = 'coalesce(po.non_crd, lo.non_crd) = 0';
+
     /** Cache key prefix: a number whose earlier-history lookup failed, retried after a few hours. */
     public const HISTORY_FAILED = 'customers.history_failed.';
 
@@ -276,6 +282,14 @@ class CustomerDatabase
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 7))
             ->get()
             ->keyBy('pancake_order_id');
+
+        // Non-CRD products only (e.g. NutriLay): left out, Pancake's items deciding when there is a copy.
+        $delivered = $delivered->reject(fn (LogisticsOrder $order) => $pos->get($order->order_id)?->non_crd ?? $order->non_crd);
+        $pos = $pos->reject(fn (PancakeOrder $order) => $order->non_crd);
+
+        if ($delivered->isEmpty()) {
+            return null;
+        }
 
         $statuses = config('customers.pos_statuses');
         $accounts = $this->craAccounts();
@@ -670,6 +684,7 @@ class CustomerDatabase
             // One row per customer: their CRA-handled orders before the first covered day, all their numbers together.
             ->leftJoinSub($this->priorOrders(), 'ch', 'ch.customer_key', '=', DB::raw(self::CUSTOMER_KEY))
             ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
+            ->whereRaw(self::CRD_PRODUCTS)
             ->when($from || $search !== '', function (Builder $q) use ($from, $to, $search) {
                 // By number (indexed), plus the other numbers of matched merged customers so their totals stay whole.
                 $numbers = $this->matching($from, $to, $search);

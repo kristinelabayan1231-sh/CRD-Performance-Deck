@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 #[Fillable([
     'pancake_order_id', 'ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name',
-    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'items', 'page_name', 'tags', 'conversion_type',
+    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type',
 ])]
 class PancakeOrder extends Model
 {
@@ -34,6 +34,7 @@ class PancakeOrder extends Model
             'shecom_sales' => 'decimal:2',
             'tags' => 'array',
             'items' => 'array',
+            'non_crd' => 'boolean',
         ];
     }
 
@@ -71,6 +72,14 @@ class PancakeOrder extends Model
     public function isCounted(): bool
     {
         return $this->status === null || ! in_array($this->status, self::NOT_COUNTED_STATUSES, true);
+    }
+
+    /**
+     * Orders with a CRD product: leaves out those whose products are all non-CRD (e.g. NutriLay only).
+     */
+    public function scopeCrdProducts(Builder $query): Builder
+    {
+        return $query->where('non_crd', false);
     }
 
     public function scopeCounted(Builder $query): Builder
