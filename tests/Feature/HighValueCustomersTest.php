@@ -42,29 +42,37 @@ class HighValueCustomersTest extends TestCase
     }
 
     /**
-     * A delivered order (CRD = handled by a CRA) with its Pancake POS total and items.
+     * A delivered order with its Pancake POS total, items and seller. Handled by a CRA when CRD-delivered or sold by a CRD account.
      */
-    private function delivered(string $id, string $team, string $name, string $phone, string $date, float $total, array $items = []): void
+    private function delivered(string $id, string $team, string $name, string $phone, string $date, float $total, array $items = [], ?string $seller = null): void
     {
         LogisticsOrder::remember([['order_id' => $id, 'team' => $team, 'customer_name' => $name, 'phone_number' => $phone,
             'product' => 'Pterygium', 'qty' => null, 'delivered_date' => $date]]);
         PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => CarbonImmutable::parse($date)->subDays(3), 'phone_key' => substr($phone, -10),
-            'total_price' => $total, 'status' => 3, 'items' => $items]);
+            'total_price' => $total, 'status' => 3, 'items' => $items, 'seller_name' => $seller]);
     }
 
     /**
      * Ana: CRA-handled, AOV ₱1,200 → High AOV. Ben: CRA-handled, AOV ₱500 → not listed. Cara: FSD only, AOV ₱2,000 → not listed.
-     * Dina: 30 Pterygium (₱499 × 30 = CLTV) → VIP. Rose: two merged numbers, ₱800 + ₱1,400 → AOV ₱1,100 → High AOV once.
+     * Dina: ₱14,970 on Pterygium (₱499 × 30 = CLTV) in CRA-handled orders, bought as packages → VIP; her FSD agent order doesn't count. Rose: two merged numbers,
+     * ₱800 + ₱1,400 → AOV ₱1,100 → High AOV once. Edgar: ₱4,000 plus two deliveries Pancake has no amount for → AOV ₱4,000.
      */
     private function customers(): void
     {
         $this->delivered('A1', 'crd', 'Ana Cruz', '9171111111', '2026-09-01', 1200);
         $this->delivered('B1', 'crd', 'Ben Reyes', '9172222222', '2026-09-01', 500);
         $this->delivered('C1', 'fsd', 'Cara Diaz', '9173333333', '2026-09-01', 2000);
-        $this->delivered('D1', 'crd', 'Dina Lim', '9174444444', '2026-08-01', 7485, [['name' => 'Pterygium', 'qty' => 15]]);
-        $this->delivered('D2', 'fsd', 'Dina Lim', '9174444444', '2026-09-20', 7485, [['name' => 'Pterygium', 'qty' => 15]]);
+        $this->delivered('D1', 'crd', 'Dina Lim', '9174444444', '2026-08-01', 7485, [['name' => 'Pterygium', 'qty' => 1]]);
+        $this->delivered('D2', 'fsd', 'Dina Lim', '9174444444', '2026-09-20', 7485, [['name' => 'Pterygium', 'qty' => 1]], 'CRD LHEI');
+        // Not handled by a CRA: counts toward nothing (not her orders, spend, AOV or VIP).
+        $this->delivered('D3', 'fsd', 'Dina Lim', '9174444444', '2026-09-25', 100, [['name' => 'Pterygium', 'qty' => 1]], 'FSD AGENT');
+        $this->delivered('E1', 'crd', 'Edgar Recamara', '9108803020', '2026-09-01', 4000);
+        LogisticsOrder::remember([
+            ['order_id' => 'E2', 'team' => 'crd', 'customer_name' => 'Edgar Recamara', 'phone_number' => '9108803020', 'product' => 'CanPro', 'qty' => 1, 'delivered_date' => '2026-09-10'],
+            ['order_id' => 'E3', 'team' => 'crd', 'customer_name' => 'Edgar Recamara', 'phone_number' => '9108803020', 'product' => 'CanPro', 'qty' => 1, 'delivered_date' => '2026-09-20'],
+        ]);
         $this->delivered('R1', 'crd', 'Rose Ramirez', '9175555555', '2026-08-15', 800);
-        $this->delivered('R2', 'fsd', 'Rose Ramirez', '9176666666', '2026-09-15', 1400);
+        $this->delivered('R2', 'fsd', 'Rose Ramirez', '9176666666', '2026-09-15', 1400, seller: 'CRD LHEI');
         CustomerLink::create(['phone_key' => '9176666666', 'primary_phone_key' => '9175555555']);
     }
 
@@ -73,14 +81,16 @@ class HighValueCustomersTest extends TestCase
         $this->customers();
 
         $this->actingAs($this->owner)->get(route('customers.high-value'))->assertOk()
-            ->assertViewHas('counts', ['high_aov' => 3, 'vip' => 1, 'unassigned' => 3])
+            ->assertViewHas('counts', ['high_aov' => 4, 'vip' => 1, 'unassigned' => 4])
+            ->assertSeeInOrder(['Edgar Recamara', '3', '₱4,000.00', '₱4,000.00'])
             ->assertSee('Ana Cruz')->assertSee('Rose Ramirez')->assertSee('9175555555 / 9176666666')->assertSee('₱1,100.00')
-            ->assertSeeInOrder(['Dina Lim', 'VIP'])
+            ->assertSeeInOrder(['Dina Lim', 'VIP', 'Pterygium'])
             ->assertDontSee('Ben Reyes')->assertDontSee('Cara Diaz');
 
         // VIP only, and per order: each delivered order with its own amount.
         $this->get(route('customers.high-value', ['list' => 'vip', 'view' => 'orders']))->assertOk()
             ->assertSeeInOrder(['D2', 'Dina Lim', '₱7,485.00', 'D1', 'Dina Lim'])
+            ->assertDontSee('D3')
             ->assertDontSee('Ana Cruz');
     }
 

@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\DB;
  * per contact number (last 10 digits), or per customer once numbers are merged
  * (customer_links: a number filed under the customer's main number).
  *
- * QTY = delivered orders. Total spent = their Pancake POS totals.
+ * QTY = delivered orders. Total spent = Pancake POS totals of their CRA-handled delivered orders.
  * An order is handled by a CRA when logistics lists it as CRD-delivered or its
  * POS seller is a CRD account (Settings → Pancake Accounts, past CRAs too) or a
  * CRA's Pancake account. Within a period (by delivered date):
@@ -292,7 +292,7 @@ class CustomerDatabase
                 'amount' => (float) $order->total_price,
                 'team' => $logistics?->team,
                 'seller' => $cra?->displayName() ?? ($order->seller_name ? ucwords(strtolower($order->seller_name)) : null),
-                'by_cra' => $logistics?->team === LogisticsOrder::TEAM_CRD || $cra !== null || PancakeOrder::isCrdAccount($order->seller_name, $this->crdAccounts()),
+                'by_cra' => $cra !== null || $this->handledByCra($logistics?->team, $order->seller_name),
                 'items' => $order->items ?? [],
             ];
         });
@@ -333,7 +333,8 @@ class CustomerDatabase
             // CRA-handled orders before the database's first day; null until Pancake has been checked.
             'prior_cra_orders' => $prior,
             'prior_last_ordered_on' => $histories->max('prior_last_ordered_on'),
-            'total_spent' => (float) $deliveredOrders->sum('amount'),
+            // CRA-handled orders only, like the product CLTV and VIP below.
+            'total_spent' => (float) $deliveredOrders->where('by_cra', true)->sum('amount'),
             'statuses' => collect($statuses)
                 ->map(function (array $status, int $code) use ($orders) {
                     $inStatus = $orders->where('status', $code);
@@ -348,7 +349,7 @@ class CustomerDatabase
                 })
                 ->filter(fn (array $row) => $row['orders'] > 0)
                 ->values()->all(),
-            'products' => $this->productCltv($orders->whereIn('status', config('customers.delivered_statuses'))),
+            'products' => $this->productCltv($orders->whereIn('status', config('customers.delivered_statuses'))->where('by_cra', true)),
             'orders' => $orders->map(fn (array $o) => [
                 ...$o,
                 'status_label' => $statuses[$o['status']][0] ?? 'Status '.($o['status'] ?? '—'),
@@ -590,48 +591,57 @@ class CustomerDatabase
     }
 
     /**
-     * Units bought of each Product Consumption product, valued at its SRP, against its CLTV (SRP × 30).
+     * What the customer spent on each Product Consumption product, against its CLTV (SRP × 30).
+     * Pancake's qty is often a package (1 × Pterygium for ₱6,000), so spend comes from order
+     * amounts: a one-product order counts in full, a mixed one is split by qty. An order with
+     * no amount yet (no Pancake copy) counts its units × SRP.
      *
-     * @param  Collection<int, array<string, mixed>>  $orders  delivered orders
+     * @param  Collection<int, array<string, mixed>>  $orders  delivered orders with items and amount
      * @return list<array{name: string, units: int, srp: ?float, spent: ?float, cltv: ?float, progress: ?float, reached: bool}>
      */
     public function productCltv(Collection $orders): array
     {
         $catalog = new ProductCatalog;
         $units = [];
+        $spent = [];
         $products = [];
 
         foreach ($orders as $order) {
-            foreach ($order['items'] as $item) {
-                $product = $catalog->match((string) ($item['name'] ?? ''));
+            $items = collect($order['items'])->map(fn (array $item) => [
+                'product' => $catalog->match((string) ($item['name'] ?? '')),
+                'qty' => max(1, (int) ($item['qty'] ?? 1)),
+            ]);
+            $totalQty = $items->sum('qty');
+            $amount = isset($order['amount']) ? (float) $order['amount'] : null;
 
-                if ($product) {
-                    $products[$product->id] = $product;
-                    $units[$product->id] = ($units[$product->id] ?? 0) + (int) ($item['qty'] ?? 1);
-                }
+            foreach ($items->whereNotNull('product') as ['product' => $product, 'qty' => $qty]) {
+                $products[$product->id] = $product;
+                $units[$product->id] = ($units[$product->id] ?? 0) + $qty;
+                $share = $amount !== null ? $amount * $qty / $totalQty : ($product->srp === null ? 0.0 : $qty * (float) $product->srp);
+                $spent[$product->id] = ($spent[$product->id] ?? 0) + $share;
             }
         }
 
-        return collect($products)->map(function (Product $product) use ($units) {
-            $srp = $product->srp === null ? null : (float) $product->srp;
-            $spent = $srp === null ? null : $units[$product->id] * $srp;
+        return collect($products)->map(function (Product $product) use ($units, $spent) {
             $cltv = $product->cltv();
+            $productSpent = round($spent[$product->id], 2);
 
             return [
                 'name' => $product->name,
                 'units' => $units[$product->id],
-                'srp' => $srp,
-                'spent' => $spent,
+                'srp' => $product->srp === null ? null : (float) $product->srp,
+                'spent' => $productSpent,
                 'cltv' => $cltv,
-                'progress' => $cltv ? min(1, $spent / $cltv) : null,
-                'reached' => $cltv !== null && $spent >= $cltv,
+                'progress' => $cltv ? min(1, $productSpent / $cltv) : null,
+                'reached' => $cltv !== null && $productSpent >= $cltv,
             ];
-        })->sortByDesc('progress')->values()->all();
+        })->sortByDesc(fn (array $p) => [$p['progress'] ?? -1, $p['spent']])->values()->all();
     }
 
     /**
      * Every customer with a CRA-handled delivered order (any time), one row each, with
-     * phone_key, customer_name, phone_number, purchases, total_spent and last_delivered.
+     * phone_key, customer_name, phone_number, purchases (all deliveries), cra_delivered, total_spent and
+     * priced_orders (CRA-handled only; priced = with a Pancake amount) and last_delivered.
      */
     public function craCustomers(): Builder
     {
@@ -651,6 +661,7 @@ class CustomerDatabase
         $from = $filters['from'] ?? null;
         $to = $filters['to'] ?? null;
         [$total, $inPeriod] = $this->craOrdersSql($from, $to);
+        $handled = $this->handledSql();
         $search = trim((string) ($filters['search'] ?? ''));
 
         return DB::table('logistics_orders as lo')
@@ -671,7 +682,10 @@ class CustomerDatabase
             ->selectRaw('max(lo.customer_name) as customer_name')
             ->selectRaw('max(lo.phone_number) as phone_number')
             ->selectRaw('count(*) as purchases')
-            ->selectRaw('coalesce(sum(po.total_price), 0) as total_spent')
+            // Total spent counts CRA-handled orders only; priced = those with a Pancake amount.
+            ->selectRaw("coalesce(sum(case when {$handled['sql']} then po.total_price end), 0) as total_spent", $handled['bindings'])
+            ->selectRaw("sum(case when {$handled['sql']} and po.total_price is not null then 1 else 0 end) as priced_orders", $handled['bindings'])
+            ->selectRaw("sum(case when {$handled['sql']} then 1 else 0 end) as cra_delivered", $handled['bindings'])
             ->selectRaw('max(lo.delivered_date) as last_delivered')
             ->selectRaw("{$total['sql']} as cra_orders", $total['bindings'])
             ->selectRaw("{$inPeriod['sql']} as cra_in_period", $inPeriod['bindings']);
@@ -735,12 +749,10 @@ class CustomerDatabase
      */
     private function craOrdersSql(?CarbonImmutable $from, ?CarbonImmutable $to, bool $withPrior = true): array
     {
-        $accounts = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...$this->crdAccounts()]));
-        $bySeller = $accounts ? ' or po.seller_name in ('.implode(', ', array_fill(0, count($accounts), '?')).')' : '';
-        $handled = "(lo.team = '".LogisticsOrder::TEAM_CRD."'{$bySeller})";
+        $handled = $this->handledSql();
         $count = fn (string $when, array $dates) => [
-            'sql' => "sum(case when {$handled}{$when} then 1 else 0 end)",
-            'bindings' => [...$accounts, ...$dates],
+            'sql' => "sum(case when {$handled['sql']}{$when} then 1 else 0 end)",
+            'bindings' => [...$handled['bindings'], ...$dates],
         ];
 
         $prior = fn (array $count) => $withPrior
@@ -755,6 +767,28 @@ class CustomerDatabase
             $prior($count(' and lo.delivered_date <= ?', [$to->toDateString()])),
             $count(' and lo.delivered_date between ? and ?', [$from->toDateString(), $to->toDateString()]),
         ];
+    }
+
+    /**
+     * SQL for "this delivery was handled by a CRA" (needs logistics_orders `lo` and pancake_orders `po`):
+     * CRD-delivered, or sold by a CRD team account or a CRA's own Pancake account.
+     *
+     * @return array{sql: string, bindings: list<string>}
+     */
+    public function handledSql(): array
+    {
+        $accounts = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...$this->crdAccounts()]));
+        $bySeller = $accounts ? ' or po.seller_name in ('.implode(', ', array_fill(0, count($accounts), '?')).')' : '';
+
+        return ['sql' => "(lo.team = '".LogisticsOrder::TEAM_CRD."'{$bySeller})", 'bindings' => $accounts];
+    }
+
+    /**
+     * Whether an order was handled by a CRA: CRD-delivered, or its Pancake seller is a CRA or CRD team account.
+     */
+    public function handledByCra(?string $team, ?string $seller): bool
+    {
+        return $team === LogisticsOrder::TEAM_CRD || ($seller !== null && $this->isCraSeller($seller));
     }
 
     /**

@@ -96,9 +96,12 @@ class ChurnCustomerList
         $catalog = new ProductCatalog;
         $deliveries = LogisticsOrder::whereIn('phone_key', $phones)->orderBy('delivered_date')
             ->get(['phone_key', 'customer_name', 'phone_number', 'product'])->groupBy('phone_key');
+        // Total spent: CRA-handled orders only, as in the Customer Database.
+        $handled = app(CustomerDatabase::class)->handledSql();
         $spent = DB::table('logistics_orders as lo')
             ->join('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
             ->whereIn('lo.phone_key', $phones)
+            ->whereRaw($handled['sql'], $handled['bindings'])
             ->groupBy('lo.phone_key')
             ->selectRaw('lo.phone_key, sum(po.total_price) as spent')
             ->pluck('spent', 'phone_key');
