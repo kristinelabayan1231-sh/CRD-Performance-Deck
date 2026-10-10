@@ -58,45 +58,39 @@ class ProductCatalog
     }
 
     /**
-     * Whether every product named is a non-CRD product (Settings → Product Consumption: "Not a CRD
-     * product"). An order with any other product, or a product not in Settings, is CRD's.
+     * Whether none of the products named is on the Product Consumption list, the one list of
+     * products the deck counts: such an order is left out of leads, sales and the Customer
+     * Database. An order with no product names, or before any product is listed, counts.
      *
      * @param  list<?string>  $names
      */
-    public function onlyNonCrd(array $names): bool
+    public function unlisted(array $names): bool
     {
         $names = array_values(array_filter(array_map(fn (?string $name) => trim((string) $name), $names), fn (string $name) => $name !== ''));
 
-        return $names !== [] && collect($names)->every(fn (string $name) => (bool) $this->match($name)?->not_crd);
+        return $names !== [] && $this->keywords()->isNotEmpty() && collect($names)->every(fn (string $name) => $this->match($name) === null);
     }
 
     /**
-     * onlyNonCrd() for a product text that may list several products ("CanPro, NutriLay").
+     * unlisted() for a product text that may list several products ("CanPro, NutriLay").
      */
-    public function onlyNonCrdText(?string $products): bool
+    public function unlistedText(?string $products): bool
     {
-        return $this->onlyNonCrd(preg_split('/\s*(?:,|\+|&|\/|\band\b)\s*/i', (string) $products) ?: []);
+        return $this->unlisted(preg_split('/\s*(?:,|\+|&|\/|\band\b)\s*/i', (string) $products) ?: []);
     }
 
     /**
-     * Tag every saved order whose products are all non-CRD (and untag the rest), after the
-     * products change. Logistics orders go by their product text, Pancake orders by their items.
+     * Tag every saved order with no product from the list (and untag the rest), after the list
+     * changes. Logistics orders go by their product text, Pancake orders by their items.
      *
      * @return array{pancake: int, logistics: int} orders now tagged
      */
-    public function flagNonCrdOrders(): array
+    public function flagUnlistedOrders(): array
     {
         $this->keywords = null;
 
-        if (! Product::where('not_crd', true)->exists()) {
-            PancakeOrder::where('non_crd', true)->update(['non_crd' => false]);
-            LogisticsOrder::where('non_crd', true)->update(['non_crd' => false]);
-
-            return ['pancake' => 0, 'logistics' => 0];
-        }
-
         $products = LogisticsOrder::query()->distinct()->pluck('product')
-            ->filter(fn (?string $product) => $this->onlyNonCrdText($product))->values();
+            ->filter(fn (?string $product) => $this->unlistedText($product))->values();
         LogisticsOrder::where('non_crd', true)->whereNotIn('product', $products)->update(['non_crd' => false]);
         foreach ($products->chunk(500) as $chunk) {
             LogisticsOrder::whereIn('product', $chunk->all())->update(['non_crd' => true]);
@@ -105,7 +99,7 @@ class ProductCatalog
         $flagged = [];
         PancakeOrder::query()->select(['id', 'items'])->chunkById(5000, function ($orders) use (&$flagged) {
             foreach ($orders as $order) {
-                if ($this->onlyNonCrd(array_column($order->items ?? [], 'name'))) {
+                if ($this->unlisted(array_column($order->items ?? [], 'name'))) {
                     $flagged[] = $order->id;
                 }
             }
@@ -119,12 +113,12 @@ class ProductCatalog
     }
 
     /**
-     * Remove Segmentation Tracker leads for non-CRD orders that nobody has worked on yet
-     * (no status, tracking field, note, transfer or processing). Worked leads stay.
+     * Remove Segmentation Tracker leads whose product isn't on the list that nobody has worked on
+     * yet (no status, tracking field, note, transfer or processing). Worked leads stay.
      *
      * @return int leads removed
      */
-    public function removeUntouchedNonCrdLeads(): int
+    public function removeUntouchedUnlistedLeads(): int
     {
         $this->keywords = null;
 
@@ -134,7 +128,7 @@ class ProductCatalog
             ->whereNull('contact_date')->whereNull('contact_time')->whereNull('callback_date')
             ->whereDoesntHave('transfers')
             ->get(['id', 'product_raw', 'product_name'])
-            ->filter(fn (Lead $lead) => $this->onlyNonCrdText($lead->product_raw ?? $lead->product_name))
+            ->filter(fn (Lead $lead) => $this->unlistedText($lead->product_raw ?? $lead->product_name))
             ->pluck('id');
 
         foreach ($ids->chunk(500) as $chunk) {

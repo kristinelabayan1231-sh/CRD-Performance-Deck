@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
+use function Illuminate\Support\defer;
+
 class ProductConsumptionController extends Controller
 {
     public function index(): View
@@ -24,7 +26,9 @@ class ProductConsumptionController extends Controller
         $data = $this->validated($request);
 
         Product::create([...$data, 'created_by' => $request->user()->id]);
-        app(ProductCatalog::class)->renormalizeLeads();
+        $catalog = app(ProductCatalog::class);
+        $catalog->renormalizeLeads();
+        $this->applyList($catalog, removeLeads: false);
 
         return back()->with('status', "Product \"{$data['name']}\" added.");
     }
@@ -34,27 +38,35 @@ class ProductConsumptionController extends Controller
         $product->update($this->validated($request, $product));
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
-        $removed = $this->refreshNonCrd($catalog, $product);
+        $removed = $product->wasChanged(['name', 'keywords']) ? $this->applyList($catalog) : 0;
 
-        return back()->with('status', "Product \"{$product->name}\" updated.".($removed ? " Removed {$removed} untouched ".str('lead')->plural($removed).' for its orders.' : ''));
+        return back()->with('status', "Product \"{$product->name}\" updated.".$this->removedNote($removed));
     }
 
     /**
-     * When a product's keywords or "Not a CRD product" changed, re-tag the orders (left out of leads,
-     * sales and the Customer Database) and drop the untouched leads for its orders.
+     * Only products on this list count anywhere in the deck. After it changes: drop the untouched
+     * leads whose product is no longer on it, then re-tag the saved orders (left out of sales and
+     * the Customer Database) after the page is sent, since that goes through every order and can
+     * outlast a request's time limit.
      *
      * @return int leads removed
      */
-    private function refreshNonCrd(ProductCatalog $catalog, Product $product): int
+    private function applyList(ProductCatalog $catalog, bool $removeLeads = true): int
     {
-        if (! $product->wasChanged('not_crd') && ! ($product->not_crd && $product->wasChanged(['name', 'keywords']))) {
-            return 0;
-        }
+        $removed = $removeLeads ? $catalog->removeUntouchedUnlistedLeads() : 0;
 
-        $catalog->flagNonCrdOrders();
-        CustomerDatabase::flushCache();
+        defer(function () {
+            set_time_limit(0);
+            app(ProductCatalog::class)->flagUnlistedOrders();
+            CustomerDatabase::flushCache();
+        });
 
-        return $product->not_crd ? $catalog->removeUntouchedNonCrdLeads() : 0;
+        return $removed;
+    }
+
+    private function removedNote(int $removed): string
+    {
+        return $removed ? " Removed {$removed} untouched ".str('lead')->plural($removed).' whose product is no longer on the list.' : '';
     }
 
     /**
@@ -75,18 +87,15 @@ class ProductConsumptionController extends Controller
     public function destroy(Product $product): RedirectResponse
     {
         $product->delete();
-        app(ProductCatalog::class)->renormalizeLeads();
+        $catalog = app(ProductCatalog::class);
+        $catalog->renormalizeLeads();
+        $removed = $this->applyList($catalog);
 
-        if ($product->not_crd) {
-            app(ProductCatalog::class)->flagNonCrdOrders();
-            CustomerDatabase::flushCache();
-        }
-
-        return back()->with('status', "Product \"{$product->name}\" deleted.");
+        return back()->with('status', "Product \"{$product->name}\" deleted.".$this->removedNote($removed));
     }
 
     /**
-     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string, not_crd: bool}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
@@ -96,7 +105,6 @@ class ProductConsumptionController extends Controller
             'keywords' => $keywords ?: null,
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
-            'not_crd' => $request->boolean('not_crd'),
         ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
@@ -107,7 +115,6 @@ class ProductConsumptionController extends Controller
             'keywords' => ['nullable', 'string', 'max:1000'],
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
-            'not_crd' => ['boolean'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);

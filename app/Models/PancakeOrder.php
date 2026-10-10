@@ -75,7 +75,7 @@ class PancakeOrder extends Model
     }
 
     /**
-     * Orders with a CRD product: leaves out those whose products are all non-CRD (e.g. NutriLay only).
+     * Orders with a product from the Product Consumption list (orders with none are left out everywhere).
      */
     public function scopeCrdProducts(Builder $query): Builder
     {

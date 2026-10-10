@@ -97,8 +97,8 @@ class CustomerChurn
             ->whereDate('delivered_date', '>=', $since)->whereDate('delivered_date', '<=', $to)
             ->toBase()->get(['order_id', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
             ->each(function (object $order) use ($consider, $catalog) {
-                // Non-CRD products only (e.g. NutriLay) aren't CRD's customers to keep.
-                if ($catalog->onlyNonCrdText((string) $order->product_raw)) {
+                // Only products on the Product Consumption list count.
+                if ($catalog->unlistedText((string) $order->product_raw)) {
                     return;
                 }
 
