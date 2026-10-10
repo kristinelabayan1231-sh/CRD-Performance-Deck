@@ -76,6 +76,15 @@
                 </x-slot:badges>
                 <x-dashboard.results :results="$results" :churn="$churn" :customers="$customers" :query="array_filter($filters)" />
             </x-panel>
+        @endif
+
+        {{-- Segmentation Tracker, then goal & conversion per CRA, both full width --}}
+        @if ($segmentation)
+            @php($pairedNote = \App\Support\WorkingDate::lagDays() > 0 ? 'Paired with '.$range->label().': lead '.($leadFrom->equalTo($leadTo) ? 'day '.$leadFrom->format('D, M j') : 'days '.\App\Support\WorkingDate::leadDaysLabel($range->from, $range->to)) : null)
+            <x-dashboard.segmentation :periods="['range' => $segmentation]" active="range" :note="$pairedNote" />
+        @endif
+
+        @if ($results)
             <x-dashboard.per-cra :results="$results" />
         @endif
 
@@ -83,10 +92,6 @@
             <x-dashboard.logistics :periods="$logisticsPeriod ? ['range' => $logisticsPeriod] : null" :fetched-at="$logisticsFetchedAt" active="range" />
         @endif
 
-        @if ($segmentation)
-            @php($pairedNote = \App\Support\WorkingDate::lagDays() > 0 ? 'Paired with '.$range->label().': lead '.($leadFrom->equalTo($leadTo) ? 'day '.$leadFrom->format('D, M j') : 'days '.\App\Support\WorkingDate::leadDaysLabel($range->from, $range->to)) : null)
-            <x-dashboard.segmentation :periods="['range' => $segmentation]" active="range" :note="$pairedNote" />
-        @endif
 
         @if (! $segmentation && ! $results)
             <div class="rounded-xl bg-white p-6 text-muted shadow-sm">No modules are available to you yet.</div>
