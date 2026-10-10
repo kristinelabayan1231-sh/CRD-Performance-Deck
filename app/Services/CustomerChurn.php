@@ -16,12 +16,13 @@ use Carbon\CarbonImmutable;
  * due in $from–$to = those whose grace ended in the range (up to today). Lost = no Pancake POS
  * order (not canceled or deleted) and no new delivery between that delivery and the end of the
  * grace. A customer counts once, by their latest delivery whose grace ended in the range, so a
- * past range's churn doesn't change later.
+ * past range's churn doesn't change later. delivered_months counts those customers by the month
+ * they were delivered (Y-m), usually months before the range.
  */
 class CustomerChurn
 {
     /**
-     * @return array{customers: int, lost: int, rate: ?float, grace_days: int}
+     * @return array{customers: int, lost: int, rate: ?float, grace_days: int, delivered_months: array<string, int>}
      */
     public function for(CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -51,7 +52,7 @@ class CustomerChurn
             });
 
         if ($due === []) {
-            return ['customers' => 0, 'lost' => 0, 'rate' => null, 'grace_days' => $grace];
+            return ['customers' => 0, 'lost' => 0, 'rate' => null, 'grace_days' => $grace, 'delivered_months' => []];
         }
 
         $since = collect($due)->min(fn (array $d) => $d['delivered'])->toDateString();
@@ -74,6 +75,9 @@ class CustomerChurn
         $lost = collect($due)->reject(fn (array $d, $phone) => collect($orders[(string) $phone] ?? [])
             ->contains(fn (CarbonImmutable $day) => $day->greaterThan($d['delivered']) && $day->lessThanOrEqualTo($d['deadline'])))->count();
 
-        return ['customers' => count($due), 'lost' => $lost, 'rate' => $lost / count($due), 'grace_days' => $grace];
+        return [
+            'customers' => count($due), 'lost' => $lost, 'rate' => $lost / count($due), 'grace_days' => $grace,
+            'delivered_months' => collect($due)->countBy(fn (array $d) => $d['delivered']->format('Y-m'))->sortKeys()->all(),
+        ];
     }
 }

@@ -13,10 +13,12 @@
 
 {{--
     Results for the dashboard's month (to date) or range: the CRD monthly goal (team gross sales), then
-    confirmed orders, conversion rate, AOV, churn and (with Customer Database access) Retained and Repeat
-    Customers. A CRA's orders, conversion and AOV are their own.
+    confirmed orders, conversion rate, AOV and (with Customer Database access) Retained and Repeat
+    Customers. A CRA's orders, conversion and AOV are their own. Churn sits apart below: it judges
+    customers delivered months earlier whose time to reorder ran out in these dates.
 --}}
-<section {{ $attributes->merge(['class' => 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8']) }} aria-label="Results">
+<div {{ $attributes->merge(['class' => 'space-y-4']) }}>
+<section @class(['grid gap-3 sm:grid-cols-2', 'lg:grid-cols-4 2xl:grid-cols-7' => $customers, 'lg:grid-cols-5' => ! $customers]) aria-label="Results">
     {{-- CRD monthly goal --}}
     <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm sm:col-span-2">
         <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
@@ -60,7 +62,7 @@
         </div>
     </article>
 
-    {{-- Confirmed orders (opens the list), conversion rate, AOV, churn: one colour each so they read apart --}}
+    {{-- Confirmed orders (opens the list), conversion rate, AOV: one colour each so they read apart --}}
     @php($tile = 'relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm')
     @php($bubble = '<span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>')
     @php($label = 'relative text-[11px] font-semibold tracking-wide text-white/95 uppercase')
@@ -81,19 +83,12 @@
         <p class="{{ $note }}">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
     </article>
 
-    <article class="{{ $tile }} from-[#d99a0b] to-[#a8740a]" title="Average order value: gross sales ÷ confirmed orders">
+    {{-- Wide on four columns so AOV, Retained and Repeat fill the second row --}}
+    <article @class([$tile, 'from-[#d99a0b] to-[#a8740a]', 'lg:col-span-2 2xl:col-span-1' => $customers]) title="Average order value: gross sales ÷ confirmed orders">
         {!! $bubble !!}
         <p class="{{ $label }}">AOV</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
         <p class="{{ $note }}">{{ $peso((float) $team['gross']) }} ÷ {{ number_format($team['orders']) }} orders</p>
-    </article>
-
-    <article class="{{ $tile }} from-[#e05a5f] to-[#c4484c]"
-             title="CRD customers lost ÷ CRD customers due × 100. Due = their {{ $churn['grace_days'] }} days to reorder after running out ended in this period; lost = no order in that time. Lower is better.">
-        {!! $bubble !!}
-        <p class="{{ $label }}">Churn rate</p>
-        <p class="relative text-3xl font-bold tabular-nums">{{ $pct($churn['rate'], 2) }}</p>
-        <p class="{{ $note }}">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · no reorder {{ $churn['grace_days'] }}d after running out</p>
     </article>
 
     @if ($customers)
@@ -118,3 +113,70 @@
         </a>
     @endif
 </section>
+
+{{-- Churn: its own block so it isn't read as these dates' customers; the tile opens the breakdown --}}
+@php($deadlines = $results['range']->label())
+@php($monthLabel = fn (string $month) => \Carbon\CarbonImmutable::parse($month.'-01')->format($results['range']->from->isSameYear($month.'-01') ? 'M' : 'M Y'))
+<section aria-labelledby="churn-title">
+    <div class="mb-2 flex flex-wrap items-center gap-2">
+        <h3 id="churn-title" class="text-sm font-bold text-ink">CRD customer churn</h3>
+        <span class="rounded-full bg-[#fde0e0] px-2.5 py-0.5 text-xs font-semibold text-coral-700">Reorder deadline {{ $deadlines }}</span>
+    </div>
+
+    <div @class(['grid gap-3 sm:grid-cols-2', 'lg:grid-cols-4 2xl:grid-cols-7' => $customers, 'lg:grid-cols-5' => ! $customers])>
+        <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
+                class="group {{ $tile }} from-[#e05a5f] to-[#c4484c] text-left transition hover:-translate-y-0.5 hover:shadow-lg"
+                title="CRD-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
+            {!! $bubble !!}
+            <p class="{{ $label }}">Churn rate</p>
+            <p class="relative text-3xl font-bold tabular-nums">{{ $pct($churn['rate'], 2) }}</p>
+            <p class="{{ $note }}">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · lower is better</p>
+            <p class="relative text-xs font-semibold text-white group-hover:underline">View breakdown &rarr;</p>
+        </button>
+    </div>
+
+    <dialog id="churn-dialog" aria-labelledby="churn-dialog-title" onclick="if (event.target === this) this.close()"
+            class="m-auto w-[min(36rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">
+        <div class="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
+            <div class="min-w-0">
+                <h2 id="churn-dialog-title" class="text-base font-semibold">CRD customer churn · reorder deadline {{ $deadlines }}</h2>
+                <p class="text-sm text-muted">
+                    Not the customers of {{ $deadlines }}: CRD-delivered customers from earlier months who ran out, and whose {{ $churn['grace_days'] }} days to reorder ended in these dates.
+                </p>
+            </div>
+            <button type="button" onclick="this.closest('dialog').close()" aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
+                <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </div>
+
+        <div class="space-y-3 px-5 py-4">
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div class="rounded-xl border border-line p-4">
+                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Due to reorder</p>
+                    <p class="mt-1 text-2xl font-bold text-ink tabular-nums">{{ number_format($churn['customers']) }}</p>
+                    <p class="text-xs text-muted">{{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}</p>
+                </div>
+
+                <div class="rounded-xl border border-line p-4">
+                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Came back in time</p>
+                    <p class="mt-1 text-2xl font-bold text-teal-700 tabular-nums">{{ number_format($churn['customers'] - $churn['lost']) }}</p>
+                    <p class="text-xs text-muted">Pancake order or new delivery</p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-line p-4">
+                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Delivered in</p>
+                @if ($churn['delivered_months'])
+                    <ul class="mt-2 flex flex-wrap gap-1.5 text-xs">
+                        @foreach ($churn['delivered_months'] as $month => $count)
+                            <li class="rounded-full bg-brand-50 px-2 py-0.5 text-ink tabular-nums">{{ $monthLabel($month) }} <span class="font-semibold">{{ number_format($count) }}</span></li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p class="mt-1 text-xs text-muted">No customers due in these dates.</p>
+                @endif
+            </div>
+        </div>
+    </dialog>
+</section>
+</div>

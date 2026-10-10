@@ -268,10 +268,10 @@ class SalesGoalsTest extends TestCase
         $delivered('9173333333', '2026-09-11', 1, 15);
 
         $churn = app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
-        $this->assertSame(['customers' => 5, 'lost' => 3, 'rate' => 0.6, 'grace_days' => 30], $churn);
+        $this->assertSame(['customers' => 5, 'lost' => 3, 'rate' => 0.6, 'grace_days' => 30, 'delivered_months' => ['2026-08' => 5]], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['Churn rate', '60.00%', '3 lost of 5'])
+            ->assertSeeTextInOrder(['CRD customer churn', 'Reorder deadline Oct 1–10', 'Churn rate', '60.00%', '3 lost of 5', 'View breakdown', 'Came back in time', '2', 'Delivered in', 'Aug 5'])
             ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again']);
     }
 }
