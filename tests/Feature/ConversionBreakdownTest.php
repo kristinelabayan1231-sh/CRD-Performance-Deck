@@ -75,6 +75,7 @@ class ConversionBreakdownTest extends TestCase
                         $this->current, fn (array $order) => str_contains($request->url(), 'search='.($order['display_id'] ?? $order['id']).'&')
                     ))]),
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
+                str_contains($request->url(), 'pages/2002/statistics/customer_engagements') => Http::response(['message' => 'Server internal error'], 500),
                 str_contains($request->url(), 'customer_engagements') => $this->engagementsDown
                     ? Http::response(['success' => false], 500)
                     : Http::response(['success' => true, 'users_engagements' => $this->engagements]),
@@ -407,6 +408,18 @@ class ConversionBreakdownTest extends TestCase
 
         Log::shouldHaveReceived('warning')->with('Pancake order lookup failed', \Mockery::on(fn (array $context) => str_starts_with($context['error'], 'HTTP 401')));
         $this->assertNull(PancakeOrder::sole()->conversion_type);
+    }
+
+    public function test_a_broken_page_is_skipped_and_the_other_pages_engagements_still_count(): void
+    {
+        // Page 2002 always fails (HTTP 500), like a page whose Pancake statistics are broken.
+        PancakePage::create(['name' => 'Clearsight Cataract', 'page_id' => '2002', 'access_token' => 'other-token']);
+        $this->engagements = [['user_id' => 'u1', 'name' => 'CRD Lhei', 'total_engagement' => 40]];
+
+        $result = app(PancakeSync::class)->sync(Lead::today());
+
+        $this->assertSame(40, PancakeEngagement::sole()->engagements);
+        $this->assertStringContainsString('Clearsight Cataract (2002): HTTP 500', $result['engagement_error']);
     }
 
     public function test_orders_still_sync_when_a_page_engagements_fail(): void

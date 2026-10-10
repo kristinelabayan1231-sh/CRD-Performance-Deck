@@ -66,7 +66,7 @@ class SyncPancake extends Command
                 $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered, {$result['sales']} Shecom sales.");
 
                 if ($result['engagement_error']) {
-                    $this->warn("Pancake {$day->toDateString()}: engagements kept from the last good sync. {$result['engagement_error']}");
+                    $this->warn("Pancake {$day->toDateString()}: ".($result['staff'] ? 'engagements saved without some pages.' : 'engagements kept from the last good sync.')." {$result['engagement_error']}");
                 }
             } catch (Throwable $e) {
                 $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");

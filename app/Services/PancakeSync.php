@@ -43,9 +43,15 @@ class PancakeSync
         $engagementError = null;
 
         try {
-            // One page's chat statistics failing mustn't hold back the orders and tags: the day keeps its last good engagements.
+            // A page whose chat statistics fail is skipped; if every page fails, the day keeps its last good
+            // engagements. Either way the orders and tags below still sync.
             try {
                 $engagements = $this->client->engagements($day);
+
+                if ($this->client->lastEngagementFailures) {
+                    $engagementError = 'Skipped pages: '.implode('; ', $this->client->lastEngagementFailures);
+                    Log::warning('Pancake engagements skipped some pages', ['date' => $day->toDateString(), 'pages' => $this->client->lastEngagementFailures]);
+                }
             } catch (Throwable $e) {
                 $engagements = [];
                 $engagementError = $e->getMessage();
