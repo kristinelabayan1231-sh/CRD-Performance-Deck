@@ -345,6 +345,35 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame(PancakeOrder::BROADCAST, PancakeOrder::sole()->conversion_type);
     }
 
+    public function test_opening_a_page_rechecks_the_flagged_orders_without_the_scheduler(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        // Tagged in Pancake; no sync runs. The page that shows the issue looks it up again after it is sent.
+        $this->current = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::BROADCAST], 'status' => 2, 'status_name' => 'confirmed']];
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSeeText('1 no crd tag');
+
+        $this->assertSame(PancakeOrder::BROADCAST, PancakeOrder::sole()->conversion_type);
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSeeText('No order issues');
+    }
+
+    public function test_check_again_rechecks_the_flagged_orders_now(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertSee(route('order-issues.recheck'));
+
+        $this->current = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::SEGMENTATION], 'status' => 2, 'status_name' => 'confirmed']];
+        $this->actingAs($this->owner)->from(route('dashboard'))->post(route('order-issues.recheck'))
+            ->assertRedirect(route('dashboard'))
+            ->assertSessionHas('status', 'Re-checked in Pancake: 1 order updated.');
+
+        $this->assertSame(PancakeOrder::SEGMENTATION, PancakeOrder::sole()->conversion_type);
+    }
+
     public function test_orders_still_sync_when_a_page_engagements_fail(): void
     {
         $this->engagements = [['user_id' => 'u1', 'name' => 'CRD Lhei', 'total_engagement' => 40]];

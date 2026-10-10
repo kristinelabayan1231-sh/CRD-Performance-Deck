@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\User;
 use App\Services\CraIssues;
+use App\Services\PancakeSync;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -29,12 +30,18 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::define('roles.manage', fn (User $user) => $user->isSuperAdmin());
 
-        // Header issues (untagged CRA orders and the like) on every app page.
+        // Header issues (untagged CRA orders and the like) on every app page. While any are shown,
+        // they're looked up in Pancake again after the page is sent, so fixed ones clear on a refresh.
         View::composer('components.layouts.app', function (\Illuminate\View\View $view) {
             $user = auth()->user();
             $cras = $user ? CraIssues::crasFor($user) : collect();
+            $issues = $cras->isEmpty() ? null : app(CraIssues::class)->for($cras);
 
-            $view->with('craIssues', $cras->isEmpty() ? null : app(CraIssues::class)->for($cras));
+            if ($issues?->contains(fn (array $issue) => $issue['order_id'] !== null)) {
+                app(PancakeSync::class)->recheckIssuesLater();
+            }
+
+            $view->with('craIssues', $issues);
         });
     }
 }

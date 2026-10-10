@@ -36,8 +36,12 @@
             <div class="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
                 <div class="min-w-0">
                     <h2 id="issues-title" class="text-base font-semibold">Order issues · {{ $month->format('F') }} 1–{{ $month->format('j') }}</h2>
-                    <p class="text-sm text-muted">These leave orders out of confirmed orders and gross sales. Fix them in Pancake; numbers update on the next sync.</p>
+                    <p class="text-sm text-muted">These leave orders out of confirmed orders and gross sales. Fix them in Pancake; they're re-checked every couple of minutes while pages are open, or press Check again.</p>
                 </div>
+                <form method="POST" action="{{ route('order-issues.recheck') }}" class="ml-auto shrink-0">
+                    @csrf
+                    <button type="submit" class="rounded-lg border border-line px-3 py-1.5 text-sm font-semibold text-ink hover:bg-canvas">Check again</button>
+                </form>
                 <button type="button" onclick="this.closest('dialog').close()" aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
                     <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
                 </button>
