@@ -72,7 +72,7 @@ class ConversionBreakdownTest extends TestCase
                 str_contains($request->url(), 'search=') => $this->searchDown
                     ? Http::response(['success' => false, 'message' => 'Unauthorized'], 401)
                     : Http::response(['success' => true, 'total_pages' => 1, 'data' => array_values(array_filter(
-                        $this->current, fn (array $order) => str_contains($request->url(), 'search='.$order['display_id'].'&')
+                        $this->current, fn (array $order) => str_contains($request->url(), 'search='.($order['display_id'] ?? $order['id']).'&')
                     ))]),
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
                 str_contains($request->url(), 'customer_engagements') => $this->engagementsDown
@@ -378,6 +378,20 @@ class ConversionBreakdownTest extends TestCase
             ->assertSessionHas('status', 'Re-checked 1 flagged order in Pancake: 1 updated.');
 
         $this->assertSame(PancakeOrder::SEGMENTATION, PancakeOrder::sole()->conversion_type);
+    }
+
+    public function test_check_again_finds_orders_in_the_api_key_shape(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        // With the API key Pancake sends no display_id: id is the order number, and tags come as {id, name}.
+        $this->current = [['id' => $order['display_id'], 'tags' => [['id' => self::BROADCAST, 'name' => 'CRD - BROADCAST']], 'status' => 2, 'status_name' => 'confirmed']];
+        $this->actingAs($this->owner)->from(route('dashboard'))->post(route('order-issues.recheck'))
+            ->assertSessionHas('status', 'Re-checked 1 flagged order in Pancake: 1 updated.');
+
+        $this->assertSame(PancakeOrder::BROADCAST, PancakeOrder::sole()->conversion_type);
     }
 
     public function test_check_again_says_when_pancake_refuses_the_lookup(): void
