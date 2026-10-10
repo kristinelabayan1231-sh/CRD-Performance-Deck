@@ -55,7 +55,7 @@
             <p class="px-4 py-10 text-center text-sm text-muted">No products yet.@if ($canManage) Add your first one above.@endif</p>
         @else
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[860px] text-left text-sm">
+                <table class="w-full min-w-[1100px] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-3 font-semibold">Product</th>
@@ -87,12 +87,12 @@
                                                value="{{ $bag->any() ? old('keywords', $product->keywords) : $product->keywords }}"
                                                aria-label="Extra keywords for {{ $product->name }}" class="{{ $input }} h-10">
                                     </td>
-                                    <td class="w-40 px-4 py-3">
+                                    <td class="w-40 min-w-36 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="number" name="consumption_days" min="1" max="365" placeholder="Not set"
                                                value="{{ $bag->any() ? old('consumption_days', $product->consumption_days) : $product->consumption_days }}"
                                                aria-label="Consumption days per unit for {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
                                     </td>
-                                    <td class="w-36 px-4 py-3">
+                                    <td class="w-36 min-w-36 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="number" name="srp" min="0" step="0.01" placeholder="Not set"
                                                value="{{ $bag->any() ? old('srp', $product->srp) : $product->srp }}"
                                                aria-label="SRP of {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
@@ -102,7 +102,7 @@
                                     <td class="px-4 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
                                     <td class="px-4 py-4 tabular-nums">{{ $product->consumption_days ? $product->consumption_days.' days' : '—' }}</td>
                                     @if ($canSetSrp)
-                                        <td class="w-56 px-4 py-3">
+                                        <td class="w-56 min-w-56 px-4 py-3">
                                             <form method="POST" action="{{ route('settings.product-consumption.srp', $product) }}" class="flex gap-2">
                                                 @csrf @method('PATCH')
                                                 <input type="number" name="srp" min="0" step="0.01" placeholder="Not set"
