@@ -7,6 +7,7 @@ use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
+use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
@@ -32,6 +33,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
     Route::post('/logout', [GoogleController::class, 'logout'])->name('logout');
+    Route::post('/order-issues/recheck', OrderIssueRecheckController::class)->middleware('throttle:6,1')->name('order-issues.recheck');
 
     Route::prefix('user-access')->group(function () {
         Route::middleware('can:roles.manage')->prefix('roles')->name('roles.')->group(function () {

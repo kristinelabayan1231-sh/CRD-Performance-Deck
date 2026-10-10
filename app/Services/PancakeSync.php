@@ -24,6 +24,9 @@ class PancakeSync
     /** How old (minutes) a day's sync may be before pages and the dashboard refresh it. */
     public const FRESH_MINUTES = 10;
 
+    /** How often (seconds) a page visit may re-check the header's flagged orders in Pancake. */
+    public const ISSUES_RECHECK_SECONDS = 120;
+
     /**
      * Copy one day's chat engagements and POS orders from Pancake. Rows are
      * updated in place by their Pancake id; nothing is deleted.
@@ -332,6 +335,29 @@ class PancakeSync
                 Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
             }
         }, 'pancake-sync-'.$day->toDateString());
+    }
+
+    /**
+     * Re-check the header's flagged orders after the response is sent, at most every
+     * ISSUES_RECHECK_SECONDS. Pages call it so fixed tags clear even when the scheduler
+     * is paused (Render's free plan sleeps when idle).
+     */
+    public function recheckIssuesLater(): void
+    {
+        if (! Cache::add('pancake-issues-recheck', true, self::ISSUES_RECHECK_SECONDS)) {
+            return;
+        }
+
+        defer(function () {
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            try {
+                $this->recheckIssues();
+            } catch (Throwable $e) {
+                Log::warning('Pancake order issues re-check failed', ['message' => $e->getMessage()]);
+            }
+        }, 'pancake-issues-recheck');
     }
 
     public static function lastSync(CarbonImmutable $day): ?CarbonImmutable
