@@ -1,4 +1,4 @@
-@props(['results', 'churn', 'query' => []])
+@props(['results', 'churn', 'customers' => null, 'query' => []])
 
 @php
     $peso = fn (float $value) => '₱'.number_format($value);
@@ -13,9 +13,10 @@
 
 {{--
     Results for the dashboard's month (to date) or range: the CRD monthly goal (team gross sales), then
-    confirmed orders, conversion rate, AOV and churn. A CRA's orders, conversion and AOV are their own.
+    confirmed orders, conversion rate, AOV, churn and (with Customer Database access) Retained and Repeat
+    Customers. A CRA's orders, conversion and AOV are their own.
 --}}
-<section {{ $attributes->merge(['class' => 'grid gap-3 sm:grid-cols-2 lg:grid-cols-6']) }} aria-label="Results">
+<section {{ $attributes->merge(['class' => 'grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8']) }} aria-label="Results">
     {{-- CRD monthly goal --}}
     <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm sm:col-span-2">
         <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
@@ -94,4 +95,26 @@
         <p class="relative text-3xl font-bold tabular-nums">{{ $pct($churn['rate'], 2) }}</p>
         <p class="{{ $note }}">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · no reorder {{ $churn['grace_days'] }}d after running out</p>
     </article>
+
+    @if ($customers)
+        {{-- Customers delivered in these dates, counted as in the Customer Database; opens it filtered the same way --}}
+        @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
+        <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'retained']) }}" class="group {{ $tile }} from-[#4f46e5] to-[#3730a3] transition hover:-translate-y-0.5 hover:shadow-lg"
+           title="Customers whose delivery in these dates is their first CRA-handled order ever. Click to see them.">
+            {!! $bubble !!}
+            <p class="{{ $label }}">Retained</p>
+            <p class="relative text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}</p>
+            <p class="{{ $note }}">First CRA-handled order</p>
+            <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
+        </a>
+
+        <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'repeat']) }}" class="group {{ $tile }} from-[#c026d3] to-[#86198f] transition hover:-translate-y-0.5 hover:shadow-lg"
+           title="Customers delivered in these dates who had an earlier CRA-handled order too. Click to see them.">
+            {!! $bubble !!}
+            <p class="{{ $label }}">Repeat customers</p>
+            <p class="relative text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}</p>
+            <p class="{{ $note }}">Earlier CRA order too</p>
+            <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
+        </a>
+    @endif
 </section>

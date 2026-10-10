@@ -1,11 +1,9 @@
-{{-- Tracker filters, shown under the Daily / Weekly tabs. Icons only, except Type and Status. --}}
+{{-- Tracker filters, shown under the Daily / Weekly tabs. Icons only, except Type, Product and Status. --}}
 @php($field = 'h-9 rounded-lg border border-line bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 @php($icon = 'pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted')
 
 {{-- One line on a laptop screen and wider: search and filters, then dates and columns on the right; wraps on narrower screens. --}}
 <form method="GET" action="{{ route('segmentation.index') }}" class="flex flex-wrap items-center gap-2">
-    <input type="hidden" name="show" value="{{ $filters['show'] }}">
-
     {{-- Search: name, contact # or order #, across every lead day (Enter to search) --}}
     <label class="relative min-w-36 flex-1" title="Search leads">
         <span class="sr-only">Search leads</span>
@@ -40,6 +38,13 @@
         @endforeach
     </select>
 
+    <select name="product" aria-label="Product" class="{{ $field }} w-36 shrink-0 truncate pr-7 pl-3" onchange="this.form.submit()">
+        <option value="">All products</option>
+        @foreach ($products as $product)
+            <option value="{{ $product }}" @selected(($filters['product'] ?? '') === $product)>{{ $product }}</option>
+        @endforeach
+    </select>
+
     <select name="status" aria-label="Status" class="{{ $field }} w-36 shrink-0 truncate pr-7 pl-3" onchange="this.form.submit()">
         <option value="">All statuses</option>
         <option value="none" @selected(($filters['status'] ?? '') === 'none')>No status yet</option>
@@ -47,19 +52,6 @@
             <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
         @endforeach
     </select>
-
-    {{-- Which lists to show --}}
-    <div class="flex h-9 shrink-0 items-center rounded-lg border border-line bg-white p-0.5 text-xs font-semibold" role="group" aria-label="Show">
-        @foreach (['all' => 'All', 'unprocessed' => 'Pending', 'processed' => 'Catered'] as $value => $label)
-            <a href="{{ request()->fullUrlWithQuery(['show' => $value, 'page' => null, 'processed_page' => null]) }}"
-               @if ($filters['show'] === $value) aria-current="true" @endif
-               @class([
-                   'grid h-full place-items-center rounded-md px-2.5 transition',
-                   'bg-brand-600 text-white' => $filters['show'] === $value,
-                   'text-muted hover:text-brand-600' => $filters['show'] !== $value,
-               ])>{{ $label }}</a>
-        @endforeach
-    </div>
 
     {{-- Dates and columns on the right --}}
     <label class="relative shrink-0" title="Month">

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Lead;
 use App\Services\CustomerChurn;
+use App\Services\CustomerDatabase;
 use App\Services\LeadGenerator;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
@@ -18,7 +19,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn): View
+    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CustomerDatabase $customerDatabase): View
     {
         $user = $request->user();
         $realToday = WorkingDate::realToday();
@@ -56,6 +57,7 @@ class DashboardController extends Controller
 
         $results = null;
         $churnRate = null;
+        $customers = null;
 
         if ($user->can('conversion.view')) {
             // Today's sales come from Pancake; refresh them after the page is sent when over ten minutes old.
@@ -68,6 +70,12 @@ class DashboardController extends Controller
             // Company-wide; a few thousand deliveries to look through, so kept for ten minutes.
             $churnRate = Cache::remember("dashboard.churn.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(10),
                 fn () => $churn->for($range->from, $range->to));
+
+            // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for ten minutes.
+            if ($user->can('customers.view')) {
+                $customers = Cache::remember("dashboard.customers.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(10),
+                    fn () => $customerDatabase->counts(['from' => $range->from, 'to' => $range->to]));
+            }
         }
 
         // Managers/supervisors: FSD leads whose quantity Pancake didn't have (qty 1 assumed).
@@ -77,7 +85,7 @@ class DashboardController extends Controller
             : collect();
 
         return view('dashboard', [
-            'qtyUnknown' => $qtyUnknown, 'segmentation' => $segmentation, 'results' => $results, 'churn' => $churnRate,
+            'qtyUnknown' => $qtyUnknown, 'segmentation' => $segmentation, 'results' => $results, 'churn' => $churnRate, 'customers' => $customers,
             'logistics' => $user->can('segmentation.view'), 'logisticsPeriod' => $logisticsPeriod, 'logisticsFetchedAt' => $logisticsFetchedAt,
             'range' => $range, 'filters' => $filters, 'leadFrom' => $leadFrom, 'leadTo' => $leadTo, 'realToday' => $realToday,
             'version' => DashboardVersion::current(), 'pancakeSyncedAt' => PancakeSync::lastSync($realToday),

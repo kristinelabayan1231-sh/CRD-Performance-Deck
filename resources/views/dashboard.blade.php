@@ -74,7 +74,7 @@
                     <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' · month to date' : '' }}</span>
                     <span class="text-xs text-muted">Pancake sales and conversion by the real date</span>
                 </x-slot:badges>
-                <x-dashboard.results :results="$results" :churn="$churn" :query="array_filter($filters)" />
+                <x-dashboard.results :results="$results" :churn="$churn" :customers="$customers" :query="array_filter($filters)" />
             </x-panel>
             <x-dashboard.per-cra :results="$results" />
         @endif
@@ -109,6 +109,9 @@
                             Due = customers whose {{ $grace }} days ended in the dates picked. Lost = no Pancake order (not canceled) and no new delivery in that time.
                             Example: 6,000 due and 50 lost = 50 ÷ 6,000 × 100 = 0.83%. Lower is better.
                         </dd></div>
+                        @if ($customers)
+                            <div><dt class="font-semibold text-ink">Retained and Repeat Customers</dt><dd>As in the Customer Database, for customers delivered in the dates picked: Retained = their delivery handled by a CRA is their first CRA-handled order ever; Repeat = they had an earlier CRA-handled order too (any year). Click a tile to see them.</dd></div>
+                        @endif
                         <div><dt class="font-semibold text-ink">Goal per CRA</dt><dd>The CRA's gross sales ÷ (their daily goal × days in the dates picked). Daily goal = their own, else the general {{ '₱'.number_format(\App\Support\SalesGoals::craDaily()) }}. Left = goal − sales.</dd></div>
                         <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's (BC + SC orders) ÷ (their engagements + their leads) × 100. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
                     @endif
