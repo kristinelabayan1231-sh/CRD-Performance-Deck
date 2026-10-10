@@ -1,10 +1,10 @@
 {{-- One lead row. Expects $lead plus the parent's $canManage, $cras, $visibleOptional, $canTransfer; pass backlogRow => true for carried-over leads. --}}
 @php($canEdit = $canManage || $lead->assigned_to === auth()->id())
 @php($transferable = ($backlogRow ?? false) && $canTransfer && $lead->carriesOver() && $lead->assigned_to)
-{{-- Right-click opens Mark as processed / Unmark processed (segmentation.js) for leads this user can edit. --}}
+{{-- Right-click opens Copy name / Copy mobile number and Mark as catered / Unmark catered (segmentation.js) for leads this user can edit. --}}
 <tr class="align-middle hover:bg-canvas/30"
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
-        data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
+        data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
     <td class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
@@ -43,7 +43,7 @@
     <td class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
     <td class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
     <td class="px-4 py-3 tabular-nums">
-        <a href="tel:{{ $lead->phone_number }}" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
+        <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
     </td>
     <td class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
     <td class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
