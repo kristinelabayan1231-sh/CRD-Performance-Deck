@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-10 · Segmentation Tracker · CRA Supervisors and CRA Team Leads open the tracker on the Summary tab (sidebar link and the dashboard's Open →); Daily stays one click away. Everyone else still opens on Daily · shots: —
 - 2026-10-10 · Segmentation Tracker · New Summary tab (after Weekly Segmentation): filters CRA / Type / Product, Month or one day on the right; tiles Leads, Catered, Pending, Converted, Feedback recorded; Customer's feedback donut (BLOCKED under Other) with counts and %; Insights (pending leads, top feedback with advice, STILL HAVE STOCKS without callback, feedback coverage, busiest and best-converting hour, best/worst product, most/least catered CRA, conversions); Statuses and Customer tags bars; Time of contact chart (contacted vs converted per hour); Per CRA and Per product tables with top feedback. A CRA sees only their own leads · shots: new (segmentation-summary)
 - 2026-10-10 · Dashboard · Segmentation Tracker section moved above Goal & conversion per CRA (both full width); bigger Customer tags donut · shots: 02-dashboard
 - 2026-10-10 · Customer Database · Faster filters: tile counts and list pages are kept for 3 minutes (new deliveries can take up to 3 minutes to show, as can the Dashboard's churn rate (was 10 minutes); saving Pancake Accounts or a finished older-orders check refreshes them) · shots: —

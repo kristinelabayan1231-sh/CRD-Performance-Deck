@@ -72,6 +72,28 @@ class SegmentationSummaryTest extends TestCase
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 3 && $s['converted'] === 0);
     }
 
+    public function test_supervisors_and_team_leads_open_the_tracker_on_summary(): void
+    {
+        $supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+        $teamLead = User::create(['email' => 'lead@example.com', 'is_active' => true, 'role_id' => Role::create([
+            'slug' => Role::CRA_TEAM_LEAD, 'name' => 'CRA Team Lead', 'permissions' => ['segmentation.view', 'segmentation.view_all'],
+        ])->id]);
+
+        foreach ([$supervisor, $teamLead] as $user) {
+            $this->assertSame(route('segmentation.overview'), $user->segmentationHome());
+            $this->actingAs($user)->get(route('segmentation.overview'))->assertOk()
+                ->assertSee('href="'.route('segmentation.overview').'"', false);
+        }
+
+        // A role first saved under another name and renamed to "CRA Team Lead" counts too.
+        $teamLead->role->update(['slug' => 'team-lead']);
+        $this->assertSame(route('segmentation.overview'), $teamLead->fresh()->segmentationHome());
+
+        // Everyone else starts on Daily; the Daily tab stays reachable for all.
+        $this->assertSame(route('segmentation.index'), $this->alice->segmentationHome());
+        $this->assertSame(route('segmentation.index'), $this->owner->segmentationHome());
+    }
+
     public function test_a_cra_sees_only_their_own_leads(): void
     {
         $this->lead($this->alice, 'CanPro');

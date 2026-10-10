@@ -21,7 +21,7 @@
         @endif
     </x-slot:badges>
     <x-slot:actions>
-        <a href="{{ route('segmentation.index') }}" class="font-semibold text-brand-600 hover:underline">Open &rarr;</a>
+        <a href="{{ auth()->user()->segmentationHome() }}" class="font-semibold text-brand-600 hover:underline">Open &rarr;</a>
     </x-slot:actions>
 
     @foreach ($periods as $key => $p)

@@ -65,6 +65,18 @@ class User extends Authenticatable
         return strtolower($this->email) === config('access.super_admin_email');
     }
 
+    /**
+     * Where the Segmentation Tracker opens for this user: Summary for supervisors and team leads, else Daily.
+     */
+    public function segmentationHome(): string
+    {
+        // Matched on the name too: a role created from the roles screen keeps the slug it was first saved with.
+        $summaryFirst = in_array($this->role?->slug, Role::SUMMARY_FIRST, true)
+            || in_array(strtolower(trim((string) $this->role?->name)), ['cra supervisor', 'cra team lead'], true);
+
+        return $summaryFirst ? route('segmentation.overview') : route('segmentation.index');
+    }
+
     public function roleLabel(): string
     {
         return $this->role?->name ?? 'No role';
