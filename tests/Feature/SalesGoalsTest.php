@@ -127,14 +127,14 @@ class SalesGoalsTest extends TestCase
         // CanPro ×1 (₱1,000 SRP) and Sinux Spray ×2 (₱500): split 50/50.
         $order('T2', 10000, [['name' => 'CanPro', 'qty' => 1], ['name' => 'Sinux Spray', 'qty' => 2]]);
         $order('T3', 9000, [['name' => 'Sinuxyl', 'qty' => 1]]);
-        $order('T4', 99000, [['name' => 'Sinuxyl', 'qty' => 9]], status: 6);  // canceled
+        $order('T4', 3000, [['name' => 'CanPro', 'qty' => 1]], status: 6);    // canceled: still in gross sales
         $order('T5', 50000, [['name' => 'Sinuxyl', 'qty' => 5]], type: null); // not CRD-tagged
 
         $progress = app(SalesGoalProgress::class)->for(collect([$regina]), DashboardRange::fromFilters([], CarbonImmutable::parse('2026-10-10')));
-        $this->assertSame(['name' => 'CanPro', 'amount' => 20000.0], $progress['cras']->first()['top_product']);
+        $this->assertSame(['name' => 'CanPro', 'amount' => 23000.0], $progress['cras']->first()['top_product']);
 
         $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
-            ->assertSeeInOrder(['Top product sales', 'Regina', 'CanPro', '₱20,000'])
+            ->assertSeeInOrder(['Top product sales', 'Regina', 'CanPro', '₱23,000'])
             ->assertSee('No sales yet');
     }
 
@@ -144,12 +144,12 @@ class SalesGoalsTest extends TestCase
         $regina = $this->cra('Regina', 'CRD REJ VERGARA', goal: 50000);
 
         $this->sale('CRD LHEI', '2026-10-10', 38500, PancakeOrder::BROADCAST);
-        $this->sale('CRD LHEI', '2026-10-10', 38500);
+        // Canceled: in gross sales (every status), not a confirmed order.
+        $this->sale('CRD LHEI', '2026-10-10', 38500, status: 6);
         $this->sale('CRD REJ VERGARA', '2026-10-10', 25000);
         $this->sale('CRD REJ VERGARA', '2026-10-03', 100000);
-        // Not sales: untagged, canceled, and last month.
+        // Not sales: untagged, and last month.
         $this->sale('CRD LHEI', '2026-10-10', 9999, type: null);
-        $this->sale('CRD LHEI', '2026-10-10', 9999, status: 6);
         $this->sale('CRD LHEI', '2026-09-30', 9999);
 
         // Month to date (Oct 1–10): the whole monthly goal, paced by day 10 of 31.
@@ -159,7 +159,7 @@ class SalesGoalsTest extends TestCase
         $this->assertEqualsWithDelta(0.202, $goals['month']['progress'], 1e-9);
         $this->assertEqualsWithDelta(10 / 31, $goals['month']['pace'], 1e-9);
         $this->assertEqualsWithDelta(798000.0, $goals['month']['remaining'], 0.001);
-        $this->assertSame([4, 202000.0], [$goals['team']['orders'], (float) $goals['team']['gross']]);
+        $this->assertSame([3, 202000.0], [$goals['team']['orders'], (float) $goals['team']['gross']]);
 
         // Per CRA over the 10 days: Lhea ₱77k of 10 × ₱77k; Regina ₱125k of 10 × her own ₱50k.
         $byName = $goals['cras']->keyBy(fn ($row) => $row['cra']->display_name);
@@ -224,16 +224,17 @@ class SalesGoalsTest extends TestCase
         $this->sale('CRD LHEI', '2026-10-10', 1000, PancakeOrder::BROADCAST);
         $this->sale('CRD LHEI', '2026-10-09', 3000);
         $this->sale('CRD REJ VERGARA', '2026-10-08', 2000);
-        // Not confirmed: untagged, canceled, last month.
+        // Canceled: in gross sales, not listed or counted as a confirmed order.
+        $this->sale('CRD LHEI', '2026-10-10', 600, status: 6);
+        // Not confirmed: untagged, last month.
         $this->sale('CRD LHEI', '2026-10-10', 9999, type: null);
-        $this->sale('CRD LHEI', '2026-10-10', 9999, status: 6);
         $this->sale('CRD LHEI', '2026-09-30', 9999);
 
         $this->actingAs($this->owner)->get(route('conversion.orders'))
             ->assertOk()
-            ->assertSeeTextInOrder(['Confirmed orders', '3', 'Gross sales', '₱6,000.00', 'AOV', '₱2,000.00'])
+            ->assertSeeTextInOrder(['Confirmed orders', '3', 'Gross sales', '₱6,600.00', 'AOV', '₱2,200.00'])
             ->assertSeeTextInOrder(['5001', 'Lhea', 'Broadcast', '₱1,000.00', '5002', 'Segmentation', '5003', 'Regina'])
-            ->assertDontSee('₱9,999.00');
+            ->assertDontSee('₱600.00')->assertDontSee('₱9,999.00');
 
         // The dashboard's dates carry over: Oct 9 only.
         $this->actingAs($this->owner)->get(route('conversion.orders', ['from' => '2026-10-09', 'to' => '2026-10-09']))
@@ -243,18 +244,28 @@ class SalesGoalsTest extends TestCase
             ->assertOk()->assertSee('5001')->assertSee('5002')->assertDontSee('5003');
     }
 
-    public function test_churn_counts_customers_with_no_reorder_within_30_days_of_running_out(): void
+    public function test_churn_counts_crd_fsd_and_overall_customers_with_no_reorder_within_30_days_of_running_out(): void
     {
         $delivered = function (string $phone, string $day, int $qty, int $days) {
             DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Unlisted product',
                 'qty' => $qty, 'delivered_date' => $day, 'consumption_days_per_unit' => $days, 'source' => DeliveredOrder::SOURCE_SHECOM]);
         };
+        // FSD: the logistics delivery, with its qty (if known) from the Pancake delivered orders.
+        Product::create(['name' => 'Fsdol', 'srp' => 500, 'consumption_days' => 15]);
+        $fsd = function (string $id, string $phone, string $day, ?int $qty) {
+            LogisticsOrder::remember([['order_id' => $id, 'team' => LogisticsOrder::TEAM_FSD, 'customer_name' => 'F', 'phone_number' => $phone,
+                'product' => 'Fsdol', 'qty' => null, 'delivered_date' => $day]]);
+            if ($qty) {
+                DeliveredOrder::create(['order_id' => $id, 'customer_name' => 'F', 'phone_number' => $phone, 'product_raw' => 'Fsdol',
+                    'qty' => $qty, 'delivered_date' => $day, 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+            }
+        };
         $ordered = fn (string $phone, string $day, int $status = 3) => PancakeOrder::create([
             'pancake_order_id' => uniqid(), 'ordered_on' => $day, 'phone_key' => $phone, 'status' => $status, 'total_price' => 500,
         ]);
 
-        // Ran out Sep 3–4, so their 30 days to reorder ended Oct 3–4, inside October.
-        $delivered('09171111111', '2026-08-20', 1, 15);  // no order since: lost
+        // CRD: ran out Sep 3–4, so their 30 days to reorder ended Oct 3–4, inside October.
+        $delivered('09171111111', '2026-08-20', 1, 15);  // FSD delivered them Aug 22 (below): back
         $delivered('9172222222', '2026-08-25', 1, 10);   // ordered Sep 20: back
         $ordered('9172222222', '2026-09-20');
         $delivered('9174444444', '2026-08-26', 1, 10);   // only a canceled order: lost
@@ -267,11 +278,28 @@ class SalesGoalsTest extends TestCase
         // Ran out Sep 25: still inside their 30 days, not counted yet.
         $delivered('9173333333', '2026-09-11', 1, 15);
 
+        // FSD: 2 × 15 days from Jul 20 runs out Aug 18, so the 30 days ended Sep 17: not in October.
+        $fsd('F1', '9178888888', '2026-07-20', 2);
+        // 1 × 15 days from Aug 20: ended Oct 3.
+        $fsd('F2', '9177777777', '2026-08-20', 1);       // no order since: lost
+        $fsd('F3', '9179999999', '2026-08-20', 1);       // ordered Sep 1: back
+        $ordered('9179999999', '2026-09-01');
+        $fsd('F4', '9170000000', '2026-08-20', null);    // qty not known yet: left out
+        // On both lists: back for CRD (this delivery came after), lost for FSD; overall counts them once, by this later delivery: lost.
+        $fsd('F5', '9171111111', '2026-08-22', 1);
+
         $churn = app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
-        $this->assertSame(['customers' => 5, 'lost' => 3, 'rate' => 0.6, 'grace_days' => 30, 'delivered_months' => ['2026-08' => 5]], $churn);
+        $this->assertSame([
+            'crd' => ['customers' => 5, 'lost' => 2, 'rate' => 0.4, 'delivered_months' => ['2026-08' => 5]],
+            'fsd' => ['customers' => 3, 'lost' => 2, 'rate' => 2 / 3, 'delivered_months' => ['2026-08' => 3]],
+            'all' => ['customers' => 7, 'lost' => 4, 'rate' => 4 / 7, 'delivered_months' => ['2026-08' => 7]],
+            'grace_days' => 30,
+        ], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['CRD customer churn', 'Reorder deadline Oct 1–10', 'Churn rate', '60.00%', '3 lost of 5', 'View breakdown', 'Came back in time', '2', 'Delivered in', 'Aug 5'])
+            ->assertSeeTextInOrder(['Customer churn', 'Reorder deadline Oct 1–10', 'Overall churn rate', '57.14%', '4 lost of 7',
+                'CRD churn rate', '40.00%', '2 lost of 5', 'FSD churn rate', '66.67%', '2 lost of 3', 'View breakdown'])
+            ->assertSeeTextInOrder(['Came back in time', '3', '1', '3', 'Delivered in', 'CRD', 'Aug 5', 'FSD', 'Aug 3'])
             ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again']);
     }
 }

@@ -265,7 +265,7 @@
                 <div><dt class="font-semibold text-ink">Total # of leads (Segmentation Conversion)</dt><dd>Segmentation Tracker leads assigned to the CRA for that lead day. The base is {{ $base }}; the actual count is used.</dd></div>
                 <div><dt class="font-semibold text-ink">BC conv % and SC conv %</dt><dd>Orders BC ÷ Engagements, and Orders SC ÷ Leads.</dd></div>
                 <div><dt class="font-semibold text-ink">Total conv %</dt><dd>(Orders BC + Orders SC) ÷ (Engagements + Leads).</dd></div>
-                <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Gross BC (totals of the CRD - BROADCAST orders) + Gross SC (totals of the CRD - SEGMENTATION orders). Segmentation Productivity's Gross sales use the same numbers.</dd></div>
+                <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Gross BC (totals of the CRD - BROADCAST orders) + Gross SC (totals of the CRD - SEGMENTATION orders), every status (canceled and returned included); order counts leave canceled and deleted orders out. Segmentation Productivity's Gross sales use the same numbers.</dd></div>
                 <div><dt class="font-semibold text-ink">Weeks and months</dt><dd>Weeks run 1–7, 8–14… from the 1st, as in Weekly Segmentation. Rates for a week or month are worked out from the totals, not averaged.</dd></div>
             </dl>
         </details>

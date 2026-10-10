@@ -115,7 +115,7 @@ class SegmentationProductivityTest extends TestCase
             $this->order('09998887777', 'CRD  LHEI', tags: [398]),
             $this->order('09170000004', 'CRD Lhei', tags: [398]),
             $this->order('09998887777', 'CRD Lhei', tags: [397]),
-            // Not Lhea's: another seller's sale to her Repeat Purchase = Yes lead. Untagged and canceled don't count.
+            // Not Lhea's: another seller's sale to her Repeat Purchase = Yes lead. Untagged doesn't count; canceled is gross sales only.
             $this->order('+63 917 000 0001', 'Someone Else', tags: [398]),
             $this->order('09170000003', 'CRD Lhei'),
             $this->order('09111111111', 'CRD Lhei', status: 6, tags: [398]),
@@ -134,9 +134,10 @@ class SegmentationProductivityTest extends TestCase
         $this->assertSame(5, $day['confirmed']);
         $this->assertEqualsWithDelta(5 / 7, $day['conversion_rate'], 1e-9);
         $this->assertEqualsWithDelta(7 / 4, $day['pickup_rate'], 1e-9);
-        // Sales: Lhea's five tagged orders (segmentation + broadcast), 800 each; untagged and canceled add nothing.
-        $this->assertEqualsWithDelta(4000.0, $day['gross'], 0.001);
-        $this->assertEqualsWithDelta(800.0, $day['aov'], 0.001);
+        // Sales: Lhea's six tagged orders, 800 each, the canceled one included (every status); untagged adds nothing.
+        // AOV = gross ÷ the five confirmed orders.
+        $this->assertEqualsWithDelta(4800.0, $day['gross'], 0.001);
+        $this->assertEqualsWithDelta(960.0, $day['aov'], 0.001);
     }
 
     public function test_rates_are_blank_without_assigned_or_answered(): void

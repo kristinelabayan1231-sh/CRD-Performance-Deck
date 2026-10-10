@@ -132,13 +132,15 @@ class ConversionBreakdownController extends Controller
         $accounts = ConversionBreakdown::accounts($shown);
         $byId = $allCras->keyBy('id');
 
-        $query = PancakeOrder::counted()
-            ->whereIn('seller_name', $accounts->keys())
+        $query = PancakeOrder::whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', '>=', $range->from)->whereDate('ordered_on', '<=', $range->to);
 
-        $all = (clone $query)->get(['total_price', 'shecom_sales']);
+        // The list and count are confirmed orders; gross sales counts every status, as on the dashboard.
+        $all = (clone $query)->get(['status', 'total_price', 'shecom_sales']);
         $gross = $all->sum(fn (PancakeOrder $order) => $order->sales());
+        $all = $all->filter(fn (PancakeOrder $order) => $order->isCounted());
+        $query->counted();
 
         return view('conversion.orders', [
             'orders' => $query->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
@@ -156,7 +158,7 @@ class ConversionBreakdownController extends Controller
 
     /**
      * The orders behind one CRA's gross sales for $from–$to (the per-CRA pop-up): their own Pancake orders
-     * tagged CRD - BROADCAST or CRD - SEGMENTATION, not canceled, with the same amounts, so they add up
+     * tagged CRD - BROADCAST or CRD - SEGMENTATION, every status, with the same amounts, so they add up
      * to the Gross BC, Gross SC and Gross sales shown.
      */
     public function craOrders(Request $request, User $cra): View
@@ -172,13 +174,12 @@ class ConversionBreakdownController extends Controller
         $to = CarbonImmutable::parse($data['to']);
 
         $orders = $cra->pancake_name
-            ? PancakeOrder::counted()
-                ->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
+            ? PancakeOrder::where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
                 ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
                 ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
                 // First to most recent, by when the order was created in Pancake.
                 ->orderBy('ordered_at')->orderBy('id')
-                ->get(['pancake_order_id', 'ordered_on', 'ordered_at', 'customer_name', 'page_name', 'conversion_type', 'total_price', 'shecom_sales'])
+                ->get(['pancake_order_id', 'ordered_on', 'ordered_at', 'customer_name', 'page_name', 'conversion_type', 'status', 'status_name', 'total_price', 'shecom_sales'])
             : collect();
         $gross = fn (string $type) => $orders->where('conversion_type', $type)->sum(fn (PancakeOrder $order) => $order->sales());
 
@@ -188,6 +189,7 @@ class ConversionBreakdownController extends Controller
             'period' => $from->equalTo($to) ? $from->format('D, M j, Y') : $from->format('M j').' – '.$to->format('M j, Y'),
             'bcGross' => $gross(PancakeOrder::BROADCAST),
             'scGross' => $gross(PancakeOrder::SEGMENTATION),
+            'statuses' => config('customers.pos_statuses'),
         ]);
     }
 

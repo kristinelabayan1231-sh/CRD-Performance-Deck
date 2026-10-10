@@ -65,6 +65,14 @@ class PancakeOrder extends Model
         return $sellerName !== null && in_array($sellerName, $accounts ?? self::crdAccounts(), true);
     }
 
+    /**
+     * Whether this order counts as a confirmed order (not canceled or deleted). Gross sales counts every status.
+     */
+    public function isCounted(): bool
+    {
+        return $this->status === null || ! in_array($this->status, self::NOT_COUNTED_STATUSES, true);
+    }
+
     public function scopeCounted(Builder $query): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereNull('status')->orWhereNotIn('status', self::NOT_COUNTED_STATUSES));
