@@ -134,13 +134,11 @@
                                 <th class="px-4 py-3 font-semibold">Contact number</th>
                                 <th class="px-4 py-3 text-right font-semibold">QTY</th>
                                 <th class="px-4 py-3 text-right font-semibold">Total spent</th>
-                                <th class="w-12 px-4 py-3"><span class="sr-only">Pancake POS</span></th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
                                 @php($label = \App\Services\CustomerDatabase::segmentFor((int) $customer->cra_orders, (int) $customer->cra_in_period))
-                                @php($pos = \App\Services\CustomerDatabase::posUrl($customer->phone_number))
                                 <tr tabindex="0" role="button" data-customer-url="{{ route('customers.show', $customer->phone_key) }}"
                                     aria-label="Open {{ $customer->customer_name ?: 'customer' }}"
                                     class="cursor-pointer hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
@@ -157,16 +155,6 @@
                                     <td class="px-4 py-3 tabular-nums text-muted">{{ $customer->phone_number }}</td>
                                     <td class="px-4 py-3 text-right tabular-nums">{{ number_format($customer->purchases) }}</td>
                                     <td class="px-4 py-3 text-right font-semibold tabular-nums">₱{{ number_format($customer->total_spent, 2) }}</td>
-                                    <td class="px-4 py-2 text-right">
-                                        @if ($pos)
-                                            {{-- Opens Pancake POS's customer list (a new tab) and copies the number to search there; doesn't open the pop-up --}}
-                                            <a href="{{ $pos }}" target="_blank" rel="noopener" data-pos-link data-phone="{{ $customer->phone_number }}"
-                                               title="Open in Pancake POS (the number is copied: paste it in Search customer)" aria-label="Open {{ $customer->customer_name ?: 'customer' }} in Pancake POS"
-                                               class="inline-grid size-8 place-items-center rounded-lg text-muted hover:bg-brand-50 hover:text-brand-600">
-                                                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-                                            </a>
-                                        @endif
-                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>

@@ -18,7 +18,7 @@ class PancakeAccountController extends Controller
         return view('settings.pancake-accounts', [
             'crdAccounts' => PancakeAccounts::crd(),
             'craUsers' => PancakeAccounts::craUsers(),
-            'history' => Cache::remember('customers.history_progress', now()->addMinutes(5), fn () => $customers->historyProgress()),
+            'history' => Cache::remember('customers.history_progress', now()->addMinutes(CustomerDatabase::CACHE_MINUTES), fn () => $customers->historyProgress()),
             'recheckFrom' => PancakeAccounts::historyRecheckFrom(),
             'lastChange' => Setting::where('key', PancakeAccounts::CRD)->with('editor')->first(),
         ]);

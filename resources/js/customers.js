@@ -22,17 +22,10 @@ export function initCustomers() {
     };
 
     document.addEventListener('click', (event) => {
-        // The POS link opens Pancake's customer list in a new tab (not the pop-up) and copies the number to search for.
-        const pos = event.target.closest('[data-pos-link]');
-        if (pos) {
-            navigator.clipboard?.writeText(pos.dataset.phone).catch(() => {});
-            return;
-        }
         const row = event.target.closest('[data-customer-url]');
         if (row) open(row.dataset.customerUrl);
     });
     document.addEventListener('keydown', (event) => {
-        if (event.target.closest?.('[data-pos-link]')) return;
         const row = event.target.closest?.('[data-customer-url]');
         if (row && (event.key === 'Enter' || event.key === ' ')) {
             event.preventDefault();

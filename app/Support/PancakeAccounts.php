@@ -7,6 +7,7 @@ use App\Models\PancakeEngagement;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\CustomerDatabase;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -72,6 +73,7 @@ class PancakeAccounts
         Setting::put(self::CRD, json_encode($unique), $by);
         Setting::put(self::HISTORY_RECHECK_FROM, now()->toIso8601String(), $by);
         Cache::forget('customers.history_progress');
+        CustomerDatabase::flushCache();
 
         return self::relabelPosDeliveries();
     }
