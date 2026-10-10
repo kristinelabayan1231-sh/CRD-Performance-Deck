@@ -168,8 +168,8 @@ class CustomerDatabaseTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('customers.index'))
             ->assertOk()
-            // Sorted by total spent: Ana ₱2,500, Ben ₱1,700, then Cara and Dan with no Pancake amount.
-            ->assertSeeInOrder(['Ana Cruz', 'Retained', '09171111111', '₱2,500.00', 'Ben Reyes', 'Repeat Customer', '₱1,700.00'])
+            // Sorted by total spent, CRA-handled orders only: Ben ₱1,700, Ana ₱1,500 (her ₱1,000 FSD agent order doesn't count).
+            ->assertSeeInOrder(['Ben Reyes', 'Repeat Customer', '₱1,700.00', 'Ana Cruz', 'Retained', '09171111111', '₱1,500.00'])
             ->assertSee('Cara Diaz')->assertSee('Dan Lim')
             ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 3, 'repeat' => 1]);
     }
@@ -246,12 +246,18 @@ class CustomerDatabaseTest extends TestCase
             ->assertOk()
             ->assertSeeInOrder(['Ben Reyes', 'Repeat Customer'])
             ->assertSeeInOrder(['Waiting for pickup', '1', '₱500.00', 'Delivered', '1', '₱800.00', 'Payment collected', '1', '₱900.00'])
-            // 30 Canpro × ₱499 = ₱14,970 = SRP × 30.
-            ->assertSeeInOrder(['Canpro', '30', '₱14,970.00', '₱14,970.00', 'Reached CLTV']);
+            // Spend is the order amount, not qty × SRP: "30 × Canpro" for ₱900 is ₱900 toward the ₱14,970 CLTV (₱499 × 30).
+            ->assertSeeInOrder(['Canpro', '30', '₱900.00', '₱14,970.00', '₱14,070.00 to go'])
+            ->assertDontSee('Reached CLTV');
+
+        // A mixed order is split by qty: ₱28,140 for 2 Canpro + 2 Serum gives Canpro ₱14,070, reaching ₱14,970 in all.
+        $this->delivered('B4', 'crd', 'Ben Reyes', '9172222222', '2026-10-09', pos: [28140, 3, null, [['name' => 'Canpro', 'qty' => 2], ['name' => 'Ginseng Serum', 'qty' => 2]]]);
+        $this->actingAs($this->owner)->get(route('customers.show', '9172222222'))
+            ->assertSeeInOrder(['Ben Reyes', 'VIP', 'Canpro', 'Product CLTV per product', 'Canpro', '32', '₱14,970.00', '₱14,970.00', 'Reached CLTV']);
 
         $this->actingAs($this->owner)->get(route('customers.show', '9171111111'))
-            ->assertSeeInOrder(['Canpro', '2', '₱998.00', '₱14,970.00', '₱13,972.00 to go'])
-            ->assertDontSee('Reached CLTV');
+            ->assertSeeInOrder(['Canpro', '2', '₱1,500.00', '₱14,970.00', '₱13,470.00 to go'])
+            ->assertDontSee('Reached CLTV')->assertDontSee('>VIP<', false);
     }
 
     public function test_profile_counts_logistics_orders_missing_from_pancake_as_delivered_without_amount(): void

@@ -10,6 +10,8 @@
     $productSpent = $priced->sum('spent');
     $productCltv = $priced->sum('cltv');
     $reachedCount = $priced->where('reached', true)->count();
+    // VIP per product: every product whose CLTV they reached.
+    $vipProducts = $priced->where('reached', true)->pluck('name');
     $since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y');
     $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
     $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
@@ -56,6 +58,14 @@
             </dl>
         </div>
     </div>
+
+    @if ($vipProducts->isNotEmpty())
+        <div class="flex flex-wrap items-center gap-3 rounded-xl bg-black px-4 py-3 text-[#d4af37]">
+            <span class="rounded-full bg-[#d4af37] px-2 py-0.5 text-xs font-bold tracking-wide text-black">VIP</span>
+            <span class="text-sm font-semibold">{{ $vipProducts->join(', ') }}</span>
+            <span class="text-xs text-[#d4af37]/70">Spent the CLTV (SRP × {{ config('customers.cltv_units') }}) on {{ $vipProducts->count() === 1 ? 'this product' : 'each of these products' }}</span>
+        </div>
+    @endif
 
     {{-- A merged customer's numbers, and other customers with the same name to confirm as this person --}}
     @if (count($customer['numbers']) > 1 || $customer['possible_matches'])
@@ -118,7 +128,7 @@
             <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
             <p class="relative text-xs font-semibold tracking-wide uppercase">Customer CLTV</p>
             <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($customer['total_spent']) }}</p>
-            <p class="relative text-xs text-white/90">Total spent on {{ number_format($customer['purchases']) }} delivered {{ Str::plural('order', $customer['purchases']) }} (Pancake POS)</p>
+            <p class="relative text-xs text-white/90">Total spent on {{ number_format($customer['cra_orders']) }} CRA-handled delivered {{ Str::plural('order', $customer['cra_orders']) }} (Pancake POS)</p>
         </div>
         <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#0e8f7c] to-[#0b6b5d] p-4 text-white shadow-sm">
             <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
@@ -156,7 +166,7 @@
     {{-- Product CLTV --}}
     <section>
         <h3 class="{{ $heading }} !mb-0.5">{!! $bar !!}Product CLTV per product</h3>
-        <p class="mb-2 text-xs text-muted">Delivered units of Product Consumption products × SRP, against the product's CLTV (SRP × {{ config('customers.cltv_units') }}).</p>
+        <p class="mb-2 text-xs text-muted">What they spent on each Product Consumption product in CRA-handled orders (order amounts; a mixed order split by qty), against the product's CLTV (SRP × {{ config('customers.cltv_units') }}).</p>
         @if (empty($customer['products']))
             <p class="rounded-lg border border-dashed border-line px-3 py-4 text-center text-sm text-muted">No Product Consumption products in this customer's delivered orders.</p>
         @else
@@ -176,7 +186,7 @@
                             <tr>
                                 <td class="py-2 pr-3 pl-3 font-medium">{{ $product['name'] }}</td>
                                 <td class="px-3 py-2 text-right tabular-nums">{{ number_format($product['units']) }}</td>
-                                <td class="px-3 py-2 text-right tabular-nums" title="{{ $product['srp'] !== null ? $product['units'].' × '.$money($product['srp']) : '' }}">{{ $money($product['spent']) }}</td>
+                                <td class="px-3 py-2 text-right tabular-nums" title="{{ $product['srp'] !== null ? 'CLTV '.$money($product['cltv']) : 'No SRP yet' }}">{{ $money($product['spent']) }}</td>
                                 <td class="bg-teal/5 px-3 py-2 text-right font-semibold tabular-nums text-teal-700">{{ $money($product['cltv']) }}</td>
                                 <td class="py-2 pl-3">
                                     @if ($product['cltv'] === null)

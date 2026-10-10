@@ -7,6 +7,7 @@ use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
@@ -57,7 +58,7 @@ class HighValueCustomers
         $minCltv = $minSrp === null ? null : (float) $minSrp * (int) config('customers.cltv_units');
 
         $rows = DB::query()->fromSub($this->customers->craCustomers(), 'c')
-            ->where(fn ($q) => $q->whereRaw('total_spent >= purchases * ?', [$minAov])
+            ->where(fn ($q) => $q->where(fn ($q) => $q->where('priced_orders', '>', 0)->whereRaw('total_spent >= priced_orders * ?', [$minAov]))
                 ->when($minCltv !== null, fn ($q) => $q->orWhere('total_spent', '>=', $minCltv)))
             ->orderByDesc('total_spent')
             ->get();
@@ -66,13 +67,14 @@ class HighValueCustomers
 
         return $rows->mapWithKeys(function (object $row) use ($minAov, $vip) {
             $key = (string) $row->phone_key;
-            $aov = $row->purchases > 0 ? (float) $row->total_spent / $row->purchases : 0.0;
+            // AOV over the orders Pancake has an amount for, so a missing copy doesn't pull it down.
+            $aov = $row->priced_orders > 0 ? (float) $row->total_spent / $row->priced_orders : 0.0;
 
             return [$key => [
                 'phone_key' => $key,
                 'customer_name' => $row->customer_name ?: 'Unknown',
                 'phone_number' => (string) $row->phone_number,
-                'purchases' => (int) $row->purchases,
+                'purchases' => (int) $row->cra_delivered,
                 'total_spent' => (float) $row->total_spent,
                 'aov' => $aov,
                 'last_delivered' => $row->last_delivered,
@@ -97,7 +99,7 @@ class HighValueCustomers
 
         $owner = $this->numbersOf($keys);
         $numbers = array_keys($owner);
-        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'phone_key', 'product', 'qty']);
+        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'team', 'phone_key', 'product', 'qty']);
         $inPancake = PancakeOrder::whereIn('pancake_order_id', $delivered->pluck('order_id'))->pluck('pancake_order_id')->flip();
 
         $pos = PancakeOrder::query()
@@ -105,19 +107,21 @@ class HighValueCustomers
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->whereIn('phone_key', $numbers)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
                 ->orWhereIn('pancake_order_id', $delivered->pluck('order_id')))
-            ->get(['pancake_order_id', 'phone_key', 'items']);
+            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'items', 'total_price']);
         $deliveredTo = $delivered->pluck('phone_key', 'order_id');
+        $teams = $delivered->pluck('team', 'order_id');
 
         $orders = collect();
+        // CRA-handled orders only.
         foreach ($pos as $order) {
             $key = $owner[$order->phone_key] ?? $owner[$deliveredTo[$order->pancake_order_id] ?? ''] ?? null;
-            if ($key !== null) {
-                $orders->push(['key' => $key, 'items' => $order->items ?? []]);
+            if ($key !== null && $this->customers->handledByCra($teams[$order->pancake_order_id] ?? null, $order->seller_name)) {
+                $orders->push(['key' => $key, 'items' => $order->items ?? [], 'amount' => $order->total_price]);
             }
         }
         // Delivered orders Pancake has no copy of yet count with logistics' product and qty.
-        foreach ($delivered->reject(fn (LogisticsOrder $order) => isset($inPancake[$order->order_id])) as $order) {
-            $orders->push(['key' => $owner[$order->phone_key], 'items' => [['name' => $order->product, 'qty' => $order->qty ?? 1]]]);
+        foreach ($delivered->reject(fn (LogisticsOrder $order) => isset($inPancake[$order->order_id]) || $order->team !== LogisticsOrder::TEAM_CRD) as $order) {
+            $orders->push(['key' => $owner[$order->phone_key], 'items' => [['name' => $order->product, 'qty' => $order->qty ?? 1]], 'amount' => null]);
         }
 
         return $orders->groupBy('key')
@@ -201,8 +205,9 @@ class HighValueCustomers
         $page = Paginator::resolveCurrentPage();
         $rows = $customers->values()->forPage($page, $perPage);
         $owner = $this->numbersOf($rows->pluck('phone_key')->all());
-        $orders = LogisticsOrder::covered()->whereIn('phone_key', array_keys($owner))->orderBy('delivered_date')->orderBy('id')
-            ->get(['order_id', 'phone_key', 'phone_number']);
+        $orders = $this->craHandled(LogisticsOrder::covered()->whereIn('lo.phone_key', array_keys($owner)))
+            ->orderBy('lo.delivered_date')->orderBy('lo.id')
+            ->get(['lo.order_id', 'lo.phone_key', 'lo.phone_number']);
         $latest = $orders->mapWithKeys(fn (LogisticsOrder $o) => [$owner[$o->phone_key] => $o->order_id]);
         $phones = $this->phoneLists($owner, $orders);
 
@@ -221,11 +226,9 @@ class HighValueCustomers
     {
         $owner = $customers->isEmpty() ? [] : $this->numbersOf($customers->keys()->map(fn ($key) => (string) $key)->all());
 
-        $paginator = LogisticsOrder::covered()
-            ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'logistics_orders.order_id')
-            ->whereIn('logistics_orders.phone_key', array_keys($owner) ?: [''])
-            ->orderByDesc('logistics_orders.delivered_date')->orderByDesc('logistics_orders.id')
-            ->select('logistics_orders.order_id', 'logistics_orders.phone_key', 'logistics_orders.phone_number', 'logistics_orders.delivered_date', 'po.total_price', 'po.seller_name')
+        $paginator = $this->craHandled(LogisticsOrder::covered()->whereIn('lo.phone_key', array_keys($owner) ?: ['']))
+            ->orderByDesc('lo.delivered_date')->orderByDesc('lo.id')
+            ->select('lo.order_id', 'lo.phone_key', 'lo.phone_number', 'lo.delivered_date', 'po.total_price', 'po.seller_name')
             ->paginate($perPage)->withQueryString();
 
         $phones = $this->phoneLists($owner, LogisticsOrder::covered()->whereIn('phone_key', array_keys($owner) ?: [''])->orderBy('delivered_date')->get(['phone_key', 'phone_number']));
@@ -242,6 +245,21 @@ class HighValueCustomers
                 'order_seller' => $order->seller_name ? ucwords(strtolower($order->seller_name)) : null,
             ];
         });
+    }
+
+    /**
+     * Logistics orders (as `lo`, with their Pancake copy as `po`) narrowed to CRA-handled ones.
+     *
+     * @param  Builder<LogisticsOrder>  $query
+     * @return Builder<LogisticsOrder>
+     */
+    private function craHandled(Builder $query): Builder
+    {
+        $handled = $this->customers->handledSql();
+
+        return $query->from('logistics_orders as lo')
+            ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
+            ->whereRaw($handled['sql'], $handled['bindings']);
     }
 
     /**

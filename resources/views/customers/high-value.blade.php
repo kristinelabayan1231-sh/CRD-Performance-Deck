@@ -159,7 +159,8 @@
                                             <span class="font-semibold">{{ $row['customer_name'] }}</span>
                                         @endif
                                         @if ($row['vip'])
-                                            <span class="ml-1 rounded-full bg-[#d4af37] px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-black" title="Reached the CLTV of {{ implode(', ', $row['vip_products']) }}">VIP</span>
+                                            <span class="ml-1 rounded-full bg-[#d4af37] px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-black">VIP</span>
+                                            <span class="block text-[11px] text-[#d4af37]/80">{{ implode(', ', $row['vip_products']) }}</span>
                                         @endif
                                     </td>
                                     <td @class(['px-3 py-2.5 tabular-nums', 'text-muted' => ! $row['vip']])>{{ $row['phone_number'] }}</td>
@@ -225,9 +226,9 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the lists work</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Who is listed</dt><dd>Customers with at least one CRA-handled delivered order. Numbers merged in the Customer Database count as one customer.</dd></div>
-                <div><dt class="font-semibold text-ink">High AOV</dt><dd>Current AOV = total spent ÷ delivered orders. ₱{{ number_format(config('customers.high_aov_min')) }} and up is High AOV.</dd></div>
-                <div><dt class="font-semibold text-ink">VIP</dt><dd>Their delivered units of one product × its SRP reached that product's CLTV (SRP × {{ config('customers.cltv_units') }}), e.g. ₱499 × {{ config('customers.cltv_units') }} = ₱{{ number_format(499 * config('customers.cltv_units')) }}. VIP rows are black with gold text.</dd></div>
+                <div><dt class="font-semibold text-ink">Who is listed</dt><dd>Customers with at least one CRA-handled delivered order. Numbers merged in the Customer Database count as one customer. Orders, amounts, AOV and VIP count CRA-handled orders only.</dd></div>
+                <div><dt class="font-semibold text-ink">High AOV</dt><dd>Current AOV = total spent ÷ CRA-handled orders that have a Pancake amount. ₱{{ number_format(config('customers.high_aov_min')) }} and up is High AOV.</dd></div>
+                <div><dt class="font-semibold text-ink">VIP</dt><dd>Per product: what they spent on a product (order amounts; a mixed order split by qty) reached its CLTV (SRP × {{ config('customers.cltv_units') }}), e.g. ₱499 × {{ config('customers.cltv_units') }} = ₱{{ number_format(499 * config('customers.cltv_units')) }}. They're VIP for every product that reached it, listed under their name. VIP rows are black with gold text.</dd></div>
                 <div><dt class="font-semibold text-ink">Per customer / per order</dt><dd>Per customer shows their totals as they are now, with their latest order. Per order lists each delivered order (amount = that order) beside the customer's current totals.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Assigning seller</dt><dd>CRAs claim the customers they handle (supervisors can set anyone). Once set, the customer's Segmentation Tracker leads go to that CRA. A new High AOV / VIP customer with no CRA yet gets the CRA their lead is handed to.</dd></div>
             </dl>
