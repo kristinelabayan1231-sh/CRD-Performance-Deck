@@ -67,6 +67,26 @@ class CustomerDatabaseTest extends TestCase
         }
     }
 
+    public function test_order_history_hides_product_qty_unless_a_super_admin_turns_it_on_for_the_user(): void
+    {
+        $this->customers();
+        $cra = User::firstWhere('email', 'anna@gmail.com');
+        $cra->role->update(['permissions' => ['customers.view']]);
+
+        $this->actingAs($cra)->get(route('customers.show', '9171111111'))->assertOk()
+            ->assertSee('CANPRO 60s')->assertDontSee('2 × CANPRO 60s');
+
+        // Only Super Admins open Settings → Product Qty.
+        $this->actingAs($cra)->get(route('settings.product-qty.index'))->assertForbidden();
+        $this->actingAs($cra)->patch(route('settings.product-qty.update', $cra), ['show_product_qty' => 1])->assertForbidden();
+
+        $this->actingAs($this->owner)->get(route('settings.product-qty.index'))->assertOk()->assertSee('anna@gmail.com');
+        $this->actingAs($this->owner)->patch(route('settings.product-qty.update', $cra), ['show_product_qty' => 1])->assertRedirect();
+
+        $this->actingAs($cra->fresh())->get(route('customers.show', '9171111111'))->assertSee('2 × CANPRO 60s');
+        $this->actingAs($this->owner)->get(route('customers.show', '9171111111'))->assertDontSee('2 × CANPRO 60s');
+    }
+
     public function test_customers_with_the_same_name_can_be_merged_into_one_row_and_separated_again(): void
     {
         // Rose Ramirez on two numbers: CRD-delivered on each, so together she is a Repeat Customer.

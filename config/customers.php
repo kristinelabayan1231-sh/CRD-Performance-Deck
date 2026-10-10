@@ -51,6 +51,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | High AOV CVR & VIP
+    |--------------------------------------------------------------------------
+    |
+    | CRA-handled customers whose AOV (total spent ÷ delivered orders) is at
+    | least high_aov_min are High AOV; those who reached a product's CLTV are
+    | VIP. Each gets a CRA: claimed by a CRA, or the CRA their lead lands on.
+    | The choices are key => label.
+    |
+    */
+
+    'high_aov_min' => 999,
+
+    'points_of_contact' => [
+        'chat' => 'CHAT',
+        'call' => 'CALL',
+        'sms' => 'SMS/TEXT',
+    ],
+
+    'buyer_types' => [
+        'personal' => 'Personal Use',
+        'reseller' => 'Reseller',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Churn
     |--------------------------------------------------------------------------
     |

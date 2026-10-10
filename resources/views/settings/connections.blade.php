@@ -1,6 +1,4 @@
-<x-layouts.app title="Connections">
-    @include('settings._header')
-
+<x-layouts.settings title="Connections">
     <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
@@ -53,4 +51,4 @@
     @else
         <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">Click Run check to test the connections from this server.</p>
     @endif
-</x-layouts.app>
+</x-layouts.settings>

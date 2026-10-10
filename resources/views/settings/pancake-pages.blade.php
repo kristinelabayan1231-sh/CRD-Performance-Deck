@@ -1,6 +1,4 @@
-<x-layouts.app title="Pancake Pages">
-    @include('settings._header')
-
+<x-layouts.settings title="Pancake Pages">
     @php($input = 'h-11 w-full rounded-lg border border-line bg-white px-3 focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 
     {{-- Add page --}}
@@ -122,4 +120,4 @@
             </div>
         @endif
     </section>
-</x-layouts.app>
+</x-layouts.settings>

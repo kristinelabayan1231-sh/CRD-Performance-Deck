@@ -1,6 +1,4 @@
-<x-layouts.app title="Working Date">
-    @include('settings._header')
-
+<x-layouts.settings title="Working Date">
     @if ($errors->any())
         <div role="alert" class="mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
     @endif
@@ -37,4 +35,4 @@
             @endif
         </section>
     </form>
-</x-layouts.app>
+</x-layouts.settings>

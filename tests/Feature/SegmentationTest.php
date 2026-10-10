@@ -251,8 +251,8 @@ class SegmentationTest extends TestCase
         $this->actingAs($alice)->get('/segmentation?cra=all')
             ->assertOk()->assertSee($mine->customer_name)->assertDontSee($theirs->customer_name)->assertDontSee('Sync leads');
 
-        $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['status' => 'repeat_purchase'])->assertSessionHasNoErrors();
-        $this->assertSame('repeat_purchase', $mine->fresh()->status);
+        $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['status' => 'reminders_ffup'])->assertSessionHasNoErrors();
+        $this->assertSame('reminders_ffup', $mine->fresh()->status);
         $this->assertSame($alice->id, $mine->fresh()->status_updated_by);
 
         $this->actingAs($alice)->patch("/segmentation/leads/{$theirs->id}", ['status' => 'blocked'])->assertForbidden();

@@ -55,7 +55,6 @@ return [
         'pjr_drop_call' => ['PJR/Inactive/CBR/Drop call', 'bg-[#e6cff2] text-[#5a3286]'],
         'busy_callback' => ['Busy/Callback', 'bg-[#753800] text-[#ffcfc9]'],
         'reminders_ffup' => ['Reminders/FFUP', 'bg-[#c6dbe1] text-[#0a53a8]'],
-        'repeat_purchase' => ['Repeat Purchase', 'bg-[#ffcfc9] text-[#b10202]'],
         'blocked' => ['Blocked', 'bg-[#3d3d3d] text-white'],
     ],
 
@@ -66,7 +65,7 @@ return [
 
     // Leads with no status, or one of these statuses, carry over to the next
     // day with the same CRA until their status changes to something else.
-    'carry_over_statuses' => ['pjr_drop_call', 'repeat_purchase', 'inactive'],
+    'carry_over_statuses' => ['pjr_drop_call', 'inactive'],
 
     /*
     |--------------------------------------------------------------------------
@@ -139,7 +138,7 @@ return [
     */
 
     'editable_lists' => [
-        'statuses' => ['label' => 'Status', 'column' => 'status', 'locked' => ['inactive', 'pjr_drop_call', 'repeat_purchase']],
+        'statuses' => ['label' => 'Status', 'column' => 'status', 'locked' => ['inactive', 'pjr_drop_call']],
         'repeat_purchase' => ['label' => 'Repeat Purchase?', 'column' => 'repeat_purchase', 'locked' => ['yes', 'no']],
         'customer_tags' => ['label' => 'Customer Tagging', 'column' => 'customer_tag', 'locked' => ['hot', 'warm', 'cold', 'high_value', 'canpro_hot', 'canpro_warm', 'canpro_cold']],
         'feedback' => ['label' => "Customer's Feedback", 'column' => 'feedback', 'locked' => ['no_verbal_conv', 'purchased', 'still_have_stocks']],

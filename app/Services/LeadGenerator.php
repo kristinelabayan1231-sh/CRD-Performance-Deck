@@ -317,7 +317,8 @@ class LeadGenerator
 
     /**
      * Hand out the day's unassigned leads, CRD Leads first, always to the CRA
-     * with the fewest leads that day. Everyone fills toward the daily quota
+     * with the fewest leads that day, except a High AOV / VIP customer's lead,
+     * which goes to their CRA (Customer Database → High AOV CVR & VIP). Everyone fills toward the daily quota
      * together, and any excess beyond the quota is spread evenly the same way.
      */
     public function assign(CarbonImmutable $date): int
@@ -343,16 +344,28 @@ class LeadGenerator
             ->orderBy('id')
             ->get();
 
+        // High AOV / VIP customers with a CRA go to that CRA (while active); a new one is kept with whoever gets their lead.
+        $highValue = app(HighValueCustomers::class);
+        $phones = $pending->mapWithKeys(fn (Lead $lead) => [$lead->id => self::normalizePhone((string) $lead->phone_number)]);
+        $owners = rescue(fn () => $highValue->crasFor($phones->unique()->values()->all()), []);
+        $handedOut = [];
         $assigned = 0;
 
         foreach ($pending as $lead) {
-            // Least-loaded CRA; ties go to the earliest CRA so the split is stable.
-            $craId = array_search(min($load), $load, true);
+            $owner = $owners[$phones[$lead->id]] ?? null;
+            // Else the least-loaded CRA; ties go to the earliest CRA so the split is stable.
+            $craId = $owner !== null && array_key_exists($owner, $load) ? $owner : array_search(min($load), $load, true);
 
             $lead->update(['assigned_to' => $craId, 'assigned_at' => now()]);
             $load[$craId]++;
             $assigned++;
+
+            if ($owner === null && $phones[$lead->id] !== '') {
+                $handedOut[$phones[$lead->id]] ??= $craId;
+            }
         }
+
+        rescue(fn () => $highValue->claimForLeads($handedOut));
 
         return $assigned;
     }

@@ -1,5 +1,7 @@
 @php
     $money = fn (?float $value) => $value === null ? '—' : '₱'.number_format($value, 2);
+    // Orders list "1 × Product" only for users a Super Admin turned it on for (Settings → Product Qty).
+    $showQty = (bool) auth()->user()?->show_product_qty;
 @endphp
 
 @php
@@ -223,7 +225,7 @@
                                 @endif
                             </td>
                             <td class="px-3 py-2 tabular-nums">{{ $order['order_id'] }}</td>
-                            <td class="px-3 py-2">{{ collect($order['items'])->map(fn ($i) => ($i['qty'] ?? 1).' × '.$i['name'])->join(', ') ?: '—' }}</td>
+                            <td class="px-3 py-2">{{ collect($order['items'])->map(fn ($i) => ($showQty ? ($i['qty'] ?? 1).' × ' : '').$i['name'])->join(', ') ?: '—' }}</td>
                             <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap {{ $order['status_classes'] }}">{{ $order['status_label'] }}</span></td>
                             <td class="px-3 py-2">
                                 {{ $order['seller'] ?? ($order['team'] === 'crd' ? 'CRD' : ($order['team'] === 'fsd' ? 'FSD' : '—')) }}

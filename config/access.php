@@ -53,6 +53,9 @@ $modules = [
     'Customer Database' => [
         'customers.view' => 'View every FSD- and CRD-delivered customer, their orders and product CLTV',
         'customers.merge' => 'Merge contact numbers that belong to the same customer, and undo a merge',
+        'customers.high_value.view' => 'View the High AOV CVR & VIP lists (without the rest of the Customer Database)',
+        'customers.high_value.edit' => 'Claim High AOV / VIP customers as theirs and set their point of contact, PU/Reseller and remarks',
+        'customers.high_value.assign' => 'Set or change any High AOV / VIP customer\'s CRA',
     ],
 ];
 

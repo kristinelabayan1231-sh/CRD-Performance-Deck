@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerAccount;
 use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
@@ -405,6 +406,11 @@ class CustomerDatabase
         DB::transaction(function () use ($primary, $other, $userId) {
             CustomerLink::where('primary_phone_key', $other)->update(['primary_phone_key' => $primary]);
             CustomerLink::updateOrCreate(['phone_key' => $other], ['primary_phone_key' => $primary, 'linked_by' => $userId]);
+
+            // The merged customer keeps a High AOV / VIP CRA set on either number (the main number's wins).
+            if (! CustomerAccount::where('phone_key', $primary)->exists()) {
+                CustomerAccount::where('phone_key', $other)->update(['phone_key' => $primary]);
+            }
         });
 
         self::flushCache();
@@ -589,7 +595,7 @@ class CustomerDatabase
      * @param  Collection<int, array<string, mixed>>  $orders  delivered orders
      * @return list<array{name: string, units: int, srp: ?float, spent: ?float, cltv: ?float, progress: ?float, reached: bool}>
      */
-    private function productCltv(Collection $orders): array
+    public function productCltv(Collection $orders): array
     {
         $catalog = new ProductCatalog;
         $units = [];
@@ -621,6 +627,17 @@ class CustomerDatabase
                 'reached' => $cltv !== null && $spent >= $cltv,
             ];
         })->sortByDesc('progress')->values()->all();
+    }
+
+    /**
+     * Every customer with a CRA-handled delivered order (any time), one row each, with
+     * phone_key, customer_name, phone_number, purchases, total_spent and last_delivered.
+     */
+    public function craCustomers(): Builder
+    {
+        [$total] = $this->craOrdersSql(null, null);
+
+        return $this->grouped([])->havingRaw("{$total['sql']} >= 1", $total['bindings']);
     }
 
     /**
