@@ -192,9 +192,30 @@ class PancakeSync
      */
     public function recheckIssues(): int
     {
+        return $this->recheckIssuesReport()['updated'];
+    }
+
+    /**
+     * recheckIssues() with what happened: orders flagged, found in Pancake, whose lookup failed, and updated.
+     *
+     * @return array{flagged: int, found: int, failed: int, updated: int}
+     */
+    public function recheckIssuesReport(): array
+    {
         $numbers = app(CraIssues::class)->for(LeadGenerator::cras())->pluck('order_id')->filter()->unique()->values()->all();
 
-        return $numbers ? $this->applyChanges($this->client->ordersByNumber($numbers)) : 0;
+        if ($numbers === []) {
+            return ['flagged' => 0, 'found' => 0, 'failed' => 0, 'updated' => 0];
+        }
+
+        $orders = $this->client->ordersByNumber($numbers);
+
+        return [
+            'flagged' => count($numbers),
+            'found' => count($orders),
+            'failed' => $this->client->lastLookupFailures,
+            'updated' => $this->applyChanges($orders),
+        ];
     }
 
     /**

@@ -7,10 +7,14 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class PancakeClient
 {
+    /** How many order numbers the last ordersByNumber() call couldn't look up (Pancake failed or didn't answer). */
+    public int $lastLookupFailures = 0;
+
     /** Order fields Segmentation Productivity and Conversion Breakdown use; asked for with fields[] since full orders are large. */
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
@@ -301,7 +305,8 @@ class PancakeClient
 
     /**
      * The current id, tags and status of the orders with these order numbers (display_id), found with
-     * Pancake's order search, ten at a time. Numbers Pancake doesn't find, or that fail, are left out.
+     * Pancake's order search, ten at a time. Numbers Pancake doesn't find, or that fail, are left out;
+     * failures are counted in $lastLookupFailures and logged.
      * With $full, whole orders in orders()' shape (amount, seller, items…).
      *
      * @param  list<string>  $numbers
@@ -310,6 +315,7 @@ class PancakeClient
     public function ordersByNumber(array $numbers, bool $full = false): array
     {
         $orders = [];
+        $failed = [];
         $fields = $full ? self::ORDER_FIELDS : self::CHANGE_FIELDS;
 
         foreach (array_chunk(array_values(array_unique($numbers)), 10) as $chunk) {
@@ -322,6 +328,10 @@ class PancakeClient
                 $response = $responses[$number] ?? null;
 
                 if (! $response instanceof Response || $response->failed()) {
+                    $failed[$number] = $response instanceof Response
+                        ? 'HTTP '.$response->status().': '.mb_substr($response->body(), 0, 200)
+                        : ($response instanceof \Throwable ? $response->getMessage() : 'no response');
+
                     continue;
                 }
 
@@ -335,6 +345,12 @@ class PancakeClient
                     $orders[] = array_intersect_key($order, array_flip($fields));
                 }
             }
+        }
+
+        $this->lastLookupFailures = count($failed);
+
+        if ($failed) {
+            Log::warning('Pancake order lookup failed', ['failed' => count($failed), 'of' => count($numbers), 'first' => array_key_first($failed), 'error' => reset($failed)]);
         }
 
         return $orders;

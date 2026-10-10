@@ -16,6 +16,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 
 class ConversionBreakdownTest extends TestCase
@@ -45,6 +46,9 @@ class ConversionBreakdownTest extends TestCase
     /** Whether the fake engagement API fails. */
     private bool $engagementsDown = false;
 
+    /** Whether the fake POS order search refuses every lookup. */
+    private bool $searchDown = false;
+
     /** Orders the fake Shecom sales API returns; null makes it fail. */
     private ?array $sales = [];
 
@@ -65,9 +69,11 @@ class ConversionBreakdownTest extends TestCase
         Http::fake(function (Request $request) {
             return match (true) {
                 str_contains($request->url(), 'updateStatus=updated_at') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->changed]),
-                str_contains($request->url(), 'search=') => Http::response(['success' => true, 'total_pages' => 1, 'data' => array_values(array_filter(
-                    $this->current, fn (array $order) => str_contains($request->url(), 'search='.$order['display_id'].'&')
-                ))]),
+                str_contains($request->url(), 'search=') => $this->searchDown
+                    ? Http::response(['success' => false, 'message' => 'Unauthorized'], 401)
+                    : Http::response(['success' => true, 'total_pages' => 1, 'data' => array_values(array_filter(
+                        $this->current, fn (array $order) => str_contains($request->url(), 'search='.$order['display_id'].'&')
+                    ))]),
                 str_contains($request->url(), 'pos.pages.fm') => Http::response(['success' => true, 'total_pages' => 1, 'data' => $this->orders]),
                 str_contains($request->url(), 'customer_engagements') => $this->engagementsDown
                     ? Http::response(['success' => false], 500)
@@ -369,9 +375,24 @@ class ConversionBreakdownTest extends TestCase
         $this->current = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::SEGMENTATION], 'status' => 2, 'status_name' => 'confirmed']];
         $this->actingAs($this->owner)->from(route('dashboard'))->post(route('order-issues.recheck'))
             ->assertRedirect(route('dashboard'))
-            ->assertSessionHas('status', 'Re-checked in Pancake: 1 order updated.');
+            ->assertSessionHas('status', 'Re-checked 1 flagged order in Pancake: 1 updated.');
 
         $this->assertSame(PancakeOrder::SEGMENTATION, PancakeOrder::sole()->conversion_type);
+    }
+
+    public function test_check_again_says_when_pancake_refuses_the_lookup(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$this->order('CRD Lhei', [17], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        $this->searchDown = true;
+        Log::spy();
+        $this->actingAs($this->owner)->from(route('dashboard'))->post(route('order-issues.recheck'))
+            ->assertSessionHas('status', fn (string $status) => str_starts_with($status, "Pancake didn't answer the lookup for any of the 1 flagged orders"));
+
+        Log::shouldHaveReceived('warning')->with('Pancake order lookup failed', \Mockery::on(fn (array $context) => str_starts_with($context['error'], 'HTTP 401')));
+        $this->assertNull(PancakeOrder::sole()->conversion_type);
     }
 
     public function test_orders_still_sync_when_a_page_engagements_fail(): void
