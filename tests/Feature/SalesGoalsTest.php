@@ -81,6 +81,23 @@ class SalesGoalsTest extends TestCase
         $this->assertSame(80000.0, SalesGoals::dailyFor($regina->fresh()));
     }
 
+    public function test_manager_sets_and_clears_the_net_income_goal(): void
+    {
+        $this->assertNull(SalesGoals::netIncomeMonthly());
+
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => 450000])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame(450000.0, SalesGoals::netIncomeMonthly());
+        $this->actingAs($this->owner)->get(route('settings.sales-goals.index'))->assertOk()->assertSee('Net income goal')->assertSee('value="450000"', false);
+
+        // Blank = no net income goal.
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => '']);
+        $this->assertNull(SalesGoals::netIncomeMonthly());
+
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => -1])
+            ->assertSessionHasErrors('net_income_monthly');
+    }
+
     public function test_goals_must_be_amounts(): void
     {
         $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 'lots', 'crd_monthly' => -5])
@@ -154,8 +171,8 @@ class SalesGoalsTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('CRD monthly goal · October 2026')
-            ->assertSeeText('₱38,500 gross of ₱1,000,000')
+            ->assertSee('CRD monthly goal (Gross Sales) · October 2026')
+            ->assertSeeTextInOrder(['₱38,500', 'Target ₱1,000,000'])
             ->assertSeeTextInOrder(['Total confirmed orders', '1', 'Conversion rate', 'AOV', '₱38,500', 'Churn rate'])
             ->assertSee(route('conversion.orders'))
             ->assertSee('Goal &amp; conversion per CRA', false)

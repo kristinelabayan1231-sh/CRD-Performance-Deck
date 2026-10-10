@@ -7,6 +7,7 @@ use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
+use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\RoleController;
@@ -83,6 +84,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             match (true) {
                 request()->user()->can('product_consumption.view') => 'settings.product-consumption.index',
                 request()->user()->can('pancake_pages.manage') => 'settings.pancake-pages.index',
+                request()->user()->can('pancake_accounts.manage') => 'settings.pancake-accounts.index',
                 request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
                 default => 'settings.connections.index',
             }
@@ -94,6 +96,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
             Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
             Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');
+        });
+
+        Route::prefix('pancake-accounts')->name('pancake-accounts.')->middleware('can:pancake_accounts.manage')->group(function () {
+            Route::get('/', [PancakeAccountController::class, 'index'])->name('index');
+            Route::put('/', [PancakeAccountController::class, 'update'])->name('update');
         });
 
         Route::prefix('sales-goals')->name('sales-goals.')->middleware('can:sales_goals.manage')->group(function () {

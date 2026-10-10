@@ -22,7 +22,7 @@
         <div class="relative">
             <div class="flex items-start justify-between gap-2">
                 <p class="text-xs font-medium text-white/90">
-                    {{ $month['prorated'] ? 'CRD goal · '.$month['label'] : 'CRD monthly goal · '.$month['label'] }}
+                    {{ ($month['prorated'] ? 'CRD goal (Gross Sales)' : 'CRD monthly goal (Gross Sales)').' · '.$month['label'] }}
                 </p>
                 @if ($month['progress'] !== null)
                     <span @class([
@@ -33,7 +33,11 @@
                 @endif
             </div>
             <p class="mt-1 text-3xl font-bold tabular-nums">{{ $pct($month['progress']) }}</p>
-            <p class="text-xs text-white/90"><span class="font-semibold text-white tabular-nums">{{ $peso($month['sales']) }}</span> gross of {{ $peso($month['goal']) }}</p>
+            {{-- Gross sales so far on the left, the target at the far right --}}
+            <p class="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span class="text-base font-semibold text-white tabular-nums" title="Gross sales so far">{{ $peso($month['sales']) }}</span>
+                <span class="rounded-full bg-white/20 px-2.5 py-0.5 font-medium text-white/90 tabular-nums">Target <span class="font-bold text-white">{{ $peso($month['goal']) }}</span></span>
+            </p>
         </div>
 
         <div class="relative">
@@ -50,39 +54,44 @@
                 @else
                     <span>Monthly goal prorated to {{ $results['range']->days() }} {{ Str::plural('day', $results['range']->days()) }}</span>
                 @endif
-                <span>{{ $month['remaining'] > 0 ? $short($month['remaining']).' to go' : 'Goal reached' }}</span>
+                <span @class(['rounded-full bg-white px-2 font-bold', 'text-coral-700' => $month['remaining'] > 0, 'text-teal-700' => $month['remaining'] <= 0])>{{ $month['remaining'] > 0 ? $short($month['remaining']).' to go' : 'Goal reached' }}</span>
             </p>
         </div>
     </article>
 
-    {{-- Confirmed orders: opens the list --}}
-    <a href="{{ route('conversion.orders', $query) }}" class="group relative flex min-w-0 flex-col justify-between gap-1 rounded-xl bg-white p-4 shadow-sm ring-2 ring-transparent transition hover:ring-brand-200"
+    {{-- Confirmed orders (opens the list), conversion rate, AOV, churn: one colour each so they read apart --}}
+    @php($tile = 'relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm')
+    @php($bubble = '<span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>')
+    @php($label = 'relative text-[11px] font-semibold tracking-wide text-white/95 uppercase')
+    @php($note = 'relative text-xs text-white/90 tabular-nums')
+    <a href="{{ route('conversion.orders', $query) }}" class="group {{ $tile }} from-[#0e8f7c] to-[#0b6b5d] transition hover:-translate-y-0.5 hover:shadow-lg"
        title="{{ $own ? 'Your' : 'The CRAs\'' }} orders tagged CRD - BROADCAST or CRD - SEGMENTATION (not canceled). Click to see them.">
-        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
-        <p class="text-3xl font-bold tabular-nums">{{ number_format($team['orders']) }}</p>
-        <p class="text-xs text-muted">BC {{ number_format($team['bc_orders']) }} · SC {{ number_format($team['sc_orders']) }}</p>
-        <p class="text-xs font-semibold text-brand-600 group-hover:underline">View orders &rarr;</p>
+        {!! $bubble !!}
+        <p class="{{ $label }}">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
+        <p class="relative text-3xl font-bold tabular-nums">{{ number_format($team['orders']) }}</p>
+        <p class="{{ $note }}">BC {{ number_format($team['bc_orders']) }} · SC {{ number_format($team['sc_orders']) }}</p>
+        <p class="relative text-xs font-semibold text-white group-hover:underline">View orders &rarr;</p>
     </a>
 
-    {{-- Conversion rate --}}
-    <article class="flex min-w-0 flex-col justify-between gap-1 rounded-xl bg-white p-4 shadow-sm" title="(BC + SC orders) ÷ (engagements + leads)">
-        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
-        <p class="text-3xl font-bold tabular-nums">{{ $pct($team['total_rate'], 2) }}</p>
-        <p class="text-xs text-muted tabular-nums">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
+    <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
+        {!! $bubble !!}
+        <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
+        <p class="relative text-3xl font-bold tabular-nums">{{ $pct($team['total_rate'], 2) }}</p>
+        <p class="{{ $note }}">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
     </article>
 
-    {{-- AOV --}}
-    <article class="flex min-w-0 flex-col justify-between gap-1 rounded-xl bg-white p-4 shadow-sm" title="Average order value: gross sales ÷ confirmed orders">
-        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">AOV</p>
-        <p class="text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
-        <p class="text-xs text-muted tabular-nums">{{ $peso((float) $team['gross']) }} ÷ {{ number_format($team['orders']) }} orders</p>
+    <article class="{{ $tile }} from-[#d99a0b] to-[#a8740a]" title="Average order value: gross sales ÷ confirmed orders">
+        {!! $bubble !!}
+        <p class="{{ $label }}">AOV</p>
+        <p class="relative text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
+        <p class="{{ $note }}">{{ $peso((float) $team['gross']) }} ÷ {{ number_format($team['orders']) }} orders</p>
     </article>
 
-    {{-- Churn rate --}}
-    <article class="flex min-w-0 flex-col justify-between gap-1 rounded-xl bg-white p-4 shadow-sm"
+    <article class="{{ $tile }} from-[#e05a5f] to-[#c4484c]"
              title="CRD customers lost ÷ CRD customers due × 100. Due = their {{ $churn['grace_days'] }} days to reorder after running out ended in this period; lost = no order in that time. Lower is better.">
-        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Churn rate</p>
-        <p @class(['text-3xl font-bold tabular-nums', 'text-coral-700' => ($churn['rate'] ?? 0) > 0])>{{ $pct($churn['rate'], 2) }}</p>
-        <p class="text-xs text-muted tabular-nums">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · no reorder {{ $churn['grace_days'] }}d after running out</p>
+        {!! $bubble !!}
+        <p class="{{ $label }}">Churn rate</p>
+        <p class="relative text-3xl font-bold tabular-nums">{{ $pct($churn['rate'], 2) }}</p>
+        <p class="{{ $note }}">{{ number_format($churn['lost']) }} lost of {{ number_format($churn['customers']) }} · no reorder {{ $churn['grace_days'] }}d after running out</p>
     </article>
 </section>

@@ -6,8 +6,8 @@ use App\Models\Setting;
 use App\Models\User;
 
 /**
- * Sales goals from Settings → Sales Goals: each CRA's daily base and CRD's
- * monthly target. Sales are Conversion Breakdown's gross sales (orders tagged
+ * Sales goals from Settings → Sales Goals: each CRA's daily base, CRD's
+ * monthly target and CRD's monthly net income goal. Sales are Conversion Breakdown's gross sales (orders tagged
  * CRD - BROADCAST + CRD - SEGMENTATION).
  */
 class SalesGoals
@@ -15,6 +15,8 @@ class SalesGoals
     public const CRA_DAILY = 'sales_goal.cra_daily';
 
     public const CRD_MONTHLY = 'sales_goal.crd_monthly';
+
+    public const NET_INCOME_MONTHLY = 'sales_goal.net_income_monthly';
 
     public static function craDaily(): float
     {
@@ -32,6 +34,16 @@ class SalesGoals
     public static function crdMonthly(): float
     {
         return (float) Setting::value(self::CRD_MONTHLY, config('segmentation.sales_goals.crd_monthly'));
+    }
+
+    /**
+     * CRD's net income goal for the month, or null when none is set.
+     */
+    public static function netIncomeMonthly(): ?float
+    {
+        $value = Setting::value(self::NET_INCOME_MONTHLY);
+
+        return $value === null ? null : (float) $value;
     }
 
     /**

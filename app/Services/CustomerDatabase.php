@@ -9,6 +9,7 @@ use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Query\Builder;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\DB;
  *
  * QTY = delivered orders. Total spent = their Pancake POS totals.
  * An order is handled by a CRA when logistics lists it as CRD-delivered or its
- * POS seller is a CRD account (config customers.crd_accounts, past CRAs too) or a
+ * POS seller is a CRD account (Settings → Pancake Accounts, past CRAs too) or a
  * CRA's Pancake account. Within a period (by delivered date):
  * CRD Lead = a CRA-handled order in the period; Retained = it is their only
  * CRA-handled order so far; Repeat Customer = they had an earlier one too.
@@ -45,8 +46,14 @@ class CustomerDatabase
         'name' => 'Name',
     ];
 
+    /** Cache key prefix: a number whose earlier-history lookup failed, retried after a few hours. */
+    public const HISTORY_FAILED = 'customers.history_failed.';
+
     /** @var Collection<string, User>|null */
     private ?Collection $craAccounts = null;
+
+    /** @var list<string>|null */
+    private ?array $crdAccounts = null;
 
     /**
      * One page of customers.
@@ -137,7 +144,7 @@ class CustomerDatabase
                 'amount' => (float) $order->total_price,
                 'team' => $logistics?->team,
                 'seller' => $cra?->displayName() ?? ($order->seller_name ? ucwords(strtolower($order->seller_name)) : null),
-                'by_cra' => $logistics?->team === LogisticsOrder::TEAM_CRD || $cra !== null || PancakeOrder::isCrdAccount($order->seller_name),
+                'by_cra' => $logistics?->team === LogisticsOrder::TEAM_CRD || $cra !== null || PancakeOrder::isCrdAccount($order->seller_name, $this->crdAccounts()),
                 'items' => $order->items ?? [],
             ];
         });
@@ -205,28 +212,54 @@ class CustomerDatabase
     {
         [$total] = $this->craOrdersSql(null, null, withPrior: false);
 
+        // Numbers whose lookup just failed wait a few hours, so they don't hold up the rest.
         return $this->grouped([])
-            ->whereNotExists(fn ($q) => $q->from('customer_histories')->whereColumn('customer_histories.phone_key', 'lo.phone_key'))
+            ->whereNotExists(fn ($q) => $this->checkedHistory($q, 'lo.phone_key'))
             ->havingRaw("{$total['sql']} >= 1", $total['bindings'])
             ->orderByDesc('last_delivered')
-            ->limit($limit)
-            ->pluck('phone_key')->all();
+            ->limit($limit * 3)
+            ->pluck('phone_key')
+            ->reject(fn (string $phone) => Cache::has(self::HISTORY_FAILED.$phone))
+            ->take($limit)
+            ->values()->all();
     }
 
     /**
      * Search each customer's whole order history in Pancake and save how many CRA-handled orders
-     * were delivered before the database's first day. Numbers whose search fails are retried later.
+     * were delivered before the database's first day, 50 customers at a time so a run cut short
+     * (restart, deploy, the host sleeping) keeps what it did. Numbers whose search fails are retried
+     * after a few hours.
      *
      * @param  list<string>  $phoneKeys
      * @return int customers checked
      */
     public function checkHistories(array $phoneKeys, PancakeClient $client): int
     {
+        $checked = 0;
+
+        foreach (array_chunk($phoneKeys, 50) as $chunk) {
+            $found = $client->ordersByPhone($chunk);
+            $checked += $this->saveHistories($found);
+
+            foreach (array_diff($chunk, array_keys($found)) as $failed) {
+                Cache::put(self::HISTORY_FAILED.$failed, true, now()->addHours(6));
+            }
+        }
+
+        return $checked;
+    }
+
+    /**
+     * @param  array<string, list<array<string, mixed>>>  $ordersByPhone
+     * @return int customers saved
+     */
+    private function saveHistories(array $ordersByPhone): int
+    {
         $before = CarbonImmutable::parse(config('customers.delivered_from'));
         $delivered = config('customers.delivered_statuses');
         $now = now();
 
-        $rows = collect($client->ordersByPhone($phoneKeys))->map(function (array $orders, string $phone) use ($before, $delivered, $now) {
+        $rows = collect($ordersByPhone)->map(function (array $orders, string $phone) use ($before, $delivered, $now) {
             $prior = collect($orders)->filter(function (array $order) use ($before, $delivered) {
                 $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
                 $orderedOn = isset($order['inserted_at'])
@@ -266,9 +299,25 @@ class CustomerDatabase
         $crd = DB::query()->fromSub($this->grouped([])->havingRaw("{$total['sql']} >= 1", $total['bindings']), 'c');
 
         return [
-            'checked' => (clone $crd)->whereExists(fn ($q) => $q->from('customer_histories')->whereColumn('customer_histories.phone_key', 'c.phone_key'))->count(),
+            'checked' => (clone $crd)->whereExists(fn ($q) => $this->checkedHistory($q, 'c.phone_key'))->count(),
             'total' => $crd->count(),
         ];
+    }
+
+    /**
+     * The customer's saved history, counted as checked unless the CRD team accounts changed since it was
+     * checked and the customer had a delivery in the month before that change (Settings → Pancake Accounts).
+     */
+    private function checkedHistory(Builder $query, string $phoneColumn): Builder
+    {
+        $recheckFrom = PancakeAccounts::historyRecheckFrom();
+
+        return $query->from('customer_histories')->whereColumn('customer_histories.phone_key', $phoneColumn)
+            ->when($recheckFrom, fn (Builder $q) => $q->where(fn (Builder $current) => $current
+                ->where('customer_histories.checked_at', '>=', $recheckFrom)
+                ->orWhereNotExists(fn (Builder $recent) => $recent->from('logistics_orders as recent')
+                    ->whereColumn('recent.phone_key', 'customer_histories.phone_key')
+                    ->where('recent.delivered_date', '>=', $recheckFrom->subMonths(PancakeAccounts::RECHECK_MONTHS)->toDateString()))));
     }
 
     /**
@@ -276,7 +325,7 @@ class CustomerDatabase
      */
     private function isCraSeller(?string $seller): bool
     {
-        return $seller !== null && ($this->craAccounts()->has($seller) || PancakeOrder::isCrdAccount($seller));
+        return $seller !== null && ($this->craAccounts()->has($seller) || PancakeOrder::isCrdAccount($seller, $this->crdAccounts()));
     }
 
     /**
@@ -315,6 +364,17 @@ class CustomerDatabase
             $craOrders >= 2 => 'Repeat Customer',
             default => 'Retained',
         };
+    }
+
+    /**
+     * The customer's page in the Pancake POS web app, or null when the link or the shop isn't set.
+     */
+    public static function posUrl(string $phone): ?string
+    {
+        $template = config('services.pancake.pos_customer_url');
+        $shop = config('services.pancake.shop_id');
+
+        return $template && $shop ? strtr($template, ['{shop}' => $shop, '{phone}' => urlencode($phone)]) : null;
     }
 
     /**
@@ -413,7 +473,7 @@ class CustomerDatabase
      */
     private function craOrdersSql(?CarbonImmutable $from, ?CarbonImmutable $to, bool $withPrior = true): array
     {
-        $accounts = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...PancakeOrder::crdAccounts()]));
+        $accounts = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...$this->crdAccounts()]));
         $bySeller = $accounts ? ' or po.seller_name in ('.implode(', ', array_fill(0, count($accounts), '?')).')' : '';
         $handled = "(lo.team = '".LogisticsOrder::TEAM_CRD."'{$bySeller})";
         $count = fn (string $when, array $dates) => [
@@ -446,5 +506,15 @@ class CustomerDatabase
             ->whereNotNull('pancake_name')
             ->get()
             ->keyBy(fn (User $cra) => PancakeEngagement::staffKey($cra->pancake_name));
+    }
+
+    /**
+     * The CRD team's accounts as staff keys, read once per use of this service.
+     *
+     * @return list<string>
+     */
+    private function crdAccounts(): array
+    {
+        return $this->crdAccounts ??= PancakeOrder::crdAccounts();
     }
 }

@@ -93,14 +93,14 @@
         <div class="flex flex-col gap-3">
             @if ($unprocessed)
                 @include('segmentation._section', [
-                    'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending', 'dot' => 'bg-coral',
+                    'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
                     'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.',
                     'empty' => $canManage ? 'Nothing pending for this filter. Past days only have leads if they were synced then: use Sync now to fill one in.' : 'Nothing pending for this filter.',
                 ])
             @endif
             @if ($processed)
                 @include('segmentation._section', [
-                    'leads' => $processed, 'id' => 'processed', 'title' => 'Catered', 'dot' => 'bg-teal',
+                    'leads' => $processed, 'id' => 'processed', 'title' => 'Catered',
                     'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.',
                     'empty' => 'No catered customers for this filter yet.',
                 ])

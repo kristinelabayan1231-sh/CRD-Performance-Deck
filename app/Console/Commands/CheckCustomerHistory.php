@@ -5,6 +5,8 @@ namespace App\Console\Commands;
 use App\Services\CustomerDatabase;
 use App\Services\PancakeClient;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class CheckCustomerHistory extends Command
 {
@@ -18,14 +20,22 @@ class CheckCustomerHistory extends Command
         $phones = $customers->uncheckedHistories(max(1, (int) $this->option('limit')));
 
         if ($phones === []) {
-            $this->info('Every CRD customer\'s earlier history is checked.');
+            $this->info('No CRD customers to check right now (all checked, or failed lookups waiting to retry).');
 
             return self::SUCCESS;
         }
 
         $checked = $customers->checkHistories($phones, $client);
         $progress = $customers->historyProgress();
-        $this->info("Checked {$checked} of ".count($phones)." customers; {$progress['checked']} of {$progress['total']} CRD customers done.");
+        Cache::forget('customers.history_progress');
+        $summary = "Checked {$checked} of ".count($phones)." customers; {$progress['checked']} of {$progress['total']} CRD customers done.";
+        $this->info($summary);
+
+        // Runs in the background, so its output is lost: log it (and any failed lookups) for the host's logs.
+        $failed = count($phones) - $checked;
+        $failed > 0
+            ? Log::warning("customers:check-history {$summary} {$failed} Pancake lookups failed; retried in a few hours.")
+            : Log::info("customers:check-history {$summary}");
 
         return self::SUCCESS;
     }

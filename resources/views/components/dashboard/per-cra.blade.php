@@ -14,22 +14,19 @@
     and Total conv % = (BC + SC orders) ÷ (engagements + leads). Goal bars brand purple (teal once hit);
     conversion bars sky, scaled to the highest rate.
 --}}
-<section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white/60 p-4']) }} aria-labelledby="per-cra-title">
-    <header class="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h2 id="per-cra-title" class="flex flex-wrap items-center gap-2 text-base font-semibold">
-            Goal &amp; conversion per CRA
-            <span class="rounded-full bg-canvas px-2.5 py-0.5 text-xs font-semibold text-muted">{{ $range->label() }}</span>
-            @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($range->from, $range->to))
-                <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
-            @endif
-        </h2>
-        <div class="flex items-center gap-3 text-xs">
-            @can('sales_goals.manage')
-                <a href="{{ route('settings.sales-goals.index') }}" class="font-semibold text-muted hover:text-brand-600">Set goals</a>
-            @endcan
-            <a href="{{ route('conversion.index') }}" class="font-semibold text-brand-600 hover:underline">Conversion Breakdown &rarr;</a>
-        </div>
-    </header>
+<x-panel {{ $attributes }} title="Goal & conversion per CRA" accent="teal" icon="chart" title-id="per-cra-title">
+    <x-slot:badges>
+        <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-teal-700 shadow-sm">{{ $range->label() }}</span>
+        @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($range->from, $range->to))
+            <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
+        @endif
+    </x-slot:badges>
+    <x-slot:actions>
+        @can('sales_goals.manage')
+            <a href="{{ route('settings.sales-goals.index') }}" class="font-semibold text-muted hover:text-brand-600">Set goals</a>
+        @endcan
+        <a href="{{ route('conversion.index') }}" class="font-semibold text-brand-600 hover:underline">Conversion Breakdown &rarr;</a>
+    </x-slot:actions>
 
     <div class="overflow-x-auto rounded-xl bg-white p-4 shadow-sm">
         <table class="w-full min-w-[640px] text-sm">
@@ -77,4 +74,4 @@
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
         </p>
     </div>
-</section>
+</x-panel>

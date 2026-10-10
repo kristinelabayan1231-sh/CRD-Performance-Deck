@@ -116,9 +116,11 @@ class PancakeSync
 
         DB::transaction(fn () => $this->saveOrders($orders, now()));
 
+        $crdAccounts = PancakeOrder::crdAccounts();
+
         return LogisticsOrder::remember($orders->map(fn (array $order) => [
             'order_id' => $order['pancake_order_id'],
-            'team' => PancakeOrder::isCrdAccount($order['seller_name']) ? LogisticsOrder::TEAM_CRD : LogisticsOrder::TEAM_FSD,
+            'team' => PancakeOrder::isCrdAccount($order['seller_name'], $crdAccounts) ? LogisticsOrder::TEAM_CRD : LogisticsOrder::TEAM_FSD,
             'source' => LogisticsOrder::SOURCE_POS,
             'customer_name' => trim((string) $order['customer_name']) ?: 'Unknown',
             'phone_number' => (string) $order['phone_number'],

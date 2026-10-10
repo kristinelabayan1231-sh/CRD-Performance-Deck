@@ -178,7 +178,10 @@ class SegmentationProductivityTest extends TestCase
             ->assertSee('Assigned base 70 per CRA per day')
             ->assertSee('Sales per CRA')
             ->assertSee('Lhea')
-            ->assertSee('Regina');
+            ->assertSee('Regina')
+            // By default today is shown and compared with today.
+            ->assertViewHas('period', fn ($period) => $period['key'] === now()->toDateString())
+            ->assertViewHas('compare', fn ($compare) => $compare['key'] === now()->toDateString());
 
         $this->actingAs($this->owner)->get(route('productivity.index', ['cras' => [$regina->id], 'view' => 'week']))
             ->assertOk()

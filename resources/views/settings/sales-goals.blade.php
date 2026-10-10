@@ -15,7 +15,7 @@
             <h2 class="text-base font-semibold">Sales goals</h2>
             <p class="text-sm text-muted">Sales are gross sales from Conversion Breakdown: orders tagged CRD - BROADCAST plus CRD - SEGMENTATION. The dashboard shows progress against these goals.</p>
 
-            <div class="mt-5 grid gap-5 sm:grid-cols-2 lg:max-w-2xl">
+            <div class="mt-5 grid gap-5 sm:grid-cols-2 lg:max-w-4xl lg:grid-cols-3">
                 <label class="block">
                     <span class="mb-1 block text-sm font-semibold">CRA daily goal</span>
                     <span class="relative block">
@@ -25,12 +25,21 @@
                     <span class="mt-1 block text-xs text-muted">Each CRA's sales base per day, unless a CRA has their own goal below.</span>
                 </label>
                 <label class="block">
-                    <span class="mb-1 block text-sm font-semibold">CRD monthly goal</span>
+                    <span class="mb-1 block text-sm font-semibold">CRD monthly goal (Gross Sales)</span>
                     <span class="relative block">
                         <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted">₱</span>
                         <input type="number" name="crd_monthly" min="0" step="0.01" required value="{{ old('crd_monthly', $crdMonthly + 0) }}" class="{{ $control }}">
                     </span>
                     <span class="mt-1 block text-xs text-muted">The whole CRD team's sales target for the month.</span>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-semibold">Net income goal <span class="font-normal text-muted">(monthly, optional)</span></span>
+                    <span class="relative block">
+                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted">₱</span>
+                        <input type="number" name="net_income_monthly" min="0" step="0.01" placeholder="Not set"
+                               value="{{ old('net_income_monthly', $netIncomeMonthly !== null ? $netIncomeMonthly + 0 : '') }}" class="{{ $control }}">
+                    </span>
+                    <span class="mt-1 block text-xs text-muted">The CRD team's net income target for the month. Leave blank if there's none.</span>
                 </label>
             </div>
             @if ($lastChange?->editor)
