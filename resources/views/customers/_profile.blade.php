@@ -8,7 +8,6 @@
     $productSpent = $priced->sum('spent');
     $productCltv = $priced->sum('cltv');
     $reachedCount = $priced->where('reached', true)->count();
-    $pos = \App\Services\CustomerDatabase::posUrl($customer['phone']);
     $since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y');
     $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
     $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
@@ -53,12 +52,6 @@
                     <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['cra_orders']) }}</dd>
                 </div>
             </dl>
-            @if ($pos)
-                <a href="{{ $pos }}" target="_blank" rel="noopener" data-pos-link data-phone="{{ $customer['phone'] }}" title="Opens Pancake POS customers; the number is copied, paste it in Search customer" class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-xs font-semibold text-brand-600 hover:border-brand-400">
-                    <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-                    Pancake POS
-                </a>
-            @endif
         </div>
     </div>
 

@@ -28,6 +28,10 @@ class CheckCustomerHistory extends Command
         $checked = $customers->checkHistories($phones, $client);
         $progress = $customers->historyProgress();
         Cache::forget('customers.history_progress');
+        if ($checked > 0) {
+            // Customers found to have earlier CRA orders move from Retained to Repeat.
+            CustomerDatabase::flushCache();
+        }
         $summary = "Checked {$checked} of ".count($phones)." customers; {$progress['checked']} of {$progress['total']} CRD customers done.";
         $this->info($summary);
 

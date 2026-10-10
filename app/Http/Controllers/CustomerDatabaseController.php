@@ -41,9 +41,11 @@ class CustomerDatabaseController extends Controller
             : $this->range($period, WorkingDate::realToday());
         $query = ['from' => $range['from'], 'to' => $range['to'], 'search' => $filters['search'] ?? null];
 
+        $counts = $customers->cachedCounts($query);
+
         return view('customers.index', [
-            'customers' => $customers->list([...$query, 'segment' => $filters['segment'] ?? null, 'sort' => $filters['sort'] ?? 'spent']),
-            'counts' => $customers->counts($query),
+            'customers' => $customers->cachedList([...$query, 'segment' => $filters['segment'] ?? null, 'sort' => $filters['sort'] ?? 'spent'], $counts),
+            'counts' => $counts,
             'filters' => [...$filters, 'period' => $period],
             'range' => $range,
             'periods' => self::PERIODS,
@@ -51,7 +53,7 @@ class CustomerDatabaseController extends Controller
             'sorts' => CustomerDatabase::SORTS,
             'fetchedAt' => LogisticsRetention::fetchedAt(),
             'today' => WorkingDate::realToday(),
-            'history' => Cache::remember('customers.history_progress', now()->addMinutes(5), fn () => $customers->historyProgress()),
+            'history' => Cache::remember('customers.history_progress', now()->addMinutes(CustomerDatabase::CACHE_MINUTES), fn () => $customers->historyProgress()),
         ]);
     }
 

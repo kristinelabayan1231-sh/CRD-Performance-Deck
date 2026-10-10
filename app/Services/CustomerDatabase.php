@@ -11,8 +11,9 @@ use App\Models\Role;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -56,11 +57,73 @@ class CustomerDatabase
     private ?array $crdAccounts = null;
 
     /**
-     * One page of customers.
+     * Results are kept this long; every page and tile works through all the deliveries.
+     */
+    public const CACHE_MINUTES = 3;
+
+    /**
+     * Key for a cached Customer Database result; flushCache() makes every earlier one unused.
+     */
+    public static function cacheKey(string $name, array $parts): string
+    {
+        return 'customers.'.Cache::get('customers.cache_version', 0).'.'.$name.'.'.md5(serialize($parts));
+    }
+
+    /**
+     * Drop every cached list page and count (after a change that moves customers between groups).
+     */
+    public static function flushCache(): void
+    {
+        Cache::forever('customers.cache_version', Cache::get('customers.cache_version', 0) + 1);
+    }
+
+    /**
+     * counts(), kept for CACHE_MINUTES.
+     *
+     * @param  array{from?: ?CarbonImmutable, to?: ?CarbonImmutable, search?: ?string}  $filters
+     * @return array{all: int, crd: int, retained: int, repeat: int}
+     */
+    public function cachedCounts(array $filters): array
+    {
+        $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
+
+        return Cache::remember(self::cacheKey('counts', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
+            now()->addMinutes(self::CACHE_MINUTES), fn () => $this->counts($filters));
+    }
+
+    /**
+     * One page of customers, kept for CACHE_MINUTES. The total comes from the tile counts
+     * already worked out, which saves a second pass over every delivery.
+     *
+     * @param  array{from?: ?CarbonImmutable, to?: ?CarbonImmutable, search?: ?string, segment?: ?string, sort?: ?string}  $filters
+     * @param  array{all: int, crd: int, retained: int, repeat: int}  $counts
+     */
+    public function cachedList(array $filters, array $counts, int $perPage = 25): LengthAwarePaginator
+    {
+        $page = Paginator::resolveCurrentPage();
+        $total = match ($filters['segment'] ?? null) {
+            'crd' => $counts['crd'],
+            'retained' => $counts['retained'],
+            'repeat' => $counts['repeat'],
+            'fsd' => $counts['all'] - $counts['crd'],
+            default => $counts['all'],
+        };
+
+        // Kept as plain arrays: the cache doesn't unserialize objects.
+        $key = [($filters['from'] ?? null)?->toDateString(), ($filters['to'] ?? null)?->toDateString(), $filters['search'] ?? null, $filters['segment'] ?? null, $filters['sort'] ?? null, $perPage, $page];
+        $rows = collect(Cache::remember(self::cacheKey('list', $key), now()->addMinutes(self::CACHE_MINUTES),
+            fn () => $this->listQuery($filters)->forPage($page, $perPage)->get()->map(fn (object $row) => (array) $row)->all()))
+            ->map(fn (array $row) => (object) $row);
+
+        return (new LengthAwarePaginator($rows, $total, $perPage, $page, ['path' => Paginator::resolveCurrentPath()]))->withQueryString();
+    }
+
+    /**
+     * Customers matching the filters, in the order picked.
      *
      * @param  array{from?: ?CarbonImmutable, to?: ?CarbonImmutable, search?: ?string, segment?: ?string, sort?: ?string}  $filters
      */
-    public function list(array $filters, int $perPage = 25): LengthAwarePaginator
+    private function listQuery(array $filters): Builder
     {
         $query = $this->grouped($filters);
         [$total, $inPeriod] = $this->craOrdersSql($filters['from'] ?? null, $filters['to'] ?? null);
@@ -81,7 +144,7 @@ class CustomerDatabase
             default => $query->orderByDesc('total_spent')->orderByDesc('purchases'),
         };
 
-        return $query->orderBy('lo.phone_key')->paginate($perPage)->withQueryString();
+        return $query->orderBy('lo.phone_key');
     }
 
     /**
@@ -364,17 +427,6 @@ class CustomerDatabase
             $craOrders >= 2 => 'Repeat Customer',
             default => 'Retained',
         };
-    }
-
-    /**
-     * The customer's page in the Pancake POS web app, or null when the link or the shop isn't set.
-     */
-    public static function posUrl(string $phone): ?string
-    {
-        $template = config('services.pancake.pos_customer_url');
-        $shop = config('services.pancake.shop_id');
-
-        return $template && $shop ? strtr($template, ['{shop}' => $shop, '{phone}' => urlencode($phone)]) : null;
     }
 
     /**

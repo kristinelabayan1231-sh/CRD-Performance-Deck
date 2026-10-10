@@ -111,6 +111,27 @@ class CustomerDatabaseTest extends TestCase
             ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 3, 'repeat' => 1]);
     }
 
+    public function test_pages_and_counts_are_kept_for_a_few_minutes_and_cleared_by_an_account_change(): void
+    {
+        // Serialize like the real (database) cache, which doesn't unserialize objects.
+        config(['cache.stores.array.serialize' => true]);
+        Cache::forgetDriver('array');
+        $this->customers();
+        foreach ([1, 2] as $visit) {
+            $this->actingAs($this->owner)->get(route('customers.index', ['segment' => 'repeat']))->assertOk()
+                ->assertViewHas('customers', fn ($page) => $page->total() === 1 && $page->first()->customer_name === 'Ben Reyes');
+        }
+
+        // A new delivery doesn't show until the cache lapses or is cleared.
+        $this->delivered('F1', 'crd', 'Fay Cruz', '9176666666', '2026-10-09');
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertViewHas('counts', fn ($counts) => $counts['all'] === 5);
+
+        $this->actingAs($this->owner)->put(route('settings.pancake-accounts.update'), ['accounts' => config('customers.crd_accounts')]);
+        $this->actingAs($this->owner)->get(route('customers.index'))
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 6)
+            ->assertViewHas('customers', fn ($page) => $page->total() === 6);
+    }
+
     public function test_dashboard_shows_retained_and_repeat_customers_for_the_month_to_date(): void
     {
         Http::fake(fn () => Http::response(['success' => true, 'count' => 0, 'stock_outs' => [], 'data' => [], 'users_engagements' => []]));
@@ -125,20 +146,6 @@ class CustomerDatabaseTest extends TestCase
 
         $cra = User::firstWhere('email', 'anna@gmail.com');
         $this->actingAs($cra)->get(route('dashboard'))->assertOk()->assertDontSee('Repeat customers');
-    }
-
-    public function test_pos_link_opens_the_shops_customer_list_with_the_number_to_paste(): void
-    {
-        $this->customers();
-        config(['services.pancake.shop_id' => '30037101']);
-
-        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
-            ->assertSee('href="https://pos.pancake.ph/shop/30037101/customer"', false)
-            ->assertSee('data-phone="09171111111"', false);
-
-        // No shop or no link set: no POS link.
-        config(['services.pancake.pos_customer_url' => null]);
-        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()->assertDontSee('Open in Pancake POS');
     }
 
     public function test_today_retained_is_a_first_cra_order_and_repeat_has_an_earlier_one(): void
