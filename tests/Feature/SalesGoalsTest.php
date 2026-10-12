@@ -300,8 +300,8 @@ class SalesGoalsTest extends TestCase
         ], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['Customer churn', 'Reorder deadline Oct 1–10', 'Overall churn rate', '57.14%', '4 lost of 7',
-                'CRD churn rate', '40.00%', '2 lost of 5', 'FSD churn rate', '66.67%', '2 lost of 3', 'View breakdown'])
+            ->assertSeeTextInOrder(['Customer churn', 'Deadline Oct 1–10', 'Overall', '4 lost of 7', '57.14%',
+                'CRD', '2 lost of 5', '40.00%', 'FSD', '2 lost of 3', '66.67%', 'View breakdown'])
             ->assertSeeTextInOrder(['Came back in time', '3', '1', '3', 'Delivered in', 'CRD', 'Aug 5', 'FSD', 'Aug 3'])
             ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again'])
             ->assertSee(route('customers.churn', ['status' => 'lost', 'list' => 'all']))
