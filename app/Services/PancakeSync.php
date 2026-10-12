@@ -351,9 +351,14 @@ class PancakeSync
     /**
      * Sync $day after the response is sent (a full day takes minutes). Failures
      * are logged, and pages keep showing the last good sync time.
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
      */
     public function syncLater(CarbonImmutable $day, bool $force = false): void
     {
+        if (self::isBuiltInServer()) {
+            return;
+        }
+
         defer(function () use ($day, $force) {
             // The page is already sent: let the sync finish past the request time limit.
             set_time_limit(0);
@@ -371,9 +376,14 @@ class PancakeSync
      * Re-check the header's flagged orders after the response is sent, at most every
      * ISSUES_RECHECK_SECONDS. Pages call it so fixed tags clear even when the scheduler
      * is paused (Render's free plan sleeps when idle).
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
      */
     public function recheckIssuesLater(): void
     {
+        if (self::isBuiltInServer()) {
+            return;
+        }
+
         if (! Cache::add('pancake-issues-recheck', true, self::ISSUES_RECHECK_SECONDS)) {
             return;
         }
@@ -473,5 +483,14 @@ class PancakeSync
             'tags' => json_encode($tagIds),
             'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
         ];
+    }
+
+    /**
+     * `php artisan serve` (PHP's built-in server) keeps the browser waiting until deferred work
+     * finishes, so local pages would hang for minutes; `php artisan schedule:work` syncs instead.
+     */
+    private static function isBuiltInServer(): bool
+    {
+        return PHP_SAPI === 'cli-server';
     }
 }

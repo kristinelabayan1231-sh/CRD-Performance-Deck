@@ -49,3 +49,24 @@
     background-size: 26px 26px, 61px 61px, auto, auto;
     background-position: 0 0, 13px 30px, 0 0, 0 0;
 }
+
+/* Segmentation full view: the pinned horizontal scrollbar stays visible and easy to grab. */
+.x-scrollbar::-webkit-scrollbar {
+    height: 14px;
+}
+.x-scrollbar::-webkit-scrollbar-track {
+    background: var(--color-canvas);
+}
+.x-scrollbar::-webkit-scrollbar-thumb {
+    border: 3px solid var(--color-canvas);
+    border-radius: 999px;
+    background: var(--color-brand-400);
+}
+.x-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--color-brand-600);
+}
+@supports not selector(::-webkit-scrollbar) {
+    .x-scrollbar {
+        scrollbar-color: var(--color-brand-400) var(--color-canvas);
+    }
+}

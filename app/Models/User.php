@@ -35,6 +35,15 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Google-only accounts have no password; Laravel ignores the "remember me"
+     * cookie unless this is a string, so those users would be signed out.
+     */
+    public function getAuthPassword(): string
+    {
+        return $this->password ?? '';
+    }
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
