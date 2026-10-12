@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-12 · Dashboard · Retained and Repeat customers tiles show the count out of all the leads (every FSD and CRD delivery in the dates picked, from Shecom, including customers neither retained nor repeated), e.g. 382/3,218 with the "/3,218" smaller, and the % beside it; the note under them reads "FSD Leads" / "CRD Leads"; "How the numbers are worked out" updated · shots: 02-dashboard
 - 2026-10-12 · Customer Database · Churn list: Total spent counts all of the customer's delivered orders (FSD and CRA-handled), so FSD customers no longer show ₱0.00; the Customers tab and High AOV still count CRA-handled orders only · shots: customer-churn
 - 2026-10-12 · Dashboard · Customer churn moved into a small light-red card at the right of the Results tiles (below them on narrower screens): Overall, CRD and FSD as compact rows with lost of total; any row or "View breakdown" opens the breakdown; the Results tiles are now always 4 across · shots: 02-dashboard
 - 2026-10-12 · Customer Database · The Customers tab (as it opens, and Show → Possible match) and High AOV CVR & VIP are worked out in the background every 2 minutes, so they open from the cache; new deliveries can take a few minutes to show · shots: —

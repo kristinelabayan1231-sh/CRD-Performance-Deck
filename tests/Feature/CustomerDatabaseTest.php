@@ -214,6 +214,8 @@ class CustomerDatabaseTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSeeTextInOrder(['AOV', 'Retained', '2', 'Repeat customers', '1', 'Customer churn', 'Overall'])
+            // Both out of all October's leads: 3 FSD + 1 CRD deliveries.
+            ->assertSeeTextInOrder(['Retained', '2/4', '50.0%', 'FSD Leads', 'Repeat customers', '1/4', '25.0%', 'CRD Leads'])
             ->assertSee(route('customers.index', ['from' => '2026-10-01', 'to' => '2026-10-09', 'segment' => 'repeat']));
 
         $cra = User::firstWhere('email', 'anna@gmail.com');

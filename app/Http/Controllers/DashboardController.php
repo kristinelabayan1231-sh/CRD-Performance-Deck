@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LogisticsOrder;
 use App\Services\CustomerChurn;
 use App\Services\CustomerDatabase;
 use App\Services\LeadGenerator;
@@ -74,6 +75,10 @@ class DashboardController extends Controller
             // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for a few minutes.
             if ($user->can('customers.view')) {
                 $customers = $customerDatabase->cachedCounts(['from' => $range->from, 'to' => $range->to, 'search' => null]);
+                // Out of all the leads: every FSD and CRD delivery in these dates (the Shecom logistics report), the
+                // customers not retained or repeated included.
+                $customers['leads'] = LogisticsOrder::whereBetween('delivered_date', [$range->from->toDateString(), $range->to->toDateString()])
+                    ->whereIn('team', [LogisticsOrder::TEAM_FSD, LogisticsOrder::TEAM_CRD])->count();
             }
         }
 

@@ -93,29 +93,30 @@
     </article>
 
     @if ($customers)
-        {{-- Customers delivered in these dates, counted as in the Customer Database; opens it filtered the same way --}}
+        {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every FSD and
+         CRD delivery in these dates, Shecom); opens the Customer Database filtered the same way --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'retained']) }}" class="group {{ $tile }} from-[#4f46e5] to-[#3730a3] transition hover:-translate-y-0.5 hover:shadow-lg"
-           title="Customers whose delivery in these dates is their first CRA-handled order ever. Click to see them.">
+           title="FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Retained</p>
             <p class="relative flex items-baseline justify-between gap-2">
-                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}</span>
-                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['crd']) }} CRD Leads">{{ $pct($customers['crd'] ? $customers['retained'] / $customers['crd'] : null) }}</span>
+                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}<span class="text-base font-semibold text-white/80">/{{ number_format($customers['leads']) }}</span></span>
+                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['retained'] / $customers['leads'] : null) }}</span>
             </p>
-            <p class="{{ $note }}">First CRA-handled order · of {{ number_format($customers['crd']) }} CRD Leads</p>
+            <p class="{{ $note }}">FSD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
         </a>
 
         <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'repeat']) }}" class="group {{ $tile }} from-[#c026d3] to-[#86198f] transition hover:-translate-y-0.5 hover:shadow-lg"
-           title="Customers delivered in these dates who had an earlier CRA-handled order too. Click to see them.">
+           title="CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Repeat customers</p>
             <p class="relative flex items-baseline justify-between gap-2">
-                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}</span>
-                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['crd']) }} CRD Leads">{{ $pct($customers['crd'] ? $customers['repeat'] / $customers['crd'] : null) }}</span>
+                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}<span class="text-base font-semibold text-white/80">/{{ number_format($customers['leads']) }}</span></span>
+                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['repeat'] / $customers['leads'] : null) }}</span>
             </p>
-            <p class="{{ $note }}">Earlier CRA order too · of {{ number_format($customers['crd']) }} CRD Leads</p>
+            <p class="{{ $note }}">CRD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
         </a>
     @endif
