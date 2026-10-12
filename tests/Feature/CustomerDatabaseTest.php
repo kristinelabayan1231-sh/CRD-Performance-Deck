@@ -222,19 +222,26 @@ class CustomerDatabaseTest extends TestCase
         $this->actingAs($cra)->get(route('dashboard'))->assertOk()->assertDontSee('Repeat customers');
     }
 
-    public function test_today_retained_is_a_first_cra_order_and_repeat_has_an_earlier_one(): void
+    public function test_dates_go_by_order_date_retained_is_a_first_cra_order_and_repeat_has_an_earlier_one(): void
     {
         $this->customers();
 
-        $response = $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today']));
-        $response->assertViewHas('counts', ['all' => 3, 'crd' => 2, 'retained' => 1, 'repeat' => 1]);
+        // Today (Oct 9) only Ben placed an order: CRA Anna's, waiting; he had a CRA order before → Repeat.
+        $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today']))
+            ->assertViewHas('counts', ['all' => 1, 'crd' => 1, 'retained' => 0, 'repeat' => 1]);
 
-        $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today', 'segment' => 'retained']))
+        // Oct 6: Ana's first CRA-handled order (delivered Oct 9) and Ben's second.
+        $oct6 = ['from' => '2026-10-06', 'to' => '2026-10-06'];
+        $this->actingAs($this->owner)->get(route('customers.index', $oct6))
+            ->assertViewHas('counts', ['all' => 2, 'crd' => 2, 'retained' => 1, 'repeat' => 1]);
+        $this->actingAs($this->owner)->get(route('customers.index', [...$oct6, 'segment' => 'retained']))
             ->assertSee('Ana Cruz')->assertDontSee('Ben Reyes')->assertDontSee('Dan Lim');
-        $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today', 'segment' => 'repeat']))
+        $this->actingAs($this->owner)->get(route('customers.index', [...$oct6, 'segment' => 'repeat']))
             ->assertSee('Ben Reyes')->assertDontSee('Ana Cruz');
-        $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today', 'segment' => 'fsd']))
-            ->assertSee('Cara Diaz')->assertDontSee('Ana Cruz')->assertDontSee('Ben Reyes');
+
+        // Aug 30: Ana's FSD order only.
+        $this->actingAs($this->owner)->get(route('customers.index', ['from' => '2026-08-30', 'to' => '2026-08-30', 'segment' => 'fsd']))
+            ->assertSee('Ana Cruz')->assertDontSee('Ben Reyes');
     }
 
     public function test_search_finds_a_customer_by_any_number_format_and_keeps_their_full_totals(): void
@@ -298,10 +305,10 @@ class CustomerDatabaseTest extends TestCase
     {
         $this->customers();
 
-        // Oct 8 only: Eve, whose order was sold by a past CRA's CRD account.
-        $this->actingAs($this->owner)->get(route('customers.index', ['from' => '2026-10-08', 'to' => '2026-10-08']))
+        // Ordered Oct 5 only: Eve, whose order was sold by a past CRA's CRD account.
+        $this->actingAs($this->owner)->get(route('customers.index', ['from' => '2026-10-05', 'to' => '2026-10-05']))
             ->assertOk()
-            ->assertSee('Oct 8, 2026')
+            ->assertSee('Oct 5, 2026')
             ->assertSeeInOrder(['Eve Santos', 'Retained'])
             ->assertDontSee('Ana Cruz')
             ->assertViewHas('counts', ['all' => 1, 'crd' => 1, 'retained' => 1, 'repeat' => 0]);
@@ -434,5 +441,29 @@ class CustomerDatabaseTest extends TestCase
         $this->artisan('customers:warm-cache')->assertSuccessful();
         $this->get(route('customers.index'))->assertViewHas('counts', fn ($counts) => $counts['all'] === 3)->assertSee('Xavi Lim');
         $this->get(route('customers.index', ['segment' => 'possible_match', 'search' => '']))->assertViewHas('customers', fn ($page) => $page->total() === 2);
+    }
+
+    public function test_dates_by_order_date_count_todays_cra_orders_delivered_or_not(): void
+    {
+        $placed = fn (string $id, string $phone, string $day, int $status) => PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => $day,
+            'phone_key' => $phone, 'total_price' => 999, 'status' => $status, 'seller_name' => 'ANNA CRUZ', 'items' => [['name' => 'Canpro', 'qty' => 1]]]);
+        // Gina: an FSD lead (delivered in September) who ordered from CRA Anna today, not delivered yet → Retained today.
+        $this->delivered('G1', 'fsd', 'Gina Uy', '9171230001', '2026-09-01');
+        $placed('G2', '9171230001', '2026-10-09', 1);
+        // Hugo: a CRA-delivered customer who ordered from Anna again today → Repeat today.
+        $this->delivered('H1', 'crd', 'Hugo Tan', '9171230002', '2026-08-01');
+        $placed('H2', '9171230002', '2026-10-09', 2);
+        // Iris: her order today was canceled; Jun was delivered today but ordered days ago.
+        $this->delivered('I1', 'fsd', 'Iris Go', '9171230003', '2026-09-01');
+        $placed('I2', '9171230003', '2026-10-09', 6);
+        $this->delivered('J1', 'crd', 'Jun Ong', '9171230004', '2026-10-09', pos: [500, 3, 'ANNA CRUZ', [['name' => 'Canpro', 'qty' => 1]]]);
+
+        $this->actingAs($this->owner)->get(route('customers.index', ['period' => 'today']))->assertOk()
+            ->assertViewHas('counts', fn ($counts) => [$counts['crd'], $counts['retained'], $counts['repeat']] === [2, 1, 1])
+            ->assertSee('Ordered')->assertDontSee('Delivered date')
+            ->assertSee('Gina Uy')->assertSee('Hugo Tan')->assertDontSee('Iris Go')->assertDontSee('Jun Ong');
+        $this->get(route('customers.index', ['period' => 'today', 'segment' => 'retained']))
+            ->assertSee('Gina Uy')->assertDontSee('Hugo Tan');
+
     }
 }
