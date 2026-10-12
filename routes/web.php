@@ -91,7 +91,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::prefix('customers')->name('customers.')->middleware('can:customers.view')->group(function () {
         Route::get('/', [CustomerDatabaseController::class, 'index'])->name('index');
-        Route::get('/churn', CustomerChurnController::class)->name('churn');
+        Route::get('/churn', [CustomerChurnController::class, 'index'])->name('churn');
+        Route::get('/churn/{phoneKey}', [CustomerChurnController::class, 'history'])->where('phoneKey', '[0-9]+')->name('churn.history');
         Route::get('/{phoneKey}', [CustomerDatabaseController::class, 'show'])->where('phoneKey', '[0-9]+')->name('show');
         Route::post('/{phoneKey}/merge', [CustomerDatabaseController::class, 'merge'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('merge');
         Route::delete('/{phoneKey}/merge', [CustomerDatabaseController::class, 'separate'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('separate');

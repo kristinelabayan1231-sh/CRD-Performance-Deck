@@ -16,7 +16,7 @@
         <header class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">Customer churn <span class="text-sm font-normal text-muted">· reorder deadline {{ $deadlines }}</span></h1>
-                <p class="text-xs text-muted">Customers delivered in earlier months who ran out, and whose {{ $graceDays }} days to reorder ended in these dates. Same numbers as the dashboard's churn rate.</p>
+                <p class="text-xs text-muted">Customers delivered in earlier months who ran out, and whose {{ $graceDays }} days to reorder ended in these dates. Same numbers as the dashboard's churn rate. Click a customer to see their order history.</p>
             </div>
 
             {{-- Same month / From–To dates as the dashboard --}}
@@ -108,13 +108,20 @@
                         </thead>
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
-                                <tr class="align-top">
+                                <tr tabindex="0" role="button" aria-label="Order history of {{ $customer['name'] }}"
+                                    data-customer-url="{{ route('customers.churn.history', ['phoneKey' => $customer['phone_key'], ...Arr::only($customer, ['order_id', 'team', 'delivered', 'ran_out', 'deadline'])]) }}"
+                                    class="cursor-pointer align-top hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
                                     <td class="px-4 py-3">
                                         <a href="{{ route('customers.index', ['search' => $customer['phone_key']]) }}" class="font-medium hover:text-brand-600 hover:underline"
                                            title="Open in the Customer Database">{{ $customer['name'] }}</a>
                                         <span class="block text-xs text-muted tabular-nums">{{ $customer['phone'] }}</span>
-                                        @if ($status === 'due')
-                                            <span @class(['mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold', 'bg-teal/15 text-teal-700' => $customer['back'], 'bg-coral/15 text-coral-700' => ! $customer['back']])>{{ $customer['back'] ? 'Came back' : 'Lost' }}</span>
+                                        @if ($status === 'due' && $customer['back'])
+                                            <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-semibold text-teal-700">Came back</span>
+                                        @elseif (! $customer['back'])
+                                            <span class="mt-1 flex flex-wrap gap-1">
+                                                <span class="rounded-full bg-coral/15 px-2 py-0.5 text-[11px] font-semibold text-coral-700">Lost</span>
+                                                <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[11px] font-semibold text-[#8a5a00]">For reactivation</span>
+                                            </span>
                                         @endif
                                     </td>
                                     <td class="px-4 py-3">
@@ -171,6 +178,8 @@
             @endif
         </x-panel>
 
+        @include('customers._dialog', ['title' => 'Order history'])
+
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
@@ -178,6 +187,7 @@
                 <div><dt class="font-semibold text-ink">Came back in time / Lost</dt><dd>Came back = a Pancake order (not canceled) or a new delivery after that delivery and by the deadline; the first one is shown. Lost = neither.</dd></div>
                 <div><dt class="font-semibold text-ink">CRD / FSD / Overall</dt><dd>CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; Overall counts a customer on both lists once, by their latest delivery.</dd></div>
                 <div><dt class="font-semibold text-ink">Last ordered</dt><dd>The customer's latest order or delivery since: the delivery judged if nothing came after, or a later one placed after the deadline.</dd></div>
+                <div><dt class="font-semibold text-ink">Order history · For reactivation</dt><dd>Click a customer to see every Pancake order and delivery on their numbers, who handled each (seller, CRD or FSD), and their reorder window shaded. Every lost customer is marked For reactivation.</dd></div>
                 <div><dt class="font-semibold text-ink">Why no reorder</dt><dd>What the CRA recorded on the customer's latest Segmentation Tracker lead from that delivery on: Customer's feedback, status, tag, contact date and notes.</dd></div>
                 <div><dt class="font-semibold text-ink">Products ordered · Total spent</dt><dd>Every product delivered to the customer since the Customer Database's first day, and the Pancake totals of all their delivered orders, FSD and CRA-handled (the Customer Database's total spent counts CRA-handled orders only).</dd></div>
             </dl>
