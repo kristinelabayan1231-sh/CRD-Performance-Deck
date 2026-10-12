@@ -14,7 +14,6 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -48,7 +47,7 @@ class HighValueCustomers
      */
     public function all(): array
     {
-        return Cache::remember(CustomerDatabase::cacheKey('high_value', []), now()->addMinutes(CustomerDatabase::CACHE_MINUTES), fn () => $this->build());
+        return CustomerDatabase::remember(CustomerDatabase::cacheKey('high_value', []), fn () => $this->build());
     }
 
     /**

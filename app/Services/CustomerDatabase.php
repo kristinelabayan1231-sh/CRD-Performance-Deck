@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -78,6 +79,31 @@ class CustomerDatabase
     public const CACHE_MINUTES = 3;
 
     /**
+     * How long results saved by customers:warm-cache are kept: past its next run, so the default
+     * Customers tab and High AOV list are always ready (the live server can't build them within a page view).
+     */
+    public const WARM_MINUTES = 10;
+
+    /** While true (customers:warm-cache), cached results are worked out again and saved instead of read. */
+    public static bool $refreshing = false;
+
+    /**
+     * A cached Customer Database result: read it, or work it out and keep it for CACHE_MINUTES;
+     * while refreshing, always work it out and keep it for WARM_MINUTES.
+     */
+    public static function remember(string $key, Closure $compute): mixed
+    {
+        if (self::$refreshing) {
+            $value = $compute();
+            Cache::put($key, $value, now()->addMinutes(self::WARM_MINUTES));
+
+            return $value;
+        }
+
+        return Cache::remember($key, now()->addMinutes(self::CACHE_MINUTES), $compute);
+    }
+
+    /**
      * Key for a cached Customer Database result; flushCache() makes every earlier one unused.
      */
     public static function cacheKey(string $name, array $parts): string
@@ -103,8 +129,8 @@ class CustomerDatabase
     {
         $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
 
-        return Cache::remember(self::cacheKey('counts', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
-            now()->addMinutes(self::CACHE_MINUTES), fn () => $this->counts($filters));
+        return self::remember(self::cacheKey('counts', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
+            fn () => $this->counts($filters));
     }
 
     /**
@@ -128,7 +154,7 @@ class CustomerDatabase
 
         // Kept as plain arrays: the cache doesn't unserialize objects.
         $key = [($filters['from'] ?? null)?->toDateString(), ($filters['to'] ?? null)?->toDateString(), $filters['search'] ?? null, $filters['segment'] ?? null, $filters['sort'] ?? null, $perPage, $page];
-        $rows = collect(Cache::remember(self::cacheKey('list', $key), now()->addMinutes(self::CACHE_MINUTES),
+        $rows = collect(self::remember(self::cacheKey('list', $key),
             fn () => $this->withNumbers($this->listQuery($filters)->forPage($page, $perPage)->get()->map(fn (object $row) => (array) $row))->all()))
             ->map(fn (array $row) => (object) $row);
 
@@ -193,8 +219,7 @@ class CustomerDatabase
     {
         $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
 
-        return Cache::remember(self::cacheKey('possible_matches', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
-            now()->addMinutes(self::CACHE_MINUTES),
+        return self::remember(self::cacheKey('possible_matches', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
             fn () => DB::query()->fromSub($this->onlyPossibleMatches($this->grouped($filters)), 'customers')->count());
     }
 
@@ -572,6 +597,16 @@ class CustomerDatabase
         }
 
         return $rows->count();
+    }
+
+    /**
+     * historyProgress(), cached (the earlier-history check clears it when it saves customers).
+     *
+     * @return array{checked: int, total: int}
+     */
+    public function cachedHistoryProgress(): array
+    {
+        return self::remember('customers.history_progress', fn () => $this->historyProgress());
     }
 
     /**

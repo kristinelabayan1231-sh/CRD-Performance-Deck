@@ -64,3 +64,12 @@ Schedule::command('customers:assign-high-aov')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
+
+// Customer Database: the default Customers tab and the High AOV & VIP list worked out
+// ahead of time and kept past the next run, so pages open from the cache instead of
+// building them inside a page view (too slow on the live server).
+Schedule::command('customers:warm-cache')
+    ->everyTwoMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(10)
+    ->runInBackground();

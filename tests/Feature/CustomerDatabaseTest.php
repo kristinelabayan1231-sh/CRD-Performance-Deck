@@ -412,4 +412,25 @@ class CustomerDatabaseTest extends TestCase
         $this->actingAs($this->owner)->get(route('customers.show', '9174444444'))
             ->assertSeeInOrder(['Dan Lim', 'Repeat Customer', 'Before Jan 1, 2026:', '1 CRA-handled order', 'last Nov 24, 2025']);
     }
+
+    public function test_the_warm_up_saves_the_default_customers_tab_so_it_opens_from_the_cache(): void
+    {
+        $this->delivered('W1', 'crd', 'Wena Cruz', '9170000003', '2026-10-01', pos: [1500, 3, null, []]);
+
+        $this->artisan('customers:warm-cache')->expectsOutputToContain('cache ready')->assertSuccessful();
+
+        // A delivery recorded after the warm-up shows once the cache is worked out again, not before.
+        $this->delivered('W2', 'crd', 'Xavi Lim', '9170000004', '2026-10-02', pos: [800, 3, null, []]);
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 1)
+            ->assertSee('Wena Cruz')->assertDontSee('Xavi Lim');
+
+        // The Possible match page is ready too: a second Wena after the warm-up waits for the next one.
+        $this->delivered('W3', 'crd', 'Wena Cruz', '9170000005', '2026-10-03', pos: [900, 3, null, []]);
+        $this->get(route('customers.index', ['segment' => 'possible_match']))->assertViewHas('customers', fn ($page) => $page->total() === 0);
+
+        $this->artisan('customers:warm-cache')->assertSuccessful();
+        $this->get(route('customers.index'))->assertViewHas('counts', fn ($counts) => $counts['all'] === 3)->assertSee('Xavi Lim');
+        $this->get(route('customers.index', ['segment' => 'possible_match', 'search' => '']))->assertViewHas('customers', fn ($page) => $page->total() === 2);
+    }
 }

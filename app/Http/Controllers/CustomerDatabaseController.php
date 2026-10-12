@@ -15,7 +15,6 @@ use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -59,7 +58,7 @@ class CustomerDatabaseController extends Controller
             'sorts' => CustomerDatabase::SORTS,
             'fetchedAt' => LogisticsRetention::fetchedAt(),
             'today' => WorkingDate::realToday(),
-            'history' => Cache::remember('customers.history_progress', now()->addMinutes(CustomerDatabase::CACHE_MINUTES), fn () => $customers->historyProgress()),
+            'history' => $customers->cachedHistoryProgress(),
         ]);
     }
 
