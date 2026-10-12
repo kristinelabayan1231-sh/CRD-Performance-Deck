@@ -105,6 +105,11 @@ class CustomerDatabaseTest extends TestCase
         $this->actingAs($this->owner)->get(route('customers.show', '9543081031'))->assertOk()
             ->assertSeeInOrder(['Possibly the same customer', '09453173793', '1 delivery', 'Same customer']);
 
+        // Show → Possible match lists only the two Roses (not the generic names).
+        $this->actingAs($this->owner)->get(route('customers.index', ['segment' => 'possible_match']))->assertOk()
+            ->assertSee('Possible match')
+            ->assertViewHas('customers', fn ($page) => $page->total() === 2 && collect($page->items())->pluck('customer_name')->unique()->all() === ['Rose Ramirez']);
+
         // Only users allowed to merge can.
         $cra = User::firstWhere('email', 'anna@gmail.com');
         $cra->role->update(['permissions' => ['customers.view']]);
@@ -118,6 +123,9 @@ class CustomerDatabaseTest extends TestCase
             ->assertViewHas('counts', fn ($counts) => $counts['all'] === 3 && $counts['repeat'] === 1)
             ->assertSeeInOrder(['Rose Ramirez', 'Repeat Customer', '09543081031 / 09453173793', '2', '₱1,500.00'])
             ->assertViewHas('customers', fn ($page) => collect($page->items())->sum('possible_matches') === 0);
+        // Merged: nobody left with a possible match.
+        $this->actingAs($this->owner)->get(route('customers.index', ['segment' => 'possible_match']))
+            ->assertViewHas('customers', fn ($page) => $page->total() === 0);
         // Found by either number, still whole; the second number opens the same customer.
         $this->actingAs($this->owner)->get(route('customers.index', ['search' => '0945317']))
             ->assertSee('09543081031 / 09453173793')->assertSee('₱1,500.00');
