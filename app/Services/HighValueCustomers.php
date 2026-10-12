@@ -90,6 +90,30 @@ class HighValueCustomers
     }
 
     /**
+     * High AOV and VIP for just these Customer Database rows (one page), worked out like all()
+     * without building the whole list, which is too big for one page view's memory.
+     *
+     * @param  iterable<object{phone_key: string, total_spent: float|string, priced_orders: int|string}>  $rows
+     * @return array<string, array{high_aov: bool, vip: bool, vip_products: list<string>}> main number => flags
+     */
+    public function flagsFor(iterable $rows): array
+    {
+        $minAov = (float) config('customers.high_aov_min');
+        $minSrp = Product::where('srp', '>', 0)->min('srp');
+        $minCltv = $minSrp === null ? null : (float) $minSrp * (int) config('customers.cltv_units');
+        $rows = collect($rows);
+
+        $vip = $minCltv === null ? [] : $this->vipProducts($rows->filter(fn (object $row) => (float) $row->total_spent >= $minCltv)
+            ->map(fn (object $row) => (string) $row->phone_key)->values()->all());
+
+        return $rows->mapWithKeys(fn (object $row) => [(string) $row->phone_key => [
+            'high_aov' => (int) $row->priced_orders > 0 && (float) $row->total_spent / (int) $row->priced_orders >= $minAov,
+            'vip' => isset($vip[(string) $row->phone_key]),
+            'vip_products' => $vip[(string) $row->phone_key] ?? [],
+        ]])->all();
+    }
+
+    /**
      * The products each customer reached the CLTV of, from their delivered orders (as in the customer pop-up).
      *
      * @param  list<string>  $keys  main numbers
