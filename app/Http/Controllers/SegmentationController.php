@@ -18,8 +18,8 @@ use Throwable;
 
 class SegmentationController extends Controller
 {
-    /** Customers per page in the Unprocessed and Processed lists. */
-    private const PER_PAGE = 5;
+    /** Customers per page in the Pending and Catered lists: 10 show at a time, the rest by scrolling. */
+    private const PER_PAGE = 30;
 
     /** Customers per page in a list's full-view pop-up. */
     private const FULL_PER_PAGE = 50;

@@ -390,6 +390,22 @@ async function refreshSections() {
         const fresh = page.querySelector(`[data-lead-section="${CSS.escape(section.dataset.leadSection)}"]`);
         if (fresh) section.replaceWith(document.importNode(fresh, true));
     });
+    fitVisibleRows();
+}
+
+// Pending and Catered: as tall as their first rows (data-visible-rows), the rest by scrolling inside the list.
+function fitVisibleRows() {
+    document.querySelectorAll('[data-visible-rows]').forEach((box) => {
+        const visible = Number(box.dataset.visibleRows);
+        const rows = box.querySelectorAll('tbody > tr');
+        if (rows.length <= visible) {
+            box.style.maxHeight = '';
+            return;
+        }
+        // Down to the last visible row's bottom, plus the horizontal scrollbar's height.
+        const bottom = rows[visible - 1].getBoundingClientRect().bottom - box.getBoundingClientRect().top + box.scrollTop;
+        box.style.maxHeight = `${Math.ceil(bottom + box.offsetHeight - box.clientHeight)}px`;
+    });
 }
 
 // Copy text to the clipboard; falls back to execCommand where the Clipboard API is unavailable (plain http).
@@ -594,10 +610,36 @@ function initGreeting() {
     dialog.showModal();
 }
 
+// Summary: NO VERBAL CONV's slice or legend row flips the feedback card to its reasons; "Back to chart" flips it back.
+function initFlip() {
+    const inner = document.querySelector('[data-flip-inner]');
+    if (!inner?.querySelector('[data-flip-face="back"]')) return;
+    const faces = { front: inner.querySelector('[data-flip-face="front"]'), back: inner.querySelector('[data-flip-face="back"]') };
+
+    const flip = (toBack) => {
+        inner.toggleAttribute('data-flipped', toBack);
+        // Only the side facing the user can be tabbed into or read out.
+        faces.front.inert = toBack;
+        faces.back.inert = !toBack;
+        (toBack ? faces.back.querySelector('[data-flip-close]') : faces.front.querySelector('button[data-flip-open]'))?.focus({ preventScroll: true });
+    };
+
+    inner.addEventListener('click', (event) => {
+        if (event.target.closest('[data-flip-open]')) flip(true);
+        else if (event.target.closest('[data-flip-close]')) flip(false);
+    });
+}
+
 export function initSegmentation() {
     initExpand();
+    initFlip();
     initGreeting();
     initScrollSlider();
+    if (document.querySelector('[data-visible-rows]')) {
+        fitVisibleRows();
+        // Hidden columns, fonts loading or a narrower window change the rows' heights.
+        new ResizeObserver(() => fitVisibleRows()).observe(document.body);
+    }
     if (document.querySelector('[data-lead-section]')) initRowMenu();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();

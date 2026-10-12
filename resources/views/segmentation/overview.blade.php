@@ -19,10 +19,13 @@
         'ineffective' => '#e34948',
     ];
     $feedback = $summary['feedback'];
-    $slices = collect($sliceColors)->map(fn (string $color, string $key) => ['label' => $feedbackOptions[$key][0], 'value' => $feedback[$key] ?? 0, 'color' => $color]);
+    $slices = collect($sliceColors)->map(fn (string $color, string $key) => ['key' => $key, 'label' => $feedbackOptions[$key][0], 'value' => $feedback[$key] ?? 0, 'color' => $color]);
     $other = $feedback->except(array_keys($sliceColors))->sum();
-    $slices = $slices->put('other', ['label' => 'Other ('.collect($feedbackOptions)->except(array_keys($sliceColors))->map(fn ($o) => $o[0])->join(', ').')', 'value' => $other, 'color' => '#8a8984']);
+    $slices = $slices->put('other', ['key' => 'other', 'label' => 'Other ('.collect($feedbackOptions)->except(array_keys($sliceColors))->map(fn ($o) => $o[0])->join(', ').')', 'value' => $other, 'color' => '#8a8984']);
     $feedbackTotal = $slices->sum('value');
+    // NO VERBAL CONV leads: their slice or legend row flips the card to why there was no conversation.
+    $noVerbalTotal = count($summary['no_verbal']['notes']);
+    $noVerbal = $noVerbalTotal > 0;
     $circumference = 2 * M_PI * 40;
 
     $badge = fn (array $options, ?string $key) => $key && isset($options[$key])
@@ -113,6 +116,10 @@
                 @if ($feedbackTotal === 0)
                     <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">No Customer's Feedback recorded yet.</p>
                 @else
+                    {{-- A flip card: the donut in front; NO VERBAL CONV's slice or legend row turns it to their reasons --}}
+                    <div class="grid perspective-[1200px]">
+                    <div data-flip-inner class="grid transition-transform duration-500 transform-3d motion-reduce:transition-none data-flipped:rotate-y-180">
+                    <div data-flip-face="front" class="col-start-1 row-start-1 backface-hidden">
                     <div class="flex flex-col items-center gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-start">
                         <svg viewBox="0 0 100 100" class="size-48 shrink-0 -rotate-90" role="img" aria-label="Customer's feedback, {{ $period }}">
                             <circle cx="50" cy="50" r="40" fill="none" stroke="#f2edf3" stroke-width="16" />
@@ -121,7 +128,7 @@
                             @foreach ($drawn as $slice)
                                 @php($length = $slice['value'] / $feedbackTotal * $circumference)
                                 {{-- 2px surface gap between slices (none for a single slice) --}}
-                                <circle cx="50" cy="50" r="40" fill="none" stroke="{{ $slice['color'] }}" stroke-width="16" class="transition-opacity hover:opacity-80"
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="{{ $slice['color'] }}" stroke-width="16" @class(['transition-opacity hover:opacity-80', 'cursor-pointer' => $slice['key'] === 'no_verbal_conv' && $noVerbal]) @if ($slice['key'] === 'no_verbal_conv' && $noVerbal) data-flip-open @endif
                                         stroke-dasharray="{{ max(0.5, $length - ($drawn->count() > 1 ? 1.2 : 0)) }} {{ $circumference }}" stroke-dashoffset="{{ -$offset }}">
                                     <title>{{ $slice['label'] }}: {{ number_format($slice['value']) }} ({{ round($slice['value'] / $feedbackTotal * 100, 1) }}%)</title>
                                 </circle>
@@ -139,7 +146,11 @@
                                         <td class="py-1 pr-2">
                                             <span class="flex items-center gap-2">
                                                 <span aria-hidden="true" class="size-2.5 shrink-0 rounded-sm" style="background: {{ $slice['color'] }}"></span>
-                                                <span class="text-xs">{{ $slice['label'] }}</span>
+                                                @if ($slice['key'] === 'no_verbal_conv' && $noVerbal)
+                                                    <button type="button" data-flip-open class="text-left text-xs font-semibold text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-600">{{ $slice['label'] }} · why?</button>
+                                                @else
+                                                    <span class="text-xs">{{ $slice['label'] }}</span>
+                                                @endif
                                             </span>
                                         </td>
                                         <td class="py-1 text-right text-xs font-semibold tabular-nums">{{ number_format($slice['value']) }}</td>
@@ -150,6 +161,52 @@
                         </table>
                     </div>
                     <p class="mt-2 text-xs text-muted">{{ number_format($summary['catered'] - $summary['with_feedback']) }} catered {{ Str::plural('lead', $summary['catered'] - $summary['with_feedback']) }} have no feedback yet and aren't in the chart.</p>
+                    </div>
+
+                    @if ($noVerbal)
+                        {{-- Back: why there was no verbal conversation, from the CRAs' notes --}}
+                        <div data-flip-face="back" inert class="col-start-1 row-start-1 flex rotate-y-180 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm backface-hidden">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <h3 class="flex items-center gap-2 text-sm font-bold">
+                                    <span aria-hidden="true" class="size-2.5 rounded-sm bg-[#6250d6]"></span>
+                                    Why no verbal conversation
+                                    <span class="rounded-full bg-canvas px-2 py-0.5 text-xs tabular-nums">{{ number_format($noVerbalTotal) }}</span>
+                                </h3>
+                                <button type="button" data-flip-close class="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold hover:border-brand-400 hover:text-brand-600">← Back to chart</button>
+                            </div>
+                            <table class="w-full text-sm">
+                                <caption class="sr-only">Reasons for no verbal conversation</caption>
+                                <tbody>
+                                    @foreach ($summary['no_verbal']['reasons'] as $reason)
+                                        <tr>
+                                            <td class="w-[45%] py-1 pr-2 text-xs">{{ $reason['label'] }}</td>
+                                            <td class="py-1">
+                                                <div class="h-2 overflow-hidden rounded-full bg-canvas">
+                                                    <div class="h-full rounded-full bg-[#6250d6]" style="width: {{ round($reason['total'] / $noVerbalTotal * 100, 1) }}%"></div>
+                                                </div>
+                                            </td>
+                                            <td class="w-10 py-1 text-right text-xs font-semibold tabular-nums">{{ number_format($reason['total']) }}</td>
+                                            <td class="w-10 py-1 text-right text-xs text-muted tabular-nums">{{ round($reason['total'] / $noVerbalTotal * 100) }}%</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                            <ul class="max-h-56 divide-y divide-line overflow-y-auto rounded-lg border border-line text-xs" aria-label="Notes">
+                                @foreach ($summary['no_verbal']['notes'] as $note)
+                                    <li class="px-3 py-2">
+                                        <p class="flex flex-wrap justify-between gap-x-2">
+                                            <span class="font-semibold text-ink">{{ $note['customer'] }}</span>
+                                            <span class="text-muted">{{ collect([$note['cra'], $note['contacted'], $note['status']])->filter()->join(' · ') }}</span>
+                                        </p>
+                                        <p @class(['mt-0.5', 'text-muted italic' => ! $note['note']])>{{ $note['note'] ? '“'.$note['note'].'”' : 'No note' }}</p>
+                                    </li>
+                                @endforeach
+                            </ul>
+                            <p class="text-[11px] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other.</p>
+                        </div>
+                    @endif
+                    </div>
+                    </div>
                 @endif
             </x-panel>
 
@@ -273,7 +330,7 @@
                 <div><dt class="font-semibold text-ink">Leads</dt><dd>Segmentation Tracker leads whose lead day (est. out of stock) is in the month picked, up to today's lead day, or the one day picked.</dd></div>
                 <div><dt class="font-semibold text-ink">Catered / Pending</dt><dd>Catered = a status, a date of contact, or marked catered. Pending = none of these yet.</dd></div>
                 <div><dt class="font-semibold text-ink">Converted</dt><dd>Repeat Purchase Yes, or Repeat Purchase No with feedback PURCHASED.</dd></div>
-                <div><dt class="font-semibold text-ink">Customer's feedback</dt><dd>Leads with Customer's Feedback filled in. BLOCKED is shown under Other. Leads without feedback aren't in the chart.</dd></div>
+                <div><dt class="font-semibold text-ink">Customer's feedback</dt><dd>Leads with Customer's Feedback filled in. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: its leads' notes grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, voicemail, other) and every note.</dd></div>
                 <div><dt class="font-semibold text-ink">Time of contact</dt><dd>Leads by the Time of Contact picked; the dark part of each bar is how many of them converted.</dd></div>
                 <div><dt class="font-semibold text-ink">Insights</dt><dd>Worked out from these numbers. Hours, products and CRAs are only compared once they have at least {{ \App\Services\SegmentationSummary::MIN_FOR_INSIGHT }} leads.</dd></div>
             </dl>
