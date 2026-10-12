@@ -536,38 +536,53 @@ function initScrollSlider() {
     if (!bar) return;
     const width = bar.querySelector('[data-x-scrollbar-width]');
     const table = () => document.querySelector('[data-lead-section] .overflow-x-auto');
-    let syncing = false;
+    // The position each element was last moved to by the other, so the scroll event that move fires is ignored.
+    // A time-based guard let that echo through late and pulled the scrollbar back mid-drag.
+    const moved = new Map();
+
+    const copy = (from, to) => {
+        const left = from.scrollLeft;
+        if (Math.abs(to.scrollLeft - left) < 1) return;
+        moved.set(to, left);
+        to.scrollLeft = left;
+    };
+    const follow = (el, other) => {
+        const echo = moved.get(el);
+        moved.delete(el);
+        if (echo !== undefined && Math.abs(el.scrollLeft - echo) < 1) return;
+        copy(el, other);
+    };
 
     const sync = () => {
         const wrap = table();
         bar.hidden = !wrap || wrap.scrollWidth <= wrap.clientWidth;
-        document.body.style.paddingBottom = bar.hidden ? '' : `${bar.offsetHeight}px`;
+        const padding = bar.hidden ? '' : `${bar.offsetHeight}px`;
+        if (document.body.style.paddingBottom !== padding) document.body.style.paddingBottom = padding;
         if (bar.hidden) return;
         // Same left edge and width as the table, so both scroll the same distance.
-        const box = wrap.getBoundingClientRect();
-        bar.style.left = `${box.left}px`;
+        bar.style.left = `${wrap.getBoundingClientRect().left}px`;
         bar.style.width = `${wrap.clientWidth}px`;
         width.style.width = `${wrap.scrollWidth}px`;
-        bar.scrollLeft = wrap.scrollLeft;
+        copy(wrap, bar);
+    };
+    let queued = false;
+    const queueSync = () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; sync(); });
     };
 
     bar.addEventListener('scroll', () => {
         const wrap = table();
-        if (!wrap || syncing) return;
-        syncing = true;
-        wrap.scrollLeft = bar.scrollLeft;
-        requestAnimationFrame(() => { syncing = false; });
-    });
+        if (wrap) follow(bar, wrap);
+    }, { passive: true });
     document.addEventListener('scroll', (event) => {
-        if (event.target !== table() || syncing) return;
-        syncing = true;
-        bar.scrollLeft = event.target.scrollLeft;
-        requestAnimationFrame(() => { syncing = false; });
-    }, true);
+        if (event.target === table()) follow(event.target, bar);
+    }, { capture: true, passive: true });
 
-    // Hidden columns, a swapped list or a resized pop-up change how far the table can move.
-    new MutationObserver(sync).observe(document.body, { childList: true, subtree: true });
-    new ResizeObserver(sync).observe(document.body);
+    // Hidden columns, a swapped list or a resized pop-up change how far the table can move; measured once per frame.
+    new MutationObserver(queueSync).observe(document.body, { childList: true, subtree: true });
+    new ResizeObserver(queueSync).observe(document.body);
     sync();
 }
 
