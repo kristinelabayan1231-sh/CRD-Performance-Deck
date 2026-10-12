@@ -36,12 +36,14 @@ COPY --from=vendor /app/vendor ./vendor
 COPY . .
 COPY --from=assets /app/public/build ./public/build
 
+# Pages get 120s (PHP's default is 30): working out the Customer Database without the cache can take longer on the free plan.
 RUN composer dump-autoload --optimize --no-dev --no-scripts \
     && php artisan package:discover --ansi \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache \
     && chmod +x docker/entrypoint.sh \
-    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+    && printf 'max_execution_time = 120\n' > "$PHP_INI_DIR/conf.d/zz-app.ini"
 
 ENV APP_ENV=production \
     APP_DEBUG=false \

@@ -7,6 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-12 · Customer Database · Churn list: Total spent counts all of the customer's delivered orders (FSD and CRA-handled), so FSD customers no longer show ₱0.00; the Customers tab and High AOV still count CRA-handled orders only · shots: customer-churn
+- 2026-10-12 · Dashboard · Customer churn moved into a small light-red card at the right of the Results tiles (below them on narrower screens): Overall, CRD and FSD as compact rows with lost of total; any row or "View breakdown" opens the breakdown; the Results tiles are now always 4 across · shots: 02-dashboard
+- 2026-10-12 · Customer Database · The Customers tab (as it opens, and Show → Possible match) and High AOV CVR & VIP are worked out in the background every 2 minutes, so they open from the cache; new deliveries can take a few minutes to show · shots: —
 - 2026-10-12 · Customer Database · Show filter has a new "Possible match" option: only customers tagged Possible match (another customer has the same name; generic names left out); merging them takes them off the list · shots: customer-database
 - 2026-10-12 · Customer Database · Customers tab list: VIP (black, gold crown; hover shows the products) and HIGH AOV (purple) pills next to the name, same as on High AOV CVR & VIP (a VIP shows only VIP); no row tint · shots: customer-database
 - 2026-10-12 · Customer Database · Customer pop-up (Customer Database and High AOV CVR & VIP): the Customer CLTV tile reads "Customer CLTV · Total spent"; new row under it: High AOV (AOV of ₱999) or Potential High AOV with the ₱ remaining (the next order that makes them High AOV), and To become VIP / Next VIP product with the ₱ remaining on the product closest to its CLTV · shots: customer-profile

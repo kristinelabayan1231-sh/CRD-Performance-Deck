@@ -179,7 +179,7 @@
                 <div><dt class="font-semibold text-ink">CRD / FSD / Overall</dt><dd>CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; Overall counts a customer on both lists once, by their latest delivery.</dd></div>
                 <div><dt class="font-semibold text-ink">Last ordered</dt><dd>The customer's latest order or delivery since: the delivery judged if nothing came after, or a later one placed after the deadline.</dd></div>
                 <div><dt class="font-semibold text-ink">Why no reorder</dt><dd>What the CRA recorded on the customer's latest Segmentation Tracker lead from that delivery on: Customer's feedback, status, tag, contact date and notes.</dd></div>
-                <div><dt class="font-semibold text-ink">Products ordered · Total spent</dt><dd>Every product delivered to the customer since the Customer Database's first day, and their delivered orders' Pancake totals.</dd></div>
+                <div><dt class="font-semibold text-ink">Products ordered · Total spent</dt><dd>Every product delivered to the customer since the Customer Database's first day, and the Pancake totals of all their delivered orders, FSD and CRA-handled (the Customer Database's total spent counts CRA-handled orders only).</dd></div>
             </dl>
         </details>
     </div>

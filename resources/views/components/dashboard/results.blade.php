@@ -14,11 +14,12 @@
 {{--
     Results for the dashboard's month (to date) or range: the CRD monthly goal (team gross sales), then
     confirmed orders, conversion rate, AOV and (with Customer Database access) Retained and Repeat
-    Customers. A CRA's orders, conversion and AOV are their own. Churn sits apart below: it judges
-    customers delivered months earlier whose time to reorder ran out in these dates.
+    Customers. A CRA's orders, conversion and AOV are their own. Churn sits apart in a small, light card
+    on the right (below on narrow screens), so the results stay the focus: it judges customers delivered
+    months earlier whose time to reorder ran out in these dates.
 --}}
-<div {{ $attributes->merge(['class' => 'space-y-4']) }}>
-<section @class(['grid gap-3 sm:grid-cols-2', 'lg:grid-cols-4 2xl:grid-cols-7' => $customers, 'lg:grid-cols-5' => ! $customers]) aria-label="Results">
+<div {{ $attributes->merge(['class' => 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_15rem]']) }}>
+<section @class(['grid content-start gap-3 sm:grid-cols-2', 'lg:grid-cols-4' => $customers, 'lg:grid-cols-5' => ! $customers]) aria-label="Results">
     {{-- CRD monthly goal --}}
     <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm sm:col-span-2">
         <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
@@ -84,7 +85,7 @@
     </article>
 
     {{-- Wide on four columns so AOV, Retained and Repeat fill the second row --}}
-    <article @class([$tile, 'from-[#d99a0b] to-[#a8740a]', 'lg:col-span-2 2xl:col-span-1' => $customers]) title="Average order value: gross sales ÷ confirmed orders">
+    <article @class([$tile, 'from-[#d99a0b] to-[#a8740a]', 'lg:col-span-2' => $customers]) title="Average order value: gross sales ÷ confirmed orders">
         {!! $bubble !!}
         <p class="{{ $label }}">AOV</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
@@ -120,30 +121,33 @@
     @endif
 </section>
 
-{{-- Churn: its own block so it isn't read as these dates' customers; any tile opens the CRD / FSD / overall breakdown --}}
+{{-- Churn: its own light card so it isn't read as these dates' customers; any row opens the CRD / FSD / overall breakdown --}}
 @php($deadlines = $results['range']->label())
 @php($monthLabel = fn (string $month) => \Carbon\CarbonImmutable::parse($month.'-01')->format($results['range']->from->isSameYear($month.'-01') ? 'M' : 'M Y'))
 @php($churnTeams = ['all' => 'Overall', 'crd' => 'CRD', 'fsd' => 'FSD'])
-<section aria-labelledby="churn-title">
-    <div class="mb-2 flex flex-wrap items-center gap-2">
-        <h3 id="churn-title" class="text-sm font-bold text-ink">Customer churn</h3>
-        <span class="rounded-full bg-[#fde0e0] px-2.5 py-0.5 text-xs font-semibold text-coral-700">Reorder deadline {{ $deadlines }}</span>
+<section aria-labelledby="churn-title" class="flex flex-col gap-2 rounded-xl bg-[#fdeeee] p-3 text-[#8f3236] ring-1 ring-[#f6d3d4]">
+    <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        <h3 id="churn-title" class="text-sm font-bold">Customer churn</h3>
+        <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
     </div>
 
-    <div @class(['grid gap-3 sm:grid-cols-2', 'lg:grid-cols-4 2xl:grid-cols-7' => $customers, 'lg:grid-cols-5' => ! $customers])>
+    <ul class="flex flex-1 flex-col gap-1.5 sm:flex-row xl:flex-col">
         @foreach ($churnTeams as $team => $teamLabel)
             @php($teamChurn = $churn[$team])
-            <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
-                    @class([$tile, 'group text-left transition hover:-translate-y-0.5 hover:shadow-lg', 'from-[#e05a5f] to-[#c4484c]' => $team === 'all', 'from-[#d9677a] to-[#b04a5c]' => $team !== 'all'])
-                    title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
-                {!! $bubble !!}
-                <p class="{{ $label }}">{{ $team === 'all' ? 'Overall churn rate' : $teamLabel.' churn rate' }}</p>
-                <p class="relative text-3xl font-bold tabular-nums">{{ $pct($teamChurn['rate'], 2) }}</p>
-                <p class="{{ $note }}">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</p>
-                <p class="relative text-xs font-semibold text-white group-hover:underline">View breakdown &rarr;</p>
-            </button>
+            <li class="flex-1">
+                <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
+                        class="flex h-full w-full items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-left transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-coral"
+                        title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
+                    <span>
+                        <span class="block text-[11px] font-semibold tracking-wide uppercase">{{ $teamLabel }}</span>
+                        <span class="block text-[11px] text-[#8f3236]/80 tabular-nums">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</span>
+                    </span>
+                    <span class="text-lg font-bold tabular-nums">{{ $pct($teamChurn['rate'], 2) }}</span>
+                </button>
+            </li>
         @endforeach
-    </div>
+    </ul>
+    <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog" class="self-start text-xs font-semibold hover:underline">View breakdown &rarr;</button>
 
     <dialog id="churn-dialog" aria-labelledby="churn-dialog-title" onclick="if (event.target === this) this.close()"
             class="m-auto max-h-[90dvh] w-[min(44rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">

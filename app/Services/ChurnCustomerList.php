@@ -79,8 +79,8 @@ class ChurnCustomerList
     }
 
     /**
-     * Name, contact number, products ordered, total spent (their delivered orders' Pancake totals,
-     * as in the Customer Database) and, for lost customers, their latest Segmentation Tracker lead.
+     * Name, contact number, products ordered, total spent (all their delivered orders' Pancake totals,
+     * FSD ones too) and, for lost customers, their latest Segmentation Tracker lead.
      *
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return Collection<int, array<string, mixed>>
@@ -96,12 +96,11 @@ class ChurnCustomerList
         $catalog = new ProductCatalog;
         $deliveries = LogisticsOrder::whereIn('phone_key', $phones)->orderBy('delivered_date')
             ->get(['phone_key', 'customer_name', 'phone_number', 'product'])->groupBy('phone_key');
-        // Total spent: CRA-handled orders only, as in the Customer Database.
-        $handled = app(CustomerDatabase::class)->handledSql();
+        // Total spent: every delivered order's Pancake total, FSD and CRA-handled alike (unlike the
+        // Customer Database's CRA-only total), so an FSD customer's worth shows too.
         $spent = DB::table('logistics_orders as lo')
             ->join('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
             ->whereIn('lo.phone_key', $phones)
-            ->whereRaw($handled['sql'], $handled['bindings'])
             ->whereRaw(CustomerDatabase::CRD_PRODUCTS)
             ->groupBy('lo.phone_key')
             ->selectRaw('lo.phone_key, sum(po.total_price) as spent')
