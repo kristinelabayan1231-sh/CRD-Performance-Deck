@@ -216,6 +216,8 @@ class CustomerDatabaseTest extends TestCase
             ->assertSeeTextInOrder(['AOV', 'Retained', '2', 'Repeat customers', '1', 'Customer churn', 'Overall'])
             // Both out of all October's leads: 3 FSD + 1 CRD deliveries.
             ->assertSeeTextInOrder(['Retained', '2/4', '50.0%', 'FSD Leads', 'Repeat customers', '1/4', '25.0%', 'CRD Leads'])
+            // Against the 30% goals: 2 of 4 leads needed (4 × 30% = 1.2, rounded up).
+            ->assertSeeTextInOrder(['Retained', 'Goal hit', 'Goal 30% · 2 of 4', 'Goal reached', 'Repeat customers', 'Below goal', 'Goal 30% · 2 of 4', '1 more to reach 30%'])
             ->assertSee(route('customers.index', ['from' => '2026-10-01', 'to' => '2026-10-09', 'segment' => 'repeat']));
 
         $cra = User::firstWhere('email', 'anna@gmail.com');

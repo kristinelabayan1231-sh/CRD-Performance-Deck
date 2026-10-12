@@ -19,9 +19,11 @@
     months earlier whose time to reorder ran out in these dates.
 --}}
 <div {{ $attributes->merge(['class' => 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_15rem]']) }}>
-<section @class(['grid content-start gap-3 sm:grid-cols-2', 'lg:grid-cols-4' => $customers, 'lg:grid-cols-5' => ! $customers]) aria-label="Results">
+{{-- With customers: eight columns, so the goal, orders and conversion fill the first row and AOV (a quarter),
+     Retained and Repeat (three eighths each) the second; six on tablets, so orders, conversion and AOV share a row --}}
+<section @class(['grid content-start gap-3', 'sm:grid-cols-6 lg:grid-cols-8' => $customers, 'sm:grid-cols-2 lg:grid-cols-5' => ! $customers]) aria-label="Results">
     {{-- CRD monthly goal --}}
-    <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm sm:col-span-2">
+    <article @class(['relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm', 'sm:col-span-6 lg:col-span-4' => $customers, 'sm:col-span-2' => ! $customers])>
         <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
         <div class="relative">
             <div class="flex items-start justify-between gap-2">
@@ -68,7 +70,8 @@
     @php($bubble = '<span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>')
     @php($label = 'relative text-[11px] font-semibold tracking-wide text-white/95 uppercase')
     @php($note = 'relative text-xs text-white/90 tabular-nums')
-    <a href="{{ route('conversion.orders', $query) }}" class="group {{ $tile }} from-[#0e8f7c] to-[#0b6b5d] transition hover:-translate-y-0.5 hover:shadow-lg"
+    @php($span = $customers ? 'sm:col-span-2' : '')
+    <a href="{{ route('conversion.orders', $query) }}" class="group {{ $tile }} {{ $span }} from-[#0e8f7c] to-[#0b6b5d] transition hover:-translate-y-0.5 hover:shadow-lg"
        title="{{ $own ? 'Your' : 'The CRAs\'' }} orders tagged CRD - BROADCAST or CRD - SEGMENTATION (not canceled). Click to see them.">
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
@@ -77,15 +80,15 @@
         <p class="relative text-xs font-semibold text-white group-hover:underline">View orders &rarr;</p>
     </a>
 
-    <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
+    <article class="{{ $tile }} {{ $span }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ $pct($team['total_rate'], 2) }}</p>
         <p class="{{ $note }}">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
     </article>
 
-    {{-- Wide on four columns so AOV, Retained and Repeat fill the second row --}}
-    <article @class([$tile, 'from-[#d99a0b] to-[#a8740a]', 'lg:col-span-2' => $customers]) title="Average order value: gross sales ÷ confirmed orders">
+    {{-- AOV is a plain tile; Retained and Repeat take the rest of the row for their goals --}}
+    <article @class([$tile, $span, 'from-[#d99a0b] to-[#a8740a]']) title="Average order value: gross sales ÷ confirmed orders">
         {!! $bubble !!}
         <p class="{{ $label }}">AOV</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
@@ -94,31 +97,56 @@
 
     @if ($customers)
         {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every FSD and
-         CRD delivery in these dates, Shecom); opens the Customer Database filtered the same way --}}
+         CRD delivery in these dates, Shecom), against the monthly goal (% of those leads, Settings → Sales Goals);
+         opens the Customer Database filtered the same way --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
-        <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'retained']) }}" class="group {{ $tile }} from-[#4f46e5] to-[#3730a3] transition hover:-translate-y-0.5 hover:shadow-lg"
-           title="FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
-            {!! $bubble !!}
-            <p class="{{ $label }}">Retained</p>
-            <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-                <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($customers['retained']) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($customers['leads']) }}</span></span>
-                <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['retained'] / $customers['leads'] : null) }}</span>
-            </p>
-            <p class="{{ $note }}">FSD Leads</p>
-            <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
-        </a>
+        @php($leads = $customers['leads'])
+        @foreach ([
+            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
+            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
+        ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
+            @php($count = $customers[$segment])
+            @php($goal = $customers['goals'][$segment])
+            @php($goalLabel = rtrim(rtrim(number_format($goal, 1), '0'), '.').'%')
+            @php($goalCount = \App\Support\SalesGoals::customersForGoal($leads, $goal))
+            @php($toGoal = max(0, $goalCount - $count))
+            @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
+            <a href="{{ route('customers.index', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg sm:col-span-3" title="{{ $segmentTitle }}">
+                {!! $bubble !!}
+                <div class="relative flex items-start justify-between gap-2">
+                    <p class="{{ $label }}">{{ $segmentLabel }}</p>
+                    @if ($leads)
+                        <span @class(['shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold', 'text-teal-700' => $toGoal === 0, 'text-coral-700' => $toGoal > 0])>{{ $toGoal === 0 ? '✓ Goal hit' : '▼ Below goal' }}</span>
+                    @endif
+                </div>
+                <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                    <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($count) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($leads) }}</span></span>
+                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} leads (FSD and CRD)">{{ $pct($leads ? $count / $leads : null) }}</span>
+                </p>
 
-        <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'repeat']) }}" class="group {{ $tile }} from-[#c026d3] to-[#86198f] transition hover:-translate-y-0.5 hover:shadow-lg"
-           title="CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
-            {!! $bubble !!}
-            <p class="{{ $label }}">Repeat customers</p>
-            <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
-                <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($customers['repeat']) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($customers['leads']) }}</span></span>
-                <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['repeat'] / $customers['leads'] : null) }}</span>
-            </p>
-            <p class="{{ $note }}">CRD Leads</p>
-            <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
-        </a>
+                {{-- Progress toward the goal: full bar = goal reached --}}
+                <div class="relative">
+                    <div class="h-2 rounded-full bg-white/25" role="progressbar" aria-label="{{ $segmentLabel }} goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round($goalProgress * 100) }}">
+                        <span class="block h-full rounded-full bg-white" style="width: {{ $goalProgress * 100 }}%"></span>
+                    </div>
+                    <p class="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-white/90 tabular-nums">
+                        <span>Goal <span class="font-bold text-white">{{ $goalLabel }}</span> · {{ number_format($goalCount) }} of {{ number_format($leads) }}</span>
+                        @if (! $leads)
+                            <span>No leads in these dates</span>
+                        @elseif ($toGoal > 0)
+                            <span class="rounded-full bg-white px-2 font-bold text-coral-700" title="Customers still to {{ $segmentVerb }} to reach {{ $goalLabel }} of {{ number_format($leads) }} leads">{{ number_format($toGoal) }} more to reach {{ $goalLabel }}</span>
+                        @else
+                            <span class="rounded-full bg-white px-2 font-bold text-teal-700">Goal reached</span>
+                        @endif
+                    </p>
+                </div>
+
+                <p class="relative flex items-center justify-between gap-2 text-xs">
+                    <span class="text-white/90">{{ $segmentNote }}</span>
+                    <span class="font-semibold text-white group-hover:underline">View customers &rarr;</span>
+                </p>
+            </a>
+        @endforeach
     @endif
 </section>
 

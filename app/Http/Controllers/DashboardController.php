@@ -13,6 +13,7 @@ use App\Services\SalesGoalProgress;
 use App\Services\SegmentationStats;
 use App\Support\DashboardRange;
 use App\Support\DashboardVersion;
+use App\Support\SalesGoals;
 use App\Support\WorkingDate;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -79,6 +80,8 @@ class DashboardController extends Controller
                 // customers not retained or repeated included.
                 $customers['leads'] = LogisticsOrder::whereBetween('delivered_date', [$range->from->toDateString(), $range->to->toDateString()])
                     ->whereIn('team', [LogisticsOrder::TEAM_FSD, LogisticsOrder::TEAM_CRD])->count();
+                // Monthly goals (Settings → Sales Goals), as a percent of those leads.
+                $customers['goals'] = ['retained' => SalesGoals::retainedRate(), 'repeat' => SalesGoals::repeatRate()];
             }
         }
 

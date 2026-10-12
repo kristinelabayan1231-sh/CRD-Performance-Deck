@@ -45,6 +45,28 @@
             @endif
         </section>
 
+        @php($rateControl = 'h-10 w-full rounded-lg border border-line bg-white pr-8 pl-3 text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
+        <section class="rounded-xl bg-white p-4 shadow-sm">
+            <h2 class="text-base font-semibold">Customer goals <span class="text-sm font-normal text-muted">(monthly)</span></h2>
+            <p class="text-sm text-muted">Share of all the leads (every FSD and CRD delivery in the dates picked) the CRAs should retain or get to order again. The dashboard's Retained and Repeat customers tiles compare against these.</p>
+
+            <div class="mt-5 grid gap-5 sm:grid-cols-2 lg:max-w-4xl lg:grid-cols-3">
+                @foreach ([
+                    'retained_rate' => ['Retained customers goal', $retainedRate, 'FSD leads a CRA gets to buy for the first time.'],
+                    'repeat_rate' => ['Repeat customers goal', $repeatRate, 'CRD leads who buy again from a CRA.'],
+                ] as $field => [$fieldLabel, $fieldValue, $fieldHelp])
+                    <label class="block">
+                        <span class="mb-1 block text-sm font-semibold">{{ $fieldLabel }}</span>
+                        <span class="relative block">
+                            <input type="number" name="{{ $field }}" min="0" max="100" step="0.1" required value="{{ old($field, $fieldValue + 0) }}" class="{{ $rateControl }}">
+                            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted">%</span>
+                        </span>
+                        <span class="mt-1 block text-xs text-muted">{{ $fieldHelp }}</span>
+                    </label>
+                @endforeach
+            </div>
+        </section>
+
         <section class="overflow-hidden rounded-xl bg-white shadow-sm">
             <header class="px-4 pt-4 pb-3">
                 <h2 class="text-base font-semibold">Daily goal per CRA <span class="text-sm font-normal text-muted">(optional)</span></h2>

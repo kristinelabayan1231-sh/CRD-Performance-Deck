@@ -73,6 +73,8 @@ class SalesGoalsTest extends TestCase
         $this->actingAs($supervisor)->put(route('settings.sales-goals.update'), [
             'cra_daily' => 80000,
             'crd_monthly' => 1200000,
+            'retained_rate' => 30,
+            'repeat_rate' => 30,
             // A new own goal for Lhea; blank clears Regina's, so she uses the general goal again.
             'cra_goals' => [$lhea->id => 90000, $regina->id => ''],
         ])->assertRedirect()->assertSessionHas('status', 'Sales goals saved.');
@@ -87,23 +89,45 @@ class SalesGoalsTest extends TestCase
     {
         $this->assertNull(SalesGoals::netIncomeMonthly());
 
-        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => 450000])
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 30, 'repeat_rate' => 30, 'net_income_monthly' => 450000])
             ->assertRedirect()->assertSessionHasNoErrors();
         $this->assertSame(450000.0, SalesGoals::netIncomeMonthly());
         $this->actingAs($this->owner)->get(route('settings.sales-goals.index'))->assertOk()->assertSee('Net income goal')->assertSee('value="450000"', false);
 
         // Blank = no net income goal.
-        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => '']);
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 30, 'repeat_rate' => 30, 'net_income_monthly' => '']);
         $this->assertNull(SalesGoals::netIncomeMonthly());
 
-        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'net_income_monthly' => -1])
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 30, 'repeat_rate' => 30, 'net_income_monthly' => -1])
             ->assertSessionHasErrors('net_income_monthly');
     }
 
     public function test_goals_must_be_amounts(): void
     {
-        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 'lots', 'crd_monthly' => -5])
-            ->assertSessionHasErrors(['cra_daily', 'crd_monthly']);
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 'lots', 'crd_monthly' => -5, 'retained_rate' => 101, 'repeat_rate' => ''])
+            ->assertSessionHasErrors(['cra_daily', 'crd_monthly', 'retained_rate', 'repeat_rate']);
+    }
+
+    public function test_retained_and_repeat_customer_goals_default_to_30_percent_and_can_be_changed(): void
+    {
+        $this->assertSame(30.0, SalesGoals::retainedRate());
+        $this->assertSame(30.0, SalesGoals::repeatRate());
+        $this->actingAs($this->owner)->get(route('settings.sales-goals.index'))->assertOk()
+            ->assertSeeInOrder(['Retained customers goal', 'value="30"', 'Repeat customers goal', 'value="30"'], false);
+
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 25, 'repeat_rate' => 32.5])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(25.0, SalesGoals::retainedRate());
+        $this->assertSame(32.5, SalesGoals::repeatRate());
+    }
+
+    public function test_customers_for_a_goal_round_up(): void
+    {
+        // 30% of 3,218 leads = 965.4 → 966; exact shares don't round up from float error (30% of 10 = 3).
+        $this->assertSame(966, SalesGoals::customersForGoal(3218, 30));
+        $this->assertSame(3, SalesGoals::customersForGoal(10, 30));
+        $this->assertSame(0, SalesGoals::customersForGoal(0, 30));
     }
 
     public function test_cras_cannot_change_the_goals(): void
