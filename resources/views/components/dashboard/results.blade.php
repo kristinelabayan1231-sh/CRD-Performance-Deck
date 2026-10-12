@@ -100,9 +100,9 @@
            title="FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Retained</p>
-            <p class="relative flex items-baseline justify-between gap-2">
-                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}<span class="text-base font-semibold text-white/80">/{{ number_format($customers['leads']) }}</span></span>
-                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['retained'] / $customers['leads'] : null) }}</span>
+            <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($customers['retained']) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($customers['leads']) }}</span></span>
+                <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['retained'] / $customers['leads'] : null) }}</span>
             </p>
             <p class="{{ $note }}">FSD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
@@ -112,9 +112,9 @@
            title="CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Repeat customers</p>
-            <p class="relative flex items-baseline justify-between gap-2">
-                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}<span class="text-base font-semibold text-white/80">/{{ number_format($customers['leads']) }}</span></span>
-                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['repeat'] / $customers['leads'] : null) }}</span>
+            <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+                <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($customers['repeat']) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($customers['leads']) }}</span></span>
+                <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['leads']) }} leads (FSD and CRD)">{{ $pct($customers['leads'] ? $customers['repeat'] / $customers['leads'] : null) }}</span>
             </p>
             <p class="{{ $note }}">CRD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
