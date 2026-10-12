@@ -285,6 +285,7 @@ class SalesGoalsTest extends TestCase
         $fsd('F1', '9178888888', '2026-07-20', 2);
         // 1 × 15 days from Aug 20: ended Oct 3.
         $fsd('F2', '9177777777', '2026-08-20', 1);       // no order since: lost
+        PancakeOrder::create(['pancake_order_id' => 'F2', 'ordered_on' => '2026-08-17', 'phone_key' => '9177777777', 'status' => 3, 'total_price' => 1250, 'seller_name' => 'FSD AGENT']);
         $fsd('F3', '9179999999', '2026-08-20', 1);       // ordered Sep 1: back
         $ordered('9179999999', '2026-09-01');
         $fsd('F4', '9170000000', '2026-08-20', null);    // qty not known yet: left out
@@ -321,6 +322,9 @@ class SalesGoalsTest extends TestCase
             ->assertSeeTextInOrder(['Last ordered', 'Why no reorder'])
             ->assertSeeTextInOrder(['9174444444', 'Aug 26, 2026', config('segmentation.feedback.no_budget.0'), 'contacted Sep 5, 2026', 'Will buy next payday'])
             ->assertSeeTextInOrder(['9176666666', 'Oct 5, 2026', 'after the deadline', 'No tracker lead']);
+        // An FSD customer's total spent counts their FSD orders.
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'fsd']))->assertOk()
+            ->assertSeeTextInOrder(['9177777777', '₱1,250.00']);
         $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'crd']))->assertOk()
             ->assertViewHas('counts', ['due' => 5, 'back' => 3, 'lost' => 2]);
     }
