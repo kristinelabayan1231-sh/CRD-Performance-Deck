@@ -17,13 +17,15 @@ class SalesGoalController extends Controller
             'craDaily' => SalesGoals::craDaily(),
             'crdMonthly' => SalesGoals::crdMonthly(),
             'netIncomeMonthly' => SalesGoals::netIncomeMonthly(),
+            'retainedRate' => SalesGoals::retainedRate(),
+            'repeatRate' => SalesGoals::repeatRate(),
             'cras' => LeadGenerator::cras(),
-            'lastChange' => Setting::whereIn('key', [SalesGoals::CRA_DAILY, SalesGoals::CRD_MONTHLY, SalesGoals::NET_INCOME_MONTHLY])->with('editor')->latest('updated_at')->first(),
+            'lastChange' => Setting::whereIn('key', [SalesGoals::CRA_DAILY, SalesGoals::CRD_MONTHLY, SalesGoals::NET_INCOME_MONTHLY, SalesGoals::RETAINED_RATE, SalesGoals::REPEAT_RATE])->with('editor')->latest('updated_at')->first(),
         ]);
     }
 
     /**
-     * Save the general goals, the net income goal (blank = none) and any CRA's own daily goal (blank = use the general one).
+     * Save the general goals, the Retained and Repeat customer goals (%), the net income goal (blank = none) and any CRA's own daily goal (blank = use the general one).
      */
     public function update(Request $request): RedirectResponse
     {
@@ -31,18 +33,24 @@ class SalesGoalController extends Controller
             'cra_daily' => ['required', 'numeric', 'min:0', 'max:9999999999'],
             'crd_monthly' => ['required', 'numeric', 'min:0', 'max:9999999999'],
             'net_income_monthly' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
+            'retained_rate' => ['required', 'numeric', 'min:0', 'max:100'],
+            'repeat_rate' => ['required', 'numeric', 'min:0', 'max:100'],
             'cra_goals' => ['nullable', 'array'],
             'cra_goals.*' => ['nullable', 'numeric', 'min:0', 'max:9999999999'],
         ], [], [
             'cra_daily' => 'CRA daily goal',
             'crd_monthly' => 'CRD monthly goal',
             'net_income_monthly' => 'net income goal',
+            'retained_rate' => 'Retained customers goal',
+            'repeat_rate' => 'Repeat customers goal',
             'cra_goals.*' => 'CRA daily goal',
         ]);
 
         Setting::put(SalesGoals::CRA_DAILY, $data['cra_daily'], $request->user());
         Setting::put(SalesGoals::CRD_MONTHLY, $data['crd_monthly'], $request->user());
         Setting::put(SalesGoals::NET_INCOME_MONTHLY, $data['net_income_monthly'] ?? null, $request->user());
+        Setting::put(SalesGoals::RETAINED_RATE, $data['retained_rate'], $request->user());
+        Setting::put(SalesGoals::REPEAT_RATE, $data['repeat_rate'], $request->user());
 
         $cras = LeadGenerator::cras()->keyBy('id');
         foreach ($data['cra_goals'] ?? [] as $id => $goal) {

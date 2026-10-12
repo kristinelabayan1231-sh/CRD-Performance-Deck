@@ -30,6 +30,9 @@ return [
     'sales_goals' => [
         'cra_daily' => 77000,
         'crd_monthly' => 1000000,
+        // Monthly customer goals: % of all the leads delivered in the dates picked.
+        'retained_rate' => 30,
+        'repeat_rate' => 30,
     ],
 
     // Lead type normally comes from Shecom (CRD- or FSD-delivered order). Only
