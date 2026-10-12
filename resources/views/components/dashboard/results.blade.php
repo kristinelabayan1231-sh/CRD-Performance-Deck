@@ -93,7 +93,7 @@
     </article>
 
     @if ($customers)
-        {{-- Customers who placed a CRA-handled order in these dates (by order date, as the Customer Database's default), out of all the leads (every FSD and
+        {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every FSD and
          CRD delivery in these dates, Shecom); opens the Customer Database filtered the same way --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         <a href="{{ route('customers.index', [...$customerRange, 'segment' => 'retained']) }}" class="group {{ $tile }} from-[#4f46e5] to-[#3730a3] transition hover:-translate-y-0.5 hover:shadow-lg"
