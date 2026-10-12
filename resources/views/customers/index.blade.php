@@ -26,8 +26,8 @@
         {{-- Tiles: click to filter; the one in use sits raised with a "Showing" pill --}}
         <section aria-label="Customer counts" class="grid grid-cols-2 gap-3 lg:grid-cols-4">
             @foreach ([
-                [null, 'Customers', $counts['all'], 'from-[#4f5563] to-[#343a40]', $filters['period'] !== 'all' ? 'Everyone who placed an order in these dates' : 'Everyone with an FSD or CRD delivery'],
-                ['crd', 'CRD Leads', $counts['crd'], 'from-brand-500 to-brand-700', $filters['period'] !== 'all' ? 'A CRA-handled order placed in these dates, delivered or not' : 'A delivery handled by a CRA'],
+                [null, 'Customers', $counts['all'], 'from-[#4f5563] to-[#343a40]', 'Everyone with an FSD or CRD delivery'],
+                ['crd', 'CRD Leads', $counts['crd'], 'from-brand-500 to-brand-700', 'A delivery handled by a CRA'],
                 ['retained', 'Retained', $counts['retained'], 'from-[#0e8f7c] to-[#0b6b5d]', 'Their first CRA-handled order ever'],
                 ['repeat', 'Repeat Customers', $counts['repeat'], 'from-[#1f8fb8] to-[#156c8c]', 'An earlier CRA-handled order too'],
             ] as [$key, $label, $value, $gradient, $hint])
@@ -81,9 +81,8 @@
             </div>
 
             <div class="flex flex-wrap items-end gap-x-5 gap-y-4">
-                {{-- Today / Week / Month and the date range go by order date (Pancake, delivered or not) --}}
                 <fieldset>
-                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Ordered</legend>
+                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Delivered</legend>
                     <div class="flex h-9 items-center rounded-lg border border-line p-0.5 text-sm font-semibold">
                         @foreach ($periods as $value => $label)
                             <label class="h-full cursor-pointer">
