@@ -45,12 +45,13 @@ class CustomerDatabaseController extends Controller
         $query = ['from' => $range['from'], 'to' => $range['to'], 'search' => $filters['search'] ?? null];
 
         $counts = $customers->cachedCounts($query);
+        $list = $customers->cachedList([...$query, 'segment' => $filters['segment'] ?? null, 'sort' => $filters['sort'] ?? 'spent'], $counts);
 
         return view('customers.index', [
-            'customers' => $customers->cachedList([...$query, 'segment' => $filters['segment'] ?? null, 'sort' => $filters['sort'] ?? 'spent'], $counts),
+            'customers' => $list,
             'counts' => $counts,
-            // High AOV / VIP customers by main number, for their pills in the list.
-            'highValue' => $highValue->all(),
+            // High AOV / VIP pills for this page's customers only; the list still opens without them if this fails.
+            'highValue' => rescue(fn () => $highValue->flagsFor($list->items()), []),
             'filters' => [...$filters, 'period' => $period],
             'range' => $range,
             'periods' => self::PERIODS,
