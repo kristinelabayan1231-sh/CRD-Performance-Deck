@@ -21,13 +21,15 @@ export function initCustomers() {
         }
     };
 
+    // Fields inside a row (High AOV CVR & VIP's dropdowns and remarks) keep working instead of opening it.
+    const field = 'select, input, textarea, button, a, label';
     document.addEventListener('click', (event) => {
         const row = event.target.closest('[data-customer-url]');
-        if (row) open(row.dataset.customerUrl);
+        if (row && !event.target.closest(field)) open(row.dataset.customerUrl);
     });
     document.addEventListener('keydown', (event) => {
         const row = event.target.closest?.('[data-customer-url]');
-        if (row && (event.key === 'Enter' || event.key === ' ')) {
+        if (row && !event.target.closest(field) && (event.key === 'Enter' || event.key === ' ')) {
             event.preventDefault();
             open(row.dataset.customerUrl);
         }

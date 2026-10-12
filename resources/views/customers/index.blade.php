@@ -145,6 +145,7 @@
                                     aria-label="Open {{ $customer->customer_name ?: 'customer' }}"
                                     class="cursor-pointer hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
                                     <td class="px-4 py-3">
+                                        @php($high = $highValue[(string) $customer->phone_key] ?? null)
                                         <span class="font-medium">{{ $customer->customer_name ?: 'Unknown' }}</span>
                                         @if ($label)
                                             <span @class([
@@ -152,6 +153,14 @@
                                                 'bg-teal/15 text-teal-700' => $label === 'Retained',
                                                 'bg-sky/20 text-[#156c8c]' => $label !== 'Retained',
                                             ])>{{ $label }}</span>
+                                        @endif
+                                        {{-- Same pills as High AOV CVR & VIP --}}
+                                        @if ($high['vip'] ?? false)
+                                            <span class="ml-1.5 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 align-middle text-[11px] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
+                                                  title="VIP in {{ implode(', ', $high['vip_products']) }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+                                        @endif
+                                        @if ($high['high_aov'] ?? false)
+                                            <span class="ml-1.5 rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
                                         @endif
                                         @if ($customer->possible_matches ?? 0)
                                             <span class="ml-1.5 rounded-full bg-[#ffe5a0] px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap text-[#473821]"
