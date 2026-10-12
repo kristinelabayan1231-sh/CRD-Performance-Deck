@@ -7,7 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
-- 2026-10-12 · Customer Database · Customers tab list: VIP (black, gold crown; hover shows the products) and HIGH AOV (purple) pills next to the name, same as on High AOV CVR & VIP; no row tint · shots: customer-database
+- 2026-10-12 · Customer Database · Show filter has a new "Possible match" option: only customers tagged Possible match (another customer has the same name; generic names left out); merging them takes them off the list · shots: customer-database
+- 2026-10-12 · Customer Database · Customers tab list: VIP (black, gold crown; hover shows the products) and HIGH AOV (purple) pills next to the name, same as on High AOV CVR & VIP (a VIP shows only VIP); no row tint · shots: customer-database
 - 2026-10-12 · Customer Database · Customer pop-up (Customer Database and High AOV CVR & VIP): the Customer CLTV tile reads "Customer CLTV · Total spent"; new row under it: High AOV (AOV of ₱999) or Potential High AOV with the ₱ remaining (the next order that makes them High AOV), and To become VIP / Next VIP product with the ₱ remaining on the product closest to its CLTV · shots: customer-profile
 - 2026-10-12 · Customer Database · High AOV CVR & VIP: clicking a row opens the customer's details and order history pop-up, as in the Customer Database (CRAs too, for listed customers); the dropdowns and remarks still work as before · shots: customer-high-value, customer-profile
 - 2026-10-12 · Customer Database · High AOV CVR & VIP: name, VIP pill and "VIP in <products>" stay on one line; the "Total # of orders" column is now "Orders" · shots: customer-high-value, customer-high-value-orders

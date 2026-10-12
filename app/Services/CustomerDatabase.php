@@ -41,6 +41,7 @@ class CustomerDatabase
         'retained' => 'Retained',
         'repeat' => 'Repeat Customers',
         'fsd' => 'FSD only',
+        'possible_match' => 'Possible match',
     ];
 
     public const SORTS = [
@@ -121,6 +122,7 @@ class CustomerDatabase
             'retained' => $counts['retained'],
             'repeat' => $counts['repeat'],
             'fsd' => $counts['all'] - $counts['crd'],
+            'possible_match' => $this->possibleMatchCount($filters),
             default => $counts['all'],
         };
 
@@ -149,6 +151,7 @@ class CustomerDatabase
             'retained' => $having("{$inPeriod['sql']} >= 1 and {$total['sql']} = 1", $inPeriod['bindings'], $total['bindings']),
             'repeat' => $having("{$inPeriod['sql']} >= 1 and {$total['sql']} >= 2", $inPeriod['bindings'], $total['bindings']),
             'fsd' => $having("{$inPeriod['sql']} = 0", $inPeriod['bindings']),
+            'possible_match' => $this->onlyPossibleMatches($query),
             default => null,
         };
 
@@ -160,6 +163,39 @@ class CustomerDatabase
         };
 
         return $query->orderBy('phone_key');
+    }
+
+    /**
+     * Narrow the customers to those with a "Possible match": another customer (main number)
+     * has a delivery under the same name, as withNumbers() counts them. Generic names are left out.
+     */
+    private function onlyPossibleMatches(Builder $query): Builder
+    {
+        // Each name with its customers, then the names more than one customer has (MySQL wants the plain derived table).
+        $byCustomer = DB::table('logistics_orders as named')
+            ->leftJoin('customer_links as named_link', 'named_link.phone_key', '=', 'named.phone_key')
+            ->where('named.delivered_date', '>=', LogisticsOrder::coveredFrom())
+            ->whereNotIn(DB::raw('lower(trim(named.customer_name))'), self::UNMATCHED_NAMES)
+            ->distinct()
+            ->selectRaw('lower(trim(named.customer_name)) as name_key')
+            ->selectRaw('coalesce(named_link.primary_phone_key, named.phone_key) as customer_key');
+        $shared = DB::query()->fromSub($byCustomer, 'names')->groupBy('name_key')->havingRaw('count(*) > 1')->select('name_key');
+
+        return $query->havingRaw("lower(trim(max(lo.customer_name))) in ({$shared->toSql()})", $shared->getBindings());
+    }
+
+    /**
+     * How many customers have a Possible match, for the same period and search; kept for CACHE_MINUTES.
+     *
+     * @param  array{from?: ?CarbonImmutable, to?: ?CarbonImmutable, search?: ?string}  $filters
+     */
+    private function possibleMatchCount(array $filters): int
+    {
+        $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
+
+        return Cache::remember(self::cacheKey('possible_matches', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
+            now()->addMinutes(self::CACHE_MINUTES),
+            fn () => DB::query()->fromSub($this->onlyPossibleMatches($this->grouped($filters)), 'customers')->count());
     }
 
     /**

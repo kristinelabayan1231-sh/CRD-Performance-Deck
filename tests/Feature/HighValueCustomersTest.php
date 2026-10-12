@@ -91,9 +91,13 @@ class HighValueCustomersTest extends TestCase
             ->assertDontSee('Ben Reyes')->assertDontSee('Cara Diaz');
 
         // The Customer Database list shows the same pills next to their names.
-        $this->get(route('customers.index'))->assertOk()
-            ->assertSeeInOrder(['Dina Lim', 'VIP'])
-            ->assertSeeInOrder(['Ana Cruz', 'HIGH AOV']);
+        $list = $this->get(route('customers.index'))->assertOk()
+            ->assertSeeInOrder(['Dina Lim', 'VIP', 'Edgar Recamara', 'HIGH AOV'])
+            ->assertSeeInOrder(['Ana Cruz', 'HIGH AOV'])->getContent();
+        // Dina is VIP and High AOV: her row shows only VIP.
+        $dinaRow = substr($list, strpos($list, 'Dina Lim'), strpos($list, 'Edgar Recamara') - strpos($list, 'Dina Lim'));
+        $this->assertStringContainsString('VIP', $dinaRow);
+        $this->assertStringNotContainsString('HIGH AOV', $dinaRow);
 
         // VIP only, and per order: each delivered order with its own amount.
         $this->get(route('customers.high-value', ['list' => 'vip', 'view' => 'orders']))->assertOk()
