@@ -50,6 +50,9 @@ $modules = [
         'conversion.view' => 'View own broadcast and segmentation conversions',
         'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
     ],
+    'CRD - MC' => [
+        'monthly_cost.manage' => 'View and edit CRD - MC: every position\'s salary, the shared salaries, benefits and the monthly cost',
+    ],
     'Customer Database' => [
         'customers.view' => 'View every FSD- and CRD-delivered customer, their orders and product CLTV',
         'customers.merge' => 'Merge contact numbers that belong to the same customer, and undo a merge',

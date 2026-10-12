@@ -128,6 +128,18 @@ return [
         'purchased' => ['PURCHASED', 'bg-[#d4edbc] text-[#11734b]'],
     ],
 
+    // Summary → NO VERBAL CONV reasons: a lead's note goes to the first group with a keyword in it
+    // (case-insensitive); notes matching none are "Other", leads with no note "No note".
+    'no_verbal_reasons' => [
+        'ended' => ['Customer ended / dropped the call', ['ended', 'end call', 'call end', 'dropped', 'drop call', 'dropcall', 'hung up', 'didn\'t talk', 'did not talk']],
+        'wrong_number' => ['Wrong number / someone else answered', ['incorrect', 'wrong', 'not the customer', 'kapatid', 'anak', 'asawa', 'nanay', 'tatay']],
+        'busy' => ['Busy', ['busy']],
+        'voicemail' => ['Voicemail', ['voicemail', 'voice mail']],
+        'cbr' => ['Cannot be reached / out of coverage', ['cbr', 'cannot be reached', 'can\'t be reached', 'out of coverage', 'not reachable', 'unreachable']],
+        'unattended' => ['Unattended', ['unattended', 'uanttended', 'unatended']],
+        'pjr' => ['Phone just rings (PJR)', ['pjr', 'ring', 'dialling', 'dialing', 'no answer']],
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Editable dropdowns

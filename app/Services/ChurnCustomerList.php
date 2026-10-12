@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\CustomerLink;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
+use App\Models\PancakeOrder;
 use App\Support\DashboardRange;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -32,7 +34,7 @@ class ChurnCustomerList
         'fsd' => 'FSD',
     ];
 
-    public function __construct(private CustomerChurn $churn) {}
+    public function __construct(private CustomerChurn $churn, private CustomerDatabase $customers) {}
 
     /**
      * Customers due, came back and lost, for the tiles.
@@ -122,6 +124,72 @@ class ChurnCustomerList
                 'lead' => $leads[$row['phone_key']] ?? null,
             ];
         });
+    }
+
+    /**
+     * A churn customer's orders and deliveries, newest first, for the Churn list's order history pop-up:
+     * every Pancake order (deleted ones left out) and every delivery of all their numbers, with who
+     * handled it. counts = it would bring them back (a Pancake order not canceled with a listed product,
+     * or a delivery with one).
+     *
+     * @return array{name: string, phone: string, orders: list<array{order_id: string, ordered: ?string, delivered: ?string, team: ?string, seller: ?string, by_cra: bool, status_label: string, status_classes: string, amount: ?float, items: string, counts: bool}>}|null
+     */
+    public function history(string $phoneKey): ?array
+    {
+        $members = CustomerLink::membersOf(CustomerLink::primaryFor($phoneKey));
+        $deliveries = LogisticsOrder::whereIn('phone_key', $members)->orderByDesc('delivered_date')->get()->keyBy('order_id');
+        $pos = PancakeOrder::whereIn('phone_key', $members)->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 7))
+            ->get()->keyBy('pancake_order_id');
+
+        if ($deliveries->isEmpty() && $pos->isEmpty()) {
+            return null;
+        }
+
+        $statuses = config('customers.pos_statuses');
+        $day = fn ($date) => $date ? substr((string) $date, 0, 10) : null;
+        $orders = $pos->map(function (PancakeOrder $order) use ($deliveries, $statuses, $day) {
+            $delivery = $deliveries->get($order->pancake_order_id);
+
+            return [
+                'order_id' => (string) $order->pancake_order_id,
+                'ordered' => $day($order->ordered_on),
+                'delivered' => $day($delivery?->delivered_date),
+                'team' => $delivery?->team,
+                'seller' => $order->seller_name ? ucwords(strtolower($order->seller_name)) : null,
+                'by_cra' => $this->customers->handledByCra($delivery?->team, $order->seller_name),
+                'status_label' => $statuses[$order->status][0] ?? ($order->status_name ?: 'Status '.($order->status ?? '—')),
+                'status_classes' => $statuses[$order->status][1] ?? 'bg-canvas text-muted',
+                'amount' => (float) $order->total_price,
+                'items' => collect($order->items ?? [])->pluck('name')->filter()->join(', '),
+                'counts' => ! $order->non_crd && ! in_array($order->status, PancakeOrder::NOT_COUNTED_STATUSES, true),
+            ];
+        });
+
+        // Deliveries Pancake has no copy of.
+        foreach ($deliveries->reject(fn (LogisticsOrder $order) => $pos->has($order->order_id)) as $order) {
+            $orders[$order->order_id] = [
+                'order_id' => (string) $order->order_id,
+                'ordered' => null,
+                'delivered' => $day($order->delivered_date),
+                'team' => $order->team,
+                'seller' => null,
+                'by_cra' => $order->team === LogisticsOrder::TEAM_CRD,
+                'status_label' => $statuses[3][0],
+                'status_classes' => $statuses[3][1],
+                'amount' => null,
+                'items' => (string) $order->product,
+                'counts' => ! $order->non_crd,
+            ];
+        }
+
+        $latest = $deliveries->first() ?? $pos->sortByDesc('ordered_on')->first();
+        $numbers = $deliveries->pluck('phone_number', 'phone_key')->all();
+
+        return [
+            'name' => $latest->customer_name ?: 'Unknown',
+            'phone' => implode(' / ', array_map(fn (string $phone) => $numbers[$phone] ?? $phone, $members)),
+            'orders' => $orders->sortByDesc(fn (array $o) => $o['ordered'] ?? $o['delivered'])->values()->all(),
+        ];
     }
 
     /**

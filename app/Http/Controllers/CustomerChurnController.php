@@ -14,7 +14,7 @@ class CustomerChurnController extends Controller
     /**
      * Customer Database → Churn: the customers behind the dashboard's churn rate, for the same month or dates.
      */
-    public function __invoke(Request $request, ChurnCustomerList $churn): View
+    public function index(Request $request, ChurnCustomerList $churn): View
     {
         $today = WorkingDate::realToday();
         $filters = $request->validate([
@@ -38,5 +38,25 @@ class CustomerChurnController extends Controller
             'today' => $today,
             'graceDays' => (int) config('customers.churn_grace_days'),
         ]);
+    }
+
+    /**
+     * The churn list's order history pop-up (information only): every order and delivery of the
+     * customer, with the reorder window of the delivery judged picked out.
+     */
+    public function history(Request $request, ChurnCustomerList $churn, string $phoneKey): View
+    {
+        $window = $request->validate([
+            'order_id' => ['required', 'string', 'max:64'],
+            'team' => ['required', Rule::in(['crd', 'fsd'])],
+            'delivered' => ['required', 'date_format:Y-m-d'],
+            'ran_out' => ['required', 'date_format:Y-m-d'],
+            'deadline' => ['required', 'date_format:Y-m-d'],
+        ]);
+        $history = $churn->history($phoneKey);
+
+        abort_if($history === null, 404);
+
+        return view('customers._churn-history', ['customer' => $history, 'window' => $window]);
     }
 }

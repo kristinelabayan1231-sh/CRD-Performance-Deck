@@ -2,6 +2,7 @@ import { initAccountLists } from './account-list';
 import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initLive } from './live';
+import { initMonthlyCost } from './monthly-cost';
 import { initPoster } from './poster';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
@@ -16,4 +17,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initCustomers();
     initAccountLists();
     initCraOrders();
+    initMonthlyCost();
 });

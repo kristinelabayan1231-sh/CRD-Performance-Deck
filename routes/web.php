@@ -9,6 +9,7 @@ use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\HighValueCustomerController;
+use App\Http\Controllers\MonthlyCostController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
@@ -91,10 +92,19 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::prefix('customers')->name('customers.')->middleware('can:customers.view')->group(function () {
         Route::get('/', [CustomerDatabaseController::class, 'index'])->name('index');
-        Route::get('/churn', CustomerChurnController::class)->name('churn');
+        Route::get('/churn', [CustomerChurnController::class, 'index'])->name('churn');
+        Route::get('/churn/{phoneKey}', [CustomerChurnController::class, 'history'])->where('phoneKey', '[0-9]+')->name('churn.history');
         Route::get('/{phoneKey}', [CustomerDatabaseController::class, 'show'])->where('phoneKey', '[0-9]+')->name('show');
         Route::post('/{phoneKey}/merge', [CustomerDatabaseController::class, 'merge'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('merge');
         Route::delete('/{phoneKey}/merge', [CustomerDatabaseController::class, 'separate'])->where('phoneKey', '[0-9]+')->middleware('can:customers.merge')->name('separate');
+    });
+
+    Route::prefix('crd-mc')->name('monthly-cost.')->middleware('can:monthly_cost.manage')->group(function () {
+        Route::get('/', [MonthlyCostController::class, 'index'])->name('index');
+        Route::post('/', [MonthlyCostController::class, 'store'])->name('store');
+        Route::put('/settings', [MonthlyCostController::class, 'settings'])->name('settings');
+        Route::patch('/{row}', [MonthlyCostController::class, 'update'])->name('update');
+        Route::delete('/{row}', [MonthlyCostController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {

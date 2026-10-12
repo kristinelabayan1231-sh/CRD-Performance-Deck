@@ -72,6 +72,29 @@ class SegmentationSummaryTest extends TestCase
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 3 && $s['converted'] === 0);
     }
 
+    public function test_no_verbal_conv_reasons_group_the_notes_by_keyword(): void
+    {
+        $this->lead($this->alice, 'CanPro', ['status' => 'pjr_drop_call', 'feedback' => 'no_verbal_conv', 'notes' => 'cx ended the call', 'contact_date' => '2026-10-03']);
+        $this->lead($this->alice, 'CanPro', ['status' => 'pjr_drop_call', 'feedback' => 'no_verbal_conv', 'notes' => 'Ringing, call end']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'pjr_drop_call', 'feedback' => 'no_verbal_conv', 'notes' => 'PJR 3x']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'CBR']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'nag sorry daw']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedback' => 'no_budget', 'notes' => 'cx ended the call']);
+
+        $this->actingAs($this->owner)->get(route('segmentation.overview'))->assertOk()
+            ->assertViewHas('summary', fn (array $s) => collect($s['no_verbal']['reasons'])->pluck('total', 'key')->sortKeys()->all() === [
+                'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 1, 'pjr' => 1,
+            ] && $s['no_verbal']['reasons'][0]['key'] === 'ended' && count($s['no_verbal']['notes']) === 6)
+            ->assertSee('NO VERBAL CONV · why?')
+            ->assertSeeInOrder(['Why no verbal conversation', '6', 'Back to chart', 'Customer ended / dropped the call', '2', '33%'])
+            ->assertSeeInOrder(['Alice · Oct 3 · PJR/Inactive/CBR/Drop call', '“cx ended the call”']);
+
+        // The filters apply: Bea's leads only.
+        $this->actingAs($this->owner)->get(route('segmentation.overview', ['cra' => $this->bea->id]))
+            ->assertViewHas('summary', fn (array $s) => count($s['no_verbal']['notes']) === 4);
+    }
+
     public function test_supervisors_and_team_leads_open_the_tracker_on_summary(): void
     {
         $supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);

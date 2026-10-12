@@ -112,7 +112,56 @@ class SegmentationSummary
             ]),
         ];
 
-        return [...$summary, 'insights' => $this->insights($summary)];
+        return [...$summary, 'no_verbal' => $this->noVerbalReasons($scope), 'insights' => $this->insights($summary)];
+    }
+
+    /**
+     * Why there was no verbal conversation: the NO VERBAL CONV leads' notes sorted into reason groups
+     * by keyword (config segmentation.no_verbal_reasons), with every note, latest contact first.
+     *
+     * @param  Builder<Lead>  $scope
+     * @return array{reasons: list<array{key: string, label: string, total: int}>, notes: list<array{customer: string, cra: ?string, contacted: ?string, status: ?string, note: ?string, reason: string}>}
+     */
+    private function noVerbalReasons(Builder $scope): array
+    {
+        $groups = config('segmentation.no_verbal_reasons');
+        $labels = [...array_map(fn (array $group) => $group[0], $groups), 'other' => 'Other', 'no_note' => 'No note'];
+        $statuses = config('segmentation.statuses');
+        $reasonFor = function (?string $note) use ($groups): string {
+            $note = mb_strtolower(trim((string) $note));
+
+            if ($note === '') {
+                return 'no_note';
+            }
+
+            foreach ($groups as $key => [, $keywords]) {
+                foreach ($keywords as $keyword) {
+                    if (str_contains($note, $keyword)) {
+                        return $key;
+                    }
+                }
+            }
+
+            return 'other';
+        };
+
+        $notes = (clone $scope)->where('feedback', 'no_verbal_conv')->with('assignee')
+            ->orderByDesc('contact_date')->orderByDesc('id')
+            ->get(['id', 'customer_name', 'assigned_to', 'contact_date', 'status', 'notes'])
+            ->map(fn (Lead $lead) => [
+                'customer' => $lead->customer_name,
+                'cra' => $lead->assignee?->displayName(),
+                'contacted' => $lead->contact_date?->format('M j'),
+                'status' => $lead->status ? ($statuses[$lead->status][0] ?? $lead->status) : null,
+                'note' => $lead->notes,
+                'reason' => $reasonFor($lead->notes),
+            ]);
+
+        return [
+            'reasons' => $notes->countBy('reason')->sortDesc()
+                ->map(fn (int $total, string $key) => ['key' => $key, 'label' => $labels[$key], 'total' => $total])->values()->all(),
+            'notes' => $notes->values()->all(),
+        ];
     }
 
     /**

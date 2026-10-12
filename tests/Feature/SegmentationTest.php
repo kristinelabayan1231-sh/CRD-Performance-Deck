@@ -371,6 +371,24 @@ class SegmentationTest extends TestCase
         $response->assertSee('Hot Leads / Recent Buyers (0 to 15 days)')->assertSee('11:00AM-12:00NN')->assertSee('STOPPED BY THE DR.')->assertSee('PURCHASED');
     }
 
+    public function test_pending_and_catered_list_30_leads_a_page_with_10_in_view(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        foreach (range(1, 31) as $i) {
+            Lead::create(['order_id' => (string) $i, 'customer_name' => "Customer {$i}", 'phone_number' => '917'.$i, 'product_name' => 'Sinuxyl', 'qty' => 1,
+                'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+                'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id]);
+        }
+
+        $this->actingAs($alice)->get('/segmentation')->assertOk()
+            ->assertViewHas('unprocessed', fn ($leads) => $leads->perPage() === 30 && $leads->count() === 30 && $leads->lastPage() === 2)
+            ->assertSee('data-visible-rows="10"', false);
+        // The full-view pop-up shows its whole page, without the 10-row box.
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1')->assertOk()
+            ->assertDontSee('data-visible-rows', false);
+    }
+
     public function test_the_day_is_split_into_unprocessed_then_processed_and_show_narrows_it(): void
     {
         Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);

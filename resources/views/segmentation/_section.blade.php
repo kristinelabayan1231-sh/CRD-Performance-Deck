@@ -1,4 +1,4 @@
-{{-- One list of leads (Pending or Catered), 5 per page. Pending has a coral header, Catered a teal one. --}}
+{{-- One list of leads (Pending or Catered), 30 per page with 10 in view and the rest by scrolling (headers stay put). Pending has a coral header, Catered a teal one. --}}
 @php($visibleOptional = collect($optionalColumns)->reject(fn ($c) => $c['coming_soon'] ?? false))
 @php($pending = $id === 'unprocessed')
 
@@ -21,9 +21,9 @@
     @if ($leads->isEmpty())
         <p class="px-4 py-10 text-center text-sm text-muted">{{ $empty }}</p>
     @else
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto" @unless (request()->boolean('full')) data-visible-rows="10" @endunless>
             <table class="w-max min-w-full text-left text-sm">
-                <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                <thead class="sticky top-0 z-20 bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
                         <th class="px-4 py-3 text-right font-semibold">Qty</th>

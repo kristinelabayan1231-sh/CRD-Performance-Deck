@@ -348,7 +348,20 @@ class SalesGoalsTest extends TestCase
             ->assertSeeTextInOrder(['9176666666', 'Oct 5, 2026', 'after the deadline', 'No tracker lead']);
         // An FSD customer's total spent counts their FSD orders.
         $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'fsd']))->assertOk()
-            ->assertSeeTextInOrder(['9177777777', '₱1,250.00']);
+            ->assertSeeTextInOrder(['9177777777', 'Lost', 'For reactivation', '₱1,250.00']);
+
+        // A row opens the customer's order history: who handled each order, and their reorder window.
+        $window = ['team' => 'fsd', 'order_id' => 'F2', 'delivered' => '2026-08-20', 'ran_out' => '2026-09-03', 'deadline' => '2026-10-03'];
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'fsd']))
+            ->assertSee(route('customers.churn.history', ['phoneKey' => '9177777777', ...$window]));
+        $this->actingAs($this->owner)->get(route('customers.churn.history', ['phoneKey' => '9177777777', ...$window]))->assertOk()
+            ->assertSeeTextInOrder(['Lost', 'For reactivation', 'FSD', 'Delivered', 'Aug 20, 2026', 'reorder by', 'Oct 3, 2026',
+                'No order or delivery after Aug 20, 2026 up to Oct 3, 2026', 'Order history', 'Aug 17, 2026', 'delivered Aug 20', 'Judged delivery',
+                'F2', 'Delivered', 'Fsd Agent', 'FSD', '₱1,250.00']);
+        $this->actingAs($this->owner)->get(route('customers.churn.history', [
+            'phoneKey' => '9172222222', 'order_id' => 'x', 'team' => 'crd', 'delivered' => '2026-08-25', 'ran_out' => '2026-09-03', 'deadline' => '2026-10-03',
+        ]))->assertOk()->assertSeeText('Came back with order')->assertDontSeeText('For reactivation');
+        $this->actingAs($this->owner)->get(route('customers.churn.history', ['phoneKey' => '9170001111', ...$window]))->assertNotFound();
         $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'crd']))->assertOk()
             ->assertViewHas('counts', ['due' => 5, 'back' => 3, 'lost' => 2]);
     }
