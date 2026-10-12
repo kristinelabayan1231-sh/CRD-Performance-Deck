@@ -38,6 +38,17 @@ class HighValueCustomerController extends Controller
     }
 
     /**
+     * A listed customer's details and order history for the pop-up, as in the Customer Database;
+     * open to everyone who sees this list (CRAs too), for listed customers only.
+     */
+    public function show(string $phoneKey, HighValueCustomers $highValue): View
+    {
+        abort_unless(isset($highValue->all()[CustomerLink::primaryFor($phoneKey)]), 404, 'This customer is not on the High AOV / VIP list.');
+
+        return app()->call([app(CustomerDatabaseController::class), 'show'], ['phoneKey' => $phoneKey]);
+    }
+
+    /**
      * Save one field of a listed customer: their CRA, point of contact, PU/Reseller or remarks.
      * Without customers.high_value.assign a CRA can only claim a customer nobody has, or let go of their own.
      */
@@ -67,7 +78,11 @@ class HighValueCustomerController extends Controller
             }
 
             if ($craId !== $current) {
+                // A CRA set by an admin or manager wins over the first-reorder rule from now on; a CRA's own claim doesn't.
                 $account->forceFill(['assigned_cra_id' => $craId, 'assigned_at' => $craId ? now() : null]);
+                if ($user->can('customers.high_value.assign')) {
+                    $account->cra_set_by_hand = true;
+                }
             }
         }
 

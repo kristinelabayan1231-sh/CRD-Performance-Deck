@@ -349,6 +349,8 @@ class CustomerDatabase
             'prior_last_ordered_on' => $histories->max('prior_last_ordered_on'),
             // CRA-handled orders only, like the product CLTV and VIP below.
             'total_spent' => (float) $deliveredOrders->where('by_cra', true)->sum('amount'),
+            // CRA-handled delivered orders with a Pancake amount: AOV = total spent ÷ these, as on High AOV CVR & VIP.
+            'priced_cra_orders' => $deliveredOrders->where('by_cra', true)->whereNotNull('amount')->count(),
             'statuses' => collect($statuses)
                 ->map(function (array $status, int $code) use ($orders) {
                     $inStatus = $orders->where('status', $code);
@@ -497,7 +499,9 @@ class CustomerDatabase
         $delivered = config('customers.delivered_statuses');
         $now = now();
 
-        $rows = collect($ordersByPhone)->map(function (array $orders, string $phone) use ($before, $delivered, $now) {
+        $catalog = new ProductCatalog;
+
+        $rows = collect($ordersByPhone)->map(function (array $orders, string $phone) use ($before, $delivered, $now, $catalog) {
             $prior = collect($orders)->filter(function (array $order) use ($before, $delivered) {
                 $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
                 $orderedOn = isset($order['inserted_at'])
@@ -513,6 +517,14 @@ class CustomerDatabase
                 'phone_key' => $phone,
                 'prior_cra_orders' => $prior->count(),
                 'prior_last_ordered_on' => $prior->max(fn (array $o) => CarbonImmutable::parse($o['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString()),
+                // For the High AOV first-reorder rule: orders with a product from the list, oldest first (upsert skips casts).
+                'prior_cra_sales' => json_encode($prior
+                    ->reject(fn (array $o) => $catalog->unlisted(array_column($o['items'] ?? [], 'name')))
+                    ->map(fn (array $o) => [
+                        'at' => CarbonImmutable::parse($o['inserted_at'], 'UTC')->toDateTimeString(),
+                        'amount' => (float) ($o['total_price'] ?? 0),
+                        'seller' => PancakeEngagement::staffKey(($o['assigning_seller'] ?? $o['creator'] ?? [])['name'] ?? null),
+                    ])->sortBy('at')->values()->all()),
                 'checked_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -520,7 +532,7 @@ class CustomerDatabase
         })->values();
 
         foreach ($rows->chunk(500) as $chunk) {
-            CustomerHistory::upsert($chunk->all(), ['phone_key'], ['prior_cra_orders', 'prior_last_ordered_on', 'checked_at', 'updated_at']);
+            CustomerHistory::upsert($chunk->all(), ['phone_key'], ['prior_cra_orders', 'prior_last_ordered_on', 'prior_cra_sales', 'checked_at', 'updated_at']);
         }
 
         return $rows->count();
@@ -543,7 +555,8 @@ class CustomerDatabase
     }
 
     /**
-     * The customer's saved history, counted as checked unless the CRD team accounts changed since it was
+     * The customer's saved history, counted as checked unless it has earlier CRA orders saved without
+     * their amounts and sellers, or the CRD team accounts changed since it was
      * checked and the customer had a delivery in the month before that change (Settings → Pancake Accounts).
      */
     private function checkedHistory(Builder $query, string $phoneColumn): Builder
@@ -551,6 +564,8 @@ class CustomerDatabase
         $recheckFrom = PancakeAccounts::historyRecheckFrom();
 
         return $query->from('customer_histories')->whereColumn('customer_histories.phone_key', $phoneColumn)
+            // Saved before each earlier order's amount and seller were kept: looked up again for them.
+            ->where(fn (Builder $q) => $q->where('customer_histories.prior_cra_orders', 0)->orWhereNotNull('customer_histories.prior_cra_sales'))
             ->when($recheckFrom, fn (Builder $q) => $q->where(fn (Builder $current) => $current
                 ->where('customer_histories.checked_at', '>=', $recheckFrom)
                 ->orWhereNotExists(fn (Builder $recent) => $recent->from('logistics_orders as recent')

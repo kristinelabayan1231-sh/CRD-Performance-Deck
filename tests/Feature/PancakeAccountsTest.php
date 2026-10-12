@@ -73,7 +73,7 @@ class PancakeAccountsTest extends TestCase
         $this->delivery('R1', '9171111111', '2026-09-20', LogisticsOrder::TEAM_CRD, null);
         $this->delivery('O1', '9172222222', '2026-07-01', LogisticsOrder::TEAM_CRD, null);
         foreach (['9171111111', '9172222222'] as $phone) {
-            CustomerHistory::create(['phone_key' => $phone, 'prior_cra_orders' => 1, 'checked_at' => now()->subWeek()]);
+            CustomerHistory::create(['phone_key' => $phone, 'prior_cra_orders' => 1, 'prior_cra_sales' => [], 'checked_at' => now()->subWeek()]);
         }
         $customers = fn () => app(CustomerDatabase::class);
 

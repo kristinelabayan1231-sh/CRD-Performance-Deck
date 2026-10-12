@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Models\CustomerAccount;
+use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -18,8 +21,9 @@ use Illuminate\Support\Facades\DB;
  * Customer Database → High AOV CVR & VIP. Among CRA-handled customers (merged numbers count
  * as one): High AOV = total spent ÷ delivered orders ≥ config customers.high_aov_min; VIP =
  * delivered units of one product × its SRP reached that product's CLTV (SRP × 30).
- * Each has a CRA (assigning seller): claimed by a CRA, or, for a customer not on the
- * list yet, the CRA their Segmentation Tracker lead is handed to. Their leads then go to that CRA.
+ * Each has a CRA (assigning seller): a High AOV customer goes to the CRA of their first reorder
+ * that made them High AOV (assignByFirstReorder) unless an admin or manager set one by hand; otherwise claimed by a CRA, or the CRA their
+ * Segmentation Tracker lead is handed to. Their leads then go to that CRA.
  */
 class HighValueCustomers
 {
@@ -298,6 +302,84 @@ class HighValueCustomers
         $cras = CustomerAccount::whereIn('phone_key', $primaryOf->unique()->values())->whereNotNull('assigned_cra_id')->pluck('assigned_cra_id', 'phone_key');
 
         return $primaryOf->map(fn (string $primary) => $cras[$primary] ?? null)->filter()->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * The CRA each High AOV customer goes to: the seller of their first CRA-handled order (oldest
+     * first, starting with those from before the database's first day; FSD orders left out) at which the running AOV of their CRA-handled orders with a
+     * Pancake amount reached config customers.high_aov_min. Orders sold by a former CRA or an
+     * account no active CRA owns are passed over for the next qualifying one.
+     *
+     * @return array<string, int> main number => CRA id (customers with no such order left out)
+     */
+    public function firstReorderCras(): array
+    {
+        $keys = collect($this->all())->where('high_aov', true)->keys()->map(fn ($key) => (string) $key)->all();
+        if ($keys === []) {
+            return [];
+        }
+
+        $minAov = (float) config('customers.high_aov_min');
+        $aliases = collect(config('customers.cra_account_aliases', []))
+            ->mapWithKeys(fn (string $account, string $alias) => [PancakeEngagement::staffKey($alias) => PancakeEngagement::staffKey($account)]);
+        $cras = LeadGenerator::cras()->whereNotNull('pancake_name')
+            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        $owner = $this->numbersOf($keys);
+
+        // Earlier orders (all before the covered ones), each merged number's in time order, then the covered orders.
+        $orders = CustomerHistory::whereIn('phone_key', array_keys($owner))->whereNotNull('prior_cra_sales')->get(['phone_key', 'prior_cra_sales'])
+            ->flatMap(fn (CustomerHistory $history) => collect($history->prior_cra_sales)
+                ->map(fn (array $sale) => ['key' => $owner[$history->phone_key], 'at' => $sale['at'], 'amount' => $sale['amount'], 'seller' => $sale['seller']]))
+            ->sortBy('at')
+            ->concat($this->craHandled(LogisticsOrder::covered()->whereIn('lo.phone_key', array_keys($owner)))
+                ->whereNotNull('po.total_price')
+                ->orderBy('po.ordered_on')->orderBy('po.ordered_at')->orderBy('lo.delivered_date')->orderBy('lo.id')
+                ->get(['lo.phone_key', 'po.total_price', 'po.seller_name'])
+                ->map(fn (LogisticsOrder $order) => ['key' => $owner[$order->phone_key], 'amount' => (float) $order->total_price, 'seller' => $order->seller_name]));
+
+        $spent = [];
+        $count = [];
+        $found = [];
+        foreach ($orders as $order) {
+            $key = $order['key'];
+            if (isset($found[$key])) {
+                continue;
+            }
+            $spent[$key] = ($spent[$key] ?? 0) + $order['amount'];
+            $count[$key] = ($count[$key] ?? 0) + 1;
+            $seller = PancakeEngagement::staffKey($order['seller']);
+            $craId = $cras[$aliases[$seller] ?? $seller] ?? null;
+            if ($craId !== null && $minAov <= $spent[$key] / $count[$key]) {
+                $found[$key] = $craId;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Give each High AOV customer the CRA of their first reorder (firstReorderCras), replacing
+     * the CRA they had, except customers whose CRA an admin or manager set by hand: that edit always wins.
+     *
+     * @return int customers whose CRA changed
+     */
+    public function assignByFirstReorder(): int
+    {
+        $changed = 0;
+        $found = $this->firstReorderCras();
+        $accounts = CustomerAccount::whereIn('phone_key', array_map('strval', array_keys($found)))->get()->keyBy('phone_key');
+
+        foreach ($found as $key => $craId) {
+            $account = $accounts->get((string) $key) ?? new CustomerAccount(['phone_key' => (string) $key]);
+            if ($account->cra_set_by_hand || $account->assigned_cra_id === $craId) {
+                continue;
+            }
+
+            $account->fill(['assigned_cra_id' => $craId, 'assigned_at' => now()])->save();
+            $changed++;
+        }
+
+        return $changed;
     }
 
     /**

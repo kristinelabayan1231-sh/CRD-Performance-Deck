@@ -13,6 +13,13 @@
     // VIP per product: every product whose CLTV they reached.
     $vipProducts = $priced->where('reached', true)->pluck('name');
     $since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y');
+    // High AOV: AOV (total spent ÷ priced CRA-handled orders) of at least the minimum; below it, the next order that gets them there.
+    $minAov = (float) config('customers.high_aov_min');
+    $pricedOrders = $customer['priced_cra_orders'];
+    $aov = $pricedOrders > 0 ? $customer['total_spent'] / $pricedOrders : null;
+    $nextOrderForAov = $aov !== null && $aov < $minAov ? $minAov * ($pricedOrders + 1) - $customer['total_spent'] : null;
+    // VIP: the product they're closest to reaching the CLTV on.
+    $closestVip = $priced->where('reached', false)->sortBy(fn (array $p) => $p['cltv'] - $p['spent'])->first();
     $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
     $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
 @endphp
@@ -126,7 +133,7 @@
     <section aria-label="Customer lifetime value" class="grid gap-3 sm:grid-cols-2">
         <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
             <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
-            <p class="relative text-xs font-semibold tracking-wide uppercase">Customer CLTV</p>
+            <p class="relative text-xs font-semibold tracking-wide uppercase">Customer CLTV · Total spent</p>
             <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($customer['total_spent']) }}</p>
             <p class="relative text-xs text-white/90">Total spent on {{ number_format($customer['cra_orders']) }} CRA-handled delivered {{ Str::plural('order', $customer['cra_orders']) }} (Pancake POS)</p>
         </div>
@@ -145,6 +152,36 @@
             @endif
         </div>
     </section>
+
+    {{-- How far from High AOV and from VIP --}}
+    @if ($aov !== null || $closestVip)
+        <section aria-label="High AOV and VIP" class="grid gap-3 sm:grid-cols-2">
+            @if ($aov !== null)
+                <div class="rounded-xl border border-line bg-white p-4">
+                    <p class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
+                        <span aria-hidden="true" @class(['size-2 rounded-full', 'bg-brand-600' => $nextOrderForAov === null, 'bg-brand-300' => $nextOrderForAov !== null])></span>
+                        {{ $nextOrderForAov === null ? 'High AOV' : 'Potential High AOV' }}
+                    </p>
+                    <p class="mt-1 text-xl font-bold tabular-nums">AOV {{ $money($aov) }} <span class="text-sm font-semibold text-muted">of {{ $money($minAov) }}</span></p>
+                    @if ($nextOrderForAov === null)
+                        <p class="text-xs text-muted">Total spent {{ $money($customer['total_spent']) }} ÷ {{ $pricedOrders }} CRA-handled {{ Str::plural('order', $pricedOrders) }}</p>
+                    @else
+                        <p class="text-sm"><span class="font-bold text-brand-700 tabular-nums">{{ $money($nextOrderForAov) }}</span> remaining: a next order of at least this makes them High AOV</p>
+                    @endif
+                </div>
+            @endif
+            @if ($closestVip)
+                <div class="rounded-xl border border-[#f3dca3] bg-[#fffaf0] p-4 text-[#6e5214]">
+                    <p class="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                        <span aria-hidden="true" class="size-2 rounded-full bg-[#c9a24a]"></span>
+                        {{ $vipProducts->isEmpty() ? 'To become VIP' : 'Next VIP product' }}
+                    </p>
+                    <p class="mt-1 text-xl font-bold tabular-nums text-[#1a1814]">{{ $money($closestVip['cltv'] - $closestVip['spent']) }} <span class="text-sm font-semibold text-[#6e5214]">remaining on {{ $closestVip['name'] }}</span></p>
+                    <p class="text-xs">Spent {{ $money($closestVip['spent']) }} of its CLTV {{ $money($closestVip['cltv']) }} (SRP × {{ config('customers.cltv_units') }})</p>
+                </div>
+            @endif
+        </section>
+    @endif
 
     {{-- Status breakdown --}}
     <section>

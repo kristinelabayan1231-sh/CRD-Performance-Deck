@@ -8,7 +8,6 @@
     $user = auth()->user();
     $canEdit = $user->can('customers.high_value.edit');
     $canAssign = $user->can('customers.high_value.assign');
-    $canOpen = $user->can('customers.view');
     $isCra = $cras->contains('id', $user->id);
     $perOrder = $filters['view'] === 'orders';
     $showRemarks = $filters['list'] !== 'high_aov';
@@ -114,7 +113,7 @@
                                 <th class="px-3 py-3 font-semibold">Assigning seller</th>
                                 <th class="px-3 py-3 font-semibold">Customer</th>
                                 <th class="px-3 py-3 font-semibold">Phone number</th>
-                                <th class="px-3 py-3 text-right font-semibold">Total # of orders</th>
+                                <th class="px-3 py-3 text-right font-semibold" title="Total # of orders">Orders</th>
                                 <th class="px-3 py-3 text-right font-semibold">{{ $perOrder ? 'Amount' : 'Amount (total spent)' }}</th>
                                 <th class="px-3 py-3 font-semibold">Point of contact</th>
                                 <th class="px-3 py-3 text-right font-semibold">Current AOV</th>
@@ -130,7 +129,9 @@
                                 @php($craId = $account?->assigned_cra_id)
                                 @php($action = route('customers.high-value.update', $row['phone_key']))
                                 @php($cell = $cellFor($row['vip']))
-                                <tr @class(['align-middle', 'bg-[#fbf3e0]' => $row['vip'], 'hover:bg-brand-50/40' => ! $row['vip']])>
+                                {{-- The row opens the customer's details and order history; its fields don't --}}
+                                <tr tabindex="0" role="button" data-customer-url="{{ route('customers.high-value.show', $row['phone_key']) }}" aria-label="Open {{ $row['customer_name'] }}"
+                                    @class(['cursor-pointer align-middle focus:outline-none', 'bg-[#fbf3e0] hover:bg-[#f7ebcd] focus:bg-[#f7ebcd]' => $row['vip'], 'hover:bg-brand-50/40 focus:bg-brand-50/60' => ! $row['vip']])>
                                     <td class="px-3 py-2.5 tabular-nums">
                                         {{ $row['order_id'] ?? '—' }}
                                         @if ($perOrder)
@@ -164,12 +165,8 @@
                                                 'bg-[#1a1814] text-[#f3dca3] shadow-[0_0_0_2px_#fbf3e0,0_0_0_3.5px_#c9a24a]' => $row['vip'],
                                                 'bg-brand-100 text-brand-700' => ! $row['vip'],
                                             ])>{{ $initials($row['customer_name']) }}</span>
-                                            <div class="min-w-0">
-                                                @if ($canOpen)
-                                                    <button type="button" data-customer-url="{{ route('customers.show', $row['phone_key']) }}" class="text-left font-semibold hover:underline">{{ $row['customer_name'] }}</button>
-                                                @else
-                                                    <span class="font-semibold">{{ $row['customer_name'] }}</span>
-                                                @endif
+                                            <div class="min-w-0 whitespace-nowrap">
+                                                <span class="font-semibold">{{ $row['customer_name'] }}</span>
                                                 @if ($row['vip'])
                                                     <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[10px] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-2.5 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
                                                     <span class="mt-0.5 block text-[11px] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
@@ -244,12 +241,10 @@
                 <div><dt class="font-semibold text-ink">High AOV</dt><dd>Current AOV = total spent ÷ CRA-handled orders that have a Pancake amount. ₱{{ number_format(config('customers.high_aov_min')) }} and up is High AOV.</dd></div>
                 <div><dt class="font-semibold text-ink">VIP</dt><dd>Per product: what they spent on a product (order amounts; a mixed order split by qty) reached its CLTV (SRP × {{ config('customers.cltv_units') }}), e.g. ₱499 × {{ config('customers.cltv_units') }} = ₱{{ number_format(499 * config('customers.cltv_units')) }}. They're VIP for every product that reached it, listed under their name. VIP rows have a champagne gold tint, a black initial with a gold ring and a black VIP pill.</dd></div>
                 <div><dt class="font-semibold text-ink">Per customer / per order</dt><dd>Per customer shows their totals as they are now, with their latest order. Per order lists each delivered order (amount = that order) beside the customer's current totals.</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Assigning seller</dt><dd>CRAs claim the customers they handle (supervisors can set anyone). Once set, the customer's Segmentation Tracker leads go to that CRA. A new High AOV / VIP customer with no CRA yet gets the CRA their lead is handed to.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Assigning seller</dt><dd>A High AOV customer goes to the CRA of their first reorder that made them High AOV: going through their CRA-handled orders oldest first (FSD orders left out), the CRA whose order brought the running AOV to ₱{{ number_format(config('customers.high_aov_min')) }} gets them (a former CRA is skipped for the next one). Checked every hour; once an admin or manager changes the CRA, that choice always stays. Other customers: CRAs claim the ones they handle (supervisors can set anyone), and a new VIP with no CRA yet gets the CRA their lead is handed to. Once set, the customer's Segmentation Tracker leads go to that CRA.</dd></div>
             </dl>
         </details>
     </div>
 
-    @if ($canOpen)
-        @include('customers._dialog')
-    @endif
+    @include('customers._dialog')
 </x-layouts.app>

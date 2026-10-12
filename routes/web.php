@@ -84,6 +84,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
+    Route::get('/customers/high-value/{phoneKey}', [HighValueCustomerController::class, 'show'])->where('phoneKey', '[0-9]+')
+        ->middleware('can:customers.high_value.view')->name('customers.high-value.show');
     Route::patch('/customers/high-value/{phoneKey}', [HighValueCustomerController::class, 'update'])->where('phoneKey', '[0-9]+')
         ->middleware('can:customers.high_value.edit')->name('customers.high-value.update');
 

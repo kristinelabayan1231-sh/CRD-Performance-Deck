@@ -6,6 +6,7 @@ use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\LogisticsOrder;
 use App\Services\CustomerDatabase;
+use App\Services\HighValueCustomers;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeClient;
 use App\Services\PancakeSync;
@@ -22,7 +23,7 @@ class CustomerDatabaseController extends Controller
 {
     public const PERIODS = ['all' => 'All', 'today' => 'Today', 'week' => 'Week', 'month' => 'Month'];
 
-    public function index(Request $request, CustomerDatabase $customers): View
+    public function index(Request $request, CustomerDatabase $customers, HighValueCustomers $highValue): View
     {
         $filters = $request->validate([
             'period' => ['nullable', Rule::in(array_keys(self::PERIODS))],
@@ -48,6 +49,8 @@ class CustomerDatabaseController extends Controller
         return view('customers.index', [
             'customers' => $customers->cachedList([...$query, 'segment' => $filters['segment'] ?? null, 'sort' => $filters['sort'] ?? 'spent'], $counts),
             'counts' => $counts,
+            // High AOV / VIP customers by main number, for their pills in the list.
+            'highValue' => $highValue->all(),
             'filters' => [...$filters, 'period' => $period],
             'range' => $range,
             'periods' => self::PERIODS,

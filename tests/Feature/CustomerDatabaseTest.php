@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\BackfillCustomerDatabase;
+use App\Models\CustomerHistory;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
@@ -389,6 +390,13 @@ class CustomerDatabaseTest extends TestCase
         $this->artisan('customers:check-history')->expectsOutputToContain('4 of 4 CRD customers done')->assertSuccessful();
         $this->artisan('customers:check-history')->expectsOutputToContain('to check right now')->assertSuccessful();
         Cache::flush();
+        // Each earlier CRA order is kept with when, amount and seller (for the High AOV first-reorder rule).
+        $this->assertSame([['at' => '2025-11-24 03:48:41', 'amount' => 0, 'seller' => 'CRD REJ VERGARA']],
+            CustomerHistory::firstWhere('phone_key', '9174444444')->prior_cra_sales);
+
+        // A history saved before those were kept is looked up again.
+        CustomerHistory::where('phone_key', '9174444444')->update(['prior_cra_sales' => null]);
+        $this->artisan('customers:check-history')->expectsOutputToContain('Checked 1 of 1 customers')->assertSuccessful();
 
         $this->actingAs($this->owner)->get(route('customers.index'))
             ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 2, 'repeat' => 2])

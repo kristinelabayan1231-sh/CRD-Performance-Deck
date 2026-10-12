@@ -57,11 +57,22 @@ return [
     | CRA-handled customers whose AOV (total spent ÷ delivered orders) is at
     | least high_aov_min are High AOV; those who reached a product's CLTV are
     | VIP. Each gets a CRA: claimed by a CRA, or the CRA their lead lands on.
+    | A High AOV customer goes to the CRA of their first CRA-handled order at
+    | which the running AOV of those orders reached high_aov_min (FSD orders
+    | left out); cra_account_aliases counts a CRA's other Pancake accounts as
+    | theirs for that (other account => the CRA's Pancake account). A CRA set
+    | by an admin or manager always wins over the rule.
     | The choices are key => label.
     |
     */
 
     'high_aov_min' => 999,
+
+    'cra_account_aliases' => [
+        'LHEA GATDULA' => 'CRD LHEI',
+        'CRD JULY DE LOS SANTOS' => 'CRD JULY ANN',
+        'CRD JOANNA PACLIBARE' => 'CRD ANNA PACLIBARE 2',
+    ],
 
     'points_of_contact' => [
         'chat' => 'CHAT',
