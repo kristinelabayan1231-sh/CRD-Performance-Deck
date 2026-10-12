@@ -61,7 +61,7 @@
 
     @if ($vipProducts->isNotEmpty())
         <div class="flex flex-wrap items-center gap-3 rounded-xl bg-[#fbf3e0] px-4 py-3 text-[#6e5214] ring-1 ring-[#f3dca3]">
-            <span class="rounded-full border border-[#c9a24a] px-2 py-0.5 text-xs font-bold tracking-wide text-[#a8822f]">VIP</span>
+            <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-xs font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
             <span class="text-sm font-semibold">VIP in {{ $vipProducts->join(', ') }}</span>
             <span class="text-xs text-[#6e5214]/75">Spent the CLTV (SRP × {{ config('customers.cltv_units') }}) on {{ $vipProducts->count() === 1 ? 'this product' : 'each of these products' }}</span>
         </div>
