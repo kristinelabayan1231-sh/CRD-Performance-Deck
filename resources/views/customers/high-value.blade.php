@@ -1,7 +1,7 @@
 @php
     $query = fn (array $extra) => route('customers.high-value', array_filter([...$filters, ...$extra], fn ($v) => $v !== null && $v !== ''));
     $control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
-    $cellBase = 'h-8 w-full min-w-28 rounded-md border px-2 text-xs text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
+    $cellBase = 'h-9 w-full min-w-32 rounded-md border px-2.5 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
     // VIP rows are tinted champagne gold, their fields too.
     $cellFor = fn (bool $vip) => $cellBase.($vip ? ' border-[#f3dca3] bg-[#fffaf0]' : ' border-line bg-white');
     $initials = fn (string $name) => collect(preg_split('/\s+/', trim($name)))->filter()->take(2)->map(fn ($word) => mb_strtoupper(mb_substr($word, 0, 1)))->implode('') ?: '?';
@@ -107,20 +107,20 @@
                 <p class="px-4 py-10 text-center text-sm text-muted">No customers match.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1100px] text-left text-sm">
-                        <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                    <table class="w-full min-w-[1240px] text-left text-sm">
+                        <thead class="bg-[#f7f4f8] text-xs tracking-wide whitespace-nowrap text-muted uppercase">
                             <tr>
-                                <th class="px-3 py-3 font-semibold">{{ $perOrder ? 'Order ID' : 'Last order ID' }}</th>
-                                <th class="px-3 py-3 font-semibold">Assigning seller</th>
-                                <th class="px-3 py-3 font-semibold">Customer</th>
-                                <th class="px-3 py-3 font-semibold">Phone number</th>
-                                <th class="px-3 py-3 text-right font-semibold">Total # of orders</th>
-                                <th class="px-3 py-3 text-right font-semibold">{{ $perOrder ? 'Amount' : 'Amount (total spent)' }}</th>
-                                <th class="px-3 py-3 font-semibold">Point of contact</th>
-                                <th class="px-3 py-3 text-right font-semibold">Current AOV</th>
-                                <th class="px-3 py-3 font-semibold">PU/Reseller</th>
+                                <th class="px-4 py-3 font-semibold">{{ $perOrder ? 'Order ID' : 'Last order ID' }}</th>
+                                <th class="px-4 py-3 font-semibold">Assigning seller</th>
+                                <th class="px-4 py-3 font-semibold">Customer</th>
+                                <th class="px-4 py-3 font-semibold">Phone number</th>
+                                <th class="px-4 py-3 text-right font-semibold">Total # of orders</th>
+                                <th class="px-4 py-3 text-right font-semibold">{{ $perOrder ? 'Amount' : 'Amount (total spent)' }}</th>
+                                <th class="px-4 py-3 font-semibold">Point of contact</th>
+                                <th class="px-4 py-3 text-right font-semibold">Current AOV</th>
+                                <th class="px-4 py-3 font-semibold">PU/Reseller</th>
                                 @if ($showRemarks)
-                                    <th class="px-3 py-3 font-semibold">Remarks</th>
+                                    <th class="px-4 py-3 font-semibold">Remarks</th>
                                 @endif
                             </tr>
                         </thead>
@@ -131,13 +131,13 @@
                                 @php($action = route('customers.high-value.update', $row['phone_key']))
                                 @php($cell = $cellFor($row['vip']))
                                 <tr @class(['align-middle', 'bg-[#fbf3e0]' => $row['vip'], 'hover:bg-brand-50/40' => ! $row['vip']])>
-                                    <td class="px-3 py-2.5 tabular-nums">
+                                    <td class="px-4 py-3.5 tabular-nums">
                                         {{ $row['order_id'] ?? '—' }}
                                         @if ($perOrder)
                                             <span class="block text-xs text-muted">delivered {{ $row['delivered_on']?->format('M j, Y') }}</span>
                                         @endif
                                     </td>
-                                    <td class="px-3 py-2.5">
+                                    <td class="px-4 py-3.5">
                                         {{-- Supervisors set anyone; a CRA claims a customer nobody has, or lets go of their own --}}
                                         @if ($canEdit && ($canAssign || ($isCra && in_array($craId, [null, $user->id], true))))
                                             <form method="POST" action="{{ $action }}" data-autosave>
@@ -150,17 +150,17 @@
                                                 </select>
                                             </form>
                                         @else
-                                            <span class="text-xs font-semibold">{{ $account?->cra?->displayName() ?? '—' }}</span>
+                                            <span class="text-sm font-semibold">{{ $account?->cra?->displayName() ?? '—' }}</span>
                                         @endif
                                         @if ($perOrder && $row['order_seller'])
-                                            <span class="mt-0.5 block text-[11px] text-muted" title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
+                                            <span class="mt-0.5 block text-xs text-muted" title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
                                         @endif
                                     </td>
-                                    <td class="px-3 py-2.5">
-                                        <div class="flex items-center gap-2.5">
+                                    <td class="px-4 py-3.5">
+                                        <div class="flex items-center gap-3">
                                             {{-- Initials; a VIP's is black and gold with a gold ring --}}
                                             <span aria-hidden="true" @class([
-                                                'grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                                                'grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold',
                                                 'bg-[#1a1814] text-[#f3dca3] shadow-[0_0_0_2px_#fbf3e0,0_0_0_3.5px_#c9a24a]' => $row['vip'],
                                                 'bg-brand-100 text-brand-700' => ! $row['vip'],
                                             ])>{{ $initials($row['customer_name']) }}</span>
@@ -171,16 +171,16 @@
                                                     <span class="font-semibold">{{ $row['customer_name'] }}</span>
                                                 @endif
                                                 @if ($row['vip'])
-                                                    <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[10px] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-2.5 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
-                                                    <span class="mt-0.5 block text-[11px] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
+                                                    <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[11px] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+                                                    <span class="mt-0.5 block text-xs text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
                                                 @endif
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2.5 text-muted tabular-nums">{{ $row['phone_number'] }}</td>
-                                    <td class="px-3 py-2.5 text-right tabular-nums">{{ number_format($row['purchases']) }}</td>
-                                    <td @class(['px-3 py-2.5 text-right tabular-nums', 'font-bold text-[#1a1814]' => $row['vip'], 'font-semibold' => ! $row['vip']])>{{ $money($perOrder ? $row['amount'] : $row['total_spent']) }}</td>
-                                    <td class="px-3 py-2.5">
+                                    <td class="px-4 py-3.5 text-muted tabular-nums">{{ $row['phone_number'] }}</td>
+                                    <td class="px-4 py-3.5 text-right tabular-nums">{{ number_format($row['purchases']) }}</td>
+                                    <td @class(['px-4 py-3.5 text-right tabular-nums', 'font-bold text-[#1a1814]' => $row['vip'], 'font-semibold' => ! $row['vip']])>{{ $money($perOrder ? $row['amount'] : $row['total_spent']) }}</td>
+                                    <td class="px-4 py-3.5">
                                         @if ($canEdit)
                                             <form method="POST" action="{{ $action }}" data-autosave>
                                                 @csrf @method('PATCH')
@@ -192,11 +192,11 @@
                                                 </select>
                                             </form>
                                         @else
-                                            <span class="text-xs">{{ $contacts[$account?->point_of_contact] ?? '—' }}</span>
+                                            <span class="text-sm">{{ $contacts[$account?->point_of_contact] ?? '—' }}</span>
                                         @endif
                                     </td>
-                                    <td class="px-3 py-2.5 text-right tabular-nums">{{ $money($row['aov']) }}</td>
-                                    <td class="px-3 py-2.5">
+                                    <td class="px-4 py-3.5 text-right tabular-nums">{{ $money($row['aov']) }}</td>
+                                    <td class="px-4 py-3.5">
                                         @if ($canEdit)
                                             <form method="POST" action="{{ $action }}" data-autosave>
                                                 @csrf @method('PATCH')
@@ -208,13 +208,13 @@
                                                 </select>
                                             </form>
                                         @else
-                                            <span class="text-xs">{{ $buyerTypes[$account?->buyer_type] ?? '—' }}</span>
+                                            <span class="text-sm">{{ $buyerTypes[$account?->buyer_type] ?? '—' }}</span>
                                         @endif
                                     </td>
                                     @if ($showRemarks)
-                                        <td class="px-3 py-2.5">
+                                        <td class="px-4 py-3.5">
                                             @if (! $row['vip'])
-                                                <span class="text-xs text-muted">—</span>
+                                                <span class="text-sm text-muted">—</span>
                                             @elseif ($canEdit)
                                                 <form method="POST" action="{{ $action }}" data-autosave>
                                                     @csrf @method('PATCH')
@@ -222,7 +222,7 @@
                                                            aria-label="Remarks for {{ $row['customer_name'] }}" class="{{ $cell }} min-w-44">
                                                 </form>
                                             @else
-                                                <span class="text-xs">{{ $account?->remarks ?? '—' }}</span>
+                                                <span class="text-sm">{{ $account?->remarks ?? '—' }}</span>
                                             @endif
                                         </td>
                                     @endif
