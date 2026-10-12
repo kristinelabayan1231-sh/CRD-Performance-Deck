@@ -98,8 +98,11 @@
            title="Customers whose delivery in these dates is their first CRA-handled order ever. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Retained</p>
-            <p class="relative text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}</p>
-            <p class="{{ $note }}">First CRA-handled order</p>
+            <p class="relative flex items-baseline justify-between gap-2">
+                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['retained']) }}</span>
+                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['retained']) }} of {{ number_format($customers['crd']) }} CRD Leads">{{ $pct($customers['crd'] ? $customers['retained'] / $customers['crd'] : null) }}</span>
+            </p>
+            <p class="{{ $note }}">First CRA-handled order · of {{ number_format($customers['crd']) }} CRD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
         </a>
 
@@ -107,8 +110,11 @@
            title="Customers delivered in these dates who had an earlier CRA-handled order too. Click to see them.">
             {!! $bubble !!}
             <p class="{{ $label }}">Repeat customers</p>
-            <p class="relative text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}</p>
-            <p class="{{ $note }}">Earlier CRA order too</p>
+            <p class="relative flex items-baseline justify-between gap-2">
+                <span class="text-3xl font-bold tabular-nums">{{ number_format($customers['repeat']) }}</span>
+                <span class="rounded-full bg-white/20 px-2.5 py-0.5 text-lg font-bold tabular-nums" title="{{ number_format($customers['repeat']) }} of {{ number_format($customers['crd']) }} CRD Leads">{{ $pct($customers['crd'] ? $customers['repeat'] / $customers['crd'] : null) }}</span>
+            </p>
+            <p class="{{ $note }}">Earlier CRA order too · of {{ number_format($customers['crd']) }} CRD Leads</p>
             <p class="relative text-xs font-semibold text-white group-hover:underline">View customers &rarr;</p>
         </a>
     @endif

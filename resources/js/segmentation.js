@@ -529,6 +529,48 @@ function initExpand() {
     });
 }
 
+// Full view: a horizontal scrollbar pinned to the bottom mirrors the wide table's (for mice without sideways scrolling).
+// The list is swapped in place after Mark as catered, so the table is looked up each time.
+function initScrollSlider() {
+    const bar = document.querySelector('[data-x-scrollbar]');
+    if (!bar) return;
+    const width = bar.querySelector('[data-x-scrollbar-width]');
+    const table = () => document.querySelector('[data-lead-section] .overflow-x-auto');
+    let syncing = false;
+
+    const sync = () => {
+        const wrap = table();
+        bar.hidden = !wrap || wrap.scrollWidth <= wrap.clientWidth;
+        document.body.style.paddingBottom = bar.hidden ? '' : `${bar.offsetHeight}px`;
+        if (bar.hidden) return;
+        // Same left edge and width as the table, so both scroll the same distance.
+        const box = wrap.getBoundingClientRect();
+        bar.style.left = `${box.left}px`;
+        bar.style.width = `${wrap.clientWidth}px`;
+        width.style.width = `${wrap.scrollWidth}px`;
+        bar.scrollLeft = wrap.scrollLeft;
+    };
+
+    bar.addEventListener('scroll', () => {
+        const wrap = table();
+        if (!wrap || syncing) return;
+        syncing = true;
+        wrap.scrollLeft = bar.scrollLeft;
+        requestAnimationFrame(() => { syncing = false; });
+    });
+    document.addEventListener('scroll', (event) => {
+        if (event.target !== table() || syncing) return;
+        syncing = true;
+        bar.scrollLeft = event.target.scrollLeft;
+        requestAnimationFrame(() => { syncing = false; });
+    }, true);
+
+    // Hidden columns, a swapped list or a resized pop-up change how far the table can move.
+    new MutationObserver(sync).observe(document.body, { childList: true, subtree: true });
+    new ResizeObserver(sync).observe(document.body);
+    sync();
+}
+
 // A CRA's hello pop-up, opened on their first visit of the day.
 function initGreeting() {
     const dialog = document.getElementById('greeting-dialog');
@@ -540,6 +582,7 @@ function initGreeting() {
 export function initSegmentation() {
     initExpand();
     initGreeting();
+    initScrollSlider();
     if (document.querySelector('[data-lead-section]')) initRowMenu();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();

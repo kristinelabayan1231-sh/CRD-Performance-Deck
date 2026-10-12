@@ -60,10 +60,10 @@
     </div>
 
     @if ($vipProducts->isNotEmpty())
-        <div class="flex flex-wrap items-center gap-3 rounded-xl bg-black px-4 py-3 text-[#d4af37]">
-            <span class="rounded-full bg-[#d4af37] px-2 py-0.5 text-xs font-bold tracking-wide text-black">VIP</span>
-            <span class="text-sm font-semibold">{{ $vipProducts->join(', ') }}</span>
-            <span class="text-xs text-[#d4af37]/70">Spent the CLTV (SRP × {{ config('customers.cltv_units') }}) on {{ $vipProducts->count() === 1 ? 'this product' : 'each of these products' }}</span>
+        <div class="flex flex-wrap items-center gap-3 rounded-xl bg-[#fbf3e0] px-4 py-3 text-[#6e5214] ring-1 ring-[#f3dca3]">
+            <span class="rounded-full border border-[#c9a24a] px-2 py-0.5 text-xs font-bold tracking-wide text-[#a8822f]">VIP</span>
+            <span class="text-sm font-semibold">VIP in {{ $vipProducts->join(', ') }}</span>
+            <span class="text-xs text-[#6e5214]/75">Spent the CLTV (SRP × {{ config('customers.cltv_units') }}) on {{ $vipProducts->count() === 1 ? 'this product' : 'each of these products' }}</span>
         </div>
     @endif
 

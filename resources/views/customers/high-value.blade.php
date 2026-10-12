@@ -1,7 +1,10 @@
 @php
     $query = fn (array $extra) => route('customers.high-value', array_filter([...$filters, ...$extra], fn ($v) => $v !== null && $v !== ''));
     $control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
-    $cell = 'h-8 w-full min-w-28 rounded-md border border-line bg-white px-2 text-xs text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
+    $cellBase = 'h-8 w-full min-w-28 rounded-md border px-2 text-xs text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
+    // VIP rows are tinted champagne gold, their fields too.
+    $cellFor = fn (bool $vip) => $cellBase.($vip ? ' border-[#f3dca3] bg-[#fffaf0]' : ' border-line bg-white');
+    $initials = fn (string $name) => collect(preg_split('/\s+/', trim($name)))->filter()->take(2)->map(fn ($word) => mb_strtoupper(mb_substr($word, 0, 1)))->implode('') ?: '?';
     $user = auth()->user();
     $canEdit = $user->can('customers.high_value.edit');
     $canAssign = $user->can('customers.high_value.assign');
@@ -27,12 +30,12 @@
         <section aria-label="Customer counts" class="grid grid-cols-1 gap-3 sm:grid-cols-3">
             @foreach ([
                 ['high_aov', 'High AOV', $counts['high_aov'], 'from-brand-500 to-brand-700', ['list' => 'high_aov', 'cra' => null], $filters['list'] === 'high_aov'],
-                ['vip', 'VIP', $counts['vip'], 'from-[#2b2b2b] to-black', ['list' => 'vip', 'cra' => null], $filters['list'] === 'vip'],
+                ['vip', 'VIP', $counts['vip'], 'from-[#fbefd2] to-[#f3dca3]', ['list' => 'vip', 'cra' => null], $filters['list'] === 'vip'],
                 ['none', 'No CRA yet', $counts['unassigned'], 'from-[#4f5563] to-[#343a40]', ['list' => 'all', 'cra' => 'none'], ($filters['cra'] ?? null) === 'none' && $filters['list'] === 'all'],
             ] as [$key, $label, $value, $gradient, $link, $active])
                 <a href="{{ $query([...$link, 'page' => null]) }}" @if ($active) aria-current="true" @endif
-                   @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 transition', $gradient, $key === 'vip' ? 'text-[#d4af37]' : 'text-white', '-translate-y-1.5 shadow-xl' => $active, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => ! $active])>
-                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/10"></span>
+                   @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 transition', $gradient, $key === 'vip' ? 'text-[#6e5214]' : 'text-white', '-translate-y-1.5 shadow-xl' => $active, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => ! $active])>
+                    <span aria-hidden="true" @class(['absolute -top-6 -right-6 size-20 rounded-full', $key === 'vip' ? 'bg-white/45' : 'bg-white/10'])></span>
                     <span class="relative flex items-center justify-between text-[11px] font-semibold tracking-wide uppercase">
                         {{ $label }}
                         @if ($active)
@@ -126,11 +129,12 @@
                                 @php($account = $row['account'])
                                 @php($craId = $account?->assigned_cra_id)
                                 @php($action = route('customers.high-value.update', $row['phone_key']))
-                                <tr @class(['align-middle', 'bg-black text-[#d4af37]' => $row['vip'], 'hover:bg-brand-50/40' => ! $row['vip']])>
+                                @php($cell = $cellFor($row['vip']))
+                                <tr @class(['align-middle', 'bg-[#fbf3e0]' => $row['vip'], 'hover:bg-brand-50/40' => ! $row['vip']])>
                                     <td class="px-3 py-2.5 tabular-nums">
                                         {{ $row['order_id'] ?? '—' }}
                                         @if ($perOrder)
-                                            <span @class(['block text-xs', 'text-[#d4af37]/70' => $row['vip'], 'text-muted' => ! $row['vip']])>delivered {{ $row['delivered_on']?->format('M j, Y') }}</span>
+                                            <span class="block text-xs text-muted">delivered {{ $row['delivered_on']?->format('M j, Y') }}</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5">
@@ -149,21 +153,31 @@
                                             <span class="text-xs font-semibold">{{ $account?->cra?->displayName() ?? '—' }}</span>
                                         @endif
                                         @if ($perOrder && $row['order_seller'])
-                                            <span @class(['mt-0.5 block text-[11px]', 'text-[#d4af37]/70' => $row['vip'], 'text-muted' => ! $row['vip']]) title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
+                                            <span class="mt-0.5 block text-[11px] text-muted" title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5">
-                                        @if ($canOpen)
-                                            <button type="button" data-customer-url="{{ route('customers.show', $row['phone_key']) }}" class="text-left font-semibold hover:underline">{{ $row['customer_name'] }}</button>
-                                        @else
-                                            <span class="font-semibold">{{ $row['customer_name'] }}</span>
-                                        @endif
-                                        @if ($row['vip'])
-                                            <span class="ml-1 rounded-full bg-[#d4af37] px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-black">VIP</span>
-                                            <span class="block text-[11px] text-[#d4af37]/80">{{ implode(', ', $row['vip_products']) }}</span>
-                                        @endif
+                                        <div class="flex items-center gap-2.5">
+                                            {{-- Initials; a VIP's is gold with a gold ring --}}
+                                            <span aria-hidden="true" @class([
+                                                'grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                                                'bg-gradient-to-br from-[#f7d97a] to-[#c9a24a] text-white shadow-[0_0_0_2px_#fbf3e0,0_0_0_3.5px_#c9a24a]' => $row['vip'],
+                                                'bg-brand-100 text-brand-700' => ! $row['vip'],
+                                            ])>{{ $initials($row['customer_name']) }}</span>
+                                            <div class="min-w-0">
+                                                @if ($canOpen)
+                                                    <button type="button" data-customer-url="{{ route('customers.show', $row['phone_key']) }}" class="text-left font-semibold hover:underline">{{ $row['customer_name'] }}</button>
+                                                @else
+                                                    <span class="font-semibold">{{ $row['customer_name'] }}</span>
+                                                @endif
+                                                @if ($row['vip'])
+                                                    <span class="ml-1 rounded-full border border-[#c9a24a] px-1.5 py-px text-[10px] font-bold tracking-wide text-[#a8822f]">VIP</span>
+                                                    <span class="mt-0.5 block text-[11px] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
+                                                @endif
+                                            </div>
+                                        </div>
                                     </td>
-                                    <td @class(['px-3 py-2.5 tabular-nums', 'text-muted' => ! $row['vip']])>{{ $row['phone_number'] }}</td>
+                                    <td class="px-3 py-2.5 text-muted tabular-nums">{{ $row['phone_number'] }}</td>
                                     <td class="px-3 py-2.5 text-right tabular-nums">{{ number_format($row['purchases']) }}</td>
                                     <td class="px-3 py-2.5 text-right font-semibold tabular-nums">{{ $money($perOrder ? $row['amount'] : $row['total_spent']) }}</td>
                                     <td class="px-3 py-2.5">
@@ -228,7 +242,7 @@
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
                 <div><dt class="font-semibold text-ink">Who is listed</dt><dd>Customers with at least one CRA-handled delivered order. Numbers merged in the Customer Database count as one customer. Orders, amounts, AOV and VIP count CRA-handled orders only.</dd></div>
                 <div><dt class="font-semibold text-ink">High AOV</dt><dd>Current AOV = total spent ÷ CRA-handled orders that have a Pancake amount. ₱{{ number_format(config('customers.high_aov_min')) }} and up is High AOV.</dd></div>
-                <div><dt class="font-semibold text-ink">VIP</dt><dd>Per product: what they spent on a product (order amounts; a mixed order split by qty) reached its CLTV (SRP × {{ config('customers.cltv_units') }}), e.g. ₱499 × {{ config('customers.cltv_units') }} = ₱{{ number_format(499 * config('customers.cltv_units')) }}. They're VIP for every product that reached it, listed under their name. VIP rows are black with gold text.</dd></div>
+                <div><dt class="font-semibold text-ink">VIP</dt><dd>Per product: what they spent on a product (order amounts; a mixed order split by qty) reached its CLTV (SRP × {{ config('customers.cltv_units') }}), e.g. ₱499 × {{ config('customers.cltv_units') }} = ₱{{ number_format(499 * config('customers.cltv_units')) }}. They're VIP for every product that reached it, listed under their name. VIP rows have a champagne gold tint, a gold-ringed initial and a VIP pill.</dd></div>
                 <div><dt class="font-semibold text-ink">Per customer / per order</dt><dd>Per customer shows their totals as they are now, with their latest order. Per order lists each delivered order (amount = that order) beside the customer's current totals.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Assigning seller</dt><dd>CRAs claim the customers they handle (supervisors can set anyone). Once set, the customer's Segmentation Tracker leads go to that CRA. A new High AOV / VIP customer with no CRA yet gets the CRA their lead is handed to.</dd></div>
             </dl>

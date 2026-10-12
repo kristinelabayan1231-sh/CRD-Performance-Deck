@@ -247,9 +247,14 @@ class LeadGenerator
      * syncIfStale() after the page has been sent, so a slow or failing sync
      * (Shecom, a remote database, a short request time limit) never breaks the
      * page. A failure is kept for lastSyncError().
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
      */
     public function syncLater(CarbonImmutable $date): void
     {
+        if (self::isBuiltInServer()) {
+            return;
+        }
+
         defer(function () use ($date) {
             // The page is already sent: let the sync finish past the request time limit.
             set_time_limit(0);
@@ -453,5 +458,14 @@ class LeadGenerator
                 ?? (($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_FSD),
             'qty_unknown' => (bool) ($row['qty_unknown'] ?? false),
         ];
+    }
+
+    /**
+     * `php artisan serve` (PHP's built-in server) keeps the browser waiting until deferred work
+     * finishes, so local pages would hang for minutes; `php artisan schedule:work` syncs instead.
+     */
+    private static function isBuiltInServer(): bool
+    {
+        return PHP_SAPI === 'cli-server';
     }
 }
