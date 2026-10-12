@@ -129,7 +129,7 @@ class CustomerDatabase
     {
         $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
 
-        return self::remember(self::cacheKey('counts', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
+        return self::remember(self::cacheKey('counts', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null, 'by_order']),
             fn () => $this->counts($filters));
     }
 
@@ -153,7 +153,7 @@ class CustomerDatabase
         };
 
         // Kept as plain arrays: the cache doesn't unserialize objects.
-        $key = [($filters['from'] ?? null)?->toDateString(), ($filters['to'] ?? null)?->toDateString(), $filters['search'] ?? null, $filters['segment'] ?? null, $filters['sort'] ?? null, $perPage, $page];
+        $key = [($filters['from'] ?? null)?->toDateString(), ($filters['to'] ?? null)?->toDateString(), $filters['search'] ?? null, $filters['segment'] ?? null, $filters['sort'] ?? null, $perPage, $page, 'by_order'];
         $rows = collect(self::remember(self::cacheKey('list', $key),
             fn () => $this->withNumbers($this->listQuery($filters)->forPage($page, $perPage)->get()->map(fn (object $row) => (array) $row))->all()))
             ->map(fn (array $row) => (object) $row);
@@ -219,7 +219,7 @@ class CustomerDatabase
     {
         $dates = fn (?CarbonImmutable $day) => $day?->toDateString();
 
-        return self::remember(self::cacheKey('possible_matches', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null]),
+        return self::remember(self::cacheKey('possible_matches', [$dates($filters['from'] ?? null), $dates($filters['to'] ?? null), $filters['search'] ?? null, 'by_order']),
             fn () => DB::query()->fromSub($this->onlyPossibleMatches($this->grouped($filters)), 'customers')->count());
     }
 
@@ -769,6 +769,8 @@ class CustomerDatabase
             ->leftJoin('pancake_orders as po', 'po.pancake_order_id', '=', 'lo.order_id')
             // One row per customer: their CRA-handled orders before the first covered day, all their numbers together.
             ->leftJoinSub($this->priorOrders(), 'ch', 'ch.customer_key', '=', DB::raw(self::CUSTOMER_KEY))
+            // A period goes by order date: each customer's CRA-handled orders placed in it, delivered or not.
+            ->when($from, fn (Builder $q) => $q->leftJoinSub($this->periodCraOrders($from, $to), 'op', 'op.customer_key', '=', DB::raw(self::CUSTOMER_KEY)))
             ->where('lo.delivered_date', '>=', LogisticsOrder::coveredFrom())
             ->whereRaw(self::CRD_PRODUCTS)
             ->when($from || $search !== '', function (Builder $q) use ($from, $to, $search) {
@@ -807,6 +809,28 @@ class CustomerDatabase
     }
 
     /**
+     * Each customer's CRA-handled Pancake orders placed in $from–$to that aren't canceled or deleted,
+     * delivered or not (products from the list only), summed over their numbers.
+     */
+    private function periodCraOrders(CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        $handled = $this->handledSql();
+        $key = 'coalesce(cl.primary_phone_key, po.phone_key)';
+
+        return DB::table('pancake_orders as po')
+            ->leftJoin('logistics_orders as lo', 'lo.order_id', '=', 'po.pancake_order_id')
+            ->leftJoin('customer_links as cl', 'cl.phone_key', '=', 'po.phone_key')
+            ->whereDate('po.ordered_on', '>=', $from->toDateString())->whereDate('po.ordered_on', '<=', $to->toDateString())
+            ->where(fn (Builder $q) => $q->whereNull('po.status')->orWhereNotIn('po.status', PancakeOrder::NOT_COUNTED_STATUSES))
+            ->whereNotNull('po.phone_key')
+            ->whereRaw($handled['sql'], $handled['bindings'])
+            ->whereRaw(self::CRD_PRODUCTS)
+            ->groupBy(DB::raw($key))
+            ->selectRaw("{$key} as customer_key")
+            ->selectRaw('count(*) as cra_orders');
+    }
+
+    /**
      * Every number of the merged customers that $numbers belong to (main numbers and the numbers merged under them).
      *
      * @return list<string>
@@ -825,7 +849,8 @@ class CustomerDatabase
     }
 
     /**
-     * Contact numbers with a delivery in $from–$to that match $search (name or number).
+     * Contact numbers with a Pancake order placed in $from–$to that isn't canceled or deleted
+     * (delivered or not) that match $search (name or number).
      */
     private function matching(?CarbonImmutable $from, ?CarbonImmutable $to, string $search): Builder
     {
@@ -835,16 +860,21 @@ class CustomerDatabase
         $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
 
         return DB::table('logistics_orders')->select('phone_key')->distinct()
-            ->when($from, fn (Builder $q) => $q->whereBetween('delivered_date', [$from->toDateString(), $to->toDateString()]))
+            ->when($from, fn (Builder $q) => $q->whereIn('phone_key', PancakeOrder::query()->select('phone_key')
+                ->whereDate('ordered_on', '>=', $from->toDateString())->whereDate('ordered_on', '<=', $to->toDateString())
+                ->where(fn ($q) => $q->whereNull('status')->orWhereNotIn('status', PancakeOrder::NOT_COUNTED_STATUSES))
+                ->whereNotNull('phone_key')))
             ->when($search !== '', fn (Builder $q) => $q->where(fn (Builder $q) => $q
                 ->whereLike('customer_name', $like, caseSensitive: false)
                 ->when(strlen($phone) >= 4, fn (Builder $q) => $q->orWhere('phone_key', 'like', '%'.$phone.'%'))));
     }
 
     /**
-     * SQL counting a customer's CRA-handled delivered orders: up to the period's end (the period's
-     * one and any earlier ones, including those before the first covered day found in Pancake
-     * unless !$withPrior), and within the period. Without a period both cover every order.
+     * SQL counting a customer's CRA-handled orders: up to the period's end (the period's ones and
+     * their earlier delivered ones, including those before the first covered day found in Pancake
+     * unless !$withPrior), and within the period. Without a period both cover every delivered order.
+     * A period goes by order date (needs `op`, periodCraOrders()): its orders are the CRA-handled ones
+     * placed in it, delivered or not; the earlier ones are delivered orders placed before it.
      *
      * @return array{0: array{sql: string, bindings: list<string>}, 1: array{sql: string, bindings: list<string>}}
      */
@@ -864,10 +894,10 @@ class CustomerDatabase
             return [$prior($count('', [])), $count('', [])];
         }
 
-        return [
-            $prior($count(' and lo.delivered_date <= ?', [$to->toDateString()])),
-            $count(' and lo.delivered_date between ? and ?', [$from->toDateString(), $to->toDateString()]),
-        ];
+        $before = $count(' and coalesce(po.ordered_on, lo.delivered_date) < ?', [$from->toDateString()]);
+        $inPeriod = ['sql' => 'coalesce(max(op.cra_orders), 0)', 'bindings' => []];
+
+        return [$prior(['sql' => "({$before['sql']} + {$inPeriod['sql']})", 'bindings' => $before['bindings']]), $inPeriod];
     }
 
     /**
