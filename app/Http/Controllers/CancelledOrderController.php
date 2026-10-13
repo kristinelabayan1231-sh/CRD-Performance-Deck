@@ -51,10 +51,12 @@ class CancelledOrderController extends Controller
         $accounts = ConversionBreakdown::accounts($shown);
         $byId = $allCras->keyBy('id');
         $status = $filters['status'] ?? null;
-        $days = $cancelledOrders->perDay($shown, $from, $to, $status);
+        // All CRAs shown: before the CRD tags, every CRD account's orders (former CRAs too).
+        $everyCrdAccount = $user->can('conversion.view_all') && blank($filters['cra'] ?? null);
+        $days = $cancelledOrders->perDay($shown, $from, $to, $status, $everyCrdAccount);
 
         return view('cancelled-orders.index', [
-            'orders' => $cancelledOrders->query($shown, $from, $to, $status)
+            'orders' => $cancelledOrders->query($shown, $from, $to, $status, $everyCrdAccount)
                 ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
             'days' => $days,
             'totals' => [
