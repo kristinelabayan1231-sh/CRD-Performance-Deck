@@ -9,11 +9,31 @@
     $team = $results['team'];
     $ahead = $month['progress'] !== null && $month['pace'] !== null && $month['progress'] >= $month['pace'];
     $own = ! auth()->user()->can('conversion.view_all');
+    $cancelled = $results['cancelled'];
+
+    // The graphs on the tiles' backs, one value per day of these dates.
+    $daily = collect($results['daily']);
+    $formatCount = fn (float $value) => number_format($value);
+    $graphShort = fn (float $value) => $short($value);
+    $graphPct = fn (float $value) => $pct($value, $value < 0.1 ? 1 : 0);
+    // CRD goal: every CRA's sales added up day by day against an even pace to the goal; a month runs to its last day.
+    $goalDays = $month['prorated'] ? $daily->keys() : collect(range(1, $month['days']))->map(fn ($day) => $results['range']->month->setDay($day)->toDateString());
+    $running = 0;
+    $cumulative = $goalDays->mapWithKeys(function ($day) use ($daily, &$running) {
+        if (! $daily->has($day)) {
+            return [$day => null];
+        }
+        $running += $daily[$day]['all_gross'];
+
+        return [$day => $running];
+    })->all();
+    $pace = $goalDays->values()->mapWithKeys(fn ($day, $i) => [$day => $month['goal'] * ($i + 1) / $goalDays->count()])->all();
+    $cancelledDays = $daily->keys()->mapWithKeys(fn ($day) => [$day => $cancelled['days'][$day] ?? ['cancelled' => 0, 'waiting' => 0]]);
 @endphp
 
 {{--
     Results for the dashboard's month (to date) or range: the CRD monthly goal (team gross sales), then
-    confirmed orders, conversion rate, AOV and (with Customer Database access) Retained and Repeat
+    confirmed orders, conversion rate, AOV beside Cancelled / Waiting, and (with Customer Database access) Retained and Repeat
     Customers. A CRA's orders, conversion and AOV are their own. Churn sits apart in a small, light card
     on the right (below on narrow screens), so the results stay the focus: it judges customers delivered
     months earlier whose time to reorder ran out in these dates.
@@ -23,7 +43,8 @@
      Retained and Repeat (three eighths each) the second; six on tablets, so orders, conversion and AOV share a row --}}
 <section @class(['grid content-start gap-3', 'sm:grid-cols-6 lg:grid-cols-8' => $customers, 'sm:grid-cols-2 lg:grid-cols-5' => ! $customers]) aria-label="Results">
     {{-- CRD monthly goal --}}
-    <article @class(['relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm', 'sm:col-span-6 lg:col-span-4' => $customers, 'sm:col-span-2' => ! $customers])>
+    <x-dashboard.flip :class="$customers ? 'sm:col-span-6 lg:col-span-4' : 'sm:col-span-2'">
+    <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
         <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
         <div class="relative">
             <div class="flex items-start justify-between gap-2">
@@ -64,6 +85,12 @@
             </p>
         </div>
     </article>
+        <x-slot:back>
+            <x-dashboard.trend title="Gross sales vs goal" :series="[['label' => 'Gross sales', 'color' => '#8b3ff0', 'values' => $cumulative]]" :format="$graphShort"
+                :target="['label' => 'Even pace to goal', 'values' => $pace]"
+                :legend="[['Sales', '#8b3ff0', $short($month['sales']), false], ['Goal', '#4f5563', $short($month['goal']), true]]" />
+        </x-slot:back>
+    </x-dashboard.flip>
 
     {{-- Confirmed orders (opens the list), conversion rate, AOV: one colour each so they read apart --}}
     @php($tile = 'relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm')
@@ -71,7 +98,8 @@
     @php($label = 'relative text-[11px] font-semibold tracking-wide text-white/95 uppercase')
     @php($note = 'relative text-xs text-white/90 tabular-nums')
     @php($span = $customers ? 'sm:col-span-2' : '')
-    <a href="{{ route('conversion.orders', $query) }}" class="group {{ $tile }} {{ $span }} from-[#0e8f7c] to-[#0b6b5d] transition hover:-translate-y-0.5 hover:shadow-lg"
+    <x-dashboard.flip :class="$span">
+    <a href="{{ route('conversion.orders', $query) }}" class="group {{ $tile }} from-[#0e8f7c] to-[#0b6b5d] transition hover:-translate-y-0.5 hover:shadow-lg"
        title="{{ $own ? 'Your' : 'The CRAs\'' }} orders tagged CRD - BROADCAST or CRD - SEGMENTATION (not canceled). Click to see them.">
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
@@ -79,21 +107,71 @@
         <p class="{{ $note }}">BC {{ number_format($team['bc_orders']) }} · SC {{ number_format($team['sc_orders']) }}</p>
         <p class="relative text-xs font-semibold text-white group-hover:underline">View orders &rarr;</p>
     </a>
+        <x-slot:back>
+            <x-dashboard.trend title="Confirmed orders per day" type="bars" :format="$formatCount"
+                :series="[['label' => 'BC', 'color' => '#1f8fb8', 'values' => $daily->map->bc_orders->all()], ['label' => 'SC', 'color' => '#8b3ff0', 'values' => $daily->map->sc_orders->all()]]"
+                :legend="[['BC', '#1f8fb8', number_format($team['bc_orders']), false], ['SC', '#8b3ff0', number_format($team['sc_orders']), false]]" />
+        </x-slot:back>
+    </x-dashboard.flip>
 
-    <article class="{{ $tile }} {{ $span }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
+    <x-dashboard.flip :class="$span">
+    <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ $pct($team['total_rate'], 2) }}</p>
         <p class="{{ $note }}">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
     </article>
+        <x-slot:back>
+            <x-dashboard.trend title="Conversion rate per day" :format="$graphPct"
+                :series="[['label' => 'Conversion', 'color' => '#1f8fb8', 'values' => $daily->map->total_rate->all()]]"
+                :legend="[['Overall', '#1f8fb8', $pct($team['total_rate'], 2), false]]" />
+        </x-slot:back>
+    </x-dashboard.flip>
 
-    {{-- AOV is a plain tile; Retained and Repeat take the rest of the row for their goals --}}
-    <article @class([$tile, $span, 'from-[#d99a0b] to-[#a8740a]']) title="Average order value: gross sales ÷ confirmed orders">
-        {!! $bubble !!}
-        <p class="{{ $label }}">AOV</p>
-        <p class="relative text-3xl font-bold tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
-        <p class="{{ $note }}">{{ $peso((float) $team['gross']) }} ÷ {{ number_format($team['orders']) }} orders</p>
-    </article>
+    {{-- AOV and Cancelled / Waiting share one slot, stacked as two short, wide tiles (figure left, details right);
+         Retained and Repeat take the rest of the row for their goals --}}
+    @php($wide = 'relative flex min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br px-4 py-3 text-white shadow-sm')
+    <div class="flex flex-col gap-3 {{ $span }}">
+        <x-dashboard.flip class="flex-1">
+        <article class="{{ $wide }} from-[#d99a0b] to-[#a8740a]" title="Average order value: gross sales ÷ confirmed orders">
+            {!! $bubble !!}
+            <div class="relative min-w-0">
+                <p class="{{ $label }}">AOV</p>
+                <p class="text-2xl font-bold whitespace-nowrap tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
+            </div>
+            <p class="{{ $note }} text-right">{{ $peso((float) $team['gross']) }}<span class="block">÷ {{ number_format($team['orders']) }} orders</span></p>
+        </article>
+            <x-slot:back>
+                <x-dashboard.trend title="AOV per day" :format="$peso"
+                    :series="[['label' => 'AOV', 'color' => '#a8740a', 'values' => $daily->map(fn ($day) => $day['orders'] ? $day['gross'] / $day['orders'] : null)->all()]]"
+                    :legend="[['Overall', '#a8740a', $team['orders'] ? $peso($team['gross'] / $team['orders']) : '—', false]]" />
+            </x-slot:back>
+        </x-dashboard.flip>
+
+        <x-dashboard.flip class="flex-1">
+        <a href="{{ route('cancelled-orders.index', $query) }}" class="group {{ $wide }} from-[#e0564f] to-[#ad3530] transition hover:-translate-y-0.5 hover:shadow-lg"
+           title="{{ $own ? 'Your' : 'The CRAs\'' }} orders tagged CRD - BROADCAST or CRD - SEGMENTATION that were canceled or are waiting for goods ({{ $short($cancelled['amount']) }}); % of all their CRD orders in these dates. Click to see them per day.">
+            {!! $bubble !!}
+            <div class="relative min-w-0">
+                <p class="{{ $label }}">Cancelled / Waiting</p>
+                <p class="flex items-baseline gap-2">
+                    <span class="text-2xl font-bold tabular-nums">{{ number_format($cancelled['total']) }}</span>
+                    <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} CRD orders in these dates">{{ $pct($cancelled['rate']) }}</span>
+                </p>
+            </div>
+            <div class="relative text-right text-xs tabular-nums">
+                <p class="text-white/90 whitespace-nowrap">Cancelled {{ number_format($cancelled['cancelled']) }}</p>
+                <p class="text-white/90 whitespace-nowrap">Waiting {{ number_format($cancelled['waiting']) }}</p>
+                <p class="mt-0.5 font-semibold whitespace-nowrap text-white group-hover:underline">View &rarr;</p>
+            </div>
+        </a>
+            <x-slot:back>
+                <x-dashboard.trend title="Cancelled / waiting per day" type="bars" :format="$formatCount"
+                    :series="[['label' => 'Cancelled', 'color' => '#e0564f', 'values' => $cancelledDays->map(fn ($day) => $day['cancelled'])->all()], ['label' => 'Waiting', 'color' => '#d99a0b', 'values' => $cancelledDays->map(fn ($day) => $day['waiting'])->all()]]"
+                    :legend="[['Cancelled', '#e0564f', number_format($cancelled['cancelled']), false], ['Waiting', '#d99a0b', number_format($cancelled['waiting']), false]]" />
+            </x-slot:back>
+        </x-dashboard.flip>
+    </div>
 
     @if ($customers)
         {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every FSD and
@@ -101,6 +179,9 @@
          opens the Customer Database filtered the same way --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         @php($leads = $customers['leads'])
+        @php($segments = [])
+        <x-dashboard.flip class="sm:col-span-6">
+        <div class="grid gap-3 sm:grid-cols-2">
         @foreach ([
             'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
             'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
@@ -111,7 +192,8 @@
             @php($goalCount = \App\Support\SalesGoals::customersForGoal($leads, $goal))
             @php($toGoal = max(0, $goalCount - $count))
             @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
-            <a href="{{ route('customers.index', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg sm:col-span-3" title="{{ $segmentTitle }}">
+            @php($segments[$segment] = ['label' => $segmentLabel, 'count' => $count, 'goal' => $goalLabel, 'goal_count' => $goalCount])
+            <a href="{{ route('customers.index', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
                 {!! $bubble !!}
                 <div class="relative flex items-start justify-between gap-2">
                     <p class="{{ $label }}">{{ $segmentLabel }}</p>
@@ -147,6 +229,33 @@
                 </p>
             </a>
         @endforeach
+        </div>
+            <x-slot:back>
+                {{-- Both against their goal on one scale (the same leads): bar = customers, tick = the goal --}}
+                @php($scale = max(1, ...array_values(array_map(fn ($row) => max($row['count'], $row['goal_count']), $segments))))
+                <div class="flex h-full flex-col gap-3">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Retained & repeat vs goal</p>
+                        <p class="flex items-center gap-1 text-[11px] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · out of {{ number_format($leads) }} leads</p>
+                    </div>
+                    <div class="flex flex-1 flex-col justify-center gap-4">
+                        @foreach ($segments as $segment => $row)
+                            @php($color = $segment === 'retained' ? '#4f46e5' : '#d4458f')
+                            <div>
+                                <p class="mb-1 flex justify-between gap-2 text-xs tabular-nums">
+                                    <span class="font-semibold text-ink">{{ $row['label'] }} <span class="font-normal text-muted">{{ number_format($row['count']) }} · {{ $pct($leads ? $row['count'] / $leads : null) }}</span></span>
+                                    <span class="text-muted">Goal {{ $row['goal'] }} · {{ number_format($row['goal_count']) }}</span>
+                                </p>
+                                <div class="relative h-4 rounded bg-canvas" data-tip="{{ $row['label'] }}: {{ number_format($row['count']) }} of {{ number_format($leads) }} leads ({{ $pct($leads ? $row['count'] / $leads : null) }})&#10;Goal {{ $row['goal'] }}: {{ number_format($row['goal_count']) }}">
+                                    <span class="absolute inset-y-0 left-0 rounded" style="width: {{ $row['count'] / $scale * 100 }}%; background: {{ $color }}"></span>
+                                    <span aria-hidden="true" class="absolute -inset-y-1 w-0.5 rounded bg-ink" style="left: calc({{ $row['goal_count'] / $scale * 100 }}% - 1px)"></span>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            </x-slot:back>
+        </x-dashboard.flip>
     @endif
 </section>
 

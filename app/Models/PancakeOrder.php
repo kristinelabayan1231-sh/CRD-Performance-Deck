@@ -19,6 +19,13 @@ class PancakeOrder extends Model
     /** Pancake POS statuses that don't count as an order: 6 canceled, 7 deleted. */
     public const NOT_COUNTED_STATUSES = [6, 7];
 
+    /** Pancake POS statuses for the dashboard's Cancelled / Waiting tile: 6 canceled, 11 waiting for goods. */
+    public const CANCELED = 6;
+
+    public const WAITING = 11;
+
+    public const CANCELLED_OR_WAITING_STATUSES = [self::CANCELED, self::WAITING];
+
     /** conversion_type values: orders tagged "CRD - BROADCAST" or "CRD - SEGMENTATION". */
     public const BROADCAST = 'broadcast';
 

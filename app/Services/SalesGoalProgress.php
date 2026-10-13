@@ -15,7 +15,7 @@ use Illuminate\Support\Collection;
  * month, the goal is prorated to its days); pace = days gone ÷ days in the month.
  * Per CRA: sales ÷ their daily goal (own, else the general CRA daily goal) × the days in the range,
  * Total conv % = (BC + SC orders) ÷ (engagements + leads), and their best-selling product (CraProductSales).
- * Team: confirmed orders, conversion rate and AOV (gross ÷ orders) of the CRAs shown.
+ * Team: confirmed orders, conversion rate and AOV (gross ÷ orders) of the CRAs shown; daily: the same per day, for the graphs.
  */
 class SalesGoalProgress
 {
@@ -23,7 +23,7 @@ class SalesGoalProgress
 
     /**
      * @param  Collection<int, User>  $shown  CRAs listed per CRA (a CRA sees only themselves)
-     * @return array{month: array<string, mixed>, range: DashboardRange, team: array<string, int|float|null>, cras: Collection<int, array<string, mixed>>, general_daily: float}
+     * @return array{month: array<string, mixed>, range: DashboardRange, daily: array<string, array<string, int|float|null>>, team: array<string, int|float|null>, cras: Collection<int, array<string, mixed>>, general_daily: float}
      */
     public function for(Collection $shown, DashboardRange $range): array
     {
@@ -56,8 +56,19 @@ class SalesGoalProgress
             ];
         })->sortByDesc('progress')->values();
 
+        // Per day, for the Results graphs: every CRA's gross sales (the CRD goal) and the totals of the CRAs shown.
+        $daily = [];
+        for ($day = $range->from; $day->lessThanOrEqualTo($range->to); $day = $day->addDay()) {
+            $key = $day->toDateString();
+            $daily[$key] = [
+                'all_gross' => (float) $allCras->sum(fn (User $cra) => $days[$cra->id][$key]['gross'] ?? 0),
+                ...ConversionBreakdown::sum($shown->map(fn (User $cra) => $days[$cra->id][$key] ?? null)->filter()),
+            ];
+        }
+
         return [
             'range' => $range,
+            'daily' => $daily,
             'general_daily' => $generalDaily,
             'team' => ConversionBreakdown::sum($cras->pluck('totals')),
             'month' => [

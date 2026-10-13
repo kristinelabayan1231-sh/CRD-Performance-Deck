@@ -4,6 +4,7 @@ import { initCustomers } from './customers';
 import { initLive } from './live';
 import { initMonthlyCost } from './monthly-cost';
 import { initPoster } from './poster';
+import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
 import { initTooltips } from './tooltip';
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTooltips();
     initSegmentation();
     initPoster();
+    initResultsFlip();
     initLive();
     initCustomers();
     initAccountLists();

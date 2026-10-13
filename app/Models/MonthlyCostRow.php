@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Support\MonthlyCost;
 use Database\Factories\MonthlyCostRowFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,8 +9,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A position in CRD - MC. Trainee, Probationary and Regular are paid their daily rate × working
- * days (Settings in CRD - MC); Fixed is the salary typed in. A row without a name is a vacant position and costs nothing.
+ * A position in CRD - MC and its monthly salary, typed in. A row without a name is a vacant position and costs nothing.
+ * pay_type is always fixed now; Trainee, Probationary and Regular were daily rate × working days before.
  */
 #[Fillable(['position', 'name', 'pay_type', 'salary', 'sort_order', 'updated_by'])]
 class MonthlyCostRow extends Model
@@ -39,14 +38,8 @@ class MonthlyCostRow extends Model
         return trim((string) $this->name) !== '';
     }
 
-    public function monthlySalary(MonthlyCost $cost): float
+    public function monthlySalary(): float
     {
-        if (! $this->isFilled()) {
-            return 0.0;
-        }
-
-        return $this->pay_type === self::FIXED
-            ? (float) $this->salary
-            : round($cost->dailyRate($this->pay_type) * $cost->workingDays(), 2);
+        return $this->isFilled() ? (float) $this->salary : 0.0;
     }
 }

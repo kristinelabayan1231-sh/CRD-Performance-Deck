@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Lead;
 use App\Models\Product;
 use App\Models\Role;
+use App\Services\ChurnCustomerList;
 use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -392,6 +393,28 @@ class SegmentationController extends Controller
         }
 
         return back()->with('status', "Updated {$lead->customer_name}.");
+    }
+
+    /**
+     * The order icon's hover pop-up: the customer's orders (all their merged numbers), latest first, as
+     * order date and products only. Canceled and returned orders are left out.
+     */
+    public function orders(Request $request, Lead $lead, ChurnCustomerList $churn): JsonResponse
+    {
+        $user = $request->user();
+
+        abort_unless($user->can('segmentation.view_all') || $lead->assigned_to === $user->id, 403);
+
+        $returned = collect(config('customers.pos_statuses'))->only([4, 5, 6])->pluck(0)->all();
+        $orders = collect($churn->history(LeadGenerator::normalizePhone((string) $lead->phone_number))['orders'] ?? [])
+            ->reject(fn (array $order) => in_array($order['status_label'], $returned, true))
+            ->map(fn (array $order) => [
+                'date' => ($date = $order['ordered'] ?? $order['delivered']) ? CarbonImmutable::parse($date)->format('M j, Y') : '—',
+                'product' => $order['items'] ?: '—',
+            ])
+            ->values();
+
+        return response()->json(['orders' => $orders]);
     }
 
     public static function notesMeta(Lead $lead): ?string

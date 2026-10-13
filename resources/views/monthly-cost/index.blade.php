@@ -3,16 +3,11 @@
     $plain = fn (float $value) => number_format($value, 2);
     $payTypes = config('monthly_cost.pay_types');
     $days = $cost->workingDays() + 0;
+    // Daily rates are listed for reference only; each row's monthly salary is typed in.
     $rates = collect($payTypes)->except(\App\Models\MonthlyCostRow::FIXED)->map(fn ($label, $type) => $cost->dailyRate($type) + 0);
     $moneyField = 'h-9 w-full rounded-lg border border-line bg-white px-2.5 text-right text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none read-only:bg-canvas read-only:text-muted';
     // Which row's form was sent back with errors ('new' for Add person): it opens again with what was typed.
     $editing = old('editing');
-    $badge = [
-        'trainee' => 'bg-[#ffe5a0] text-[#473821]',
-        'probationary' => 'bg-[#c6dbe1] text-[#0a53a8]',
-        'regular' => 'bg-[#d4edbc] text-[#11734b]',
-        'fixed' => 'bg-canvas text-muted',
-    ];
     $total = max(0.01, $totals['total']);
     $parts = [
         ['Customer Retention', $totals['customer_retention'], 'bg-brand-600'],
@@ -23,7 +18,7 @@
 @endphp
 
 <x-layouts.app title="CRD - MC">
-    <div class="space-y-5" data-monthly-cost data-rates='@json($rates)' data-days="{{ $days }}">
+    <div class="space-y-5" data-monthly-cost>
         <header class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">CRD - MC</h1>
@@ -93,11 +88,10 @@
                 </x-slot:actions>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[640px] text-left text-sm">
+                    <table class="w-full min-w-[480px] text-left text-sm">
                         <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Name · Position</th>
-                                <th class="px-3 py-3 font-semibold">Pay</th>
                                 <th class="px-3 py-3 text-right font-semibold">Monthly salary</th>
                                 <th class="px-3 py-3 text-right font-semibold"><span class="sr-only">Actions</span></th>
                             </tr>
@@ -116,15 +110,10 @@
                                         @endif
                                         <span class="block text-xs text-muted">{{ $row->position }}</span>
                                     </td>
-                                    <td class="px-3 py-3">
-                                        <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $badge[$row->pay_type] ?? $badge['fixed'] }}">{{ $payTypes[$row->pay_type] ?? $row->pay_type }}</span>
-                                    </td>
                                     <td class="px-3 py-3 text-right tabular-nums">
-                                        <span class="font-semibold">{{ $plain($row->monthlySalary($cost)) }}</span>
+                                        <span class="font-semibold">{{ $plain($row->monthlySalary()) }}</span>
                                         @if (! $row->isFilled())
                                             <span class="block text-xs text-muted">Vacant · not counted</span>
-                                        @elseif ($row->pay_type !== \App\Models\MonthlyCostRow::FIXED)
-                                            <span class="block text-xs text-muted">₱{{ number_format($cost->dailyRate($row->pay_type)) }} × {{ $days }} days</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2 text-right whitespace-nowrap">
@@ -143,24 +132,26 @@
                                 @include('monthly-cost._edit-row', ['row' => $row, 'formId' => 'cost-row-'.$row->id, 'open' => $isEditing])
                             @empty
                                 <tr data-cost-empty>
-                                    <td colspan="4" class="px-4 py-10 text-center text-sm text-muted">No positions yet. Use + Add person to add the first one.</td>
+                                    <td colspan="3" class="px-4 py-10 text-center text-sm text-muted">No positions yet. Use + Add person to add the first one.</td>
                                 </tr>
                             @endforelse
 
                             {{-- The shared salaries count toward TOTAL SALARY OF CRD --}}
                             <tr class="bg-brand-50/60">
-                                <td colspan="4" class="px-4 py-2 text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Shared salaries</td>
+                                <td colspan="3" class="px-4 py-2 text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Shared salaries</td>
                             </tr>
                             @foreach ($shared as $part)
                                 <tr>
-                                    <td class="px-4 py-2.5 text-muted">{{ $part['share'] + 0 }}% of {{ $part['label'] }}</td>
-                                    <td class="px-3 py-2.5 text-xs text-muted tabular-nums">₱{{ number_format($part['salary'], 2) }} × {{ $part['share'] + 0 }}%</td>
+                                    <td class="px-4 py-2.5 text-muted">
+                                        {{ $part['share'] + 0 }}% of {{ $part['label'] }}
+                                        <span class="block text-xs tabular-nums">₱{{ number_format($part['salary'], 2) }} × {{ $part['share'] + 0 }}%</span>
+                                    </td>
                                     <td class="px-3 py-2.5 text-right font-semibold tabular-nums">{{ $plain($part['amount']) }}</td>
                                     <td></td>
                                 </tr>
                             @endforeach
                             <tr class="border-t-2 border-ink">
-                                <td colspan="2" class="px-4 py-3 font-bold">TOTAL SALARY OF CRD</td>
+                                <td class="px-4 py-3 font-bold">TOTAL SALARY OF CRD</td>
                                 <td class="px-3 py-3 text-right text-base font-bold tabular-nums">{{ $plain($totals['customer_retention']) }}</td>
                                 <td></td>
                             </tr>
@@ -186,13 +177,21 @@
                         </div>
                     @endforeach
                 </section>
-                <section class="rounded-xl bg-white p-4 shadow-sm">
+                {{-- Editable in place: saves only PHIC, HDMF and SSS --}}
+                <form method="POST" action="{{ route('monthly-cost.settings') }}" class="rounded-xl bg-white p-4 shadow-sm">
+                    @csrf
+                    @method('PUT')
                     <h2 class="mb-2 font-bold">Gov. benefits per person</h2>
                     @foreach (['phic' => 'PHIC', 'hdmf' => 'HDMF', 'sss' => 'SSS'] as $key => $label)
-                        <div class="flex justify-between py-1"><span>{{ $label }}</span><span class="tabular-nums">{{ $plain($cost->setting($key)) }}</span></div>
+                        <label class="flex items-center justify-between gap-3 py-1">
+                            <span>{{ $label }}</span>
+                            <input type="number" name="{{ $key }}" required min="0" step="0.01" value="{{ old('settings') ? number_format($cost->setting($key), 2, '.', '') : old($key, number_format($cost->setting($key), 2, '.', '')) }}"
+                                   class="h-8 w-32 rounded-lg border border-line bg-white px-2.5 text-right text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        </label>
                     @endforeach
                     <div class="mt-1 flex justify-between border-t border-line pt-2 font-bold"><span>Total GB</span><span class="tabular-nums">{{ $plain($cost->govBenefitsPerPerson()) }}</span></div>
-                </section>
+                    <button type="submit" class="mt-3 h-9 w-full rounded-lg bg-brand-600 font-semibold text-white hover:bg-brand-700">Save gov. benefits</button>
+                </form>
                 <section class="rounded-xl bg-white p-4 shadow-sm">
                     <h2 class="mb-2 font-bold">Daily rates &amp; incentives</h2>
                     @foreach ($rates as $type => $rate)
@@ -202,7 +201,7 @@
                     @foreach (['reliability_reward' => 'Reliability Reward', 'rice_incentives' => 'Rice Incentives', 'free_meal' => '1-month Free Meal'] as $key => $label)
                         <div @class(['flex justify-between py-1', 'mt-1 border-t border-line pt-2' => $loop->first])><span>{{ $label }}</span><span class="tabular-nums">₱{{ number_format($cost->setting($key), 2) }}</span></div>
                     @endforeach
-                    <p class="mt-1 text-xs text-muted">Incentives are per person and aren't added to the total.</p>
+                    <p class="mt-1 text-xs text-muted">Daily rates are for reference: each person's monthly salary is typed in their row. Incentives are per person and aren't added to the total.</p>
                     <button type="button" data-cost-settings-open class="mt-3 h-9 w-full rounded-lg border border-line font-semibold hover:border-brand-400 hover:text-brand-600">Edit settings</button>
                 </section>
             </aside>
@@ -211,7 +210,7 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Monthly salary</dt><dd>Trainee, Probationary and Regular: their daily rate × {{ $days }} working days. Fixed salary: the amount typed in. A row with no name is a vacant position and counts ₱0.</dd></div>
+                <div><dt class="font-semibold text-ink">Monthly salary</dt><dd>The amount typed in each row. A row with no name is a vacant position and counts ₱0.</dd></div>
                 <div><dt class="font-semibold text-ink">Customer Retention (TOTAL SALARY OF CRD)</dt><dd>Every row's monthly salary plus the shared salaries: Sales Manager, VP of Internal Affairs and CEO, each salary × CRD's share.</dd></div>
                 <div><dt class="font-semibold text-ink">13th Month · SIL</dt><dd>13th Month = Customer Retention ÷ 12. SIL = Customer Retention × 12 ÷ {{ config('monthly_cost.sil_days') }}.</dd></div>
                 <div><dt class="font-semibold text-ink">Gov. Benefits</dt><dd>(PHIC + HDMF + SSS) × the people in CRD: every row with a name ({{ $totals['people'] }} now).</dd></div>

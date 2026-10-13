@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
+use App\Services\CancelledOrders;
 use App\Services\CustomerChurn;
 use App\Services\CustomerDatabase;
 use App\Services\LeadGenerator;
@@ -21,7 +22,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CustomerDatabase $customerDatabase): View
+    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CustomerDatabase $customerDatabase, CancelledOrders $cancelledOrders): View
     {
         $user = $request->user();
         $realToday = WorkingDate::realToday();
@@ -69,6 +70,9 @@ class DashboardController extends Controller
 
             $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
             $results = $goals->for($cras, $range);
+            // The same CRAs' tagged orders that were canceled or are waiting for goods (opens Cancelled / Waiting Orders).
+            $results['cancelled'] = $cancelledOrders->totals($cras, $range->from, $range->to);
+            $results['cancelled']['days'] = $cancelledOrders->perDay($cras, $range->from, $range->to);
             // Company-wide; a few thousand deliveries to look through, so kept for a few minutes (as the Customer Database's counts).
             $churnRate = Cache::remember("dashboard.churn.v3.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(CustomerDatabase::CACHE_MINUTES),
                 fn () => $churn->for($range->from, $range->to));

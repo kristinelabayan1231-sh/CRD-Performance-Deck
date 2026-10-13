@@ -80,7 +80,7 @@ class MonthlyCost
      */
     public function totals(Collection $rows): array
     {
-        $team = round($rows->sum(fn (MonthlyCostRow $row) => $row->monthlySalary($this)), 2);
+        $team = round($rows->sum(fn (MonthlyCostRow $row) => $row->monthlySalary()), 2);
         $shared = round(collect($this->shared())->sum('amount'), 2);
         $retention = round($team + $shared, 2);
         $people = $rows->filter(fn (MonthlyCostRow $row) => $row->isFilled())->count();

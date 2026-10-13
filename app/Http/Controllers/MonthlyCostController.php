@@ -7,7 +7,6 @@ use App\Models\Setting;
 use App\Support\MonthlyCost;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -58,14 +57,15 @@ class MonthlyCostController extends Controller
     }
 
     /**
-     * Save the shared salaries, government benefits, daily rates and incentives.
+     * Save the shared salaries, government benefits, daily rates and incentives. Only the settings sent
+     * are saved, so the Gov. benefits card can save its three on their own.
      */
     public function settings(Request $request): RedirectResponse
     {
         $rules = collect(config('monthly_cost.defaults'))->map(fn ($default, string $key) => match (true) {
-            str_ends_with($key, '_share') => ['required', 'numeric', 'min:0', 'max:100'],
-            $key === 'working_days' => ['required', 'numeric', 'min:1', 'max:31'],
-            default => ['required', 'numeric', 'min:0', 'max:9999999999'],
+            str_ends_with($key, '_share') => ['sometimes', 'required', 'numeric', 'min:0', 'max:100'],
+            $key === 'working_days' => ['sometimes', 'required', 'numeric', 'min:1', 'max:31'],
+            default => ['sometimes', 'required', 'numeric', 'min:0', 'max:9999999999'],
         })->all();
 
         foreach ($request->validate($rules) as $key => $value) {
@@ -76,26 +76,25 @@ class MonthlyCostController extends Controller
     }
 
     /**
-     * Position, name (blank = vacant), pay type and, for a fixed salary only, the salary.
+     * Position, name (blank = vacant) and the monthly salary.
      *
-     * @return array{position: string, name: ?string, pay_type: string, salary: ?string}
+     * @return array{position: string, name: ?string, pay_type: string, salary: string}
      */
     private function validatedRow(Request $request): array
     {
         $data = $request->validate([
             'position' => ['required', 'string', 'max:255'],
             'name' => ['nullable', 'string', 'max:255'],
-            'pay_type' => ['required', Rule::in(array_keys(config('monthly_cost.pay_types')))],
-            'salary' => ['nullable', 'required_if:pay_type,'.MonthlyCostRow::FIXED, 'numeric', 'min:0', 'max:9999999999'],
+            'salary' => ['required', 'numeric', 'min:0', 'max:9999999999'],
         ], [
-            'salary.required_if' => 'Enter the monthly salary for a fixed salary.',
+            'salary.required' => 'Enter the monthly salary.',
         ]);
 
         return [
             'position' => $data['position'],
             'name' => $data['name'] ?? null,
-            'pay_type' => $data['pay_type'],
-            'salary' => $data['pay_type'] === MonthlyCostRow::FIXED ? $data['salary'] : null,
+            'pay_type' => MonthlyCostRow::FIXED,
+            'salary' => $data['salary'],
         ];
     }
 }

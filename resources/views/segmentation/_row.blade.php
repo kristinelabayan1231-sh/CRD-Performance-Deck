@@ -16,6 +16,11 @@
                        aria-label="Select {{ $lead->customer_name }} for transfer" class="size-4 accent-brand-500">
             @endif
             {{ $lead->customer_name }}
+            {{-- Hover: the customer's order history (order date · product), loaded on first hover (segmentation.js) --}}
+            <button type="button" data-orders-open data-orders-url="{{ route('segmentation.orders', $lead) }}" aria-label="Order history of {{ $lead->customer_name }}"
+                    class="rounded p-0.5 text-muted/60 transition hover:text-brand-600">
+                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5L6 21V3Zm3 5h6m-6 4h6m-6 4h3"/></svg>
+            </button>
             @if ($canEdit)
                 <button type="button" data-note-open aria-label="Note for {{ $lead->customer_name }}"
                         class="rounded p-0.5 text-muted opacity-0 transition group-hover:opacity-100 hover:text-brand-600 focus:opacity-100">

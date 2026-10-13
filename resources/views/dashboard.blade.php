@@ -74,6 +74,14 @@
                     <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' · month to date' : '' }}</span>
                     <span class="text-xs text-muted">Pancake sales and conversion by the real date</span>
                 </x-slot:badges>
+                <x-slot:actions>
+                    {{-- Turns every Results tile over to its graph and back (resources/js/results-flip.js) --}}
+                    <button type="button" data-results-graphs aria-pressed="false" title="Show as graphs" aria-label="Show as graphs"
+                            class="grid size-8 place-items-center rounded-lg border border-brand-200 bg-white text-brand-700 shadow-sm transition hover:border-brand-400 hover:text-brand-600 aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">
+                        <svg data-graphs-icon="chart" class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                        <svg data-graphs-icon="tiles" hidden class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+                    </button>
+                </x-slot:actions>
                 <x-dashboard.results :results="$results" :churn="$churn" :customers="$customers" :query="array_filter($filters)" />
             </x-panel>
         @endif
