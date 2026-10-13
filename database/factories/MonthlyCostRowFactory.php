@@ -18,8 +18,8 @@ class MonthlyCostRowFactory extends Factory
         return [
             'position' => 'Customer Retention Associate',
             'name' => fake()->name(),
-            'pay_type' => 'regular',
-            'salary' => null,
+            'pay_type' => MonthlyCostRow::FIXED,
+            'salary' => 19500,
         ];
     }
 

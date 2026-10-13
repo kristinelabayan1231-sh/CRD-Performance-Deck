@@ -30,10 +30,10 @@ class MonthlyCostTest extends TestCase
     {
         MonthlyCostRow::factory()->fixed(60000)->create(['position' => 'Customer Retention Manager', 'name' => 'Oliver']);
         MonthlyCostRow::factory()->fixed(34285.71)->create(['position' => 'Customer Retention Supervisor', 'name' => 'Joanne']);
-        MonthlyCostRow::factory()->vacant()->create(['position' => 'Customer Retention Supervisor - Trainee', 'pay_type' => 'trainee']);
-        MonthlyCostRow::factory()->count(4)->create(['pay_type' => 'regular']);
-        MonthlyCostRow::factory()->create(['pay_type' => 'trainee', 'name' => 'Rose-An']);
-        MonthlyCostRow::factory()->vacant()->create(['pay_type' => 'trainee']);
+        MonthlyCostRow::factory()->vacant()->fixed(15600)->create(['position' => 'Customer Retention Supervisor - Trainee']);
+        MonthlyCostRow::factory()->count(4)->create();
+        MonthlyCostRow::factory()->fixed(15600)->create(['name' => 'Rose-An']);
+        MonthlyCostRow::factory()->vacant()->fixed(15600)->create();
         MonthlyCostRow::factory()->fixed(30000)->create(['position' => 'Junior AI Engineer', 'name' => 'Kristine']);
     }
 
@@ -50,7 +50,8 @@ class MonthlyCostTest extends TestCase
             ])
             ->assertSeeTextInOrder(['Total monthly cost', '₱339,494.68', '8 people', 'Customer Retention', '₱281,979.30',
                 '13th Month', '₱23,498.28', 'SIL', '₱10,810.71', 'Gov. Benefits', '₱23,206.40', '2,900.80 × 8 people'])
-            ->assertSeeTextInOrder(['Rose-An', 'Trainee', '15,600.00', '₱600 × 26 days', 'Vacant', '0.00', 'Vacant · not counted'])
+            ->assertSeeTextInOrder(['Rose-An', '15,600.00', 'Vacant', '0.00', 'Vacant · not counted'])
+            ->assertDontSeeText('Pay')
             ->assertSeeTextInOrder(['33.33% of CEO', '₱132,300.00 × 33.33%', '44,095.59', 'TOTAL SALARY OF CRD', '281,979.30']);
     }
 
@@ -70,45 +71,50 @@ class MonthlyCostTest extends TestCase
     public function test_a_supervisor_adds_edits_and_deletes_rows(): void
     {
         $this->actingAs($this->supervisor)->post(route('monthly-cost.store'), [
-            'position' => 'Customer Retention Associate - Regular', 'name' => 'Lhea', 'pay_type' => 'regular', 'salary' => '99999',
+            'position' => 'Customer Retention Associate - Regular', 'name' => 'Lhea', 'salary' => '19500',
         ])->assertRedirect()->assertSessionHas('status', 'Row added.');
 
-        // A daily-rated row keeps no salary of its own: it is the rate × working days.
         $row = MonthlyCostRow::sole();
-        $this->assertSame(['Lhea', 'regular', null, $this->supervisor->id], [$row->name, $row->pay_type, $row->salary, $row->updated_by]);
-        $this->assertSame(19500.0, $row->monthlySalary(new MonthlyCost));
+        $this->assertSame(['Lhea', '19500.00', $this->supervisor->id], [$row->name, $row->salary, $row->updated_by]);
+        $this->assertSame(19500.0, $row->monthlySalary());
 
         $this->actingAs($this->supervisor)->patch(route('monthly-cost.update', $row), [
-            'position' => 'Junior AI Engineer', 'name' => 'Lhea', 'pay_type' => 'fixed', 'salary' => '30000',
+            'position' => 'Junior AI Engineer', 'name' => 'Lhea', 'salary' => '30000',
         ])->assertRedirect()->assertSessionHas('status', 'Row saved.');
-        $this->assertSame(['Junior AI Engineer', 'fixed', '30000.00'], [$row->fresh()->position, $row->fresh()->pay_type, $row->fresh()->salary]);
+        $this->assertSame(['Junior AI Engineer', '30000.00'], [$row->fresh()->position, $row->fresh()->salary]);
 
         $this->actingAs($this->supervisor)->delete(route('monthly-cost.destroy', $row))->assertRedirect();
         $this->assertModelMissing($row);
     }
 
-    public function test_a_row_needs_a_position_and_a_fixed_salary_needs_an_amount(): void
+    public function test_a_row_needs_a_position_and_a_salary(): void
     {
-        $this->actingAs($this->supervisor)->post(route('monthly-cost.store'), ['pay_type' => 'fixed', 'editing' => 'new'])
-            ->assertSessionHasErrors(['position', 'salary' => 'Enter the monthly salary for a fixed salary.']);
+        $this->actingAs($this->supervisor)->post(route('monthly-cost.store'), ['editing' => 'new'])
+            ->assertSessionHasErrors(['position', 'salary' => 'Enter the monthly salary.']);
         $this->assertDatabaseCount('monthly_cost_rows', 0);
 
         // The form comes back open with what was typed.
-        $this->actingAs($this->supervisor)->post(route('monthly-cost.store'), ['position' => 'Typed position', 'pay_type' => 'fixed', 'editing' => 'new']);
-        $this->actingAs($this->supervisor)->withSession(['_old_input' => ['editing' => 'new', 'position' => 'Typed position', 'pay_type' => 'fixed']])
+        $this->actingAs($this->supervisor)->post(route('monthly-cost.store'), ['position' => 'Typed position', 'editing' => 'new']);
+        $this->actingAs($this->supervisor)->withSession(['_old_input' => ['editing' => 'new', 'position' => 'Typed position']])
             ->get(route('monthly-cost.index'))->assertSee('value="Typed position"', false);
     }
 
-    public function test_settings_change_the_rates_shares_and_benefits(): void
+    public function test_settings_change_the_shares_and_benefits(): void
     {
-        MonthlyCostRow::factory()->create(['pay_type' => 'regular']);
-        $settings = [...config('monthly_cost.defaults'), 'rate_regular' => 800, 'ceo_share' => 50, 'phic' => 100, 'hdmf' => 100, 'sss' => 100];
+        MonthlyCostRow::factory()->create();
+        $settings = [...config('monthly_cost.defaults'), 'ceo_share' => 50, 'phic' => 100, 'hdmf' => 100, 'sss' => 100];
 
         $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), $settings)->assertSessionHas('status', 'Settings saved.');
 
-        // 800 × 26 + 60,000 × 33.3% + 126,000 × 50%; gov. benefits 300 for the one person.
+        // 19,500 + 60,000 × 33.33% + 126,000 × 50%; gov. benefits 300 for the one person.
         $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))
-            ->assertViewHas('totals', fn (array $t) => $t['team'] === 20800.0 && $t['customer_retention'] === 103798.0 && $t['gov_benefits'] === 300.0);
+            ->assertViewHas('totals', fn (array $t) => $t['team'] === 19500.0 && $t['customer_retention'] === 102498.0 && $t['gov_benefits'] === 300.0);
+
+        // The Gov. benefits card saves its three alone; the rest stay as they were.
+        $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), ['phic' => 622.70, 'hdmf' => 400, 'sss' => 1878.10])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(2900.8, (new MonthlyCost)->govBenefitsPerPerson());
+        $this->assertSame('50', Setting::value(MonthlyCost::PREFIX.'ceo_share'));
 
         $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), [...$settings, 'ceo_share' => 120])
             ->assertSessionHasErrors('ceo_share');
