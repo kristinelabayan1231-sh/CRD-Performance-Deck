@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\OrderStatusChange;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -50,6 +52,28 @@ class CancelledOrders
                     ->whereIn('seller_name', $craAccounts)
                     ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION]))
                 ->orWhere(fn (Builder $untagged) => $untagged->whereDate('ordered_on', '<', $tagsSince)->whereIn('seller_name', $sellers)));
+    }
+
+    /**
+     * The CRD orders of $cras (by the same rule, created any day) that left Canceled or Waiting for goods,
+     * noticed $from–$to (Manila days), most recent first, with their order.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return Collection<int, OrderStatusChange>
+     */
+    public function changes(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, bool $everyCrdAccount = false): Collection
+    {
+        $timezone = config('segmentation.timezone');
+        $orders = $this->crdOrders($cras, CarbonImmutable::create(2000), WorkingDate::realToday(), $everyCrdAccount)->select('pancake_order_id');
+
+        return OrderStatusChange::with('order')
+            ->whereIn('pancake_order_id', $orders)
+            ->whereBetween('created_at', [
+                CarbonImmutable::parse($from->toDateString(), $timezone)->utc(),
+                CarbonImmutable::parse($to->toDateString(), $timezone)->endOfDay()->utc(),
+            ])
+            ->latest()->orderByDesc('id')
+            ->get();
     }
 
     /**

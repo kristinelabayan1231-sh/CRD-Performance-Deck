@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\OrderStatusChange;
 use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PancakeClient;
+use App\Services\PancakeSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -117,5 +120,52 @@ class CancelledOrdersTest extends TestCase
         $this->actingAs($lhea)->get(route('dashboard', ['from' => '2026-08-19', 'to' => '2026-08-19']))
             ->assertOk()
             ->assertViewHas('results', fn (array $results) => $results['cancelled']['total'] === 1 && $results['cancelled']['orders'] === 2);
+    }
+
+    public function test_the_sync_records_orders_that_leave_cancelled_or_waiting(): void
+    {
+        $this->order('CRD LHEI', '2026-10-09', 6);
+        $this->order('CRD LHEI', '2026-10-09', 11);
+        $this->order('CRD LHEI', '2026-10-09', 3);
+        $pancake = fn (string $id, int $status) => ['display_id' => $id, 'inserted_at' => '2026-10-09T02:00:00', 'status' => $status, 'tags' => [398], 'items' => []];
+        $client = $this->mock(PancakeClient::class);
+        // Days later: the waiting order is changed in Pancake (an older order, picked up by the day's changes).
+        $client->shouldReceive('updatedOrders')->andReturn([['display_id' => '7002', 'status' => 6, 'tags' => [398]]]);
+        $client->shouldReceive('orders')->andReturn([
+            $pancake('7001', 2), // canceled → shipped
+            $pancake('7002', 11), // still waiting
+            $pancake('7003', 5), // delivered → returned: not from cancelled / waiting
+        ]);
+
+        app(PancakeSync::class)->syncOrders(CarbonImmutable::parse('2026-10-09'));
+
+        app(PancakeSync::class)->refreshTags(CarbonImmutable::parse('2026-10-12'));
+
+        $this->assertSame([['7001', 6, 2], ['7002', 11, 6]], OrderStatusChange::orderBy('id')->get()->map(fn ($change) => [$change->pancake_order_id, $change->from_status, $change->to_status])->all());
+        $this->assertSame(2, PancakeOrder::firstWhere('pancake_order_id', '7001')->status);
+    }
+
+    public function test_page_lists_status_changes_and_supervisors_get_a_pop_up_once(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        $this->order('CRD LHEI', '2026-09-20', 2, 1500);
+        OrderStatusChange::factory()->create(['pancake_order_id' => '7001', 'from_status' => 6, 'to_status' => 2]);
+
+        $this->actingAs($this->owner)->get(route('cancelled-orders.index'))
+            ->assertOk()
+            ->assertSeeTextInOrder(['Status changes', '7001', 'ordered Sep 20', 'Lhea', 'Canceled', 'Shipped', '₱1,500.00'])
+            ->assertSee('changes-dialog')
+            ->assertSeeText('1 order left Cancelled / Waiting since your last visit');
+
+        // Seen: listed; the pop-up no longer opens by itself, but its button opens the last one again.
+        $this->actingAs($this->owner)->get(route('cancelled-orders.index'))
+            ->assertOk()->assertSee('7001')
+            ->assertDontSee("document.getElementById('changes-dialog').showModal();</script>", false)
+            ->assertSeeText('Last pop-up (1)')
+            ->assertSeeText('1 order left Cancelled / Waiting (last pop-up)');
+
+        // A CRA sees their own changes, without the pop-up.
+        $this->actingAs($lhea)->get(route('cancelled-orders.index'))
+            ->assertOk()->assertSee('7001')->assertDontSee('changes-dialog');
     }
 }
