@@ -70,8 +70,8 @@ class DashboardController extends Controller
 
             $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
             $results = $goals->for($cras, $range);
-            // The same CRAs' tagged orders that were canceled or are waiting for goods (opens Cancelled / Waiting Orders).
-            // Supervisors: before the CRD tags, every CRD account's orders (former CRAs too).
+            // Orders the CRD accounts sold that were canceled or are waiting for goods (opens Cancelled / Waiting Orders):
+            // supervisors get every account in Settings → Pancake Accounts, a CRA their own.
             $everyCrdAccount = $user->can('conversion.view_all');
             $results['cancelled'] = $cancelledOrders->totals($cras, $range->from, $range->to, $everyCrdAccount);
             $results['cancelled']['days'] = $cancelledOrders->perDay($cras, $range->from, $range->to, everyCrdAccount: $everyCrdAccount);
