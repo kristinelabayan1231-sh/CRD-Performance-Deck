@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DeliveredOrder;
 use App\Models\LogisticsOrder;
+use App\Models\OrderStatusChange;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Support\WorkingDate;
@@ -159,13 +160,16 @@ class PancakeSync
     }
 
     /**
-     * Insert or update orders by their Pancake id.
+     * Insert or update orders by their Pancake id, recording the ones that left Canceled or Waiting for goods.
      *
      * @param  Collection<int, array<string, mixed>>  $orders
      */
     private function saveOrders(Collection $orders, CarbonInterface $now): void
     {
         foreach ($orders->chunk(200) as $chunk) {
+            $before = PancakeOrder::whereIn('pancake_order_id', $chunk->pluck('pancake_order_id'))->pluck('status', 'pancake_order_id')->all();
+            OrderStatusChange::recordLeaving($before, $chunk->pluck('status', 'pancake_order_id')->all());
+
             PancakeOrder::upsert(
                 $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
                 ['pancake_order_id'],
@@ -262,6 +266,8 @@ class PancakeSync
                     if ($order->tags === $fresh['tags'] && $order->status === $fresh['status']) {
                         return;
                     }
+
+                    OrderStatusChange::recordLeaving([$order->pancake_order_id => $order->status], [$order->pancake_order_id => $fresh['status']]);
 
                     $order->forceFill($fresh)->save();
                     $updated++;

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OrderStatusChange;
 use App\Models\PancakeOrder;
 use App\Services\CancelledOrders;
 use App\Services\ConversionBreakdown;
@@ -10,6 +11,7 @@ use App\Support\DashboardRange;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 /**
@@ -55,10 +57,33 @@ class CancelledOrderController extends Controller
         $everyCrdAccount = $user->can('conversion.view_all') && blank($filters['cra'] ?? null);
         $days = $cancelledOrders->perDay($shown, $from, $to, $status, $everyCrdAccount);
 
+        // Orders that left Canceled / Waiting (e.g. recovered to Shipped) in these dates; supervisors and leads get a
+        // pop-up for the ones since their last visit.
+        $changes = $cancelledOrders->changes($shown, $from, $to, $everyCrdAccount);
+        $seenKey = "cancelled_orders.changes_seen.{$user->id}";
+        $seenAt = Cache::get($seenKey);
+        $unseen = $user->can('conversion.view_all')
+            ? $cancelledOrders->changes($shown, $seenAt ? CarbonImmutable::parse($seenAt) : $today->subDays(7), $today, $everyCrdAccount)
+                ->filter(fn (OrderStatusChange $change) => ! $seenAt || $change->created_at->greaterThan(CarbonImmutable::parse($seenAt)))
+            : collect();
+        Cache::forever($seenKey, now()->toIso8601String());
+
+        // The pop-up's changes stay for its button until new ones come: the new ones, else the last ones shown.
+        $popupKey = "cancelled_orders.changes_popup.{$user->id}";
+        if ($unseen->isNotEmpty()) {
+            Cache::forever($popupKey, $unseen->pluck('id')->all());
+        }
+        $popup = $unseen->isNotEmpty() || ! $user->can('conversion.view_all')
+            ? $unseen
+            : OrderStatusChange::with('order')->whereKey(Cache::get($popupKey, []))->latest()->orderByDesc('id')->get();
+
         return view('cancelled-orders.index', [
             'orders' => $cancelledOrders->query($shown, $from, $to, $status, $everyCrdAccount)
                 ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
             'days' => $days,
+            'changes' => $changes,
+            'unseen' => $unseen,
+            'popup' => $popup,
             'totals' => [
                 'cancelled' => $days->sum('cancelled'),
                 'waiting' => $days->sum('waiting'),

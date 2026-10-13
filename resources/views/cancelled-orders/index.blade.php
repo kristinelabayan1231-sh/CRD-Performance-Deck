@@ -111,6 +111,58 @@
             <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white">Apply</button></noscript>
         </form>
 
+        {{-- Orders that left Canceled / Waiting in these dates (recovered, e.g. to Shipped): they drop off the list below, so they show here --}}
+        <x-panel title="Status changes" accent="teal" icon="check" title-id="changes-title" body-class="p-0" :tinted="false">
+            <x-slot:badges>
+                <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-teal-700 shadow-sm tabular-nums">{{ number_format($changes->count()) }}</span>
+                <span class="text-xs text-muted">Cancelled or waiting orders that moved to another status, as Pancake syncs</span>
+            </x-slot:badges>
+            @if ($popup->isNotEmpty())
+                <x-slot:actions>
+                    {{-- Opens the pop-up again: the changes from the last time it showed --}}
+                    <button type="button" onclick="document.getElementById('changes-dialog').showModal()" aria-haspopup="dialog"
+                            class="inline-flex items-center gap-1.5 rounded-lg border border-[#b9e8de] bg-white px-3 py-1.5 text-xs font-semibold text-teal-700 shadow-sm hover:border-teal-700">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-5-5.9V4a1 1 0 1 0-2 0v1.1A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5m6 0a3 3 0 1 1-6 0"/></svg>
+                        {{ $unseen->isNotEmpty() ? 'New changes' : 'Last pop-up' }} ({{ $popup->count() }})
+                    </button>
+                </x-slot:actions>
+            @endif
+            @if ($changes->isEmpty())
+                <p class="px-4 py-5 text-center text-sm text-muted">No cancelled or waiting order changed status in these dates.</p>
+            @else
+                <div class="max-h-[22rem] overflow-y-auto">
+                    @include('cancelled-orders._changes-table', ['changes' => $changes, 'unseenIds' => $unseen->pluck('id')])
+                </div>
+            @endif
+        </x-panel>
+
+        @if ($popup->isNotEmpty())
+            {{-- Supervisors and leads: opens by itself with the changes since their last visit; the button above opens it again --}}
+            <dialog id="changes-dialog" aria-labelledby="changes-dialog-title" onclick="if (event.target === this) this.close()"
+                    class="m-auto max-h-[90dvh] w-[min(56rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">
+                <div class="flex max-h-[90dvh] flex-col">
+                    <div class="flex shrink-0 items-start justify-between gap-4 border-b border-[#b9e8de] bg-gradient-to-r from-[#d3f3ec] to-[#ecfaf6] px-5 py-4">
+                        <div class="min-w-0">
+                            <h2 id="changes-dialog-title" class="text-base font-semibold">{{ $popup->count() }} {{ Str::plural('order', $popup->count()) }} left Cancelled / Waiting {{ $unseen->isNotEmpty() ? 'since your last visit' : '(last pop-up)' }}</h2>
+                            <p class="text-sm text-muted">Moved to another status in Pancake (e.g. recovered to Shipped). They stay listed under Status changes.</p>
+                        </div>
+                        <button type="button" onclick="this.closest('dialog').close()" aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-white hover:text-ink">
+                            <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                        </button>
+                    </div>
+                    <div class="min-h-0 flex-1 overflow-y-auto">
+                        @include('cancelled-orders._changes-table', ['changes' => $popup])
+                    </div>
+                    <div class="flex shrink-0 justify-end border-t border-line px-5 py-3">
+                        <button type="button" onclick="this.closest('dialog').close()" class="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-[#0b6b5d]">Got it</button>
+                    </div>
+                </div>
+            </dialog>
+            @if ($unseen->isNotEmpty())
+                <script>document.getElementById('changes-dialog').showModal();</script>
+            @endif
+        @endif
+
         <div class="grid items-start gap-4 xl:grid-cols-[25rem_minmax(0,1fr)]">
             {{-- Per day; a day opens that day's orders --}}
             <x-panel title="Per day" accent="coral" icon="calendar" title-id="per-day-title" body-class="p-0" :tinted="false">
