@@ -242,6 +242,28 @@ class SalesGoalsTest extends TestCase
             ->assertViewHas('results', fn ($results) => $results['cras']->pluck('cra.id')->all() === [$lhea->id]);
     }
 
+    public function test_results_graphs_get_every_day_of_the_dates_and_the_flip_button(): void
+    {
+        $this->cra('Lhea', 'CRD LHEI');
+        $this->sale('CRD LHEI', '2026-10-09', 3000, PancakeOrder::BROADCAST);
+        $this->sale('CRD LHEI', '2026-10-10', 1000);
+        $this->sale('CRD LHEI', '2026-10-10', 500, status: 6);
+
+        $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-08', 'to' => '2026-10-10']))
+            ->assertOk()
+            ->assertSee('data-results-graphs', false)
+            ->assertSeeText(['Gross sales vs goal', 'Confirmed orders per day', 'Conversion rate per day', 'AOV per day', 'Cancelled / waiting per day'])
+            ->assertViewHas('results', function (array $results) {
+                $daily = $results['daily'];
+
+                // A day without orders is still there; canceled orders count in gross sales, not in orders.
+                return array_keys($daily) === ['2026-10-08', '2026-10-09', '2026-10-10']
+                    && $daily['2026-10-08']['orders'] === 0
+                    && $daily['2026-10-09']['bc_orders'] === 1 && $daily['2026-10-09']['all_gross'] === 3000.0
+                    && $daily['2026-10-10']['sc_orders'] === 1 && $daily['2026-10-10']['all_gross'] === 1500.0;
+            });
+    }
+
     public function test_confirmed_orders_page_lists_the_tagged_orders_and_a_cra_sees_their_own(): void
     {
         $lhea = $this->cra('Lhea', 'CRD LHEI');

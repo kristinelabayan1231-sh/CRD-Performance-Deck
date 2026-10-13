@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
+use App\Http\Controllers\CancelledOrderController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\CustomerChurnController;
@@ -83,6 +84,9 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/cras/{cra}/orders', [ConversionBreakdownController::class, 'craOrders'])->name('cra-orders');
         Route::post('/sync', [ConversionBreakdownController::class, 'sync'])->middleware('can:conversion.view_all')->name('sync');
     });
+
+    // Opened from the dashboard's Cancelled / Waiting tile only (no menu link).
+    Route::get('/cancelled-orders', [CancelledOrderController::class, 'index'])->middleware('can:conversion.view')->name('cancelled-orders.index');
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
