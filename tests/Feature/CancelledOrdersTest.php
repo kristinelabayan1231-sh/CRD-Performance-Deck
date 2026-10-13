@@ -93,4 +93,29 @@ class CancelledOrdersTest extends TestCase
         $this->actingAs($lhea)->get(route('cancelled-orders.index'))
             ->assertOk()->assertSee('7001')->assertSee('7002')->assertDontSee('7003');
     }
+
+    public function test_before_the_crd_tags_any_order_a_crd_account_sold_counts(): void
+    {
+        // Settings → Pancake Accounts, as before anything is saved there.
+        config(['segmentation.conversion_tags_since' => '2026-08-20', 'customers.crd_accounts' => ['CRD LHEI', 'CRD JULY DE LOS SANTOS']]);
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        // Before the tags: untagged orders by a CRD account count, a former CRA's too (supervisors only).
+        $this->order('CRD LHEI', '2026-08-19', 6, type: null);
+        $this->order('CRD JULY DE LOS SANTOS', '2026-08-19', 11, type: null);
+        $this->order('CRD LHEI', '2026-08-19', 3, type: null);
+        $this->order('FSD AGENT', '2026-08-19', 6, type: null);
+        // From the tags on: untagged orders don't count.
+        $this->order('CRD LHEI', '2026-08-20', 6, type: null);
+
+        $this->actingAs($this->owner)->get(route('cancelled-orders.index', ['from' => '2026-08-18', 'to' => '2026-08-21']))
+            ->assertOk()
+            ->assertSeeTextInOrder(['Cancelled + waiting', '2', 'Cancelled', '1', 'Waiting for goods', '1'])
+            ->assertSee('7001')->assertSee('7002')->assertSeeText('CRD JULY DE LOS SANTOS')->assertSeeText('No tag')
+            ->assertDontSee('7004')->assertDontSee('7005');
+
+        // A CRA: only their own account; the basis for the % is their CRD orders (2 that day).
+        $this->actingAs($lhea)->get(route('dashboard', ['from' => '2026-08-19', 'to' => '2026-08-19']))
+            ->assertOk()
+            ->assertViewHas('results', fn (array $results) => $results['cancelled']['total'] === 1 && $results['cancelled']['orders'] === 2);
+    }
 }

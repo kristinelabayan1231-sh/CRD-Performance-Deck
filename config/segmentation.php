@@ -26,6 +26,10 @@ return [
         'segmentation' => (int) env('PANCAKE_TAG_SEGMENTATION', 398),
     ],
 
+    // The first day orders were tagged CRD - BROADCAST / CRD - SEGMENTATION. Before it, Cancelled / Waiting
+    // counts every order a CRD account sold (Settings → Pancake Accounts) instead.
+    'conversion_tags_since' => env('PANCAKE_TAGS_SINCE', '2026-08-20'),
+
     // Default sales goals until they are set in Settings → Sales Goals (pesos).
     'sales_goals' => [
         'cra_daily' => 77000,
