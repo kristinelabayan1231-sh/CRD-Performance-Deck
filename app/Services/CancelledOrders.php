@@ -11,11 +11,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * Cancelled / waiting orders: the CRAs' own Pancake orders tagged CRD - BROADCAST or CRD - SEGMENTATION
- * (the same orders as Confirmed Orders) whose status is Canceled (6) or Waiting for goods (11), by the
- * day the order was created. Before the tags were in use (segmentation.conversion_tags_since), every
- * order a CRD account sold counts instead: with $everyCrdAccount, all of Settings → Pancake Accounts
- * (former CRAs too); otherwise only the CRAs' own accounts. Amounts are the sale (Shecom's, else Pancake's total).
+ * Cancelled / waiting orders: every Pancake order a CRD account sold whose status is Canceled (6) or Waiting
+ * for goods (11), by the day the order was created, whatever its tags or products (as the team tallies them).
+ * With $everyCrdAccount, all of Settings → Pancake Accounts (former CRAs and second accounts too); otherwise
+ * only the CRAs' own accounts (User Access). Amounts are the sale (Shecom's, else Pancake's total).
  */
 class CancelledOrders
 {
@@ -34,24 +33,20 @@ class CancelledOrders
     }
 
     /**
-     * Every CRD order of $cras created $from–$to, any status (the rate's basis): tagged ones, or before the tags
-     * were in use, the ones their accounts sold.
+     * Every order the CRD accounts of $cras sold $from–$to, any status (the rate's basis).
      *
      * @param  Collection<int, User>  $cras
      */
     public function crdOrders(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, bool $everyCrdAccount = false): Builder
     {
-        $craAccounts = ConversionBreakdown::accounts($cras)->keys();
-        $sellers = $everyCrdAccount ? $craAccounts->merge(PancakeOrder::crdAccounts())->unique()->values() : $craAccounts;
-        $tagsSince = CarbonImmutable::parse(config('segmentation.conversion_tags_since'));
+        $sellers = ConversionBreakdown::accounts($cras)->keys();
 
-        return PancakeOrder::crdProducts()
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->where(fn (Builder $query) => $query
-                ->where(fn (Builder $tagged) => $tagged->whereDate('ordered_on', '>=', $tagsSince)
-                    ->whereIn('seller_name', $craAccounts)
-                    ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION]))
-                ->orWhere(fn (Builder $untagged) => $untagged->whereDate('ordered_on', '<', $tagsSince)->whereIn('seller_name', $sellers)));
+        if ($everyCrdAccount) {
+            $sellers = $sellers->merge(PancakeOrder::crdAccounts())->unique()->values();
+        }
+
+        return PancakeOrder::whereIn('seller_name', $sellers)
+            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to);
     }
 
     /**

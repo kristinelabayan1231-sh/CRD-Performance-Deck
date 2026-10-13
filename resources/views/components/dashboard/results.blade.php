@@ -128,18 +128,19 @@
         </x-slot:back>
     </x-dashboard.flip>
 
-    {{-- AOV and Cancelled / Waiting share one slot, stacked as two short, wide tiles (figure left, details right);
+    {{-- AOV and Cancelled / Waiting share one slot, stacked as two short, wide tiles (label at the top left as on the
+         other tiles, then the figure left and details right);
          Retained and Repeat take the rest of the row for their goals --}}
-    @php($wide = 'relative flex min-w-0 flex-1 items-center justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br px-4 py-3 text-white shadow-sm')
+    @php($wide = 'relative flex min-w-0 flex-1 flex-col justify-between gap-2 overflow-hidden rounded-xl bg-gradient-to-br px-4 py-3 text-white shadow-sm')
     <div class="flex flex-col gap-3 {{ $span }}">
         <x-dashboard.flip class="flex-1">
         <article class="{{ $wide }} from-[#d99a0b] to-[#a8740a]" title="Average order value: gross sales ÷ confirmed orders">
             {!! $bubble !!}
-            <div class="relative min-w-0">
-                <p class="{{ $label }}">AOV</p>
+            <p class="{{ $label }}">AOV</p>
+            <div class="relative flex items-end justify-between gap-3">
                 <p class="text-2xl font-bold whitespace-nowrap tabular-nums">{{ $team['orders'] ? '₱'.number_format($team['gross'] / $team['orders']) : '—' }}</p>
+                <p class="text-right text-xs text-white/90 tabular-nums">{{ $peso((float) $team['gross']) }}<span class="block">÷ {{ number_format($team['orders']) }} orders</span></p>
             </div>
-            <p class="{{ $note }} text-right">{{ $peso((float) $team['gross']) }}<span class="block">÷ {{ number_format($team['orders']) }} orders</span></p>
         </article>
             <x-slot:back>
                 <x-dashboard.trend title="AOV per day" :format="$peso"
@@ -150,19 +151,25 @@
 
         <x-dashboard.flip class="flex-1">
         <a href="{{ route('cancelled-orders.index', $query) }}" class="group {{ $wide }} from-[#e0564f] to-[#ad3530] transition hover:-translate-y-0.5 hover:shadow-lg"
-           title="{{ $own ? 'Your' : 'The CRAs\'' }} orders tagged CRD - BROADCAST or CRD - SEGMENTATION that were canceled or are waiting for goods ({{ $short($cancelled['amount']) }}); % of all their CRD orders in these dates. Click to see them per day.">
+           title="{{ $own ? 'Your' : 'The CRAs\'' }} Pancake orders (any tag or product) that were canceled or are waiting for goods ({{ $short($cancelled['amount']) }}); % of everything {{ $own ? 'you' : 'the CRD team' }} sold in these dates. Click to see them per day.">
             {!! $bubble !!}
-            <div class="relative min-w-0">
+            <div class="relative flex items-start justify-between gap-2">
                 <p class="{{ $label }}">Cancelled / Waiting</p>
-                <p class="flex items-baseline gap-2">
-                    <span class="text-2xl font-bold tabular-nums">{{ number_format($cancelled['total']) }}</span>
-                    <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} CRD orders in these dates">{{ $pct($cancelled['rate']) }}</span>
-                </p>
+                <span class="text-xs font-semibold whitespace-nowrap text-white group-hover:underline">View &rarr;</span>
             </div>
-            <div class="relative text-right text-xs tabular-nums">
-                <p class="text-white/90 whitespace-nowrap">Cancelled {{ number_format($cancelled['cancelled']) }}</p>
-                <p class="text-white/90 whitespace-nowrap">Waiting {{ number_format($cancelled['waiting']) }}</p>
-                <p class="mt-0.5 font-semibold whitespace-nowrap text-white group-hover:underline">View &rarr;</p>
+            <div class="relative flex items-end justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="flex items-baseline gap-2">
+                        <span class="text-2xl font-bold tabular-nums">{{ number_format($cancelled['total']) }}</span>
+                        <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders sold in these dates">{{ $pct($cancelled['rate']) }}</span>
+                    </p>
+                    {{-- The amount of these orders: a small pill under the count --}}
+                    <p class="mt-1 inline-block rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums" title="Amount of the cancelled and waiting orders">{{ $peso($cancelled['amount']) }}</p>
+                </div>
+                <div class="text-right text-xs text-white/90 tabular-nums">
+                    <p class="whitespace-nowrap">Cancelled {{ number_format($cancelled['cancelled']) }}</p>
+                    <p class="whitespace-nowrap">Waiting {{ number_format($cancelled['waiting']) }}</p>
+                </div>
             </div>
         </a>
             <x-slot:back>

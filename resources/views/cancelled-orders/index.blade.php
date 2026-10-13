@@ -12,7 +12,7 @@
 <x-layouts.app title="Cancelled / Waiting Orders">
     <div class="space-y-4">
         <header class="flex flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Cancelled / Waiting Orders <span class="text-sm font-normal text-muted">· {{ $label }} · tagged CRD - BROADCAST or CRD - SEGMENTATION (before {{ \Carbon\CarbonImmutable::parse(config('segmentation.conversion_tags_since'))->format('M j') }}: sold by a CRD account)</span></h1>
+            <h1 class="text-xl font-semibold">Cancelled / Waiting Orders <span class="text-sm font-normal text-muted">· {{ $label }} · sold by a CRD account (Settings → Pancake Accounts), any tag or product</span></h1>
             <a href="{{ route('dashboard', $dashboardQuery) }}" class="text-sm font-semibold text-brand-600 hover:underline">&larr; Dashboard</a>
         </header>
 
@@ -239,7 +239,7 @@
                                             @endif
                                         </td>
                                         <td class="px-4 py-3">
-                                            {{-- Orders from before the CRD tags have none --}}
+                                            {{-- Untagged orders count too --}}
                                             @if ($order->conversion_type)
                                                 <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-[#e3f3f9] text-[#0c5a7d]' => $order->conversion_type === 'broadcast', 'bg-brand-100 text-brand-700' => $order->conversion_type !== 'broadcast'])>
                                                     {{ $order->conversion_type === 'broadcast' ? 'Broadcast' : 'Segmentation' }}
