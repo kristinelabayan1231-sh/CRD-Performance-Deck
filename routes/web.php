@@ -68,6 +68,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/overview', [SegmentationSummaryController::class, 'index'])->name('overview');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
+        Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
         Route::post('/sync', [SegmentationController::class, 'sync'])->middleware('can:segmentation.manage')->name('sync');
     });
 

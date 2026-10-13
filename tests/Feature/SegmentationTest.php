@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
+use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
@@ -460,6 +461,31 @@ class SegmentationTest extends TestCase
         $this->assertArrayHasKey($lead->feedback, config('segmentation.feedback'));
         $this->assertSame('no_verbal_conv', $lead->feedback);
         $this->assertSame('hot', $lead->customer_tag);
+    }
+
+    public function test_the_order_icon_lists_the_customers_orders_by_date_and_product(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $lead = Lead::create([
+            'order_id' => '1', 'customer_name' => 'Pat', 'phone_number' => '09171234567', 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id,
+        ]);
+        $order = fn (string $id, string $day, string $product, int $status = 3) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => $day, 'phone_key' => '9171234567', 'status' => $status,
+            'total_price' => 500, 'items' => [['name' => $product]],
+        ]);
+        $order('p1', '2026-08-02', 'Sinuxyl');
+        $order('p2', '2026-09-01', 'CanPro');
+        $order('p3', '2026-09-15', 'Fsdol', status: 6);
+
+        $this->actingAs($alice)->getJson(route('segmentation.orders', $lead))->assertOk()
+            ->assertExactJson(['orders' => [
+                ['date' => 'Sep 1, 2026', 'product' => 'CanPro'],
+                ['date' => 'Aug 2, 2026', 'product' => 'Sinuxyl'],
+            ]]);
+        $this->actingAs($bob)->getJson(route('segmentation.orders', $lead))->assertForbidden();
     }
 
     public function test_a_cra_searches_their_leads_across_every_lead_day(): void

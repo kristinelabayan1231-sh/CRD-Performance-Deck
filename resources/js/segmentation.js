@@ -381,6 +381,100 @@ function initNotes() {
     dialog.querySelector('[data-note-cancel]').addEventListener('click', () => dialog.close());
 }
 
+// Order icon beside a customer's name: hovering shows their order history (order date · product) in a
+// floating box, fetched once per row and kept for the next hover.
+function initOrderHistory() {
+    const box = document.createElement('div');
+    box.className = 'fixed z-50 w-72 rounded-md border border-line bg-white p-3 text-left text-xs shadow-lg';
+    box.hidden = true;
+    box.setAttribute('role', 'tooltip');
+    document.body.appendChild(box);
+    const cache = new Map();
+    let current = null;
+
+    const render = (orders) => {
+        box.replaceChildren();
+        const title = document.createElement('p');
+        title.className = 'mb-1.5 font-semibold text-ink';
+        title.textContent = 'Order history';
+        box.appendChild(title);
+        if (typeof orders === 'string' || orders.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'text-muted';
+            empty.textContent = typeof orders === 'string' ? orders : 'No orders found.';
+            box.appendChild(empty);
+            return;
+        }
+        const list = document.createElement('ul');
+        list.className = 'max-h-60 space-y-1 overflow-y-auto';
+        orders.forEach((order) => {
+            const item = document.createElement('li');
+            item.className = 'flex gap-2';
+            const date = document.createElement('span');
+            date.className = 'shrink-0 text-muted tabular-nums';
+            date.textContent = order.date;
+            const product = document.createElement('span');
+            product.className = 'text-ink';
+            product.textContent = order.product;
+            item.append(date, product);
+            list.appendChild(item);
+        });
+        box.appendChild(list);
+    };
+
+    const place = (button) => {
+        const rect = button.getBoundingClientRect();
+        const { offsetWidth: w, offsetHeight: h } = box;
+        const x = Math.min(rect.left, window.innerWidth - w - 8);
+        const y = rect.bottom + 4 + h > window.innerHeight - 8 ? rect.top - h - 4 : rect.bottom + 4;
+        box.style.left = `${Math.max(8, x)}px`;
+        box.style.top = `${Math.max(8, y)}px`;
+    };
+
+    const notePopover = (button) => button.closest('[data-note-cell]')?.querySelector('[data-note-popover]');
+
+    const show = async (button) => {
+        current = button;
+        const note = notePopover(button);
+        if (note) note.style.display = 'none';
+        const url = button.dataset.ordersUrl;
+        if (!cache.has(url)) {
+            render('Loading…');
+            box.hidden = false;
+            place(button);
+            cache.set(url, fetch(url, { headers: { Accept: 'application/json' } })
+                .then((response) => (response.ok ? response.json() : Promise.reject()))
+                .then((data) => data.orders)
+                .catch(() => {
+                    cache.delete(url);
+                    return "Couldn't load the orders.";
+                }));
+        }
+        const orders = await cache.get(url);
+        if (current !== button) return;
+        render(orders);
+        box.hidden = false;
+        place(button);
+    };
+
+    const hide = (button) => {
+        if (current === button) current = null;
+        box.hidden = true;
+        const note = notePopover(button);
+        if (note) note.style.display = '';
+    };
+
+    ['mouseover', 'focusin'].forEach((type) => document.addEventListener(type, (event) => {
+        const button = event.target instanceof Element ? event.target.closest('[data-orders-open]') : null;
+        if (button && button !== current) show(button);
+    }));
+    ['mouseout', 'focusout'].forEach((type) => document.addEventListener(type, (event) => {
+        const button = event.target instanceof Element ? event.target.closest('[data-orders-open]') : null;
+        if (button && !button.contains(event.relatedTarget)) hide(button);
+    }));
+    window.addEventListener('scroll', () => current && hide(current), { passive: true, capture: true });
+}
+
 // Reload the Pending and Catered lists in place (pages, counts and order from the server).
 async function refreshSections() {
     const response = await fetch(window.location.href, { headers: { Accept: 'text/html' } });
@@ -641,6 +735,7 @@ export function initSegmentation() {
         new ResizeObserver(() => fitVisibleRows()).observe(document.body);
     }
     if (document.querySelector('[data-lead-section]')) initRowMenu();
+    if (document.querySelector('[data-lead-section]')) initOrderHistory();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();
