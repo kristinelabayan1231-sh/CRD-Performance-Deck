@@ -196,7 +196,7 @@ class PancakeSync
     }
 
     /**
-     * Update tags and status on saved orders that Pancake shows as changed on $day: only the changes
+     * Update tags, status and seller on saved orders that Pancake shows as changed on $day: only the changes
      * since the last refresh of $day (with some overlap), since a busy day has over a thousand.
      *
      * @return int orders updated
@@ -248,8 +248,9 @@ class PancakeSync
     }
 
     /**
-     * Save Pancake's current tags and status on the saved orders among $orders. Each order keeps its
-     * own tags, so a customer can be broadcast on one order and segmentation on the next.
+     * Save Pancake's current tags, status and seller on the saved orders among $orders. Each order keeps its
+     * own tags, so a customer can be broadcast on one order and segmentation on the next. An order assigned
+     * to another seller after it was saved moves to them; one with no assigned seller has none (never the creator).
      *
      * @param  list<array<string, mixed>>  $orders
      * @return int orders updated
@@ -263,11 +264,18 @@ class PancakeSync
                     ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
                     ->filter()->values()->all();
 
+                $seller = $order['assigning_seller'] ?? null;
+
                 return [(string) ($order['display_id'] ?? $order['id']) => [
                     'tags' => $tagIds,
                     'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
                     'status' => isset($order['status']) ? (int) $order['status'] : null,
                     'status_name' => $order['status_name'] ?? null,
+                    // Orders sent without the field leave the seller as saved.
+                    ...(array_key_exists('assigning_seller', $order) ? [
+                        'seller_pancake_id' => $seller['id'] ?? null,
+                        'seller_name' => isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null,
+                    ] : []),
                 ]];
             });
 
@@ -275,11 +283,12 @@ class PancakeSync
 
         foreach ($changed->keys()->chunk(500) as $ids) {
             PancakeOrder::whereIn('pancake_order_id', $ids->values())
-                ->get(['id', 'pancake_order_id', 'tags', 'conversion_type', 'status', 'status_name'])
+                ->get(['id', 'pancake_order_id', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name'])
                 ->each(function (PancakeOrder $order) use ($changed, &$updated) {
                     $fresh = $changed[$order->pancake_order_id];
 
-                    if ($order->tags === $fresh['tags'] && $order->status === $fresh['status']) {
+                    if ($order->tags === $fresh['tags'] && $order->status === $fresh['status']
+                        && (! array_key_exists('seller_name', $fresh) || $order->seller_name === $fresh['seller_name'])) {
                         return;
                     }
 
@@ -477,7 +486,8 @@ class PancakeSync
 
         // Pancake sends inserted_at in UTC without an offset.
         $orderedAt = CarbonImmutable::parse($order['inserted_at'], 'UTC');
-        $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
+        // The assigned seller only: the creator isn't who the order counts for.
+        $seller = $order['assigning_seller'] ?? null;
         $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
         $phoneKey = $phone ? LeadGenerator::normalizePhone((string) $phone) : '';
         // POS order tags come as ids ([398, 17, …]); tolerate {id, name} objects too.

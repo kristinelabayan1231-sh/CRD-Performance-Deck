@@ -564,7 +564,7 @@ class CustomerDatabase
 
         $rows = collect($ordersByPhone)->map(function (array $orders, string $phone) use ($before, $delivered, $now, $catalog) {
             $prior = collect($orders)->filter(function (array $order) use ($before, $delivered) {
-                $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
+                $seller = $order['assigning_seller'] ?? null;
                 $orderedOn = isset($order['inserted_at'])
                     ? CarbonImmutable::parse($order['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->startOfDay()
                     : null;
@@ -584,7 +584,7 @@ class CustomerDatabase
                     ->map(fn (array $o) => [
                         'at' => CarbonImmutable::parse($o['inserted_at'], 'UTC')->toDateTimeString(),
                         'amount' => (float) ($o['total_price'] ?? 0),
-                        'seller' => PancakeEngagement::staffKey(($o['assigning_seller'] ?? $o['creator'] ?? [])['name'] ?? null),
+                        'seller' => PancakeEngagement::staffKey($o['assigning_seller']['name'] ?? null),
                     ])->sortBy('at')->values()->all()),
                 'checked_at' => $now,
                 'created_at' => $now,

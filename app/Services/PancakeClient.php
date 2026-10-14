@@ -21,11 +21,11 @@ class PancakeClient
     /** Order fields Segmentation Productivity and Conversion Breakdown use; asked for with fields[] since full orders are large. */
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
-        'customer', 'total_price', 'total_discount', 'account_name', 'assigning_seller', 'creator', 'tags', 'items',
+        'customer', 'total_price', 'total_discount', 'account_name', 'assigning_seller', 'tags', 'items',
     ];
 
-    /** What a tag or status refresh keeps of an order. */
-    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name'];
+    /** What a tag, status or seller refresh keeps of an order. */
+    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name', 'assigning_seller'];
 
     /**
      * Chat → Analytics → Engagements → Customer engagement for one day, per
@@ -156,11 +156,11 @@ class PancakeClient
      * order search, ten numbers at a time. Numbers whose search fails are left out.
      *
      * @param  list<string>  $phoneKeys
-     * @return array<string, list<array{display_id?: int|string, inserted_at?: string, status?: int, bill_phone_number?: string, assigning_seller?: array, creator?: array}>>
+     * @return array<string, list<array{display_id?: int|string, inserted_at?: string, status?: int, bill_phone_number?: string, assigning_seller?: array}>>
      */
     public function ordersByPhone(array $phoneKeys): array
     {
-        $fields = ['display_id', 'id', 'inserted_at', 'status', 'bill_phone_number', 'customer', 'assigning_seller', 'creator'];
+        $fields = ['display_id', 'id', 'inserted_at', 'status', 'bill_phone_number', 'customer', 'assigning_seller'];
         $found = [];
 
         foreach (array_chunk(array_values(array_unique($phoneKeys)), 10) as $chunk) {
