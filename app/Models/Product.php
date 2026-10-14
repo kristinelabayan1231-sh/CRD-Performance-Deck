@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'keywords', 'consumption_days', 'srp', 'created_by'])]
+#[Fillable(['name', 'keywords', 'consumption_days', 'srp', 'unit_cost', 'created_by'])]
 class Product extends Model
 {
     protected function casts(): array
@@ -14,6 +14,7 @@ class Product extends Model
         return [
             'consumption_days' => 'integer',
             'srp' => 'decimal:2',
+            'unit_cost' => 'decimal:2',
         ];
     }
 

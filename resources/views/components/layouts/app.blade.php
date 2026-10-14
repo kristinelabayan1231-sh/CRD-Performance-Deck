@@ -47,6 +47,9 @@
                 @can('order_database.view')
                     <x-nav-link :href="route('order-database.cra-performance')" :active="request()->routeIs('order-database.*')" icon="orders">Order Database</x-nav-link>
                 @endcan
+                @can('product_performance.view')
+                    <x-nav-link :href="route('product-performance.index')" :active="request()->routeIs('product-performance.*')" icon="products">Product Performance</x-nav-link>
+                @endcan
                 @canany(['customers.view', 'customers.high_value.view'])
                     <x-nav-link :href="route($user->can('customers.view') ? 'customers.index' : 'customers.high-value')" :active="request()->routeIs('customers.*')" icon="database">Customer Database</x-nav-link>
                 @endcanany

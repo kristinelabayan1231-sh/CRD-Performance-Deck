@@ -63,6 +63,18 @@ class ProductConsumptionTest extends TestCase
         $this->assertNull($product->fresh()->cltv());
     }
 
+    public function test_unit_cost_is_saved(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => 'CanPro', 'unit_cost' => '35.50'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame('35.50', $product->unit_cost);
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'unit_cost' => '-1'])
+            ->assertSessionHasErrorsIn("product{$product->id}", ['unit_cost']);
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'unit_cost' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->unit_cost);
+    }
+
     public function test_a_supervisor_can_set_only_the_srp(): void
     {
         $product = Product::create(['name' => 'CanPro', 'keywords' => 'Can Pro', 'consumption_days' => 10]);

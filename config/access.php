@@ -58,8 +58,11 @@ $modules = [
         'pc_report.view_all' => 'View every CRA\'s PC Report sets',
         'pc_report.manage' => 'Set each CRA\'s Creation/Update Time per page',
     ],
+    'Product Performance' => [
+        'product_performance.view' => 'View Product Performance: every CRD account\'s sales, delivered, RTS and cancelled orders per product, with trends and insights',
+    ],
     'Order Database' => [
-        'order_database.view' => 'View own CRA\'s Performance (Pancake POS orders per status and product)',
+        'order_database.view' => 'View own CRA\'s Performance and Product Report (Pancake POS orders per status, product, cost and delivery rates)',
         'order_database.view_all' => 'View every CRD account\'s orders and filter by CRA',
     ],
     'CRD - MC' => [

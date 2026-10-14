@@ -5,6 +5,7 @@ import { initLive } from './live';
 import { initMonthlyCost } from './monthly-cost';
 import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
+import { initProductPerformance } from './product-performance';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
@@ -23,4 +24,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initMonthlyCost();
     initPcReport();
     initProductGroups();
+    initProductPerformance();
 });

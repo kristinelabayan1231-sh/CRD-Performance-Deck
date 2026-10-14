@@ -8,7 +8,7 @@
     @if ($canManage)
         <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
             <h2 class="text-base font-semibold">Add product</h2>
-            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down. SRP sets the product's CLTV (SRP × {{ config('customers.cltv_units') }}) in the Customer Database.</p>
+            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down. SRP sets the product's CLTV (SRP × {{ config('customers.cltv_units') }}) in the Customer Database. Product cost (₱ per unit) sets the Product cost (product cost × qty) in Order Database → Product Report.</p>
             <form method="POST" action="{{ route('settings.product-consumption.store') }}" class="mt-4 flex flex-col gap-4 md:flex-row md:items-end">
                 @csrf
                 <label class="flex-1">
@@ -26,6 +26,10 @@
                 <label class="md:w-36">
                     <span class="mb-1 block text-sm font-medium">SRP <span class="font-normal text-muted">(₱ per unit)</span></span>
                     <input type="number" name="srp" value="{{ $errors->any() ? old('srp') : '' }}" min="0" step="0.01" placeholder="e.g. 499" class="{{ $input }}">
+                </label>
+                <label class="md:w-36">
+                    <span class="mb-1 block text-sm font-medium">Product cost <span class="font-normal text-muted">(₱ per unit)</span></span>
+                    <input type="number" name="unit_cost" value="{{ $errors->any() ? old('unit_cost') : '' }}" min="0" step="0.01" placeholder="e.g. 35" class="{{ $input }}">
                 </label>
                 <button type="submit" class="h-11 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">
                     Add product
@@ -62,6 +66,7 @@
                             <th class="px-4 py-3 font-semibold">Also matches</th>
                             <th class="px-4 py-3 font-semibold">Consumption days</th>
                             <th class="px-4 py-3 font-semibold">SRP</th>
+                            <th class="px-4 py-3 font-semibold">Product cost</th>
                             <th class="px-4 py-3 font-semibold">CLTV</th>
                             <th class="px-4 py-3 font-semibold">Updated</th>
                             @if ($canManage)
@@ -97,6 +102,11 @@
                                                value="{{ $bag->any() ? old('srp', $product->srp) : $product->srp }}"
                                                aria-label="SRP of {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
                                     </td>
+                                    <td class="w-36 min-w-36 px-4 py-3">
+                                        <input form="product-{{ $product->id }}" type="number" name="unit_cost" min="0" step="0.01" placeholder="Not set"
+                                               value="{{ $bag->any() ? old('unit_cost', $product->unit_cost) : $product->unit_cost }}"
+                                               aria-label="Product cost of {{ $product->name }}" class="{{ $input }} h-10 tabular-nums">
+                                    </td>
                                 @else
                                     <td class="px-4 py-4 font-medium">{{ $product->name }}</td>
                                     <td class="px-4 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
@@ -117,6 +127,7 @@
                                     @else
                                         <td class="px-4 py-4 tabular-nums">{{ $product->srp !== null ? '₱'.number_format($product->srp, 2) : '—' }}</td>
                                     @endif
+                                    <td class="px-4 py-4 tabular-nums">{{ $product->unit_cost !== null ? '₱'.number_format($product->unit_cost, 2) : '—' }}</td>
                                 @endif
                                 <td class="px-4 py-3 whitespace-nowrap tabular-nums text-muted">{{ $product->cltv() !== null ? '₱'.number_format($product->cltv()) : '—' }}</td>
                                 <td class="px-4 py-3 text-muted">{{ $product->updated_at?->diffForHumans() }}</td>

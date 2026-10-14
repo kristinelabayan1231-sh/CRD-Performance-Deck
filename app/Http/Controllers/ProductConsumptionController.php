@@ -95,7 +95,7 @@ class ProductConsumptionController extends Controller
     }
 
     /**
-     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string, unit_cost: ?string}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
@@ -105,6 +105,7 @@ class ProductConsumptionController extends Controller
             'keywords' => $keywords ?: null,
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
+            'unit_cost' => filled($request->input('unit_cost')) ? $request->input('unit_cost') : null,
         ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
@@ -115,6 +116,7 @@ class ProductConsumptionController extends Controller
             'keywords' => ['nullable', 'string', 'max:1000'],
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'unit_cost' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);

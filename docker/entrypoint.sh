@@ -22,9 +22,12 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-# Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php). Render's free plan sleeps
-# when idle, which pauses this until the next visit.
+# Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php).
 php artisan schedule:work &
+
+# ONE-TIME: fetch again every past day the app missed while it slept on the free plan, newest first.
+# Output goes to Render's Logs. Remove these lines in the next commit once the backfill is done.
+php artisan pancake:backfill-missing &
 
 # Render sets PORT. php-server sends every request that isn't a file to public/index.php.
 exec frankenphp php-server --root /app/public --listen ":${PORT:-8080}"
