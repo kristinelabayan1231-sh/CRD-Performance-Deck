@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Pancake's discount on the order, e.g. a GCash payment entered as a discount: Order Database sales add it
-     * back to total_price. Null until the order is synced again (pancake:sync --discounts fills in older ones).
+     * back to total_price. Null until the order is synced again (pancake:sync --orders saves older ones again).
      */
     public function up(): void
     {

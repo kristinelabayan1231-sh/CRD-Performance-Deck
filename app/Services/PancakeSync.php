@@ -104,7 +104,8 @@ class PancakeSync
 
     /**
      * Copy only the POS orders created on $day (with their items), for backfilling the
-     * Customer Database: no engagements, tags or sales.
+     * Customer Database or saving older orders again with their current seller, status and
+     * discount: no engagements or sales.
      *
      * @return int orders saved
      */
@@ -157,22 +158,6 @@ class PancakeSync
         DB::transaction(fn () => $this->saveOrders($orders, now()));
 
         return $orders->count();
-    }
-
-    /**
-     * Fetch again the CRD accounts' orders created $from–$to that were saved before discounts were kept, so
-     * Order Database sales count their discount (orders Pancake can't find stay as they are).
-     *
-     * @return int orders saved
-     */
-    public function syncDiscounts(CarbonImmutable $from, CarbonImmutable $to): int
-    {
-        $numbers = PancakeOrder::whereIn('seller_name', PancakeOrder::crdAccounts() ?: [''])
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->whereNull('total_discount')
-            ->pluck('pancake_order_id');
-
-        return $numbers->chunk(200)->sum(fn (Collection $chunk) => $this->syncOrdersByNumber($chunk->values()->all()));
     }
 
     /**

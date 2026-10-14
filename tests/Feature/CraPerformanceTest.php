@@ -95,18 +95,23 @@ class CraPerformanceTest extends TestCase
             ->assertSeeTextInOrder(['CRD July Ann', '2', '₱62,000', 'Discounted: ₱61,000', 'Clearsight', '2', '₱62,000', 'Discounted: ₱61,000', 'TOTAL', '₱62,000', 'Discounted: ₱61,000']);
     }
 
-    public function test_discounts_option_fetches_again_orders_saved_without_their_discount(): void
+    public function test_orders_option_saves_older_orders_again_with_their_assigned_seller_and_discount(): void
     {
         config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
-        $this->order('CRD JULY ANN', 3, 0, ['Clear Sight 3.0'], discount: null);
-        Http::fake(fn (Request $request) => Http::response(['success' => true, 'total_pages' => 1, 'data' => str_contains($request->url(), 'search=8001&')
-            ? [['display_id' => 8001, 'inserted_at' => '2026-10-05T02:00:00', 'status' => 3, 'total_price' => 0, 'total_discount' => 61000,
-                'assigning_seller' => ['id' => 's1', 'name' => 'CRD JULY ANN'], 'items' => [['quantity' => 1, 'variation_info' => ['name' => 'Clear Sight 3.0']]]]]
-            : []]));
+        // Saved before: credited to Lhei (who created it), without its discount.
+        $this->order('CRD LHEI', 3, 0, ['Clear Sight 3.0'], discount: null);
+        Http::fake(fn (Request $request) => Http::response(['success' => true, 'total_pages' => 1, 'data' => [
+            ['display_id' => 8001, 'inserted_at' => '2026-10-05T02:00:00', 'status' => 3, 'total_price' => 0, 'total_discount' => 61000,
+                'assigning_seller' => ['id' => 'ja', 'name' => 'CRD JULY ANN'], 'creator' => ['id' => 'lh', 'name' => 'CRD LHEI'],
+                'items' => [['quantity' => 1, 'variation_info' => ['name' => 'Clear Sight 3.0']]]],
+        ]]));
 
-        $this->artisan('pancake:sync', ['--discounts' => true, '--from' => '2026-10-01'])->assertSuccessful();
+        $this->artisan('pancake:sync', ['--orders' => true, '--from' => '2026-10-05', '--to' => '2026-10-05'])->assertSuccessful();
 
-        $this->assertSame('61000.00', PancakeOrder::firstWhere('pancake_order_id', '8001')->total_discount);
-        $this->actingAs($this->owner)->get(route('order-database.cra-performance'))->assertSeeText('₱61,000');
+        $order = PancakeOrder::firstWhere('pancake_order_id', '8001');
+        $this->assertSame(['CRD JULY ANN', '61000.00'], [$order->seller_name, $order->total_discount]);
+        $this->actingAs($this->owner)->get(route('order-database.cra-performance'))
+            ->assertSeeTextInOrder(['CRD July Ann', '₱61,000', 'Discounted: ₱61,000'])
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('seller')->all() === ['CRD JULY ANN']);
     }
 }
