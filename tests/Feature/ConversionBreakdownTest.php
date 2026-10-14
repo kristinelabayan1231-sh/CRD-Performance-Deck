@@ -298,6 +298,36 @@ class ConversionBreakdownTest extends TestCase
         $this->assertEqualsWithDelta(999.0, $day['sc_gross'], 0.001);
     }
 
+    public function test_an_order_assigned_to_another_seller_days_later_moves_to_them(): void
+    {
+        $this->orders = [$order = $this->order('CRD Rej Vergara', [self::SEGMENTATION], 999)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        // Nine days later it's assigned to AJ in Pancake (Rej still created it); Pancake lists it as changed that day.
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 12:00', 'Asia/Manila'));
+        $this->orders = [];
+        $this->changed = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::SEGMENTATION], 'status' => 2, 'status_name' => 'shipped',
+            'assigning_seller' => ['id' => 'aj', 'name' => 'AJ Dela Cruz'], 'creator' => ['id' => 'rej', 'name' => 'CRD Rej Vergara']]];
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertSame('AJ DELA CRUZ', PancakeOrder::sole()->seller_name);
+
+        // Sent without the field: the seller stays as saved.
+        $this->changed = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::BROADCAST], 'status' => 3, 'status_name' => 'delivered']];
+        $this->travel(11)->minutes();
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertSame(['AJ DELA CRUZ', 3], [PancakeOrder::sole()->seller_name, PancakeOrder::sole()->status]);
+
+        // Unassigned in Pancake: no seller, even though Rej created it.
+        $this->changed = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::BROADCAST], 'status' => 3, 'status_name' => 'delivered',
+            'assigning_seller' => null, 'creator' => ['id' => 'rej', 'name' => 'CRD Rej Vergara']]];
+        $this->travel(11)->minutes();
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertNull(PancakeOrder::sole()->seller_name);
+    }
+
     public function test_header_lists_order_issues_and_a_cra_sees_only_their_own(): void
     {
         $lhea = $this->cra('Lhea', 'CRD Lhei');
