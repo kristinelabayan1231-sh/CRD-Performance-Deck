@@ -3,6 +3,7 @@ import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initLive } from './live';
 import { initMonthlyCost } from './monthly-cost';
+import { initProductGroups } from './pc-report';
 import { initPoster } from './poster';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
@@ -20,4 +21,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initAccountLists();
     initCraOrders();
     initMonthlyCost();
+    initProductGroups();
 });

@@ -11,6 +11,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\MonthlyCostController;
+use App\Http\Controllers\OnDutyController;
+use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
@@ -71,6 +73,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
         Route::post('/sync', [SegmentationController::class, 'sync'])->middleware('can:segmentation.manage')->name('sync');
+        Route::post('/on-duty', [OnDutyController::class, 'store'])->name('on-duty');
     });
 
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
@@ -87,6 +90,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     // Opened from the dashboard's Cancelled / Waiting tile only (no menu link).
     Route::get('/cancelled-orders', [CancelledOrderController::class, 'index'])->middleware('can:conversion.view')->name('cancelled-orders.index');
+
+    Route::prefix('order-database')->name('order-database.')->middleware('can:order_database.view')->group(function () {
+        Route::redirect('/', '/order-database/cra-performance')->name('index');
+        Route::get('/cra-performance', [OrderDatabaseController::class, 'craPerformance'])->name('cra-performance');
+    });
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');

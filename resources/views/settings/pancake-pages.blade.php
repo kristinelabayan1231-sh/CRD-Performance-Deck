@@ -120,4 +120,44 @@
             </div>
         @endif
     </section>
+    {{-- Product groups: the pages that sell the same product; each group is one set per CRA in PC Report (preview: not saved yet) --}}
+    @php($chip = 'inline-flex items-center gap-1 rounded-full border border-line bg-canvas/60 py-0.5 pr-1 pl-3 text-xs font-medium')
+    <section class="mt-4 overflow-hidden rounded-xl bg-white shadow-sm" data-product-groups>
+        <div class="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-4">
+            <div>
+                <h2 class="text-base font-semibold">Product groups</h2>
+                <p class="text-sm text-muted">Group the pages that sell the same product. Each group is one set per CRA in PC Report, with a row for every page.</p>
+            </div>
+            <span class="rounded-full bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c00]">Preview · not saved yet</span>
+        </div>
+
+        <form data-group-add class="flex flex-wrap gap-2 border-b border-line px-4 py-3">
+            <label class="min-w-56 flex-1">
+                <span class="sr-only">Product name</span>
+                <input type="text" data-group-name required maxlength="60" placeholder="Product name, e.g. Sinuxyl" class="{{ $input }} h-10">
+            </label>
+            <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">Add product</button>
+        </form>
+
+        <div class="divide-y divide-line" data-group-list>
+            @foreach ($productGroups as $group)
+                @include('settings._product-group', ['name' => $group['name'], 'pages' => $group['pages']])
+            @endforeach
+        </div>
+        <p data-group-empty @class(['px-4 py-8 text-center text-sm text-muted', 'hidden' => $productGroups !== []])>No product groups yet. Add your first one above.</p>
+
+        <div class="border-t border-line bg-canvas/40 px-4 py-3">
+            <p class="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">Pages not in a group <span class="font-normal normal-case">· not shown in PC Report</span></p>
+            <div class="flex flex-wrap gap-1.5" data-group-free>
+                @foreach ($ungroupedPages as $page)
+                    <span class="{{ $chip }} pr-3" data-page="{{ $page }}">{{ $page }}</span>
+                @endforeach
+            </div>
+            <p data-group-free-empty @class(['text-sm text-muted', 'hidden' => $ungroupedPages->isNotEmpty()])>Every page is in a group.</p>
+        </div>
+
+        <template data-group-template>
+            @include('settings._product-group', ['name' => '', 'pages' => []])
+        </template>
+    </section>
 </x-layouts.settings>

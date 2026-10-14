@@ -50,6 +50,13 @@ $modules = [
         'conversion.view' => 'View own broadcast and segmentation conversions',
         'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
     ],
+    'On Duty' => [
+        'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',
+    ],
+    'Order Database' => [
+        'order_database.view' => 'View own CRA\'s Performance (Pancake POS orders per status and product)',
+        'order_database.view_all' => 'View every CRD account\'s orders and filter by CRA',
+    ],
     'CRD - MC' => [
         'monthly_cost.manage' => 'View and edit CRD - MC: every position\'s salary, the shared salaries, benefits and the monthly cost',
     ],

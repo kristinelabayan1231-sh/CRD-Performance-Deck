@@ -16,7 +16,7 @@
     {{-- fit: on large screens the page fills the window and only its own sections scroll. --}}
     <div @class(['flex min-h-screen', 'lg:h-dvh lg:overflow-hidden' => $fit])>
         {{-- Sidebar --}}
-        <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 -translate-x-full border-r border-line bg-white transition-transform lg:static lg:translate-x-0">
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col border-r border-line bg-white transition-transform lg:static lg:translate-x-0">
             <a href="{{ route('dashboard') }}" class="flex h-16 items-center gap-3 px-6">
                 <x-crd-logo class="size-9" />
                 <span class="bg-gradient-to-r from-brand-500 to-sky bg-clip-text text-lg font-bold text-transparent">CRD Deck</span>
@@ -41,6 +41,9 @@
                 @can('conversion.view')
                     <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
                 @endcan
+                @can('order_database.view')
+                    <x-nav-link :href="route('order-database.cra-performance')" :active="request()->routeIs('order-database.*')" icon="orders">Order Database</x-nav-link>
+                @endcan
                 @canany(['customers.view', 'customers.high_value.view'])
                     <x-nav-link :href="route($user->can('customers.view') ? 'customers.index' : 'customers.high-value')" :active="request()->routeIs('customers.*')" icon="database">Customer Database</x-nav-link>
                 @endcanany
@@ -54,6 +57,9 @@
                     <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
                 @endcanany
             </nav>
+
+            {{-- CRAs on duty today; the list opens for supervisors --}}
+            <x-on-duty class="sticky bottom-0 mt-auto" />
         </aside>
 
         <div @class(['flex min-w-0 flex-1 flex-col', 'lg:min-h-0' => $fit])>
@@ -104,5 +110,10 @@
             </main>
         </div>
     </div>
+
+    {{-- The Segmentation Tracker asks a CRA to log in for today (on duty) --}}
+    @if (request()->routeIs('segmentation.*') && \App\Support\OnDuty::needsLogin($user))
+        <x-on-duty-prompt />
+    @endif
 </body>
 </html>
