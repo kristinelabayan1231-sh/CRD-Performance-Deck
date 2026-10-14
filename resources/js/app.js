@@ -3,8 +3,9 @@ import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initLive } from './live';
 import { initMonthlyCost } from './monthly-cost';
-import { initProductGroups } from './pc-report';
+import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
+import { initProductPerformance } from './product-performance';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
@@ -21,5 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAccountLists();
     initCraOrders();
     initMonthlyCost();
+    initPcReport();
     initProductGroups();
+    initProductPerformance();
 });

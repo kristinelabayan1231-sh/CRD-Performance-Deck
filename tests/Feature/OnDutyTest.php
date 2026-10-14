@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\DutyCount;
 use App\Models\DutyLogin;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\OnDuty;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -76,5 +78,18 @@ class OnDutyTest extends TestCase
 
         $this->actingAs($this->lhea)->get(route('segmentation.index'))->assertOk()
             ->assertSeeText('1 CRA on duty')->assertDontSeeText('On duty today');
+    }
+
+    public function test_on_duty_for_a_range_uses_a_count_entered_by_hand_and_skips_days_nobody_worked(): void
+    {
+        // Oct 7: 5 entered by hand (instead of its 1 log-in); Oct 8: 2 log-ins; Oct 6 and 9: nobody.
+        DutyCount::create(['date' => '2026-10-07', 'count' => 5]);
+        DutyLogin::factory()->on('2026-10-07')->create(['user_id' => $this->lhea->id]);
+        DutyLogin::factory()->on('2026-10-08')->create(['user_id' => $this->lhea->id]);
+        DutyLogin::factory()->on('2026-10-08')->create(['user_id' => $this->regina->id]);
+
+        $this->assertSame(5.0, OnDuty::countFor(CarbonImmutable::parse('2026-10-07'), CarbonImmutable::parse('2026-10-07')));
+        $this->assertSame(3.5, OnDuty::countFor(CarbonImmutable::parse('2026-10-06'), CarbonImmutable::parse('2026-10-09')));
+        $this->assertNull(OnDuty::countFor(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-02')));
     }
 }

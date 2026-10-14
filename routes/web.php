@@ -16,7 +16,9 @@ use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
+use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
+use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
@@ -94,7 +96,12 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('order-database')->name('order-database.')->middleware('can:order_database.view')->group(function () {
         Route::redirect('/', '/order-database/cra-performance')->name('index');
         Route::get('/cra-performance', [OrderDatabaseController::class, 'craPerformance'])->name('cra-performance');
+        Route::get('/product-report', [OrderDatabaseController::class, 'productReport'])->name('product-report');
     });
+
+    Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
+
+    Route::get('/pc-report', [PcReportController::class, 'index'])->middleware('can:pc_report.view')->name('pc-report.index');
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
