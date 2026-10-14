@@ -160,6 +160,22 @@ class PancakeSync
     }
 
     /**
+     * Fetch again the CRD accounts' orders created $from–$to that were saved before discounts were kept, so
+     * Order Database sales count their discount (orders Pancake can't find stay as they are).
+     *
+     * @return int orders saved
+     */
+    public function syncDiscounts(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $numbers = PancakeOrder::whereIn('seller_name', PancakeOrder::crdAccounts() ?: [''])
+            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+            ->whereNull('total_discount')
+            ->pluck('pancake_order_id');
+
+        return $numbers->chunk(200)->sum(fn (Collection $chunk) => $this->syncOrdersByNumber($chunk->values()->all()));
+    }
+
+    /**
      * Insert or update orders by their Pancake id, recording the ones that left Canceled or Waiting for goods.
      *
      * @param  Collection<int, array<string, mixed>>  $orders
@@ -174,7 +190,7 @@ class PancakeSync
                 $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
                 ['pancake_order_id'],
                 ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
-                    'phone_key', 'status', 'status_name', 'total_price', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type', 'updated_at'],
+                    'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type', 'updated_at'],
             );
         }
     }
@@ -481,6 +497,7 @@ class PancakeSync
             'status' => isset($order['status']) ? (int) $order['status'] : null,
             'status_name' => $order['status_name'] ?? null,
             'total_price' => (float) ($order['total_price'] ?? 0),
+            'total_discount' => (float) ($order['total_discount'] ?? 0),
             'items' => json_encode($order['items'] ?? []),
             // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
             'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name')),

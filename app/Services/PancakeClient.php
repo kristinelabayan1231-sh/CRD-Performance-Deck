@@ -21,7 +21,7 @@ class PancakeClient
     /** Order fields Segmentation Productivity and Conversion Breakdown use; asked for with fields[] since full orders are large. */
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
-        'customer', 'total_price', 'account_name', 'assigning_seller', 'creator', 'tags', 'items',
+        'customer', 'total_price', 'total_discount', 'account_name', 'assigning_seller', 'creator', 'tags', 'items',
     ];
 
     /** What a tag or status refresh keeps of an order. */

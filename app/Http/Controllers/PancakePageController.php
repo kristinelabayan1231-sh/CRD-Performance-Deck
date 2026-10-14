@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PancakePage;
 use App\Services\PancakeClient;
+use App\Support\ProductGroups;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,8 +14,13 @@ class PancakePageController extends Controller
 {
     public function index(): View
     {
+        $pages = PancakePage::orderBy('name')->get();
+        $groups = ProductGroups::all();
+
         return view('settings.pancake-pages', [
-            'pages' => PancakePage::orderBy('name')->get(),
+            'pages' => $pages,
+            'productGroups' => $groups,
+            'ungroupedPages' => $pages->pluck('name')->diff(collect($groups)->pluck('pages')->flatten())->values(),
         ]);
     }
 

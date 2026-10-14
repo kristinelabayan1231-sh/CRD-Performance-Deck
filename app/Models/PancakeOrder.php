@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 #[Fillable([
     'pancake_order_id', 'ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name',
-    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type',
+    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type',
 ])]
 class PancakeOrder extends Model
 {
@@ -39,6 +39,7 @@ class PancakeOrder extends Model
             'status' => 'integer',
             'total_price' => 'decimal:2',
             'shecom_sales' => 'decimal:2',
+            'total_discount' => 'decimal:2',
             'tags' => 'array',
             'items' => 'array',
             'non_crd' => 'boolean',
@@ -51,6 +52,15 @@ class PancakeOrder extends Model
     public function sales(): float
     {
         return (float) ($this->shecom_sales ?? $this->total_price);
+    }
+
+    /**
+     * The order's value before Pancake's discount (e.g. a GCash payment entered as a discount): Shecom's amount
+     * once synced, else Pancake's total plus its discount. Order Database → CRA's Performance counts this.
+     */
+    public function salesBeforeDiscount(): float
+    {
+        return (float) ($this->shecom_sales ?? $this->total_price + ($this->total_discount ?? 0));
     }
 
     /**

@@ -17,6 +17,8 @@
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.6 9.2 11.4l4 4L19.6 9H17V7h6v6h-2v-2.6l-7.8 7.8-4-4L4.4 19z"/></svg>
     @elseif ($icon === 'funnel')
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4Z"/></svg>
+    @elseif ($icon === 'orders')
+        <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4V2h10v2h3a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3Zm0 2H5v14h14V6h-2v2H7V6Zm2-2v2h6V4H9Zm-2 7h2v2H7v-2Zm4 0h6v2h-6v-2Zm-4 4h2v2H7v-2Zm4 0h6v2h-6v-2Z"/></svg>
     @elseif ($icon === 'database')
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C7.6 2 4 3.3 4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5c0-1.7-3.6-3-8-3Zm6 17c-.4.4-2.6 1-6 1s-5.6-.6-6-1v-3c1.5.8 3.7 1.2 6 1.2s4.5-.4 6-1.2v3Zm0-5c-.4.4-2.6 1.2-6 1.2S6.4 14.4 6 14v-3c1.5.8 3.7 1.2 6 1.2s4.5-.4 6-1.2v3Zm-6-3.8C8.7 10.2 6.4 9.4 6 9V7.2C7.5 7.7 9.7 8 12 8s4.5-.3 6-.8V9c-.4.4-2.7 1.2-6 1.2ZM12 6C8.7 6 6.5 5.4 6 5c.5-.4 2.7-1 6-1s5.5.6 6 1c-.5.4-2.7 1-6 1Z"/></svg>
     @elseif ($icon === 'wallet')
