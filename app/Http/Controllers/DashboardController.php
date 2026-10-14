@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
-use App\Models\LogisticsOrder;
 use App\Services\CancelledOrders;
 use App\Services\CustomerChurn;
 use App\Services\CustomerDatabase;
@@ -82,10 +81,9 @@ class DashboardController extends Controller
             // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for a few minutes.
             if ($user->can('customers.view')) {
                 $customers = $customerDatabase->cachedCounts(['from' => $range->from, 'to' => $range->to, 'search' => null]);
-                // Out of all the leads: every FSD and CRD delivery in these dates (the Shecom logistics report), the
-                // customers not retained or repeated included.
-                $customers['leads'] = LogisticsOrder::whereBetween('delivered_date', [$range->from->toDateString(), $range->to->toDateString()])
-                    ->whereIn('team', [LogisticsOrder::TEAM_FSD, LogisticsOrder::TEAM_CRD])->count();
+                // Out of all the leads: every customer the Customer Database has for these dates (FSD and CRD deliveries of
+                // a listed product, one per customer), those not retained or repeated included, so it matches that page.
+                $customers['leads'] = $customers['all'];
                 // Monthly goals (Settings → Sales Goals), as a percent of those leads.
                 $customers['goals'] = ['retained' => SalesGoals::retainedRate(), 'repeat' => SalesGoals::repeatRate()];
             }

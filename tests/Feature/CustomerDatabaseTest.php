@@ -209,16 +209,22 @@ class CustomerDatabaseTest extends TestCase
         Http::fake(fn () => Http::response(['success' => true, 'count' => 0, 'stock_outs' => [], 'data' => [], 'users_engagements' => []]));
         $this->withoutDefer();
         $this->customers();
+        // Not more leads: Cara's second delivery (one customer) and a product not on Product Consumption.
+        $this->delivered('C2', 'fsd', 'Cara Diaz', '9173333333', '2026-10-08');
+        LogisticsOrder::remember([['order_id' => 'G1', 'team' => 'fsd', 'customer_name' => 'Gil Uy', 'phone_number' => '9177777777',
+            'product' => 'Turmeric Soap', 'qty' => null, 'delivered_date' => '2026-10-08']]);
 
         // October to date: Ana and Eve's first CRA-handled orders, Ben's second (Dan's was in September).
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSeeTextInOrder(['AOV', 'Retained', '2', 'Repeat customers', '1', 'Customer churn', 'Overall'])
-            // Both out of all October's leads: 3 FSD + 1 CRD deliveries.
+            // Both out of all October's leads: the 4 customers the Customer Database has for these dates.
             ->assertSeeTextInOrder(['Retained', '2/4', '50.0%', 'FSD Leads', 'Repeat customers', '1/4', '25.0%', 'CRD Leads'])
             // Against the 30% goals: 2 of 4 leads needed (4 × 30% = 1.2, rounded up).
             ->assertSeeTextInOrder(['Retained', 'Goal hit', 'Goal 30% · 2 of 4', 'Goal reached', 'Repeat customers', 'Below goal', 'Goal 30% · 2 of 4', '1 more to reach 30%'])
             ->assertSee(route('customers.index', ['from' => '2026-10-01', 'to' => '2026-10-09', 'segment' => 'repeat']));
+        $this->actingAs($this->owner)->get(route('customers.index', ['from' => '2026-10-01', 'to' => '2026-10-09']))
+            ->assertViewHas('counts', fn ($counts) => $counts['all'] === 4);
 
         $cra = User::firstWhere('email', 'anna@gmail.com');
         $this->actingAs($cra)->get(route('dashboard'))->assertOk()->assertDontSee('Repeat customers');

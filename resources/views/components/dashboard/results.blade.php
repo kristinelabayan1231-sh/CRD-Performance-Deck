@@ -181,8 +181,8 @@
     </div>
 
     @if ($customers)
-        {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every FSD and
-         CRD delivery in these dates, Shecom), against the monthly goal (% of those leads, Settings → Sales Goals);
+        {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every customer
+         the Customer Database has for these dates), against the monthly goal (% of those leads, Settings → Sales Goals);
          opens the Customer Database filtered the same way --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         @php($leads = $customers['leads'])
@@ -190,8 +190,8 @@
         <x-dashboard.flip class="sm:col-span-6">
         <div class="grid gap-3 sm:grid-cols-2">
         @foreach ([
-            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
-            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (FSD and CRD deliveries) in these dates. Click to see them.'],
+            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (every customer in the Customer Database for these dates). Click to see them.'],
+            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (every customer in the Customer Database for these dates). Click to see them.'],
         ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
             @php($count = $customers[$segment])
             @php($goal = $customers['goals'][$segment])
