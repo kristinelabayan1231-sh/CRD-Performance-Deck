@@ -53,6 +53,11 @@ $modules = [
     'On Duty' => [
         'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',
     ],
+    'PC Report' => [
+        'pc_report.view' => 'View own PC Report sets (each product\'s pages, per day)',
+        'pc_report.view_all' => 'View every CRA\'s PC Report sets',
+        'pc_report.manage' => 'Set each CRA\'s Creation/Update Time per page',
+    ],
     'Order Database' => [
         'order_database.view' => 'View own CRA\'s Performance (Pancake POS orders per status and product)',
         'order_database.view_all' => 'View every CRD account\'s orders and filter by CRA',

@@ -16,6 +16,7 @@ use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
+use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\RoleController;
@@ -95,6 +96,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::redirect('/', '/order-database/cra-performance')->name('index');
         Route::get('/cra-performance', [OrderDatabaseController::class, 'craPerformance'])->name('cra-performance');
     });
+
+    Route::get('/pc-report', [PcReportController::class, 'index'])->middleware('can:pc_report.view')->name('pc-report.index');
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');

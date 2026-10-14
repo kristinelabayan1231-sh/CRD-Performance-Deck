@@ -1,4 +1,152 @@
-// Settings → Product groups. Preview: nothing here is saved yet; changes stay on the screen.
+// PC Report and Settings → Product groups. Preview: nothing here is saved yet; changes stay on the screen.
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const label = (key) => `${MONTHS[Number(key.slice(5)) - 1]} ${key.slice(0, 4)}`;
+
+// '2026-03'–'2026-08' → "Mar – Aug 2026"; across years "Nov 2025 – Feb 2026"; one month "Apr 2026".
+function formatRange(from, to) {
+    if (!from) return '';
+    if (!to || to === from) return label(from);
+    if (from.slice(0, 4) === to.slice(0, 4)) return `${MONTHS[Number(from.slice(5)) - 1]} – ${label(to)}`;
+    return `${label(from)} – ${label(to)}`;
+}
+
+// Tagging per page, and the month range (set by the CRA Supervisor) a CRA's page pulls inquiries and engagement from.
+export function initPcReport() {
+    // Tagging is always caps ("SW1, SJJ"); keep the caret where it was while typing.
+    document.addEventListener('input', (event) => {
+        const input = event.target.closest('[data-pc-tagging]');
+        if (!input) return;
+        const { selectionStart, selectionEnd } = input;
+        input.value = input.value.toUpperCase();
+        input.setSelectionRange(selectionStart, selectionEnd);
+    });
+
+    const dialog = document.getElementById('pc-window-dialog');
+    if (!dialog) return;
+
+    initPageSplit(dialog.dataset.month);
+
+    let target = null;
+    let year = Number(dialog.dataset.year);
+    let from = '';
+    let to = '';
+
+    const draw = () => {
+        dialog.querySelector('[data-pc-year-label]').textContent = year;
+        dialog.querySelectorAll('[data-pc-month]').forEach((button) => {
+            const key = `${year}-${button.dataset.pcMonth.padStart(2, '0')}`;
+            button.setAttribute('aria-pressed', key === from || key === to);
+            button.toggleAttribute('data-range', Boolean(from && to && key > from && key < to));
+        });
+        dialog.querySelector('[data-pc-window-summary]').textContent = formatRange(from, to) || 'None';
+    };
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-pc-window]');
+        if (!button) return;
+
+        target = button;
+        from = button.dataset.from;
+        to = button.dataset.to;
+        year = from ? Number(from.slice(0, 4)) : Number(dialog.dataset.year);
+        dialog.querySelector('[data-pc-window-for]').textContent = `${button.dataset.cra} · ${button.dataset.page}`;
+        draw();
+        dialog.showModal();
+    });
+
+    dialog.addEventListener('click', (event) => {
+        // Click on the backdrop closes it.
+        if (event.target === dialog) return dialog.close();
+
+        const button = event.target.closest('button');
+        if (!button) return;
+
+        if (button.dataset.pcMonth) {
+            // First click starts a range, the second ends it (either order); a third starts over.
+            const key = `${year}-${button.dataset.pcMonth.padStart(2, '0')}`;
+            if (!from || to) {
+                from = key;
+                to = '';
+            } else {
+                [from, to] = key < from ? [key, from] : [from, key];
+            }
+        } else if (button.dataset.pcYear) {
+            year += Number(button.dataset.pcYear);
+        } else if (button.hasAttribute('data-pc-clear')) {
+            from = to = '';
+        } else if (button.hasAttribute('data-pc-cancel')) {
+            return dialog.close();
+        } else if (button.hasAttribute('data-pc-save')) {
+            target.dataset.from = from;
+            target.dataset.to = from ? to || from : '';
+            target.querySelector('[data-pc-window-label]').textContent = formatRange(from, to) || 'Not set';
+            target.toggleAttribute('data-set', Boolean(from));
+            return dialog.close();
+        }
+        draw();
+    });
+}
+
+// A page's conversations by when they were created/updated: Dormant May 2024 – Dec 2025, Active 2026 onwards.
+const CATEGORIES = [
+    { name: 'DORMANT', from: '2024-05', to: () => '2025-12' },
+    { name: 'ACTIVE', from: '2026-01', to: (thisMonth) => thisMonth },
+];
+
+// The CRA Supervisor's + splits a page row into a Dormant and an Active row; − on the Dormant row puts it back.
+function initPageSplit(thisMonth) {
+    const splitRow = (row, { name, from, to }, first) => {
+        const copy = row.cloneNode(true);
+        const page = `${row.dataset.page} - ${name}`;
+        copy.hidden = false;
+        copy.dataset.pcSplitOf = row.dataset.page;
+        copy.querySelector('[data-pc-category]').textContent = ` - ${name}`;
+
+        const toggle = copy.querySelector('[data-pc-split]');
+        if (first) {
+            delete toggle.dataset.pcSplit;
+            toggle.dataset.pcMerge = '';
+            toggle.textContent = '−';
+            toggle.title = 'Put Dormant and Active back together';
+            toggle.setAttribute('aria-label', `Put ${row.dataset.page} back into one row`);
+        } else {
+            toggle.replaceWith(Object.assign(document.createElement('span'), { className: 'size-5 shrink-0' }));
+        }
+
+        const tagging = copy.querySelector('[data-pc-tagging]');
+        tagging.value = '';
+        tagging.setAttribute('aria-label', tagging.getAttribute('aria-label').replace(row.dataset.page, page));
+
+        const time = copy.querySelector('[data-pc-window]');
+        time.dataset.page = page;
+        time.dataset.from = from;
+        time.dataset.to = to(thisMonth);
+        time.setAttribute('aria-label', time.getAttribute('aria-label').replace(row.dataset.page, page));
+        time.querySelector('[data-pc-window-label]').textContent = formatRange(time.dataset.from, time.dataset.to);
+        time.toggleAttribute('data-set', true);
+
+        return copy;
+    };
+
+    document.addEventListener('click', (event) => {
+        const split = event.target.closest('[data-pc-split]');
+        if (split) {
+            const row = split.closest('[data-pc-row]');
+            row.after(...CATEGORIES.map((category, i) => splitRow(row, category, i === 0)));
+            row.hidden = true;
+            return;
+        }
+
+        const merge = event.target.closest('[data-pc-merge]');
+        if (merge) {
+            const row = merge.closest('[data-pc-row]');
+            const tbody = row.parentElement;
+            tbody.querySelectorAll(`[data-pc-split-of="${CSS.escape(row.dataset.pcSplitOf)}"]`).forEach((copy) => copy.remove());
+            tbody.querySelector(`[data-pc-row]:not([data-pc-split-of])[data-page="${CSS.escape(row.dataset.pcSplitOf)}"]`).hidden = false;
+        }
+    });
+}
 
 // Settings → Pancake Pages: group the pages that sell the same product.
 export function initProductGroups() {
