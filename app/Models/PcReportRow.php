@@ -17,6 +17,12 @@ class PcReportRow extends Model
 
     public const ACTIVE = 'ACTIVE';
 
+    /** A split page's rows and the months each starts with: Dormant May 2024 – Dec 2025, Active 2026 onwards. */
+    public const SPLIT = [
+        self::DORMANT => ['2024-05', '2025-12'],
+        self::ACTIVE => ['2026-01', null],
+    ];
+
     protected function casts(): array
     {
         return [

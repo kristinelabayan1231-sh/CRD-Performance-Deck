@@ -17,12 +17,6 @@ use Illuminate\View\View;
 
 class PcReportController extends Controller
 {
-    /** A split page's rows and the months each starts with: Dormant May 2024 – Dec 2025, Active 2026 onwards. */
-    private const SPLIT = [
-        PcReportRow::DORMANT => ['2024-05', '2025-12'],
-        PcReportRow::ACTIVE => ['2026-01', null],
-    ];
-
     /**
      * One set per CRA for the picked product and day: every page in the product's group, a split
      * page as its Dormant and Active rows, with the day's typed-in Total Inquiries and Total Engagement.
@@ -55,7 +49,7 @@ class PcReportController extends Controller
 
         $sets = $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect($group['pages'])->flatMap(function (string $page) use ($cra, $saved, $entries) {
             $rows = $saved->get($cra->id.'|'.$page, collect())->keyBy('category');
-            $categories = $rows->has(PcReportRow::DORMANT) ? array_keys(self::SPLIT) : [''];
+            $categories = $rows->has(PcReportRow::DORMANT) ? array_keys(PcReportRow::SPLIT) : [''];
 
             return array_map(function (string $category) use ($cra, $page, $rows, $entries) {
                 $row = $rows->get($category);
@@ -93,7 +87,7 @@ class PcReportController extends Controller
     {
         $data = $request->validate([
             ...$this->rowRules(),
-            'category' => ['present', 'nullable', Rule::in(array_keys(self::SPLIT))],
+            'category' => ['present', 'nullable', Rule::in(array_keys(PcReportRow::SPLIT))],
             'tagging' => ['sometimes', 'nullable', 'string', 'max:50'],
             'from' => ['sometimes', 'nullable', 'date_format:Y-m'],
             'to' => ['sometimes', 'nullable', 'date_format:Y-m', 'after_or_equal:from'],
@@ -119,7 +113,7 @@ class PcReportController extends Controller
     {
         $data = $request->validate($this->rowRules());
 
-        foreach (self::SPLIT as $category => [$from, $to]) {
+        foreach (PcReportRow::SPLIT as $category => [$from, $to]) {
             PcReportRow::firstOrCreate(
                 ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $category],
                 ['from_month' => $from.'-01', 'to_month' => $to ? $to.'-01' : null],
@@ -136,7 +130,7 @@ class PcReportController extends Controller
     {
         $data = $request->validate($this->rowRules());
 
-        PcReportRow::where('user_id', $data['cra'])->where('page', $data['page'])->whereIn('category', array_keys(self::SPLIT))->delete();
+        PcReportRow::where('user_id', $data['cra'])->where('page', $data['page'])->whereIn('category', array_keys(PcReportRow::SPLIT))->delete();
 
         return response()->json(['ok' => true]);
     }
@@ -148,7 +142,7 @@ class PcReportController extends Controller
     {
         $data = $request->validate([
             ...$this->rowRules(),
-            'category' => ['present', 'nullable', Rule::in(array_keys(self::SPLIT))],
+            'category' => ['present', 'nullable', Rule::in(array_keys(PcReportRow::SPLIT))],
             'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
             'inquiries' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
             'engagements' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
