@@ -29,45 +29,76 @@ class CustomerChurn
      */
     public function for(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        [$due, $orders] = $this->evaluate($from, $to);
+        [$due, $outcomes] = $this->evaluate($from, $to);
 
         return [
-            'crd' => $this->summary($due['crd'], $orders),
-            'fsd' => $this->summary($due['fsd'], $orders),
-            'all' => $this->summary($due['all'], $orders),
+            'crd' => $this->summary($due['crd'], $outcomes['crd']),
+            'fsd' => $this->summary($due['fsd'], $outcomes['fsd']),
+            'all' => $this->summary($due['all'], $outcomes['all']),
             'grace_days' => (int) config('customers.churn_grace_days'),
         ];
     }
 
     /**
-     * The customers behind for(): one row per customer of the list ('all', 'crd' or 'fsd'), soonest
-     * deadline first. back = the first order or delivery inside their window (null when lost);
-     * last_order = their latest order or delivery since the one judged (that one when nothing came after).
+     * for(), kept as the Customer Database's results are (a few minutes, or until customers:warm-cache refreshes it).
      *
-     * @return list<array{phone_key: string, team: string, product: string, order_id: string, delivered: string, ran_out: string, deadline: string, back: ?array{order_id: string, date: string, source: string}, last_order: array{order_id: string, date: string, source: string}}>
+     * @return array{crd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, fsd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, all: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, grace_days: int}
      */
-    public function customers(CarbonImmutable $from, CarbonImmutable $to, string $list = 'all'): array
+    public function cached(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        [$due, $orders] = $this->evaluate($from, $to);
-
-        return collect($due[$list] ?? [])->map(function (array $d, $phone) use ($orders) {
-            $after = collect($orders[(string) $phone] ?? [])->filter(fn (array $o) => $o['date'] > $d['delivered'])->sortBy('date')->values();
-
-            return [
-                'phone_key' => (string) $phone,
-                ...$d,
-                'back' => $after->first(fn (array $o) => $o['date'] <= $d['deadline']),
-                'last_order' => $after->last() ?? ['order_id' => $d['order_id'], 'date' => $d['delivered'], 'source' => 'delivery'],
-            ];
-        })->sortBy([['deadline', 'asc'], ['phone_key', 'asc']])->values()->all();
+        return CustomerDatabase::remember(CustomerDatabase::cacheKey('churn', [$from->toDateString(), $to->toDateString()]), fn () => $this->for($from, $to));
     }
 
     /**
-     * Who is due in $from–$to per list, and their orders and deliveries since.
+     * The customers behind for(): one compact row per customer of the list ('all', 'crd' or 'fsd'), soonest deadline
+     * first (then by number), as [phone_key, team, product, order_id, delivered, ran_out, deadline, back order id,
+     * back date, back source, last order id, last date, last source]; row() turns one into named fields. Compact because a long range has tens of thousands of customers and a page
+     * shows fifty. back = the first order or delivery inside their window (null when lost); last_order = their latest
+     * order or delivery since the one judged (that one when nothing came after).
      *
-     * @return array{0: array{crd: array<string, array<string, string>>, fsd: array<string, array<string, string>>, all: array<string, array<string, string>>}, 1: array<string, list<array{order_id: string, date: string, source: string}>>}
+     * @return list<list<?string>>
      */
-    private function evaluate(CarbonImmutable $from, CarbonImmutable $to): array
+    public function customers(CarbonImmutable $from, CarbonImmutable $to, string $list = 'all'): array
+    {
+        [$due, $outcomes] = $this->evaluate($from, $to, $list);
+
+        $rows = [];
+        foreach ($due[$list] ?? [] as $phone => $d) {
+            $back = $outcomes[$list][(string) $phone]['back'] ?? null;
+            $last = $outcomes[$list][(string) $phone]['last'] ?? ['order_id' => $d['order_id'], 'date' => $d['delivered'], 'source' => 'delivery'];
+            $rows[] = [(string) $phone, $d['team'], $d['product'], $d['order_id'], $d['delivered'], $d['ran_out'], $d['deadline'],
+                $back['order_id'] ?? null, $back['date'] ?? null, $back['source'] ?? null, $last['order_id'], $last['date'], $last['source']];
+        }
+        unset($due, $outcomes);
+
+        usort($rows, fn (array $a, array $b) => [$a[6], $a[0]] <=> [$b[6], $b[0]]);
+
+        return $rows;
+    }
+
+    /**
+     * One of customers()' compact rows with named fields.
+     *
+     * @param  list<?string>  $row
+     * @return array{phone_key: string, team: string, product: string, order_id: string, delivered: string, ran_out: string, deadline: string, back: ?array{order_id: string, date: string, source: string}, last_order: array{order_id: string, date: string, source: string}}
+     */
+    public static function row(array $row): array
+    {
+        return [
+            'phone_key' => $row[0], 'team' => $row[1], 'product' => $row[2], 'order_id' => $row[3], 'delivered' => $row[4],
+            'ran_out' => $row[5], 'deadline' => $row[6],
+            'back' => $row[7] === null ? null : ['order_id' => $row[7], 'date' => $row[8], 'source' => $row[9]],
+            'last_order' => ['order_id' => $row[10], 'date' => $row[11], 'source' => $row[12]],
+        ];
+    }
+
+    /**
+     * Who is due in $from–$to per list, and per list and customer whether they came back in time (see outcomes();
+     * with $detailsFor, the orders themselves for that one list).
+     *
+     * @return array{0: array{crd: array<string, array<string, string>>, fsd: array<string, array<string, string>>, all: array<string, array<string, string>>}, 1: array<string, array<string, mixed>>}
+     */
+    private function evaluate(CarbonImmutable $from, CarbonImmutable $to, ?string $detailsFor = null): array
     {
         $grace = (int) config('customers.churn_grace_days');
         $to = $to->min(WorkingDate::realToday());
@@ -76,25 +107,38 @@ class CustomerChurn
         $since = $from->subYear()->subDays($grace);
         $due = ['crd' => [], 'fsd' => []];
 
-        // Plain rows and Y-m-d strings: the FSD list runs to tens of thousands of deliveries.
-        $consider = function (string $team, string $phone, string $delivered, int $qty, ?int $days, string $orderId, string $product) use ($from, $to, $grace, &$due) {
+        // Plain rows, Y-m-d strings and day numbers (days since 1970, UTC; worked out once per date): the FSD list
+        // runs to tens of thousands of deliveries.
+        $dayNumbers = [];
+        $dayNumber = function (string $date) use (&$dayNumbers): int {
+            return $dayNumbers[$date] ??= intdiv(strtotime($date.' 00:00:00 UTC'), 86400);
+        };
+        // One copy of each date and product name, shared by every customer that has it (tens of thousands of rows).
+        $dates = [];
+        $date = function (int $day) use (&$dates): string {
+            return $dates[$day] ??= gmdate('Y-m-d', $day * 86400);
+        };
+        $names = [];
+        $fromDay = $dayNumber($from->toDateString());
+        $toDay = $dayNumber($to->toDateString());
+        $consider = function (string $team, string $phone, string $delivered, int $qty, ?int $days, string $orderId, string $product) use ($fromDay, $toDay, $grace, $dayNumber, $date, &$names, &$due) {
             if (! $days || $phone === '') {
                 return;
             }
 
-            $ranOut = CarbonImmutable::parse($delivered)->addDays($qty * $days - 1);
-            $deadline = $ranOut->addDays($grace);
+            $ranOut = $dayNumber($delivered) + $qty * $days - 1;
+            $deadline = $ranOut + $grace;
 
-            if ($deadline->betweenIncluded($from, $to) && (! isset($due[$team][$phone]) || $delivered > $due[$team][$phone]['delivered'])) {
+            if ($deadline >= $fromDay && $deadline <= $toDay && (! isset($due[$team][$phone]) || $delivered > $due[$team][$phone]['delivered'])) {
                 $due[$team][$phone] = [
-                    'team' => $team, 'product' => $product, 'order_id' => $orderId, 'delivered' => $delivered,
-                    'ran_out' => $ranOut->toDateString(), 'deadline' => $deadline->toDateString(),
+                    'team' => $team, 'product' => $names[$product] ??= $product, 'order_id' => $orderId, 'delivered' => $date($dayNumber($delivered)),
+                    'ran_out' => $date($ranOut), 'deadline' => $date($deadline),
                 ];
             }
         };
 
         DeliveredOrder::where('source', DeliveredOrder::SOURCE_SHECOM)
-            ->whereDate('delivered_date', '>=', $since)->whereDate('delivered_date', '<=', $to)
+            ->where('delivered_date', '>=', $since->toDateString())->where('delivered_date', '<', $to->addDay()->toDateString())
             ->toBase()->get(['order_id', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
             ->each(function (object $order) use ($consider, $catalog) {
                 // Only products on the Product Consumption list count.
@@ -117,7 +161,7 @@ class CustomerChurn
         // FSD in batches, each with its qty from the Pancake delivered orders.
         $days = [];
         LogisticsOrder::where('team', LogisticsOrder::TEAM_FSD)->where('non_crd', false)
-            ->whereDate('delivered_date', '>=', $since)->whereDate('delivered_date', '<=', $to)
+            ->where('delivered_date', '>=', $since->toDateString())->where('delivered_date', '<', $to->addDay()->toDateString())
             ->toBase()->select(['id', 'order_id', 'phone_key', 'product', 'delivered_date'])
             ->chunkById(5000, function ($orders) use ($consider, $catalog, &$days) {
                 $qty = DeliveredOrder::where('source', DeliveredOrder::SOURCE_PANCAKE)
@@ -147,55 +191,92 @@ class CustomerChurn
             }
         }
 
-        return [$due, $this->ordersSince($due['all'])];
+        return [$due, $this->outcomes($due, $detailsFor)];
     }
 
     /**
-     * Every later order or delivery of these customers, by phone, to see whether one fell inside their window.
+     * Per list and customer, whether an order or delivery came after the judged delivery and by the deadline (true =
+     * came back, false = lost). With $detailsFor, for that list only: the first such one (back, null when lost) and the
+     * latest one after the judged delivery (last, null when nothing came after). Customers are looked up 1,000 at a
+     * time and only this is kept, so a long range doesn't hold every later order in memory.
      *
-     * @param  array<string, array<string, string>>  $due
-     * @return array<string, list<array{order_id: string, date: string, source: string}>>
+     * @param  array{crd: array<string, array<string, string>>, fsd: array<string, array<string, string>>, all: array<string, array<string, string>>}  $due
+     * @return array<string, array<string, bool|array{back: ?array{order_id: string, date: string, source: string}, last: ?array{order_id: string, date: string, source: string}}>>
      */
-    private function ordersSince(array $due): array
+    private function outcomes(array $due, ?string $detailsFor = null): array
     {
-        if ($due === []) {
-            return [];
-        }
+        $lists = $detailsFor === null ? ['crd', 'fsd', 'all'] : [$detailsFor];
+        $outcomes = array_fill_keys($lists, []);
+        $dates = [];
 
-        $since = min(array_column($due, 'delivered'));
-        $orders = [];
+        foreach (array_chunk(array_map('strval', array_keys(array_replace(...array_map(fn (string $list) => $due[$list] ?? [], $lists)))), 1000) as $chunk) {
+            $since = min(array_map(fn (string $phone) => min(array_filter(array_map(fn (string $list) => $due[$list][$phone]['delivered'] ?? null, $lists))), $chunk));
+            $orders = [];
 
-        foreach (array_chunk(array_map('strval', array_keys($due)), 1000) as $chunk) {
-            PancakeOrder::counted()->crdProducts()->whereIn('phone_key', $chunk)->whereDate('ordered_on', '>', $since)
+            // Orders first, then deliveries: on the same day an order comes before a delivery.
+            PancakeOrder::counted()->crdProducts()->whereIn('phone_key', $chunk)->where('ordered_on', '>=', date('Y-m-d', strtotime($since.' +1 day')))
                 ->toBase()->get(['phone_key', 'pancake_order_id', 'ordered_on'])
-                ->each(function (object $order) use (&$orders) {
-                    $orders[$order->phone_key][] = ['order_id' => (string) $order->pancake_order_id, 'date' => substr((string) $order->ordered_on, 0, 10), 'source' => 'order'];
+                ->each(function (object $order) use (&$orders, &$dates) {
+                    $date = substr((string) $order->ordered_on, 0, 10);
+                    $orders[$order->phone_key][] = ['order_id' => (string) $order->pancake_order_id, 'date' => $dates[$date] ??= $date, 'source' => 'order'];
                 });
-            LogisticsOrder::where('non_crd', false)->whereIn('phone_key', $chunk)->whereDate('delivered_date', '>', $since)
+            LogisticsOrder::where('non_crd', false)->whereIn('phone_key', $chunk)->where('delivered_date', '>=', date('Y-m-d', strtotime($since.' +1 day')))
                 ->toBase()->get(['phone_key', 'order_id', 'delivered_date'])
-                ->each(function (object $order) use (&$orders) {
-                    $orders[$order->phone_key][] = ['order_id' => (string) $order->order_id, 'date' => substr((string) $order->delivered_date, 0, 10), 'source' => 'delivery'];
+                ->each(function (object $order) use (&$orders, &$dates) {
+                    $date = substr((string) $order->delivered_date, 0, 10);
+                    $orders[$order->phone_key][] = ['order_id' => (string) $order->order_id, 'date' => $dates[$date] ??= $date, 'source' => 'delivery'];
                 });
+
+            foreach ($chunk as $phone) {
+                foreach ($lists as $list) {
+                    if (! isset($due[$list][$phone])) {
+                        continue;
+                    }
+
+                    $d = $due[$list][$phone];
+                    $back = $last = null;
+                    foreach ($orders[$phone] ?? [] as $o) {
+                        if ($o['date'] <= $d['delivered']) {
+                            continue;
+                        }
+                        // The earliest inside the window (the first listed on a tie) and the latest after it (the last listed on a tie).
+                        if ($o['date'] <= $d['deadline'] && ($back === null || $o['date'] < $back['date'])) {
+                            $back = $o;
+                        }
+                        if ($last === null || $o['date'] >= $last['date']) {
+                            $last = $o;
+                        }
+                    }
+
+                    $outcomes[$list][$phone] = $detailsFor === null ? $back !== null : ['back' => $back, 'last' => $last];
+                }
+            }
         }
 
-        return $orders;
+        return $outcomes;
     }
 
     /**
      * @param  array<string, array<string, string>>  $due
-     * @param  array<string, list<array{order_id: string, date: string, source: string}>>  $orders
+     * @param  array<string, bool>  $cameBack
      * @return array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}
      */
-    private function summary(array $due, array $orders): array
+    private function summary(array $due, array $cameBack): array
     {
-        $lost = collect($due)->reject(fn (array $d, $phone) => collect($orders[(string) $phone] ?? [])
-            ->contains(fn (array $o) => $o['date'] > $d['delivered'] && $o['date'] <= $d['deadline']))->count();
+        $lost = 0;
+        $months = [];
+        foreach ($due as $phone => $d) {
+            $lost += ($cameBack[$phone] ?? false) ? 0 : 1;
+            $month = substr($d['delivered'], 0, 7);
+            $months[$month] = ($months[$month] ?? 0) + 1;
+        }
+        ksort($months);
 
         return [
             'customers' => count($due),
             'lost' => $lost,
             'rate' => $due === [] ? null : $lost / count($due),
-            'delivered_months' => collect($due)->countBy(fn (array $d) => substr($d['delivered'], 0, 7))->sortKeys()->all(),
+            'delivered_months' => $months,
         ];
     }
 }

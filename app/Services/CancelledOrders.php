@@ -46,7 +46,7 @@ class CancelledOrders
         }
 
         return PancakeOrder::whereIn('seller_name', $sellers)
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to);
+            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString());
     }
 
     /**

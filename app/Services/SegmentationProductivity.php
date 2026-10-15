@@ -138,7 +138,7 @@ class SegmentationProductivity
         $orders = PancakeOrder::counted()->crdProducts()
             ->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->get(['ordered_on', 'seller_name', 'phone_key']);
 
         if ($orders->isEmpty()) {

@@ -338,7 +338,7 @@ class CustomerDatabase
         // The delivered orders, plus their other POS orders (pending, canceled…) placed since the backfill start.
         $pos = PancakeOrder::query()
             ->where(fn ($q) => $q
-                ->where(fn ($q) => $q->whereIn('phone_key', $members)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
+                ->where(fn ($q) => $q->whereIn('phone_key', $members)->where('ordered_on', '>=', config('customers.backfill_from')))
                 ->orWhereIn('pancake_order_id', $delivered->keys()->all()))
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 7))
             ->get()

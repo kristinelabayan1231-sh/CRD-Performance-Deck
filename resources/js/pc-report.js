@@ -1,4 +1,4 @@
-// PC Report and Settings → Product groups. Preview: nothing here is saved yet; changes stay on the screen.
+// PC Report (preview: nothing there is saved yet; changes stay on the screen) and Settings → Product groups (saved with Save groups).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const label = (key) => `${MONTHS[Number(key.slice(5)) - 1]} ${key.slice(0, 4)}`;
@@ -148,7 +148,7 @@ function initPageSplit(thisMonth) {
     });
 }
 
-// Settings → Pancake Pages: group the pages that sell the same product.
+// Settings → Pancake Pages: group the pages that sell the same product; Save groups sends them.
 export function initProductGroups() {
     const root = document.querySelector('[data-product-groups]');
     if (!root) return;
@@ -156,6 +156,8 @@ export function initProductGroups() {
     const list = root.querySelector('[data-group-list]');
     const free = root.querySelector('[data-group-free]');
     const template = root.querySelector('[data-group-template]');
+    const save = root.querySelector('[data-group-save]');
+    const changed = () => root.querySelectorAll('[data-group-dirty]').forEach((note) => (note.hidden = false));
 
     const chip = (page, group) => {
         const span = document.createElement('span');
@@ -199,6 +201,7 @@ export function initProductGroups() {
         group.querySelector('[data-group-title]').textContent = name;
         list.append(group);
         input.value = '';
+        changed();
         refresh();
     });
 
@@ -208,6 +211,7 @@ export function initProductGroups() {
             const page = unpage.closest('[data-page]');
             free.append(chip(page.dataset.page));
             page.remove();
+            changed();
             return refresh();
         }
 
@@ -216,6 +220,7 @@ export function initProductGroups() {
             const group = remove.closest('[data-group]');
             group.querySelectorAll('[data-group-pages] [data-page]').forEach((page) => free.append(chip(page.dataset.page)));
             group.remove();
+            changed();
             refresh();
         }
     });
@@ -227,7 +232,18 @@ export function initProductGroups() {
         const group = select.closest('[data-group]');
         group.querySelector('[data-group-none]').before(chip(select.value, group.querySelector('[data-group-title]').textContent));
         free.querySelector(`[data-page="${CSS.escape(select.value)}"]`)?.remove();
+        changed();
         refresh();
+    });
+
+    // The groups on screen, as the server saves them: a name and its pages each.
+    save?.addEventListener('submit', () => {
+        save.querySelector('[data-group-json]').value = JSON.stringify(
+            [...list.querySelectorAll('[data-group]')].map((group) => ({
+                name: group.querySelector('[data-group-title]').textContent.trim(),
+                pages: [...group.querySelectorAll('[data-group-pages] [data-page]')].map((page) => page.dataset.page),
+            })),
+        );
     });
 
     refresh();

@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\ProductGroups;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class PancakePagesTest extends TestCase
@@ -92,5 +94,62 @@ class PancakePagesTest extends TestCase
         $this->actingAs($cra)->get(route('settings.pancake-pages.index'))->assertForbidden();
         $this->actingAs($cra)->delete(route('settings.pancake-pages.destroy', $page))->assertForbidden();
         $this->assertModelExists($page);
+    }
+
+    private function pages(string ...$names): void
+    {
+        foreach ($names as $i => $name) {
+            PancakePage::create(['name' => $name, 'page_id' => (string) (5000 + $i), 'access_token' => 't']);
+        }
+    }
+
+    private function saveGroups(array $groups): TestResponse
+    {
+        return $this->actingAs($this->owner)->from(route('settings.pancake-pages.index'))
+            ->put(route('settings.pancake-pages.groups'), ['groups' => json_encode($groups)]);
+    }
+
+    public function test_product_groups_are_saved_and_pc_report_uses_them(): void
+    {
+        $this->pages('Pterygium Eye Repair', 'Pterylief Eye Drops Ph', 'Trusted Eye Care');
+        $this->actingAs($this->owner)->get(route('settings.pancake-pages.index'))->assertSee('Sample groups');
+
+        $this->saveGroups([['name' => ' Pterygium ', 'pages' => ['Pterygium Eye Repair', 'Pterylief Eye Drops Ph']], ['name' => 'Eye Care', 'pages' => []]])
+            ->assertRedirect(route('settings.pancake-pages.index'))
+            ->assertSessionHas('status');
+
+        $this->assertSame([
+            ['slug' => 'pterygium', 'name' => 'Pterygium', 'pages' => ['Pterygium Eye Repair', 'Pterylief Eye Drops Ph']],
+            ['slug' => 'eye-care', 'name' => 'Eye Care', 'pages' => []],
+        ], ProductGroups::all());
+        $this->actingAs($this->owner)->get(route('settings.pancake-pages.index'))
+            ->assertDontSee('Sample groups')
+            ->assertSeeInOrder(['Pterygium', 'Pterygium Eye Repair', 'Pterylief Eye Drops Ph', 'Pages not in a group', 'Trusted Eye Care']);
+        $this->actingAs($this->owner)->get(route('pc-report.index', ['product' => 'pterygium']))
+            ->assertOk()
+            ->assertSeeInOrder(['Pterygium · 2 pages', 'Eye Care · 0 pages'])
+            ->assertDontSee('Sinuxyl · 3 pages');
+    }
+
+    public function test_product_groups_need_known_pages_each_in_one_group_and_different_names(): void
+    {
+        $this->pages('Pterygium Eye Repair', 'Trusted Eye Care');
+
+        $this->saveGroups([['name' => 'A', 'pages' => ['Pterygium Eye Repair']], ['name' => 'B', 'pages' => ['Pterygium Eye Repair']]])
+            ->assertSessionHasErrorsIn('groups');
+        $this->saveGroups([['name' => 'A', 'pages' => ['No Such Page']]])->assertSessionHasErrorsIn('groups');
+        $this->saveGroups([['name' => 'Eye Care', 'pages' => []], ['name' => 'eye care', 'pages' => []]])->assertSessionHasErrorsIn('groups');
+        $this->saveGroups([['name' => 'Clear Sight', 'pages' => []], ['name' => 'Clear-Sight', 'pages' => []]])->assertSessionHasErrorsIn('groups');
+        $this->saveGroups([])->assertSessionHasErrorsIn('groups');
+
+        $this->assertFalse(ProductGroups::isSaved());
+    }
+
+    public function test_only_users_with_the_permission_can_save_product_groups(): void
+    {
+        $cra = User::create(['email' => 'cra@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+
+        $this->actingAs($cra)->put(route('settings.pancake-pages.groups'), ['groups' => json_encode([['name' => 'A', 'pages' => []]])])->assertForbidden();
+        $this->assertFalse(ProductGroups::isSaved());
     }
 }

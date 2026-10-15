@@ -34,6 +34,9 @@ class ChurnCustomerList
         'fsd' => 'FSD',
     ];
 
+    /** @var array<string, list<list<?string>>> The lists this request already has, so the tiles and the page share one copy. */
+    private array $loaded = [];
+
     public function __construct(private CustomerChurn $churn, private CustomerDatabase $customers) {}
 
     /**
@@ -44,9 +47,9 @@ class ChurnCustomerList
     public function counts(DashboardRange $range, string $list): array
     {
         $rows = $this->rows($range, $list);
-        $back = $rows->whereNotNull('back')->count();
+        $back = count(array_filter($rows, fn (array $row) => $row[7] !== null));
 
-        return ['due' => $rows->count(), 'back' => $back, 'lost' => $rows->count() - $back];
+        return ['due' => count($rows), 'back' => $back, 'lost' => count($rows) - $back];
     }
 
     /**
@@ -56,28 +59,41 @@ class ChurnCustomerList
     {
         $rows = $this->rows($range, $list);
         $rows = match ($status) {
-            'back' => $rows->whereNotNull('back'),
-            'lost' => $rows->whereNull('back'),
+            'back' => array_values(array_filter($rows, fn (array $row) => $row[7] !== null)),
+            'lost' => array_values(array_filter($rows, fn (array $row) => $row[7] === null)),
             default => $rows,
         };
         $page = Paginator::resolveCurrentPage();
+        // Only the page shown gets named fields and details.
+        $shown = collect(array_slice($rows, ($page - 1) * $perPage, $perPage))->map(fn (array $row) => CustomerChurn::row($row));
 
-        return (new LengthAwarePaginator($this->withDetails($rows->forPage($page, $perPage)->values()), $rows->count(), $perPage, $page,
+        return (new LengthAwarePaginator($this->withDetails($shown), count($rows), $perPage, $page,
             ['path' => Paginator::resolveCurrentPath()]))->withQueryString();
     }
 
     /**
-     * Every customer of the list for the range, kept as long as the Customer Database's results.
+     * Every customer of the list for the range (CustomerChurn::customers()' compact rows), kept as long as the
+     * Customer Database's results. Saved compressed: a long range has tens of thousands of customers, and writing the
+     * full list to the database cache would take more memory than a page may use.
      *
-     * @return Collection<int, array<string, mixed>>
+     * @return list<list<?string>>
      */
-    private function rows(DashboardRange $range, string $list): Collection
+    private function rows(DashboardRange $range, string $list): array
     {
-        return collect(Cache::remember(
-            CustomerDatabase::cacheKey('churn', [$range->from->toDateString(), $range->to->toDateString(), $list]),
-            now()->addMinutes(CustomerDatabase::CACHE_MINUTES),
-            fn () => $this->churn->customers($range->from, $range->to, $list),
-        ));
+        $key = CustomerDatabase::cacheKey('churn-rows', [$range->from->toDateString(), $range->to->toDateString(), $list]);
+
+        if (isset($this->loaded[$key])) {
+            return $this->loaded[$key];
+        }
+
+        if (is_string($saved = Cache::get($key)) && ($rows = @unserialize((string) gzuncompress(base64_decode($saved)))) !== false) {
+            return $this->loaded[$key] = $rows;
+        }
+
+        $rows = $this->churn->customers($range->from, $range->to, $list);
+        Cache::put($key, base64_encode(gzcompress(serialize($rows), 6)), now()->addMinutes(CustomerDatabase::CACHE_MINUTES));
+
+        return $this->loaded[$key] = $rows;
     }
 
     /**

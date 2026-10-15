@@ -16,7 +16,6 @@ use App\Support\DashboardVersion;
 use App\Support\SalesGoals;
 use App\Support\WorkingDate;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -74,9 +73,9 @@ class DashboardController extends Controller
             $everyCrdAccount = $user->can('conversion.view_all');
             $results['cancelled'] = $cancelledOrders->totals($cras, $range->from, $range->to, $everyCrdAccount);
             $results['cancelled']['days'] = $cancelledOrders->perDay($cras, $range->from, $range->to, everyCrdAccount: $everyCrdAccount);
-            // Company-wide; a few thousand deliveries to look through, so kept for a few minutes (as the Customer Database's counts).
-            $churnRate = Cache::remember("dashboard.churn.v3.{$range->from->toDateString()}.{$range->to->toDateString()}", now()->addMinutes(CustomerDatabase::CACHE_MINUTES),
-                fn () => $churn->for($range->from, $range->to));
+            // Company-wide; tens of thousands of deliveries to look through, so kept for a few minutes (as the Customer
+            // Database's counts). This month's is worked out ahead every 2 minutes by customers:warm-cache.
+            $churnRate = $churn->cached($range->from, $range->to);
 
             // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for a few minutes.
             if ($user->can('customers.view')) {

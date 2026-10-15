@@ -132,7 +132,7 @@ class HighValueCustomers
         $pos = PancakeOrder::crdProducts()
             ->whereIn('status', config('customers.delivered_statuses'))
             ->where(fn ($q) => $q
-                ->where(fn ($q) => $q->whereIn('phone_key', $numbers)->whereDate('ordered_on', '>=', config('customers.backfill_from')))
+                ->where(fn ($q) => $q->whereIn('phone_key', $numbers)->where('ordered_on', '>=', config('customers.backfill_from')))
                 ->orWhereIn('pancake_order_id', $delivered->pluck('order_id')))
             ->get(['pancake_order_id', 'phone_key', 'seller_name', 'items', 'total_price']);
         $deliveredTo = $delivered->pluck('phone_key', 'order_id');

@@ -143,6 +143,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('pancake-pages')->name('pancake-pages.')->middleware('can:pancake_pages.manage')->group(function () {
             Route::get('/', [PancakePageController::class, 'index'])->name('index');
             Route::post('/', [PancakePageController::class, 'store'])->name('store');
+            Route::put('/groups', [PancakePageController::class, 'saveGroups'])->name('groups');
             Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
             Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
             Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');
