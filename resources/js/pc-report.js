@@ -1,4 +1,4 @@
-// PC Report (preview: nothing there is saved yet; changes stay on the screen) and Settings → Product groups (saved with Save groups).
+// PC Report (Tagging, Creation/Update Time and Dormant/Active rows are saved) and Settings → Product groups (saved with Save groups).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const label = (key) => `${MONTHS[Number(key.slice(5)) - 1]} ${key.slice(0, 4)}`;
@@ -11,10 +11,93 @@ function formatRange(from, to) {
     return `${label(from)} – ${label(to)}`;
 }
 
-// Tagging per page, and the month range (set by the CRA Supervisor) a CRA's page pulls inquiries and engagement from.
+// Save a PC Report row's Tagging or Creation/Update Time, or split / merge a page; resolves when the server took it.
+async function send(url, method, body) {
+    const response = await fetch(url, {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
+// A row's Sync: starts the background fetch of its inquiries and engagements, then follows it with the progress bar
+// (asking every 2 seconds) and reloads the page when it's done, so the counts show. A row already syncing when the
+// page opens is followed too.
+function initPcSync(root) {
+    const show = (box, progress) => {
+        const running = progress.status === 'starting' || progress.status === 'running';
+        const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
+        box.querySelector('[data-pc-sync-running]').classList.toggle('hidden', !running);
+        box.querySelector('[data-pc-sync-idle]').classList.toggle('hidden', running);
+        box.querySelector('[data-pc-sync-bar]').style.width = `${percent}%`;
+        box.querySelector('[data-pc-sync-meter]').setAttribute('aria-valuenow', percent);
+        box.querySelector('[data-pc-sync-text]').textContent = `Syncing… ${progress.done ?? 0} / ${progress.total ?? 0} days · ${percent}%`;
+        const note = box.querySelector('[data-pc-sync-note]');
+        if (progress.message) {
+            note.innerHTML = '';
+            note.append(Object.assign(document.createElement('span'), { className: 'text-coral-700', textContent: progress.message }));
+        } else if (running) {
+            note.textContent = '';
+        }
+    };
+
+    const follow = (box) => {
+        const tick = async () => {
+            try {
+                const response = await fetch(box.dataset.progressUrl, { headers: { Accept: 'application/json' } });
+                const progress = await response.json();
+                show(box, progress);
+                if (progress.status === 'done') return window.location.reload();
+                if (progress.status === 'starting' || progress.status === 'running') return setTimeout(tick, 2000);
+            } catch {
+                setTimeout(tick, 5000);
+            }
+            box.querySelector('[data-pc-sync-start]').disabled = false;
+        };
+        tick();
+    };
+
+    root.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-pc-sync-start]');
+        if (!button) return;
+        const box = button.closest('[data-pc-sync]');
+        button.disabled = true;
+        try {
+            const response = await fetch(root.dataset.syncUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '',
+                },
+                body: JSON.stringify({ cra: box.dataset.cra, page: box.dataset.page, category: box.dataset.category }),
+            });
+            const progress = await response.json();
+            show(box, progress.status ? progress : { status: 'failed', message: progress.message || "Couldn't start the sync." });
+            if (response.ok) follow(box);
+            else button.disabled = false;
+        } catch {
+            show(box, { status: 'failed', message: "Couldn't start the sync; try again." });
+            button.disabled = false;
+        }
+    });
+
+    root.querySelectorAll('[data-pc-sync][data-status="starting"], [data-pc-sync][data-status="running"]').forEach(follow);
+}
+
+// Tagging per page (saved when the box loses focus), the month range set by the CRA Supervisor,
+// and the Supervisor's + / − that split a page into Dormant and Active rows and back.
 export function initPcReport() {
+    const root = document.querySelector('[data-pc-report]');
+    if (!root) return;
+
     // Tagging is always caps ("SW1, SJJ"); keep the caret where it was while typing.
-    document.addEventListener('input', (event) => {
+    root.addEventListener('input', (event) => {
         const input = event.target.closest('[data-pc-tagging]');
         if (!input) return;
         const { selectionStart, selectionEnd } = input;
@@ -22,10 +105,35 @@ export function initPcReport() {
         input.setSelectionRange(selectionStart, selectionEnd);
     });
 
+    root.addEventListener('change', async (event) => {
+        const input = event.target.closest('[data-pc-tagging]');
+        if (!input) return;
+        const { cra, page, category } = input.dataset;
+        try {
+            await send(root.dataset.rowsUrl, 'PUT', { cra, page, category, tagging: input.value.trim() });
+            input.classList.remove('border-coral');
+        } catch {
+            input.classList.add('border-coral');
+            input.title = "Couldn't save; try again.";
+        }
+    });
+
+    initPcSync(root);
+
     const dialog = document.getElementById('pc-window-dialog');
     if (!dialog) return;
 
-    initPageSplit(dialog.dataset.month);
+    root.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-pc-split], [data-pc-merge]');
+        if (!button) return;
+        button.disabled = true;
+        try {
+            await send(dialog.dataset.splitUrl, button.hasAttribute('data-pc-split') ? 'POST' : 'DELETE', { cra: button.dataset.cra, page: button.dataset.page });
+            window.location.reload();
+        } catch {
+            button.disabled = false;
+        }
+    });
 
     let target = null;
     let year = Number(dialog.dataset.year);
@@ -50,7 +158,7 @@ export function initPcReport() {
         from = button.dataset.from;
         to = button.dataset.to;
         year = from ? Number(from.slice(0, 4)) : Number(dialog.dataset.year);
-        dialog.querySelector('[data-pc-window-for]').textContent = `${button.dataset.cra} · ${button.dataset.page}`;
+        dialog.querySelector('[data-pc-window-for]').textContent = `${button.dataset.cra} · ${button.dataset.page}${button.dataset.category ? ` - ${button.dataset.category}` : ''}`;
         draw();
         dialog.showModal();
     });
@@ -78,73 +186,18 @@ export function initPcReport() {
         } else if (button.hasAttribute('data-pc-cancel')) {
             return dialog.close();
         } else if (button.hasAttribute('data-pc-save')) {
-            target.dataset.from = from;
-            target.dataset.to = from ? to || from : '';
-            target.querySelector('[data-pc-window-label]').textContent = formatRange(from, to) || 'Not set';
-            target.toggleAttribute('data-set', Boolean(from));
-            return dialog.close();
-        }
-        draw();
-    });
-}
-
-// A page's conversations by when they were created/updated: Dormant May 2024 – Dec 2025, Active 2026 onwards.
-const CATEGORIES = [
-    { name: 'DORMANT', from: '2024-05', to: () => '2025-12' },
-    { name: 'ACTIVE', from: '2026-01', to: (thisMonth) => thisMonth },
-];
-
-// The CRA Supervisor's + splits a page row into a Dormant and an Active row; − on the Dormant row puts it back.
-function initPageSplit(thisMonth) {
-    const splitRow = (row, { name, from, to }, first) => {
-        const copy = row.cloneNode(true);
-        const page = `${row.dataset.page} - ${name}`;
-        copy.hidden = false;
-        copy.dataset.pcSplitOf = row.dataset.page;
-        copy.querySelector('[data-pc-category]').textContent = ` - ${name}`;
-
-        const toggle = copy.querySelector('[data-pc-split]');
-        if (first) {
-            delete toggle.dataset.pcSplit;
-            toggle.dataset.pcMerge = '';
-            toggle.textContent = '−';
-            toggle.title = 'Put Dormant and Active back together';
-            toggle.setAttribute('aria-label', `Put ${row.dataset.page} back into one row`);
-        } else {
-            toggle.replaceWith(Object.assign(document.createElement('span'), { className: 'size-5 shrink-0' }));
-        }
-
-        const tagging = copy.querySelector('[data-pc-tagging]');
-        tagging.value = '';
-        tagging.setAttribute('aria-label', tagging.getAttribute('aria-label').replace(row.dataset.page, page));
-
-        const time = copy.querySelector('[data-pc-window]');
-        time.dataset.page = page;
-        time.dataset.from = from;
-        time.dataset.to = to(thisMonth);
-        time.setAttribute('aria-label', time.getAttribute('aria-label').replace(row.dataset.page, page));
-        time.querySelector('[data-pc-window-label]').textContent = formatRange(time.dataset.from, time.dataset.to);
-        time.toggleAttribute('data-set', true);
-
-        return copy;
-    };
-
-    document.addEventListener('click', (event) => {
-        const split = event.target.closest('[data-pc-split]');
-        if (split) {
-            const row = split.closest('[data-pc-row]');
-            row.after(...CATEGORIES.map((category, i) => splitRow(row, category, i === 0)));
-            row.hidden = true;
+            // Saved, then the page reloads so Total Inquiries counts the new months.
+            const { craId: cra, page, category } = target.dataset;
+            button.disabled = true;
+            send(dialog.dataset.url, 'PUT', { cra, page, category, from: from || null, to: from ? to || from : null })
+                .then(() => window.location.reload())
+                .catch(() => {
+                    button.disabled = false;
+                    dialog.querySelector('[data-pc-window-summary]').textContent = "Couldn't save; try again.";
+                });
             return;
         }
-
-        const merge = event.target.closest('[data-pc-merge]');
-        if (merge) {
-            const row = merge.closest('[data-pc-row]');
-            const tbody = row.parentElement;
-            tbody.querySelectorAll(`[data-pc-split-of="${CSS.escape(row.dataset.pcSplitOf)}"]`).forEach((copy) => copy.remove());
-            tbody.querySelector(`[data-pc-row]:not([data-pc-split-of])[data-page="${CSS.escape(row.dataset.pcSplitOf)}"]`).hidden = false;
-        }
+        draw();
     });
 }
 

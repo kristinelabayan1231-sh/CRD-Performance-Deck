@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 /**
  * A Facebook page connected to Pancake, read for chat engagements.
  */
-#[Fillable(['name', 'page_id', 'access_token', 'is_active', 'checked_at', 'check_ok', 'check_message'])]
+#[Fillable(['name', 'page_id', 'access_token', 'is_active', 'checked_at', 'check_ok', 'check_message', 'conversation_days', 'conversations_synced_at'])]
 #[Hidden(['access_token'])]
 class PancakePage extends Model
 {
@@ -21,6 +21,8 @@ class PancakePage extends Model
             'is_active' => 'boolean',
             'checked_at' => 'datetime',
             'check_ok' => 'boolean',
+            'conversation_days' => 'array',
+            'conversations_synced_at' => 'immutable_datetime',
         ];
     }
 

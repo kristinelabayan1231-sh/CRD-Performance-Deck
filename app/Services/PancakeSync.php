@@ -175,7 +175,7 @@ class PancakeSync
                 $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
                 ['pancake_order_id'],
                 ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
-                    'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'page_name', 'tags', 'conversion_type', 'updated_at'],
+                    'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'page_name', 'page_id', 'conversation_id', 'tags', 'conversion_type', 'updated_at'],
             );
         }
     }
@@ -496,7 +496,9 @@ class PancakeSync
             'items' => json_encode($order['items'] ?? []),
             // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
             'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name')),
-            'page_name' => $order['account_name'] ?? null,
+            'page_name' => $order['page']['name'] ?? null,
+            'page_id' => isset($order['page_id']) ? (string) $order['page_id'] : null,
+            'conversation_id' => $order['conversation_id'] ?? null,
             // upsert() skips model casts, so the list is stored as JSON here.
             'tags' => json_encode($tagIds),
             'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),

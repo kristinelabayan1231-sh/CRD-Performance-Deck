@@ -4,10 +4,30 @@
     $dayLink = fn (\Carbon\CarbonImmutable $d) => route('pc-report.index', [...$state, 'date' => $d->toDateString()]);
     $dash = '<span class="text-muted">—</span>';
     $columns = ['Total Inquiries', 'Total Engagement', '# of Orders', 'Conversion Rate', 'Amount'];
+    // A Sync bar's percent and label: days fetched out of the row's days.
+    $syncPercent = fn (?array $p) => ($p['total'] ?? 0) > 0 ? (int) floor(($p['done'] ?? 0) / $p['total'] * 100) : 0;
+    $syncing = fn (?array $p) => in_array($p['status'] ?? null, ['starting', 'running'], true);
+    // '2026-03'–'2026-08' → "Mar – Aug 2026"; across years "Nov 2025 – Feb 2026"; no end → "Jan 2026 onwards".
+    $range = function (string $from, string $to): string {
+        if ($from === '') {
+            return 'Not set';
+        }
+        $start = \Carbon\CarbonImmutable::parse($from.'-01');
+        if ($to === '') {
+            return $start->format('M Y').' onwards';
+        }
+        $end = \Carbon\CarbonImmutable::parse($to.'-01');
+
+        return match (true) {
+            $from === $to => $start->format('M Y'),
+            $start->year === $end->year => $start->format('M').' – '.$end->format('M Y'),
+            default => $start->format('M Y').' – '.$end->format('M Y'),
+        };
+    };
 @endphp
 
 <x-layouts.app title="PC Report">
-    <div class="space-y-4">
+    <div class="space-y-4" data-pc-report data-rows-url="{{ route('pc-report.rows.update') }}" data-sync-url="{{ route('pc-report.sync') }}">
         <header class="flex flex-wrap items-center justify-between gap-4">
             <h1 class="text-xl font-semibold">PC Report <span class="text-sm font-normal text-muted">· Each CRA's pages per product</span></h1>
 
@@ -54,13 +74,13 @@
         @endif
 
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
-            <span class="font-semibold">Preview.</span> The layout is ready; inquiries, engagement, orders and amounts are not fetched yet, and the products are sample groups until they're saved in Settings → Pancake Pages.
+            <span class="font-semibold">How it fills in:</span> set a row's Creation/Update Time, then click <span class="font-semibold">Sync</span> to fetch its Total Inquiries and Total Engagement from Pancake. # of Orders, Conversion Rate and Amount aren't fetched yet.
         </div>
 
         <p class="flex items-center gap-1.5 text-xs text-muted">
             @if ($canEdit)
                 <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16z"/></svg>
-                Click a Creation/Update Time to set the month range each CRA's page pulls inquiries and engagement from.
+                Click a Creation/Update Time to set the months each CRA's page counts conversations from (by when they were created). + splits a page into Dormant and Active.
             @else
                 <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
                 The Creation/Update Time is set by your CRA Supervisor.
@@ -68,13 +88,14 @@
         </p>
 
         @forelse ($cras as $cra)
+            @php($lines = $sets[$cra->id])
             <x-panel :title="$group['name'].' ('.$cra->displayName().')'" icon="table" :tinted="false" body-class="">
                 <x-slot:badges>
                     <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $day->format('D, M j') }}</span>
                 </x-slot:badges>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[960px] text-sm tabular-nums">
+                    <table class="w-full min-w-[1140px] text-sm tabular-nums">
                         <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 text-left font-semibold">Page</th>
@@ -83,46 +104,101 @@
                                 @endforeach
                                 <th class="px-4 py-3 text-left font-semibold">Tagging</th>
                                 <th class="px-4 py-3 text-left font-semibold">Creation/Update Time</th>
+                                <th class="px-4 py-3 text-left font-semibold">Sync</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-line">
-                            @foreach ($group['pages'] as $page)
-                                <tr data-pc-row data-page="{{ $page }}">
+                            @foreach ($lines as $line)
+                                @php($name = $line['page'].($line['category'] ? ' - '.$line['category'] : ''))
+                                <tr>
                                     <td class="px-4 py-2.5 font-medium whitespace-nowrap">
                                         <span class="inline-flex items-center gap-2">
                                             @if ($canEdit)
-                                                <button type="button" data-pc-split aria-label="Split {{ $page }} into Dormant and Active" title="Split into Dormant and Active"
-                                                        class="grid size-5 shrink-0 place-items-center rounded-md border border-line text-sm leading-none text-muted transition hover:border-brand-400 hover:text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:outline-none">+</button>
+                                                @if ($line['category'] === '')
+                                                    <button type="button" data-pc-split data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" aria-label="Split {{ $line['page'] }} into Dormant and Active" title="Split into Dormant and Active"
+                                                            class="grid size-5 shrink-0 place-items-center rounded-md border border-line text-sm leading-none text-muted transition hover:border-brand-400 hover:text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:outline-none">+</button>
+                                                @elseif ($line['category'] === \App\Models\PcReportRow::DORMANT)
+                                                    <button type="button" data-pc-merge data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" aria-label="Put {{ $line['page'] }} back into one row" title="Put Dormant and Active back together"
+                                                            class="grid size-5 shrink-0 place-items-center rounded-md border border-line text-sm leading-none text-muted transition hover:border-brand-400 hover:text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:outline-none">−</button>
+                                                @else
+                                                    <span class="size-5 shrink-0"></span>
+                                                @endif
                                             @endif
-                                            <span>PC - {{ $page }}<span data-pc-category></span></span>
+                                            <span>PC - {{ $name }}</span>
                                         </span>
                                     </td>
-                                    @foreach ($columns as $column)
+                                    <td class="px-4 py-2.5 text-right">
+                                        @if ($line['inquiries'] === null)
+                                            {!! $dash !!}
+                                        @else
+                                            {{ number_format($line['inquiries']) }}
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-2.5 text-right">{!! $line['engagements'] === null ? $dash : number_format($line['engagements']) !!}</td>
+                                    @foreach (array_slice($columns, 2) as $column)
                                         <td class="px-4 py-2.5 text-right">{!! $dash !!}</td>
                                     @endforeach
-                                    <td class="px-4 py-2"><input type="text" data-pc-tagging maxlength="50" placeholder="e.g. SW1, SJJ" autocomplete="off" spellcheck="false" aria-label="Tagging for {{ $cra->displayName() }}, {{ $page }}" class="h-8 w-32 rounded-lg border border-line bg-white px-2 text-xs font-semibold uppercase placeholder:font-normal placeholder:normal-case focus:border-brand-400 focus:ring-2 focus:ring-brand-200 focus:outline-none"></td>
+                                    <td class="px-4 py-2"><input type="text" data-pc-tagging data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}" value="{{ $line['tagging'] }}" maxlength="50" placeholder="e.g. SW1, SJJ" autocomplete="off" spellcheck="false" aria-label="Tagging for {{ $cra->displayName() }}, {{ $name }}" class="h-8 w-32 rounded-lg border border-line bg-white px-2 text-xs font-semibold uppercase placeholder:font-normal placeholder:normal-case focus:border-brand-400 focus:ring-2 focus:ring-brand-200 focus:outline-none"></td>
                                     <td class="px-4 py-2.5">
+                                        @php($rangeLabel = $range($line['from'], $line['to']))
                                         @if ($canEdit)
-                                            <button type="button" data-pc-window data-cra="{{ $cra->displayName() }}" data-page="{{ $page }}" data-from="" data-to=""
-                                                    aria-label="Creation/Update Time for {{ $cra->displayName() }}, {{ $page }}"
+                                            <button type="button" data-pc-window data-cra-id="{{ $cra->id }}" data-cra="{{ $cra->displayName() }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}" data-from="{{ $line['from'] }}" data-to="{{ $line['to'] }}" @if ($line['from']) data-set @endif
+                                                    aria-label="Creation/Update Time for {{ $cra->displayName() }}, {{ $name }}"
                                                     class="inline-flex items-center gap-1.5 rounded-full bg-[#fff6d6] px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-[#7a5c00] transition hover:ring-2 hover:ring-brand-200 focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:outline-none data-[set]:bg-brand-50 data-[set]:text-brand-700">
-                                                <span data-pc-window-label>Not set</span>
+                                                <span data-pc-window-label>{{ $rangeLabel }}</span>
                                                 <svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16z"/></svg>
                                             </button>
                                         @else
                                             <span class="inline-flex items-center gap-1.5 rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-muted" title="Set by your CRA Supervisor">
-                                                Not set
+                                                {{ $rangeLabel }}
                                                 <svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
                                             </span>
                                         @endif
                                     </td>
+                                    <td class="px-4 py-2.5">
+                                        @if ($line['canSync'])
+                                            {{-- Fetches the row's inquiries and engagements in the background; the bar follows it --}}
+                                            <div class="w-48 space-y-1" data-pc-sync data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}"
+                                                 data-progress-url="{{ route('pc-report.sync.progress', $line['rowId']) }}" data-status="{{ $line['progress']['status'] ?? 'idle' }}">
+                                                <div @class(['space-y-1', 'hidden' => ! $syncing($line['progress'])]) data-pc-sync-running>
+                                                    <div class="h-2 overflow-hidden rounded-full bg-canvas" role="progressbar" aria-label="Sync progress for {{ $name }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $syncPercent($line['progress']) }}" data-pc-sync-meter>
+                                                        <div class="h-full rounded-full bg-brand-600 transition-[width] duration-500" style="width: {{ $syncPercent($line['progress']) }}%" data-pc-sync-bar></div>
+                                                    </div>
+                                                    <p class="text-[11px] text-muted" data-pc-sync-text>Syncing… {{ $line['progress']['done'] ?? 0 }} / {{ $line['progress']['total'] ?? 0 }} days · {{ $syncPercent($line['progress']) }}%</p>
+                                                </div>
+                                                <div @class(['flex flex-wrap items-center gap-2', 'hidden' => $syncing($line['progress'])]) data-pc-sync-idle>
+                                                    <button type="button" data-pc-sync-start
+                                                            class="inline-flex h-7 items-center gap-1 rounded-lg border border-brand-200 bg-white px-2.5 text-xs font-semibold text-brand-700 transition hover:border-brand-400 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:outline-none disabled:opacity-50">
+                                                        <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0 0 12 2.5M18.5 9a7 7 0 0 0-12-2.5"/></svg>
+                                                        {{ $line['syncedAt'] ? 'Sync again' : 'Sync' }}
+                                                    </button>
+                                                </div>
+                                                <p class="text-[11px] text-muted" data-pc-sync-note>
+                                                    @if (in_array($line['progress']['status'] ?? null, ['failed', 'stopped'], true))
+                                                        <span class="text-coral-700">{{ $line['progress']['message'] ?? 'The sync failed.' }}</span>
+                                                    @elseif ($line['syncedAt'])
+                                                        Synced {{ $line['syncedAt']->setTimezone(config('segmentation.timezone'))->format('M j, g:i A') }}@if ($line['unsyncedDays']) · {{ $line['unsyncedDays'] }} {{ Str::plural('day', $line['unsyncedDays']) }} not synced @endif
+                                                    @elseif (! $syncing($line['progress']))
+                                                        Not synced yet
+                                                    @endif
+                                                </p>
+                                            </div>
+                                        @else
+                                            <span class="text-xs text-muted">Set the time first</span>
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
+                            @php($counted = collect($lines)->pluck('inquiries')->filter(fn ($n) => $n !== null))
+                            @php($engaged = collect($lines)->pluck('engagements')->filter(fn ($n) => $n !== null))
                             <tr class="border-t-2 border-line bg-brand-50/50 font-bold">
                                 <td class="px-4 py-2.5">TOTAL</td>
-                                @foreach ($columns as $column)
+                                <td class="px-4 py-2.5 text-right">{!! $counted->isEmpty() ? $dash : number_format($counted->sum()) !!}</td>
+                                <td class="px-4 py-2.5 text-right">{!! $engaged->isEmpty() ? $dash : number_format($engaged->sum()) !!}</td>
+                                @foreach (array_slice($columns, 2) as $column)
                                     <td class="px-4 py-2.5 text-right">{!! $dash !!}</td>
                                 @endforeach
+                                <td class="px-4 py-2.5"></td>
                                 <td class="px-4 py-2.5"></td>
                                 <td class="px-4 py-2.5"></td>
                             </tr>
@@ -137,13 +213,13 @@
 
     @if ($canEdit)
         {{-- Creation/Update Time: the month range a CRA's page pulls inquiries and engagement from (preview: kept on this screen only) --}}
-        <dialog id="pc-window-dialog" data-year="{{ $today->year }}" data-month="{{ $today->format('Y-m') }}" aria-labelledby="pc-window-title" class="m-auto w-[min(26rem,calc(100%-2rem))] rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
+        <dialog id="pc-window-dialog" data-url="{{ route('pc-report.rows.update') }}" data-split-url="{{ route('pc-report.split') }}" data-year="{{ $today->year }}" aria-labelledby="pc-window-title" class="m-auto w-[min(26rem,calc(100%-2rem))] rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
             <div class="space-y-4 p-5">
                 <div>
                     <h2 id="pc-window-title" class="text-base font-bold">Creation/Update Time</h2>
                     <p class="text-sm text-muted" data-pc-window-for></p>
                 </div>
-                <p class="text-xs text-muted">Inquiries and engagement count the conversations created or updated from the first month to the last. Click the first month, then the last; the range can cross years.</p>
+                <p class="text-xs text-muted">Total Inquiries counts the page's conversations created from the first month to the end of the last. Click the first month, then the last; the range can cross years.</p>
 
                 <div class="flex items-center justify-between">
                     <button type="button" data-pc-year="-1" class="grid size-8 place-items-center rounded-lg border border-line hover:border-brand-400 hover:text-brand-600" aria-label="Previous year">‹</button>
@@ -159,7 +235,6 @@
                 </div>
 
                 <p class="text-sm"><span class="font-semibold">Range:</span> <span data-pc-window-summary>None</span></p>
-                <p class="rounded-lg bg-[#fff6d6] px-3 py-2 text-xs text-[#473821]">Preview: the range stays on this screen only until saving is built.</p>
 
                 <div class="flex items-center justify-between gap-2">
                     <button type="button" data-pc-clear class="h-10 rounded-lg border border-line px-3 font-medium hover:border-brand-400 hover:text-brand-600">Clear</button>
