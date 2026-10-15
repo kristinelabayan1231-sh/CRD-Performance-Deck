@@ -20,6 +20,7 @@ use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
+use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
@@ -99,6 +100,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/product-report', [OrderDatabaseController::class, 'productReport'])->name('product-report');
     });
 
+    Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
     Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
 
     Route::prefix('pc-report')->name('pc-report.')->middleware('can:pc_report.view')->group(function () {

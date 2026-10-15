@@ -12,6 +12,7 @@ use Illuminate\Support\Once;
 
 /**
  * CRAs on duty: the CRAs who logged in from the Segmentation Tracker on a real day (not the working date).
+ * The Report Summary divides by this count for Average sales and Average IBSC per CRA.
  */
 class OnDuty
 {

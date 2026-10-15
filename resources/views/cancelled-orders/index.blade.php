@@ -212,9 +212,10 @@
                 @if ($orders->isEmpty())
                     <p class="px-4 py-10 text-center text-sm text-muted">No cancelled or waiting orders in these dates.</p>
                 @else
-                    <div class="overflow-x-auto">
+                    {{-- Scrolls inside the panel (as Per day), the column headers staying on top --}}
+                    <div class="max-h-[32rem] overflow-auto">
                         <table class="w-full min-w-[760px] text-left text-sm">
-                            <thead class="bg-brand-50/60 text-xs tracking-wide text-muted uppercase">
+                            <thead class="sticky top-0 z-10 bg-brand-50 text-xs tracking-wide text-muted uppercase">
                                 <tr>
                                     <th class="px-4 py-3 font-semibold">Ordered</th>
                                     <th class="px-4 py-3 font-semibold">Order #</th>

@@ -50,6 +50,9 @@ $modules = [
         'conversion.view' => 'View own broadcast and segmentation conversions',
         'conversion.view_all' => 'View and compare every CRA, and sync Pancake data',
     ],
+    'Report Summary' => [
+        'report_summary.view' => 'View the Report Summary: every CRA\'s weekly, month-to-date and daily orders, sales and per-CRA averages',
+    ],
     'On Duty' => [
         'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',
     ],
