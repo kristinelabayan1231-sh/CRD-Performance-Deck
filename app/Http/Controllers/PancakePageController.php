@@ -7,6 +7,7 @@ use App\Services\PancakeClient;
 use App\Support\ProductGroups;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -20,6 +21,7 @@ class PancakePageController extends Controller
         return view('settings.pancake-pages', [
             'pages' => $pages,
             'productGroups' => $groups,
+            'groupsSaved' => ProductGroups::isSaved(),
             'ungroupedPages' => $pages->pluck('name')->diff(collect($groups)->pluck('pages')->flatten())->values(),
         ]);
     }
@@ -50,6 +52,38 @@ class PancakePageController extends Controller
         }
 
         return back()->with('status', "Page \"{$page->name}\" updated.");
+    }
+
+    /**
+     * Save the product groups (sent as JSON by the Product groups panel): each a name and its pages, a page in one group only.
+     */
+    public function saveGroups(Request $request): RedirectResponse
+    {
+        $request->merge(['groups' => json_decode((string) $request->input('groups'), true)]);
+
+        $data = $request->validateWithBag('groups', [
+            'groups' => ['required', 'array', 'min:1'],
+            'groups.*.name' => ['required', 'string', 'max:60', 'distinct:ignore_case'],
+            'groups.*.pages' => ['present', 'array'],
+            'groups.*.pages.*' => ['string', Rule::in(PancakePage::pluck('name')->all()), 'distinct'],
+        ], [
+            'groups.required' => 'Add at least one product group.',
+            'groups.min' => 'Add at least one product group.',
+            'groups.*.name.distinct' => 'Two product groups have the same name.',
+            'groups.*.pages.*.in' => 'A page in the groups is no longer in the list above; reload and try again.',
+            'groups.*.pages.*.distinct' => 'A page can be in one product group only.',
+        ]);
+
+        $groups = collect($data['groups'])->map(fn (array $group) => ['name' => trim($group['name']), 'pages' => array_values($group['pages'])]);
+
+        // Each group is picked by its name in PC Report's link, so names must stay apart there too ("Clear Sight" vs "ClearSight" is fine).
+        if ($groups->map(fn (array $group) => Str::slug($group['name']))->duplicates()->isNotEmpty()) {
+            return back()->withErrors(['groups' => 'Two product groups have names that are too alike; rename one.'], 'groups');
+        }
+
+        ProductGroups::save($groups->all(), $request->user());
+
+        return back()->with('status', 'Product groups saved. PC Report shows them now.');
     }
 
     public function destroy(PancakePage $page): RedirectResponse

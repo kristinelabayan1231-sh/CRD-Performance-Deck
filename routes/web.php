@@ -20,6 +20,7 @@ use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
+use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
@@ -99,9 +100,17 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/product-report', [OrderDatabaseController::class, 'productReport'])->name('product-report');
     });
 
+    Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
     Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
 
-    Route::get('/pc-report', [PcReportController::class, 'index'])->middleware('can:pc_report.view')->name('pc-report.index');
+    Route::prefix('pc-report')->name('pc-report.')->middleware('can:pc_report.view')->group(function () {
+        Route::get('/', [PcReportController::class, 'index'])->name('index');
+        Route::put('/rows', [PcReportController::class, 'update'])->name('rows.update');
+        Route::post('/split', [PcReportController::class, 'split'])->middleware('can:pc_report.manage')->name('split');
+        Route::delete('/split', [PcReportController::class, 'merge'])->middleware('can:pc_report.manage')->name('merge');
+        Route::post('/sync', [PcReportController::class, 'sync'])->name('sync');
+        Route::get('/sync/{row}', [PcReportController::class, 'syncProgress'])->name('sync.progress');
+    });
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
@@ -143,6 +152,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('pancake-pages')->name('pancake-pages.')->middleware('can:pancake_pages.manage')->group(function () {
             Route::get('/', [PancakePageController::class, 'index'])->name('index');
             Route::post('/', [PancakePageController::class, 'store'])->name('store');
+            Route::put('/groups', [PancakePageController::class, 'saveGroups'])->name('groups');
             Route::patch('/{page}', [PancakePageController::class, 'update'])->name('update');
             Route::delete('/{page}', [PancakePageController::class, 'destroy'])->name('destroy');
             Route::post('/{page}/test', [PancakePageController::class, 'test'])->name('test');

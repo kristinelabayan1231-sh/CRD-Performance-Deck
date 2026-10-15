@@ -72,7 +72,7 @@ class CraIssues
 
         $orders = PancakeOrder::counted()->crdProducts()
             ->whereIn('seller_name', $accounts->keys())
-            ->whereDate('ordered_on', '>=', $today->startOfMonth())->whereDate('ordered_on', '<=', $today)
+            ->where('ordered_on', '>=', $today->startOfMonth()->toDateString())->where('ordered_on', '<', $today->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('conversion_type')
                 ->orWhere(fn ($q) => $q->where('conversion_type', PancakeOrder::SEGMENTATION)
                     ->whereJsonContains('tags', $both[0])->whereJsonContains('tags', $both[1])))

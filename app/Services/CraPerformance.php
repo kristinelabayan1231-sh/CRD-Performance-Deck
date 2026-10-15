@@ -29,16 +29,30 @@ class CraPerformance
      */
     public function rows(array $sellers, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
-        $orders = PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+        // Plain rows, 2,000 at a time, kept as just what the table needs: a long range has tens of thousands of orders.
+        $orders = [];
+        $keys = [];
+        PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
+            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', self::DELETED))
-            ->get(['seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
-            ->groupBy(fn (PancakeOrder $order) => PancakeEngagement::staffKey($order->seller_name));
+            ->toBase()->select(['id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
+            ->lazyById(2000, 'id')
+            ->each(function (object $order) use (&$orders, &$keys) {
+                $orders[] = [
+                    'seller' => $keys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name),
+                    'status' => $order->status === null ? -1 : (int) $order->status,
+                    'product' => $this->mainProduct(json_decode((string) $order->items, true) ?? []),
+                    // The order's value before Pancake's discount (PancakeOrder::salesBeforeDiscount()).
+                    'sales' => (float) ($order->shecom_sales ?? $order->total_price + ($order->total_discount ?? 0)),
+                    'discount' => (float) ($order->total_discount ?? 0),
+                ];
+            });
+        $orders = collect($orders)->groupBy('seller');
 
         return collect($sellers)
             ->filter(fn (string $name, string $key) => $orders->has($key))
             ->map(function (string $name, string $key) use ($orders) {
-                $products = $orders[$key]->groupBy(fn (PancakeOrder $order) => $this->mainProduct($order))
+                $products = $orders[$key]->groupBy('product')
                     ->map(fn (Collection $group, string $product) => ['product' => $product, ...self::sum($group)])
                     ->sortBy([
                         fn (array $a, array $b) => ($a['product'] === self::OTHER_PRODUCTS) <=> ($b['product'] === self::OTHER_PRODUCTS),
@@ -75,10 +89,12 @@ class CraPerformance
 
     /**
      * The order's main product: the first item on the Product Consumption list, else "Other products".
+     *
+     * @param  list<array{name?: string, qty?: int}>  $items
      */
-    private function mainProduct(PancakeOrder $order): string
+    private function mainProduct(array $items): string
     {
-        foreach ($order->items ?? [] as $item) {
+        foreach ($items as $item) {
             if ($product = $this->catalog->match((string) ($item['name'] ?? ''))) {
                 return $product->name;
             }
@@ -88,17 +104,17 @@ class CraPerformance
     }
 
     /**
-     * @param  Collection<int, PancakeOrder>  $orders
+     * @param  Collection<int, array{status: int, sales: float, discount: float}>  $orders
      * @return array{statuses: array<int, int>, qty: int, sales: float, discount: float}
      */
     private static function sum(Collection $orders): array
     {
         return [
-            'statuses' => $orders->countBy(fn (PancakeOrder $order) => $order->status ?? -1)->all(),
+            'statuses' => $orders->countBy('status')->all(),
             'qty' => $orders->count(),
-            'sales' => (float) $orders->sum(fn (PancakeOrder $order) => $order->salesBeforeDiscount()),
+            'sales' => (float) $orders->sum('sales'),
             // Shown beside the sales so the discount stays visible.
-            'discount' => (float) $orders->sum('total_discount'),
+            'discount' => (float) $orders->sum('discount'),
         ];
     }
 }

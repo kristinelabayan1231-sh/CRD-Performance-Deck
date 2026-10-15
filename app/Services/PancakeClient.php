@@ -21,7 +21,7 @@ class PancakeClient
     /** Order fields Segmentation Productivity and Conversion Breakdown use; asked for with fields[] since full orders are large. */
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
-        'customer', 'total_price', 'total_discount', 'account_name', 'assigning_seller', 'tags', 'items',
+        'customer', 'total_price', 'total_discount', 'page', 'page_id', 'conversation_id', 'assigning_seller', 'tags', 'items',
     ];
 
     /** What a tag, status or seller refresh keeps of an order. */
@@ -94,6 +94,87 @@ class PancakeClient
         }
 
         return [false, 'Pancake refused the token (HTTP '.$response->status().'). Check the page ID and copy a fresh page access token from Pancake → Settings → Tools.'];
+    }
+
+    /**
+     * The page's conversations with a phone number created from $from to $to, or with $byUpdate
+     * the ones changed in that time (whenever created). Pancake allows under a month per request
+     * and sends 200 conversations a page.
+     *
+     * @return list<array{conversation_id: string, started_at: string, phone_keys: list<string>, tags: list<string>}>
+     */
+    public function conversations(PancakePage $page, CarbonImmutable $from, CarbonImmutable $to, bool $byUpdate = false): array
+    {
+        $conversations = [];
+        $pageNumber = 1;
+
+        do {
+            $response = Http::acceptJson()
+                ->timeout(300)
+                ->retry(3, 2000, throw: false)
+                ->get(rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page->page_id}/conversations", array_filter([
+                    'page_access_token' => $page->access_token,
+                    'page_number' => $pageNumber,
+                    'since' => $from->getTimestamp(),
+                    'until' => $to->getTimestamp(),
+                    // Ordering by update makes since/until filter by update time too.
+                    'order_by' => $byUpdate ? 'updated_at' : null,
+                ]));
+
+            if ($response->failed() || ! $response->json('success')) {
+                throw new RuntimeException("Pancake conversations for {$page->name} returned HTTP {$response->status()}: ".($response->json('message') ?? 'unknown error'));
+            }
+
+            $batch = $response->json('conversations') ?? [];
+
+            foreach ($batch as $conversation) {
+                $phoneKeys = collect($conversation['recent_phone_numbers'] ?? [])
+                    ->map(fn ($phone) => LeadGenerator::normalizePhone((string) (is_array($phone) ? ($phone['phone_number'] ?? '') : $phone)))
+                    ->filter(fn (string $key) => strlen($key) === 10)
+                    ->unique()->values()->all();
+
+                if (! ($conversation['has_phone'] ?? false) || $phoneKeys === [] || empty($conversation['inserted_at'])) {
+                    continue;
+                }
+
+                $conversations[] = [
+                    'conversation_id' => (string) $conversation['id'],
+                    // Pancake sends inserted_at in UTC without an offset.
+                    'started_at' => CarbonImmutable::parse($conversation['inserted_at'], 'UTC')->toDateTimeString(),
+                    'phone_keys' => $phoneKeys,
+                    'tags' => collect($conversation['tags'] ?? [])
+                        ->map(fn ($tag) => strtoupper(trim((string) (is_array($tag) ? ($tag['text'] ?? '') : $tag))))
+                        ->filter()->unique()->values()->all(),
+                ];
+            }
+
+            $pageNumber++;
+        } while (count($batch) >= 200);
+
+        return $conversations;
+    }
+
+    /**
+     * The page's Customer engagement (Pancake → Analytics → Engagements, the "total" series) from $from to $to
+     * (whole days, segmentation timezone), summed.
+     */
+    public function pageEngagements(PancakePage $page, CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $response = Http::acceptJson()
+            ->timeout(120)
+            ->retry(3, 2000, throw: false)
+            ->get(rtrim(config('services.pancake.chat_url'), '/')."/pages/{$page->page_id}/statistics/customer_engagements", [
+                'page_access_token' => $page->access_token,
+                'date_range' => $from->format('d/m/Y').' 00:00:00 - '.$to->format('d/m/Y').' 23:59:59',
+            ]);
+
+        if ($response->failed() || ! $response->json('success')) {
+            throw new RuntimeException("Pancake engagements for {$page->name} returned HTTP {$response->status()}: ".($response->json('message') ?? 'unknown error'));
+        }
+
+        $total = collect($response->json('data.series') ?? [])->firstWhere('name', 'total');
+
+        return (int) array_sum($total['data'] ?? []);
     }
 
     private function engagementRequest(PancakePage $page, CarbonImmutable $day): Response

@@ -35,7 +35,7 @@ class CraProductSales
         // Every status, as in gross sales.
         PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->get(['seller_name', 'items', 'total_price', 'shecom_sales'])
             ->each(function (PancakeOrder $order) use ($accounts, &$totals) {
                 $items = collect($order->items ?? [])->map(function (array $item) {

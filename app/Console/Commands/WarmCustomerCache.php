@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Services\CustomerChurn;
 use App\Services\CustomerDatabase;
 use App\Services\HighValueCustomers;
+use App\Support\DashboardRange;
+use App\Support\WorkingDate;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -11,9 +14,9 @@ class WarmCustomerCache extends Command
 {
     protected $signature = 'customers:warm-cache';
 
-    protected $description = 'Work out the Customer Database\'s default tab (tiles, first page, Possible match, earlier-orders progress) and the High AOV & VIP list ahead of time, so the pages open from the cache';
+    protected $description = 'Work out the Customer Database\'s default tab (tiles, first page, Possible match, earlier-orders progress) the High AOV & VIP list and the Dashboard\'s customer tiles and churn for this month ahead of time, so the pages open from the cache';
 
-    public function handle(CustomerDatabase $customers, HighValueCustomers $highValue): int
+    public function handle(CustomerDatabase $customers, HighValueCustomers $highValue, CustomerChurn $churn): int
     {
         $started = microtime(true);
         CustomerDatabase::$refreshing = true;
@@ -26,6 +29,11 @@ class WarmCustomerCache extends Command
             }
             $customers->cachedHistoryProgress();
             $highValue->all();
+
+            // The Dashboard as it opens (this month to today): Retained / Repeat counts and churn.
+            $month = DashboardRange::fromFilters([], WorkingDate::realToday());
+            $customers->cachedCounts(['from' => $month->from, 'to' => $month->to, 'search' => null]);
+            $churn->cached($month->from, $month->to);
         } finally {
             CustomerDatabase::$refreshing = false;
         }

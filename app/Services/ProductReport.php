@@ -6,6 +6,8 @@ use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use Carbon\CarbonImmutable;
+use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Support\Collection;
 
 /**
@@ -21,6 +23,9 @@ use Illuminate\Support\Collection;
  */
 class ProductReport
 {
+    /** Pancake seller name => staff key, worked out once per name. */
+    private static array $sellerKeys = [];
+
     /** Pancake POS statuses: delivered or payment collected. */
     public const DELIVERED = [3, 16];
 
@@ -56,12 +61,22 @@ class ProductReport
     public function lines(array $sellers, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
         $costs = Product::pluck('unit_cost', 'name');
+        $timezone = new DateTimeZone(config('segmentation.timezone'));
+        $lines = [];
 
-        return PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+        // Plain rows, 2,000 at a time: a long range has tens of thousands of orders, too many to hold as models.
+        PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
+            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
-            ->get(['id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on', 'ordered_at'])
-            ->flatMap(fn (PancakeOrder $order) => $this->linesOf($order, $costs));
+            ->toBase()->select(['id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on', 'ordered_at'])
+            ->lazyById(2000, 'id')
+            ->each(function (object $order) use (&$lines, $costs, $timezone) {
+                foreach ($this->linesOf($order, $costs, $timezone) as $line) {
+                    $lines[] = $line;
+                }
+            });
+
+        return collect($lines);
     }
 
     /**
@@ -136,10 +151,10 @@ class ProductReport
      * @param  Collection<string, ?string>  $costs  product name => unit cost
      * @return list<array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int}>
      */
-    private function linesOf(PancakeOrder $order, Collection $costs): array
+    private function linesOf(object $order, Collection $costs, DateTimeZone $timezone): array
     {
         $products = [];
-        foreach ($order->items ?? [] as $item) {
+        foreach (json_decode((string) $order->items, true) ?? [] as $item) {
             $product = $this->catalog->match((string) ($item['name'] ?? ''));
             $name = $product?->name ?? CraPerformance::OTHER_PRODUCTS;
             $qty = max(1, (int) ($item['qty'] ?? 1));
@@ -152,22 +167,33 @@ class ProductReport
         }
 
         // Split by SRP × qty only when every product has an SRP; else by pieces.
-        $bySrp = collect($products)->every(fn (array $product) => $product['weight'] > 0);
-        $weights = collect($products)->map(fn (array $product) => $bySrp ? $product['weight'] : $product['qty']);
-        $totalWeight = $weights->sum();
-        $sales = $order->salesBeforeDiscount();
+        $bySrp = true;
+        foreach ($products as $product) {
+            $bySrp = $bySrp && $product['weight'] > 0;
+        }
+        $weights = array_map(fn (array $product) => $bySrp ? $product['weight'] : $product['qty'], $products);
+        $totalWeight = array_sum($weights);
+        // The order's value before Pancake's discount (PancakeOrder::salesBeforeDiscount()).
+        $sales = (float) ($order->shecom_sales ?? $order->total_price + ($order->total_discount ?? 0));
+        $seller = self::$sellerKeys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name);
+        $hour = $order->ordered_at === null ? 0 : (int) (new DateTimeImmutable($order->ordered_at, new DateTimeZone('UTC')))->setTimezone($timezone)->format('G');
 
-        return collect($products)->map(fn (array $product, string $name) => [
-            'order' => $order->id,
-            'seller' => PancakeEngagement::staffKey($order->seller_name),
-            'status' => $order->status ?? -1,
-            'product' => $name,
-            'qty' => $product['qty'],
-            'sales' => $totalWeight > 0 ? $sales * $weights[$name] / $totalWeight : $sales / count($products),
-            'cost' => isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null,
-            'day' => $order->ordered_on->toDateString(),
-            'hour' => (int) ($order->ordered_at?->setTimezone(config('segmentation.timezone'))->format('G') ?? 0),
-        ])->values()->all();
+        $lines = [];
+        foreach ($products as $name => $product) {
+            $lines[] = [
+                'order' => (int) $order->id,
+                'seller' => $seller,
+                'status' => $order->status === null ? -1 : (int) $order->status,
+                'product' => (string) $name,
+                'qty' => $product['qty'],
+                'sales' => $totalWeight > 0 ? $sales * $weights[$name] / $totalWeight : $sales / count($products),
+                'cost' => isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null,
+                'day' => substr((string) $order->ordered_on, 0, 10),
+                'hour' => $hour,
+            ];
+        }
+
+        return $lines;
     }
 
     /**

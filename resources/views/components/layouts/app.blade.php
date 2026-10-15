@@ -41,6 +41,9 @@
                 @can('conversion.view')
                     <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
                 @endcan
+                @can('report_summary.view')
+                    <x-nav-link :href="route('report-summary.index')" :active="request()->routeIs('report-summary.*')" icon="report">Report Summary</x-nav-link>
+                @endcan
                 @can('pc_report.view')
                     <x-nav-link :href="route('pc-report.index')" :active="request()->routeIs('pc-report.*')" icon="pc">PC Report</x-nav-link>
                 @endcan

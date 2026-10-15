@@ -120,7 +120,8 @@
             </div>
         @endif
     </section>
-    {{-- Product groups: the pages that sell the same product; each group is one set per CRA in PC Report (preview: not saved yet) --}}
+    {{-- Product groups: the pages that sell the same product; each group is one set per CRA in PC Report. Changes show on
+         the screen and are saved with Save groups. --}}
     @php($chip = 'inline-flex items-center gap-1 rounded-full border border-line bg-canvas/60 py-0.5 pr-1 pl-3 text-xs font-medium')
     <section class="mt-4 overflow-hidden rounded-xl bg-white shadow-sm" data-product-groups>
         <div class="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-4">
@@ -128,8 +129,14 @@
                 <h2 class="text-base font-semibold">Product groups</h2>
                 <p class="text-sm text-muted">Group the pages that sell the same product. Each group is one set per CRA in PC Report, with a row for every page.</p>
             </div>
-            <span class="rounded-full bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c00]">Preview · not saved yet</span>
+            @unless ($groupsSaved)
+                <span class="rounded-full bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c00]">Sample groups · save to keep yours</span>
+            @endunless
         </div>
+
+        @if ($errors->groups->any())
+            <div role="alert" class="border-b border-line bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->groups->first() }}</div>
+        @endif
 
         <form data-group-add class="flex flex-wrap gap-2 border-b border-line px-4 py-3">
             <label class="min-w-56 flex-1">
@@ -155,6 +162,15 @@
             </div>
             <p data-group-free-empty @class(['text-sm text-muted', 'hidden' => $ungroupedPages->isNotEmpty()])>Every page is in a group.</p>
         </div>
+
+        {{-- Sends the groups on screen; the panel fills in the list when it's submitted --}}
+        <form method="POST" action="{{ route('settings.pancake-pages.groups') }}" data-group-save class="flex flex-wrap items-center justify-end gap-3 border-t border-line px-4 py-3">
+            @csrf
+            @method('PUT')
+            <input type="hidden" name="groups" data-group-json>
+            <span class="rounded-full bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c00]" data-group-dirty hidden>Unsaved changes</span>
+            <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">Save groups</button>
+        </form>
 
         <template data-group-template>
             @include('settings._product-group', ['name' => '', 'pages' => []])

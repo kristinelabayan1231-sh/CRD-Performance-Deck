@@ -134,7 +134,7 @@ class ConversionBreakdownController extends Controller
 
         $query = PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->whereDate('ordered_on', '>=', $range->from)->whereDate('ordered_on', '<=', $range->to);
+            ->where('ordered_on', '>=', $range->from->toDateString())->where('ordered_on', '<', $range->to->addDay()->toDateString());
 
         // The list and count are confirmed orders; gross sales counts every status, as on the dashboard.
         $all = (clone $query)->get(['status', 'total_price', 'shecom_sales']);
@@ -176,7 +176,7 @@ class ConversionBreakdownController extends Controller
         $orders = $cra->pancake_name
             ? PancakeOrder::crdProducts()->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
                 ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-                ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
+                ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
                 // First to most recent, by when the order was created in Pancake.
                 ->orderBy('ordered_at')->orderBy('id')
                 ->get(['pancake_order_id', 'ordered_on', 'ordered_at', 'customer_name', 'page_name', 'conversion_type', 'status', 'status_name', 'total_price', 'shecom_sales'])

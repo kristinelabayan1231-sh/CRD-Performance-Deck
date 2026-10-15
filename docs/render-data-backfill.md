@@ -2,7 +2,7 @@
 
 While the app ran on Render's free plan it slept when nobody visited, and its Pancake syncs slept with
 it, so some past days have missing orders (most visible in the **Order Database**). On the paid plan
-the app stays awake, and the missing days are now **filled in automatically**.
+the app stays awake, and the missing days were **filled in automatically** on the deploy of Oct 15, 2026.
 
 ## What happens on its own
 
@@ -15,19 +15,19 @@ the app stays awake, and the missing days are now **filled in automatically**.
   tag changes;
 - remembers each finished day, so a genuinely quiet day (a holiday) isn't fetched again and again.
 
-It runs **once, when this deploy starts** (`docker/entrypoint.sh`); the line is removed again in the
-next commit. If a restart cuts it off, start it by hand (see Good to know); it carries on with the days
-still missing. Only one runs at a time. Nothing is deleted: fetching a day again only adds missing orders and updates saved ones.
+It ran **once, when that deploy started**; later deploys don't start it. If it was cut off (Step 3 still
+lists days), start it by hand (see Good to know): it carries on with the days still missing. Only one
+runs at a time. Nothing is deleted: fetching a day again only adds missing orders and updates saved ones.
 
 Each day takes about 1–2 minutes. On the local copy 233 days were missing, which is roughly 4–8 hours.
 
 ---
 
-## Step by step after you deploy
+## Step by step
 
-### Step 1. Deploy
+### Step 1. (Done on Oct 15) Deploy
 
-Merge to `main` and let Render deploy as usual.
+It started by itself on that deploy. To run it again, see Good to know.
 
 ### Step 2. Watch it in the Logs
 
