@@ -34,13 +34,6 @@ Schedule::command('pancake:sync --tags')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(10);
 
-// PC Report's Total Inquiries: for pages synced at least once, the conversations that changed since the
-// last run (today's CRD - <date> tags, new numbers). A row's older days come only from its Sync button.
-Schedule::command('pancake:conversations')
-    ->everyTenMinutes()
-    ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping(20);
-
 Schedule::command('pancake:sync --date=yesterday')
     ->dailyAt('00:30')
     ->timezone(config('segmentation.timezone'))

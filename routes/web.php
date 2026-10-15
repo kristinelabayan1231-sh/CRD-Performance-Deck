@@ -108,8 +108,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::put('/rows', [PcReportController::class, 'update'])->name('rows.update');
         Route::post('/split', [PcReportController::class, 'split'])->middleware('can:pc_report.manage')->name('split');
         Route::delete('/split', [PcReportController::class, 'merge'])->middleware('can:pc_report.manage')->name('merge');
-        Route::post('/sync', [PcReportController::class, 'sync'])->name('sync');
-        Route::get('/sync/{row}', [PcReportController::class, 'syncProgress'])->name('sync.progress');
+        Route::put('/entries', [PcReportController::class, 'entry'])->name('entries.update');
     });
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.

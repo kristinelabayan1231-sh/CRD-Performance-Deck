@@ -2,20 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\PcReportEntry;
 use App\Models\PcReportRow;
 use App\Models\User;
 use App\Services\LeadGenerator;
-use App\Services\PcInquiries;
 use App\Support\ProductGroups;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Symfony\Component\Process\PhpExecutableFinder;
 
 class PcReportController extends Controller
 {
@@ -27,9 +25,9 @@ class PcReportController extends Controller
 
     /**
      * One set per CRA for the picked product and day: every page in the product's group, a split
-     * page as its Dormant and Active rows, with Total Inquiries once the Creation/Update Time is set.
+     * page as its Dormant and Active rows, with the day's typed-in Total Inquiries and Total Engagement.
      */
-    public function index(Request $request, PcInquiries $inquiries): View
+    public function index(Request $request): View
     {
         $today = WorkingDate::realToday();
 
@@ -52,34 +50,25 @@ class PcReportController extends Controller
 
         $saved = PcReportRow::whereIn('user_id', $cras->pluck('id'))->whereIn('page', $group['pages'])->get()
             ->groupBy(fn (PcReportRow $row) => $row->user_id.'|'.$row->page);
-        $pages = PcInquiries::pages();
+        $entries = PcReportEntry::whereIn('user_id', $cras->pluck('id'))->whereIn('page', $group['pages'])->whereDate('date', $day)->get()
+            ->keyBy(fn (PcReportEntry $entry) => $entry->user_id.'|'.$entry->page.'|'.$entry->category);
 
-        $sets = $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect($group['pages'])->flatMap(function (string $page) use ($cra, $saved, $pages, $inquiries, $day, $today) {
+        $sets = $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect($group['pages'])->flatMap(function (string $page) use ($cra, $saved, $entries) {
             $rows = $saved->get($cra->id.'|'.$page, collect())->keyBy('category');
             $categories = $rows->has(PcReportRow::DORMANT) ? array_keys(self::SPLIT) : [''];
-            $pancakePage = $pages->get(strtoupper($page));
 
-            return array_map(function (string $category) use ($page, $rows, $pancakePage, $inquiries, $day, $today) {
+            return array_map(function (string $category) use ($cra, $page, $rows, $entries) {
                 $row = $rows->get($category);
-                $from = $row?->from_month;
-                $to = $row?->to_month ?? ($from ? $today : null);
-                $days = $from && $pancakePage ? PcInquiries::days($row) : [];
-                // Counts show once the row was synced; days added since (an "onwards" row grows daily) show as not synced.
-                $synced = $row?->synced_at !== null;
+                $entry = $entries->get($cra->id.'|'.$page.'|'.$category);
 
                 return [
                     'page' => $page,
                     'category' => $category,
-                    'rowId' => $row?->id,
                     'tagging' => $row?->tagging,
-                    'from' => $from?->format('Y-m') ?? '',
+                    'from' => $row?->from_month?->format('Y-m') ?? '',
                     'to' => $row?->to_month?->format('Y-m') ?? '',
-                    'canSync' => $days !== [],
-                    'inquiries' => $synced ? $inquiries->count($pancakePage, $from, $to, $day) : null,
-                    'engagements' => $synced ? $row->engagements : null,
-                    'unsyncedDays' => $days === [] ? 0 : count(PcInquiries::missingDays($pancakePage, $days)),
-                    'syncedAt' => $row?->synced_at,
-                    'progress' => $row ? $this->progress($row) : null,
+                    'inquiries' => $entry?->inquiries,
+                    'engagements' => $entry?->engagements,
                 ];
             }, $categories);
         })->all()]);
@@ -114,9 +103,8 @@ class PcReportController extends Controller
         $setsTime = $request->hasAny(['from', 'to']);
         abort_unless($setsTime ? $user->can('pc_report.manage') : ((int) $data['cra'] === $user->id || $user->can('pc_report.view_all')), 403);
 
-        // New months: the engagements and last sync were for the old ones.
         $values = $setsTime
-            ? ['from_month' => isset($data['from']) ? $data['from'].'-01' : null, 'to_month' => isset($data['to']) ? $data['to'].'-01' : null, 'engagements' => null, 'synced_at' => null]
+            ? ['from_month' => isset($data['from']) ? $data['from'].'-01' : null, 'to_month' => isset($data['to']) ? $data['to'].'-01' : null]
             : ['tagging' => isset($data['tagging']) ? strtoupper(trim($data['tagging'])) : null];
 
         PcReportRow::updateOrCreate(['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''], $values);
@@ -154,62 +142,27 @@ class PcReportController extends Controller
     }
 
     /**
-     * Start a row's Sync (its inquiries and engagements) in the background; the page then asks for its progress.
+     * Save a row's Total Inquiries or Total Engagement for a day, typed in by the CRA or anyone who sees every CRA.
      */
-    public function sync(Request $request): JsonResponse
+    public function entry(Request $request): JsonResponse
     {
-        $data = $request->validate([...$this->rowRules(), 'category' => ['present', 'nullable', Rule::in(array_keys(self::SPLIT))]]);
+        $data = $request->validate([
+            ...$this->rowRules(),
+            'category' => ['present', 'nullable', Rule::in(array_keys(self::SPLIT))],
+            'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
+            'inquiries' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            'engagements' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+        ]);
+
         $user = $request->user();
         abort_unless((int) $data['cra'] === $user->id || $user->can('pc_report.view_all'), 403);
 
-        $row = PcReportRow::where(['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''])->first();
-        $page = PcInquiries::pages()->get(strtoupper($data['page']));
-        abort_if(! $row || $row->from_month === null || ! $page, 422, 'Set the Creation/Update Time first.');
+        $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''];
+        PcReportEntry::where($key)->whereDate('date', $data['date'])->firstOrNew([], [...$key, 'date' => $data['date']])
+            ->fill(Arr::only($data, ['inquiries', 'engagements']))
+            ->save();
 
-        $busy = Cache::get(PcReportRow::pageBusyKey($page->id));
-        if ($busy !== null && $busy !== $row->id) {
-            return response()->json(['status' => 'failed', 'message' => 'Another row of this page is syncing; try again when it finishes.'], 409);
-        }
-
-        if ($busy === null) {
-            $row->putProgress(['status' => 'starting', 'done' => 0, 'total' => count(PcInquiries::days($row)), 'at' => now()->getTimestamp()]);
-            // Its own process, so the fetching neither holds up this page nor stops when the page is closed.
-            // PHP by its full path: a web request's PATH may not include it.
-            $php = escapeshellarg((new PhpExecutableFinder)->find(false) ?: 'php');
-            Process::path(base_path())->run("nohup {$php} artisan pc-report:sync ".(int) $row->id.' >> storage/logs/pc-report-sync.log 2>&1 &');
-        }
-
-        return response()->json($this->progress($row));
-    }
-
-    /**
-     * A row's Sync progress, for its progress bar.
-     */
-    public function syncProgress(Request $request, PcReportRow $row): JsonResponse
-    {
-        $user = $request->user();
-        abort_unless($row->user_id === $user->id || $user->can('pc_report.view_all'), 403);
-
-        return response()->json($this->progress($row) ?? ['status' => 'idle']);
-    }
-
-    /**
-     * The row's progress; a sync that stopped reporting (cut off by a restart) shows as stopped.
-     *
-     * @return array{status: string, done?: int, total?: int, message?: string}|null
-     */
-    private function progress(PcReportRow $row): ?array
-    {
-        $progress = $row->progress();
-        $page = PcInquiries::pages()->get(strtoupper($row->page));
-        $running = in_array($progress['status'] ?? null, ['starting', 'running'], true);
-        $starting = ($progress['status'] ?? null) === 'starting' && now()->getTimestamp() - ($progress['at'] ?? 0) < 60;
-
-        if ($running && ! $starting && $page && Cache::get(PcReportRow::pageBusyKey($page->id)) === null) {
-            return ['status' => 'stopped', 'message' => 'The sync stopped before finishing; click Sync to carry on.'];
-        }
-
-        return $progress;
+        return response()->json(['ok' => true]);
     }
 
     /**

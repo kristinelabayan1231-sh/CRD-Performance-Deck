@@ -1,4 +1,4 @@
-// PC Report (Tagging, Creation/Update Time and Dormant/Active rows are saved) and Settings → Product groups (saved with Save groups).
+// PC Report (Total Inquiries and Total Engagement per day, Tagging, Creation/Update Time and Dormant/Active rows are saved) and Settings → Product groups (saved with Save groups).
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const label = (key) => `${MONTHS[Number(key.slice(5)) - 1]} ${key.slice(0, 4)}`;
@@ -11,7 +11,7 @@ function formatRange(from, to) {
     return `${label(from)} – ${label(to)}`;
 }
 
-// Save a PC Report row's Tagging or Creation/Update Time, or split / merge a page; resolves when the server took it.
+// Save a PC Report row's counts, Tagging or Creation/Update Time, or split / merge a page; resolves when the server took it.
 async function send(url, method, body) {
     const response = await fetch(url, {
         method,
@@ -25,69 +25,30 @@ async function send(url, method, body) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 }
 
-// A row's Sync: starts the background fetch of its inquiries and engagements, then follows it with the progress bar
-// (asking every 2 seconds) and reloads the page when it's done, so the counts show. A row already syncing when the
-// page opens is followed too.
-function initPcSync(root) {
-    const show = (box, progress) => {
-        const running = progress.status === 'starting' || progress.status === 'running';
-        const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
-        box.querySelector('[data-pc-sync-running]').classList.toggle('hidden', !running);
-        box.querySelector('[data-pc-sync-idle]').classList.toggle('hidden', running);
-        box.querySelector('[data-pc-sync-bar]').style.width = `${percent}%`;
-        box.querySelector('[data-pc-sync-meter]').setAttribute('aria-valuenow', percent);
-        box.querySelector('[data-pc-sync-text]').textContent = `Syncing… ${progress.done ?? 0} / ${progress.total ?? 0} days · ${percent}%`;
-        const note = box.querySelector('[data-pc-sync-note]');
-        if (progress.message) {
-            note.innerHTML = '';
-            note.append(Object.assign(document.createElement('span'), { className: 'text-coral-700', textContent: progress.message }));
-        } else if (running) {
-            note.textContent = '';
-        }
+// Total Inquiries and Total Engagement, typed per row for the day picked: saved when the box changes (empty clears it),
+// and the set's TOTAL adds up what's in its boxes.
+function initPcCounts(root) {
+    const total = (table, field) => {
+        const values = [...table.querySelectorAll(`[data-pc-count="${field}"]`)].filter((input) => input.value !== '').map(Number);
+        table.querySelector(`[data-pc-totals] [data-pc-total="${field}"]`).textContent = values.length ? values.reduce((a, b) => a + b, 0).toLocaleString('en-US') : '—';
     };
 
-    const follow = (box) => {
-        const tick = async () => {
-            try {
-                const response = await fetch(box.dataset.progressUrl, { headers: { Accept: 'application/json' } });
-                const progress = await response.json();
-                show(box, progress);
-                if (progress.status === 'done') return window.location.reload();
-                if (progress.status === 'starting' || progress.status === 'running') return setTimeout(tick, 2000);
-            } catch {
-                setTimeout(tick, 5000);
-            }
-            box.querySelector('[data-pc-sync-start]').disabled = false;
-        };
-        tick();
-    };
-
-    root.addEventListener('click', async (event) => {
-        const button = event.target.closest('[data-pc-sync-start]');
-        if (!button) return;
-        const box = button.closest('[data-pc-sync]');
-        button.disabled = true;
+    root.addEventListener('change', async (event) => {
+        const input = event.target.closest('[data-pc-count]');
+        if (!input) return;
+        const { cra, page, category, pcCount: field } = input.dataset;
+        const value = input.value === '' ? null : Math.max(0, Math.floor(Number(input.value)));
+        if (value !== null) input.value = value;
+        total(input.closest('table'), field);
         try {
-            const response = await fetch(root.dataset.syncUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '',
-                },
-                body: JSON.stringify({ cra: box.dataset.cra, page: box.dataset.page, category: box.dataset.category }),
-            });
-            const progress = await response.json();
-            show(box, progress.status ? progress : { status: 'failed', message: progress.message || "Couldn't start the sync." });
-            if (response.ok) follow(box);
-            else button.disabled = false;
+            await send(root.dataset.entriesUrl, 'PUT', { cra, page, category, date: root.dataset.date, [field]: value });
+            input.classList.remove('border-coral');
+            input.title = '';
         } catch {
-            show(box, { status: 'failed', message: "Couldn't start the sync; try again." });
-            button.disabled = false;
+            input.classList.add('border-coral');
+            input.title = "Couldn't save; try again.";
         }
     });
-
-    root.querySelectorAll('[data-pc-sync][data-status="starting"], [data-pc-sync][data-status="running"]').forEach(follow);
 }
 
 // Tagging per page (saved when the box loses focus), the month range set by the CRA Supervisor,
@@ -118,7 +79,7 @@ export function initPcReport() {
         }
     });
 
-    initPcSync(root);
+    initPcCounts(root);
 
     const dialog = document.getElementById('pc-window-dialog');
     if (!dialog) return;
@@ -186,7 +147,7 @@ export function initPcReport() {
         } else if (button.hasAttribute('data-pc-cancel')) {
             return dialog.close();
         } else if (button.hasAttribute('data-pc-save')) {
-            // Saved, then the page reloads so Total Inquiries counts the new months.
+            // Saved, then the page reloads with the new months.
             const { craId: cra, page, category } = target.dataset;
             button.disabled = true;
             send(dialog.dataset.url, 'PUT', { cra, page, category, from: from || null, to: from ? to || from : null })
