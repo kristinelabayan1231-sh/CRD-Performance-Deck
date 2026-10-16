@@ -23,6 +23,8 @@
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6v2h3v2H7v-2h3v-2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 2v10h16V5H4Z"/></svg>
     @elseif ($icon === 'cvr')
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l4 4v14H5V3Zm2 2v14h11V8h-3V5H7Zm2 8h2v4H9v-4Zm3-3h2v7h-2v-7Zm3 1.5h2V17h-2v-5.5Z"/></svg>
+    @elseif ($icon === 'statement')
+        <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2h14a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Zm1 2v16h12V4H6Zm2 3h5v2H8V7Zm0 4h8v2H8v-2Zm0 4h8v2H8v-2Zm7-8h1v2h-1V7Z"/></svg>
     @elseif ($icon === 'products')
         <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6.5v11L12 22l9-4.5v-11L12 2Zm0 2.2 6.3 3.1L12 10.5 5.7 7.3 12 4.2ZM5 9l6 3v7.3l-6-3V9Zm8 10.3V12l6-3v7.3l-6 3Z"/></svg>
     @elseif ($icon === 'orders')

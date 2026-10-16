@@ -65,6 +65,10 @@ $modules = [
         'cvr_tracker.view' => 'View and fill in own CVR Tracker (each day\'s reorders, upsell, type of order, point of contact and unconfirmed)',
         'cvr_tracker.view_all' => 'View and fill in every CRA\'s CVR Tracker',
     ],
+    'Daily I.S.' => [
+        'daily_is.view' => 'View own Daily I.S. (income statement per product, per day)',
+        'daily_is.view_all' => 'View the department\'s and every CRA\'s Daily I.S.',
+    ],
     'Product Performance' => [
         'product_performance.view' => 'View Product Performance: every CRD account\'s sales, delivered, RTS and cancelled orders per product, with trends and insights',
     ],
