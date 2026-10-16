@@ -49,7 +49,6 @@ class OrderDatabaseController extends Controller
             'total' => $total,
             'statuses' => self::statuses($total['statuses']),
             'products' => Product::orderBy('name')->pluck('name')->push(CraPerformance::OTHER_PRODUCTS),
-            'open' => filled($scope['filters']['product'] ?? null),
         ]);
     }
 

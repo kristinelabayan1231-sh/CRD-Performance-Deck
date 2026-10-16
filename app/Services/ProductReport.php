@@ -38,18 +38,18 @@ class ProductReport
     public function __construct(private ProductCatalog $catalog) {}
 
     /**
-     * One row per product sold $from–$to by $sellers (staff key => name shown), most pieces first, each opening to
-     * its sellers; only $product (a product name) when given.
+     * One row per product sold $from–$to by $sellers (staff key => name shown), most pieces first; only $product (a
+     * product name) when given. Per-CRA figures live on CRA's Performance, not here.
      *
      * @param  array<string, string>  $sellers
-     * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float, sellers: list<array{seller: string, name: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float}>}>
+     * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float}>
      */
     public function rows(array $sellers, CarbonImmutable $from, CarbonImmutable $to, ?string $product = null): Collection
     {
         $lines = $this->lines($sellers, $from, $to)
             ->when(filled($product), fn (Collection $lines) => $lines->where('product', $product));
 
-        return $this->rowsFrom($lines, $sellers);
+        return $this->rowsFrom($lines);
     }
 
     /**
@@ -83,21 +83,12 @@ class ProductReport
      * One row per product in $lines, most pieces first, each opening to its sellers.
      *
      * @param  Collection<int, array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float}>  $lines
-     * @param  array<string, string>  $sellers
-     * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float, sellers: list<array<string, mixed>>}>
+     * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float}>
      */
-    public function rowsFrom(Collection $lines, array $sellers): Collection
+    public function rowsFrom(Collection $lines): Collection
     {
         return $lines->groupBy('product')
-            ->map(function (Collection $group, string $name) use ($sellers) {
-                $bySeller = $group->groupBy('seller');
-                $rows = collect($sellers)
-                    ->filter(fn (string $sellerName, string $key) => $bySeller->has($key))
-                    ->map(fn (string $sellerName, string $key) => ['seller' => $key, 'name' => $sellerName, ...self::sum($bySeller[$key])])
-                    ->sortByDesc('qty')->values()->all();
-
-                return ['product' => $name, ...self::sum($group), 'sellers' => $rows];
-            })
+            ->map(fn (Collection $group, string $name) => ['product' => $name, ...self::sum($group)])
             ->sortBy([
                 fn (array $a, array $b) => ($a['product'] === CraPerformance::OTHER_PRODUCTS) <=> ($b['product'] === CraPerformance::OTHER_PRODUCTS),
                 fn (array $a, array $b) => $b['qty'] <=> $a['qty'],
