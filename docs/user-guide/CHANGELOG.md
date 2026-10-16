@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-16 · PC Report · # of Orders is filled in: the CRA's Pancake orders on that page for the day picked, by order date (not the Creation/Update Time), canceled and deleted left out; matched on the Pancake page ID from Settings → Pancake Pages, so an order still counts when Pancake names the page differently (e.g. "Sinuxyl Nasal Care PH"); a split page's Dormant and Active rows share one number (one cell across both rows); TOTAL adds them up; — for a CRA with no Pancake account. A day whose orders were saved before their page was (before Oct 14) is fetched from Pancake again once, with a blue "reload in a few minutes" note · shots: pc-report
 - 2026-10-16 · Order Database · Product Report: products no longer open to their CRAs (no arrow, the product name is plain text); the per-CRA figures are on CRA's Performance. Subtitle drops "Click a product for its CRAs." (replaces "click a product for its CRAs" in the 2026-10-14 entry below) · shots: order-database-product-performance
 
 - 2026-10-15 · PC Report · Total Inquiries and Total Engagement are typed in: a number box on every row, saved per day (the day picked) when you leave the box (empty clears it); a CRA types their own rows, CRA Supervisors any CRA's; TOTAL adds up the boxes as you type. The Sync column and button are gone (replaces the 2026-10-15 Sync entry below; don't document Sync) · shots: pc-report (drop pc-report-sync)
