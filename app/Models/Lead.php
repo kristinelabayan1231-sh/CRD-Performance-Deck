@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'order_id', 'tracking_number', 'customer_name', 'phone_number', 'product_name', 'product_raw', 'qty', 'qty_unknown',
     'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'lead_type',
     'assigned_to', 'assigned_at', 'status', 'status_updated_by', 'status_updated_at',
-    'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
+    'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
     'call_recording_url', 'notes', 'notes_updated_by', 'notes_updated_at',
 ])]
 class Lead extends Model
@@ -28,6 +28,24 @@ class Lead extends Model
         self::TYPE_FSD => 'FSD Lead',
     ];
 
+    /** Order # prefix of a lead added from a CRA's Pancake POS order (PosLeads), not from the retention report. */
+    public const POS_PREFIX = 'POS-';
+
+    /**
+     * Repeat Purchase set to Yes dates the purchase (today, or the working date) unless a date was given;
+     * anything else clears it.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Lead $lead) {
+            if (! $lead->isDirty('repeat_purchase')) {
+                return;
+            }
+
+            $lead->repeat_purchase_on = $lead->repeat_purchase === 'yes' ? ($lead->repeat_purchase_on ?? self::today()) : null;
+        });
+    }
+
     protected function casts(): array
     {
         return [
@@ -39,6 +57,7 @@ class Lead extends Model
             'assigned_at' => 'datetime',
             'status_updated_at' => 'datetime',
             'processed_at' => 'datetime',
+            'repeat_purchase_on' => 'immutable_date',
             'contact_date' => 'immutable_date',
             'callback_date' => 'immutable_date',
             'notes_updated_at' => 'datetime',
@@ -107,6 +126,25 @@ class Lead extends Model
     {
         return $this->repeat_purchase === 'yes'
             || ($this->repeat_purchase === 'no' && $this->feedback === 'purchased');
+    }
+
+    /**
+     * Leads from the retention report and sheets, without those added from a CRA's POS sale (PosLeads):
+     * those are the sale itself, so reports judging how leads convert leave them out.
+     */
+    public function scopeWithoutPosSales(Builder $query): Builder
+    {
+        return $query->where('order_id', 'not like', self::POS_PREFIX.'%');
+    }
+
+    /**
+     * Repeat Purchase = Yes, bought in $from–$to (the day it was set to Yes, not the lead day).
+     */
+    public function scopeRepeatPurchasedBetween(Builder $query, CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        return $query->where('repeat_purchase', 'yes')
+            ->whereDate('repeat_purchase_on', '>=', $from)
+            ->whereDate('repeat_purchase_on', '<=', $to);
     }
 
     /**

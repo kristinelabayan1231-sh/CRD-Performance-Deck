@@ -38,7 +38,7 @@ class ConversionBreakdown
         // Leads worked on a real day are from its paired lead day (Settings → Working Date).
         $lag = WorkingDate::lagDays();
         $leads = [];
-        Lead::whereIn('assigned_to', $ids)
+        Lead::whereIn('assigned_to', $ids)->withoutPosSales()
             ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
             ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get()
             ->each(function ($row) use (&$leads, $lag) {

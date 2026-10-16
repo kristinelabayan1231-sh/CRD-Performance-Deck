@@ -157,6 +157,8 @@ class SegmentationController extends Controller
             'status' => ['nullable', 'string'],
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
             'q' => ['nullable', 'string', 'max:100'],
+            // From the dashboard's Retained / Repeat tiles: Repeat Purchase = Yes bought on the date or in the month.
+            'repeat' => ['nullable', Rule::in(['yes'])],
         ]);
         $filters['show'] ??= 'all';
         $filters['q'] = trim((string) ($filters['q'] ?? '')) ?: null;
@@ -182,9 +184,12 @@ class SegmentationController extends Controller
     private function scope(array $filters, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return Lead::query()
-            // A search looks through every lead day; otherwise the date or month picked.
+            // A search looks through every lead day; repeat=yes, the repeat purchases bought on the date or in the month
+            // (any lead day); otherwise the lead days of the date or month picked.
             ->when($filters['q'], fn (Builder $q, string $term) => $q->search($term),
-                fn (Builder $q) => $q->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to))
+                fn (Builder $q) => ($filters['repeat'] ?? null)
+                    ? $q->repeatPurchasedBetween($from, $to)
+                    : $q->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to))
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))

@@ -181,18 +181,20 @@
     </div>
 
     @if ($customers)
-        {{-- Customers delivered in these dates, counted as in the Customer Database, out of all the leads (every customer
-         the Customer Database has for these dates), against the monthly goal (% of those leads, Settings → Sales Goals);
-         opens the Customer Database filtered the same way --}}
-        @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
+        {{-- Segmentation Tracker customers with Repeat Purchase = Yes bought in these dates (FSD Leads = Retained, CRD Leads =
+         Repeat), out of the tracker's leads (one per customer), against the monthly goal (% of those leads, Settings → Sales Goals);
+         opens the tracker's repeat purchases for the date (one day) or the month --}}
+        @php($trackerRange = $results['range']->from->isSameDay($results['range']->to)
+            ? ['date' => $results['range']->from->toDateString()]
+            : ['month' => $results['range']->from->format('Y-m')])
         @php($leads = $customers['leads'])
         @php($segments = [])
         <x-dashboard.flip class="sm:col-span-6">
         <div class="grid gap-3 sm:grid-cols-2">
         @foreach ([
-            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD leads a CRA got to buy for the first time (their first CRA-handled order ever), out of all the leads (every customer in the Customer Database for these dates). Click to see them.'],
-            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD leads who bought again from a CRA (an earlier CRA-handled order too), out of all the leads (every customer in the Customer Database for these dates). Click to see them.'],
-        ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
+            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', \App\Models\Lead::TYPE_FSD, 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
+            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', \App\Models\Lead::TYPE_CRD, 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
+        ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentType, $segmentTitle])
             @php($count = $customers[$segment])
             @php($goal = $customers['goals'][$segment])
             @php($goalLabel = rtrim(rtrim(number_format($goal, 1), '0'), '.').'%')
@@ -200,7 +202,7 @@
             @php($toGoal = max(0, $goalCount - $count))
             @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
             @php($segments[$segment] = ['label' => $segmentLabel, 'count' => $count, 'goal' => $goalLabel, 'goal_count' => $goalCount])
-            <a href="{{ route('customers.index', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
+            <a href="{{ route('segmentation.index', [...$trackerRange, 'type' => $segmentType, 'repeat' => 'yes']) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
                 {!! $bubble !!}
                 <div class="relative flex items-start justify-between gap-2">
                     <p class="{{ $label }}">{{ $segmentLabel }}</p>
@@ -210,7 +212,7 @@
                 </div>
                 <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                     <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($count) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($leads) }}</span></span>
-                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} leads (FSD and CRD)">{{ $pct($leads ? $count / $leads : null) }}</span>
+                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} tracker leads (FSD and CRD)">{{ $pct($leads ? $count / $leads : null) }}</span>
                 </p>
 
                 {{-- Progress toward the goal: full bar = goal reached --}}

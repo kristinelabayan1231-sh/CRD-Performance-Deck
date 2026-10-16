@@ -4,6 +4,9 @@
 
 {{-- One line on a laptop screen and wider: search and filters, then dates and columns on the right; wraps on narrower screens. --}}
 <form method="GET" action="{{ route('segmentation.index') }}" class="flex flex-wrap items-center gap-2">
+    @if ($filters['repeat'] ?? null)
+        <input type="hidden" name="repeat" value="{{ $filters['repeat'] }}">
+    @endif
     {{-- Search: name, contact # or order #, across every lead day (Enter to search) --}}
     <label class="relative min-w-36 flex-1" title="Search leads">
         <span class="sr-only">Search leads</span>

@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -890,6 +891,24 @@ class CustomerDatabase
     public function handledByCra(?string $team, ?string $seller): bool
     {
         return $team === LogisticsOrder::TEAM_CRD || ($seller !== null && $this->isCraSeller($seller));
+    }
+
+    /**
+     * Whether the customer (all their merged numbers) had a CRA-handled order before $before: a CRD delivery,
+     * a POS order (not canceled or deleted) sold by a CRA or CRD team account, or one found before the
+     * first covered day. Tells a CRD Lead from an FSD Lead.
+     */
+    public function hasCraOrderBefore(string $phoneKey, CarbonInterface $before): bool
+    {
+        $primary = CustomerLink::where('phone_key', $phoneKey)->value('primary_phone_key') ?? $phoneKey;
+        $numbers = [$primary, ...CustomerLink::where('primary_phone_key', $primary)->pluck('phone_key')->all()];
+        $sellers = array_values(array_unique([...$this->craAccounts()->keys()->all(), ...$this->crdAccounts()]));
+
+        return LogisticsOrder::whereIn('phone_key', $numbers)->where('team', LogisticsOrder::TEAM_CRD)
+            ->whereDate('delivered_date', '<', $before->toDateString())->exists()
+            || ($sellers && PancakeOrder::whereIn('phone_key', $numbers)->whereIn('seller_name', $sellers)->counted()
+                ->where('ordered_at', '<', $before->copy()->utc()->toDateTimeString())->exists())
+            || CustomerHistory::whereIn('phone_key', $numbers)->where('prior_cra_orders', '>', 0)->exists();
     }
 
     /**

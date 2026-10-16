@@ -132,6 +132,27 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame(1, $response->viewData('segmentation')['leads']);
     }
 
+    public function test_dashboard_retained_and_repeat_count_tracker_repeat_purchases_on_the_day_bought(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 09:00', 'Asia/Manila'));
+        // A September lead bought today: counts in October, not under its lead day.
+        $this->lead($this->alice, '2026-09-20', ['lead_type' => Lead::TYPE_CRD, 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-16']);
+        $this->lead($this->bob, '2026-10-05', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-10']);
+        $this->lead($this->bob, '2026-10-06', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-09-30']); // bought in September
+        $this->lead($this->alice, '2026-10-07', ['repeat_purchase' => 'no']);
+        // The same customer twice on October lead days: one lead.
+        $this->lead($this->alice, '2026-10-08', ['phone_number' => '9179999999']);
+        $this->lead($this->bob, '2026-10-09', ['phone_number' => '9179999999']);
+
+        $response = $this->actingAs($this->owner)->get('/dashboard')->assertOk()
+            ->assertSee(route('segmentation.index', ['month' => '2026-10', 'type' => Lead::TYPE_CRD, 'repeat' => 'yes']));
+        $this->assertSame(['leads' => 4, 'retained' => 1, 'repeat' => 1], array_diff_key($response->viewData('customers'), ['goals' => 0]));
+
+        // A CRA: only their own leads.
+        $mine = $this->actingAs($this->alice)->get('/dashboard')->viewData('customers');
+        $this->assertSame([2, 0, 1], [$mine['leads'], $mine['retained'], $mine['repeat']]);
+    }
+
     public function test_users_without_segmentation_access_see_no_card(): void
     {
         $plain = User::create(['email' => 'plain@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);

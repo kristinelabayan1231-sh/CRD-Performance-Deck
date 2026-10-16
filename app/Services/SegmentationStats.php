@@ -37,6 +37,27 @@ class SegmentationStats
             chartFrom: $days === 1 ? $from->subDays(6) : null);
     }
 
+    /**
+     * The dashboard's Retained and Repeat tiles, from the Segmentation Tracker, one per customer (contact number):
+     * Retained = FSD Leads and Repeat = CRD Leads with Repeat Purchase = Yes bought in $from–$to (the day it
+     * was set to Yes, whatever the lead day). Out of the leads: the customers with a lead on lead days $leadFrom–$leadTo.
+     *
+     * @param  Collection<int, User>  $cras  CRAs included (a CRA sees only themselves)
+     * @return array{leads: int, retained: int, repeat: int}
+     */
+    public function customers(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $leadFrom, CarbonImmutable $leadTo): array
+    {
+        $ids = $cras->pluck('id');
+        $bought = fn (string $type) => Lead::whereIn('assigned_to', $ids)->where('lead_type', $type)
+            ->repeatPurchasedBetween($from, $to)->distinct()->count('phone_number');
+
+        return [
+            'leads' => $this->scope($ids, $leadFrom, $leadTo)->distinct()->count('phone_number'),
+            'retained' => $bought(Lead::TYPE_FSD),
+            'repeat' => $bought(Lead::TYPE_CRD),
+        ];
+    }
+
     private function period(
         string $name, CarbonImmutable $from, CarbonImmutable $to,
         CarbonImmutable $prevFrom, CarbonImmutable $prevTo,
