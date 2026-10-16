@@ -61,7 +61,9 @@ class ProductReportTest extends TestCase
             ->assertOk()
             ->assertSeeTextInOrder(['Total qty', 'Total sales', 'Product cost', 'Actual Del%', 'Actual RTS%', 'Running Del%'])
             ->assertSeeTextInOrder(['Sinuxyl', '12', '₱3,600', '₱420', '80%', '20%', '67%'])
-            ->assertSeeTextInOrder(['CRD Lhei', '9', '₱2,700', '₱315', 'CRD July Ann', '3', '₱900', '₱105', '100%', '0%', '100%'])
+            // No per-CRA breakdown — that's CRA's Performance.
+            ->assertDontSeeText('₱2,700')
+            ->assertDontSee('data-sellers', false)
             ->assertDontSee('₱9,');
     }
 

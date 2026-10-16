@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\PancakeOrder;
+use App\Models\PancakePage;
 use App\Models\PcReportRow;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PancakeSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Mockery;
 use Tests\TestCase;
 
 class PcReportTest extends TestCase
@@ -111,6 +115,8 @@ class PcReportTest extends TestCase
         $show('2026-10-14')
             ->assertViewHas('sets', fn ($sets) => collect($sets[$this->regina->id])->firstWhere('page', 'Clear Sight Hub') === [
                 'page' => 'Clear Sight Hub', 'category' => '', 'tagging' => null, 'from' => '', 'to' => '', 'inquiries' => 12, 'engagements' => 40,
+                // Regina has no Pancake account, so no orders.
+                'orders' => null, 'orders_rows' => 1,
             ])
             ->assertSee('data-pc-total="inquiries">17<', false)
             ->assertSee('data-pc-total="engagements">40<', false);
@@ -161,5 +167,111 @@ class PcReportTest extends TestCase
         $this->actingAs($supervisor)->deleteJson(route('pc-report.merge'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub'])->assertOk();
 
         $show()->assertSee('PC - Clear Sight Hub')->assertDontSee('PC - Clear Sight Hub - DORMANT');
+    }
+
+    private int $orderSeq = 0;
+
+    private function pageOrder(string $seller, ?string $page, string $day, int $status = 3, bool $nonCrd = false, ?string $pageId = null): void
+    {
+        PancakeOrder::create([
+            'pancake_order_id' => (string) (5000 + ++$this->orderSeq), 'ordered_on' => $day, 'seller_name' => $seller,
+            'status' => $status, 'total_price' => 500, 'page_name' => $page, 'page_id' => $pageId, 'non_crd' => $nonCrd,
+        ]);
+    }
+
+    public function test_number_of_orders_counts_the_cras_orders_on_each_page_for_the_day_picked(): void
+    {
+        $this->regina->update(['pancake_name' => 'CRD Regina']);
+        $this->julyAnn->update(['pancake_name' => 'CRD July Ann']);
+
+        // Regina, Oct 1: two on Nasal Spray (page name in other case/spacing), one on Nasal Care.
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'sinuxyl  nasal spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01');
+        // Not counted: canceled, deleted, no tracked product, another day, another CRA, another product's page.
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', status: 6);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', status: 7);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', nonCrd: true);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-02');
+        $this->pageOrder('CRD JULY ANN', 'Sinuxyl Nasal Spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Clear Sight Hub', '2026-10-01');
+
+        $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))
+            ->assertOk()
+            ->assertDontSee('saved before their Pancake page')
+            ->getContent();
+
+        $this->assertSame(['2', '1', '0'], $this->ordersCells($html));
+        $this->assertStringContainsString('data-pc-total="orders">3<', $html);
+    }
+
+    public function test_orders_match_their_page_by_pancake_page_id_even_when_the_name_differs(): void
+    {
+        $this->regina->update(['pancake_name' => 'CRD Regina']);
+        PancakePage::create(['name' => 'Sinuxyl Nasal Care', 'page_id' => '464', 'access_token' => 'token-1']);
+        PancakePage::create(['name' => 'Sinuxyl Official Page', 'page_id' => '116', 'access_token' => 'token-2']);
+
+        // Pancake names them differently on the order ("… PH", a capital I for the l).
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care PH', '2026-10-01', pageId: '464');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care PH', '2026-10-01', pageId: '464');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl OfficiaI Page', '2026-10-01', pageId: '116');
+        // Same name as a page Settings has an ID for, but another page's ID: not that page's order.
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01', pageId: '999');
+
+        $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))
+            ->assertOk()->getContent();
+
+        // Nasal Spray (no ID in Settings, nothing ordered), Nasal Care, Official Page.
+        $this->assertSame(['0', '2', '1'], $this->ordersCells($html));
+    }
+
+    public function test_a_split_pages_dormant_and_active_rows_share_one_number_of_orders(): void
+    {
+        $this->regina->update(['pancake_name' => 'CRD Regina']);
+        foreach (PcReportRow::SPLIT as $category => [$from, $to]) {
+            PcReportRow::create(['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Spray', 'category' => $category, 'from_month' => $from.'-01', 'to_month' => $to ? $to.'-01' : null]);
+        }
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
+
+        $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))
+            ->assertOk()->getContent();
+
+        // Dormant + Active (one cell, both rows), Nasal Care, Official Page; the TOTAL counts the page once.
+        $this->assertSame(['2', '0', '0'], $this->ordersCells($html));
+        $this->assertStringContainsString('rowspan="2"', $html);
+        $this->assertStringContainsString('data-pc-total="orders">2<', $html);
+    }
+
+    public function test_a_cra_without_a_pancake_account_shows_no_orders(): void
+    {
+        $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['date' => '2026-10-01']))->assertOk()->getContent();
+
+        $this->assertSame([], array_filter($this->ordersCells($html), fn (string $cell) => $cell !== '—'));
+    }
+
+    public function test_a_day_with_orders_saved_before_their_page_is_fetched_again_once(): void
+    {
+        $this->regina->update(['pancake_name' => 'CRD Regina']);
+        $this->pageOrder('CRD REGINA', null, '2026-10-01');
+
+        $pancake = Mockery::mock(PancakeSync::class);
+        $pancake->shouldReceive('recheckIssuesLater');
+        $pancake->shouldReceive('syncLater')->once()->withArgs(fn (CarbonImmutable $day, bool $force) => $day->toDateString() === '2026-10-01' && $force);
+        $this->app->instance(PancakeSync::class, $pancake);
+
+        $this->actingAs($this->regina)->get(route('pc-report.index', ['date' => '2026-10-01']))
+            ->assertOk()->assertSee('saved before their Pancake page');
+        $this->actingAs($this->regina)->get(route('pc-report.index', ['date' => '2026-10-01']))->assertOk();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ordersCells(string $html): array
+    {
+        preg_match_all('/data-pc-orders>(.*?)<\/td>/s', $html, $matches);
+
+        return array_map(fn (string $cell) => trim(strip_tags($cell)), $matches[1]);
     }
 }

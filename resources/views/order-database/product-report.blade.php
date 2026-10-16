@@ -11,7 +11,7 @@
 
         <x-panel :title="$tabTitle" icon="table" title-id="product-report-title" body-class="p-0" :tinted="false">
             <x-slot:badges>
-                <span class="text-xs text-muted">Orders by status, created {{ $label }}. Total qty counts every piece; an order with several products splits its sale between them. Click a product for its CRAs.</span>
+                <span class="text-xs text-muted">Orders by status, created {{ $label }}. Total qty counts every piece; an order with several products splits its sale between them.</span>
             </x-slot:badges>
 
             @if ($rows->isEmpty())
@@ -34,26 +34,12 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach ($rows as $index => $row)
+                            @foreach ($rows as $row)
                                 <tr class="border-t border-line">
-                                    <th scope="row" class="{{ $sticky }} bg-white px-4 py-2.5 text-left">
-                                        <button type="button" aria-expanded="{{ $open ? 'true' : 'false' }}" aria-controls="sellers-{{ $index }}"
-                                                onclick="const open = this.getAttribute('aria-expanded') !== 'true'; this.setAttribute('aria-expanded', open); document.querySelectorAll('[data-sellers=&quot;{{ $index }}&quot;]').forEach((row) => row.hidden = ! open)"
-                                                class="group inline-flex items-center gap-1.5 text-left font-semibold text-brand-600 hover:underline">
-                                            <svg class="size-3.5 shrink-0 transition group-aria-expanded:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
-                                            {{ $row['product'] }}
-                                        </button>
-                                    </th>
+                                    <th scope="row" class="{{ $sticky }} bg-white px-4 py-2.5 text-left font-semibold">{{ $row['product'] }}</th>
                                     @include('order-database._status-cells', ['counts' => $row['statuses']])
                                     @include('order-database._product-cells', ['row' => $row, 'cell' => 'py-2.5'])
                                 </tr>
-                                @foreach ($row['sellers'] as $seller)
-                                    <tr data-sellers="{{ $index }}" @if ($loop->first) id="sellers-{{ $index }}" @endif @if (! $open) hidden @endif class="border-t border-brand-100 bg-brand-50/60 text-[13px]">
-                                        <th scope="row" class="{{ $sticky }} bg-brand-50 py-2 pr-4 pl-10 text-left font-medium">{{ $seller['name'] }}</th>
-                                        @include('order-database._status-cells', ['counts' => $seller['statuses']])
-                                        @include('order-database._product-cells', ['row' => $seller, 'cell' => 'py-2'])
-                                    </tr>
-                                @endforeach
                             @endforeach
                         </tbody>
                         <tfoot>
