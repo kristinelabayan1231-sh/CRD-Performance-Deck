@@ -92,8 +92,8 @@ class PancakeSync
         // The header's flagged orders, looked up one by one (seconds), so a fixed tag clears without waiting on the list below.
         if ($day->isSameDay(WorkingDate::realToday())) {
             rescue(fn () => $this->recheckIssues());
-            // Today's CRA sales to customers not in the Segmentation Tracker become catered leads (Repeat Purchase = Yes).
-            rescue(fn () => app(PosLeads::class)->addMissing($day));
+            // Today's CRA sales show in the Segmentation Tracker as repeat purchases (a new catered lead when not in it).
+            rescue(fn () => app(PosLeads::class)->record($day));
         }
 
         // Older orders whose CRD tag or status changed on this day (tags are often added later).

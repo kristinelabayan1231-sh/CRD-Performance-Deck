@@ -32,8 +32,8 @@ class Lead extends Model
     public const POS_PREFIX = 'POS-';
 
     /**
-     * Repeat Purchase set to Yes dates the purchase (today, or the working date) unless a date was given;
-     * anything else clears it.
+     * Repeat Purchase set to Yes dates the purchase unless a date was given: the real date, not the working
+     * date (a September lead bought on Oct 16 counts on Oct 16). Anything else clears it.
      */
     protected static function booted(): void
     {
@@ -42,7 +42,7 @@ class Lead extends Model
                 return;
             }
 
-            $lead->repeat_purchase_on = $lead->repeat_purchase === 'yes' ? ($lead->repeat_purchase_on ?? self::today()) : null;
+            $lead->repeat_purchase_on = $lead->repeat_purchase === 'yes' ? ($lead->repeat_purchase_on ?? WorkingDate::realToday()) : null;
         });
     }
 

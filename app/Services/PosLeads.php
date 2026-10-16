@@ -10,9 +10,13 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Customers a CRA sold to in Pancake POS who aren't in the Segmentation Tracker: each becomes a catered
- * lead on the order day for that CRA, with Repeat Purchase = Yes, so the dashboard's Retained and Repeat
- * tiles count them. CRD Lead when the customer had an earlier CRA-handled order, else FSD Lead.
+ * A CRA's Pancake POS sale shows in the Segmentation Tracker as a repeat purchase on the order day, so the
+ * dashboard's Retained and Repeat tiles count it:
+ *
+ * - Customer already in the tracker: their latest lead (by lead day, up to the order day) gets Repeat
+ *   Purchase = Yes and moves to Catered, unless it is Yes already.
+ * - Customer not in the tracker: a catered lead for that CRA on the order day, with Repeat Purchase = Yes;
+ *   CRD Lead when they had an earlier CRA-handled order, else FSD Lead.
  *
  * Only orders sold from a CRA's own Pancake account (User Access), with a product from the Product
  * Consumption list, not canceled or deleted.
@@ -22,18 +26,18 @@ class PosLeads
     public function __construct(private CustomerDatabase $customers) {}
 
     /**
-     * Add the day's missing POS customers as leads.
+     * Record the day's CRA sales in the tracker.
      *
-     * @return int leads added
+     * @return array{added: int, marked: int}
      */
-    public function addMissing(CarbonImmutable $day): int
+    public function record(CarbonImmutable $day): array
     {
         /** @var Collection<string, User> $cras */
         $cras = LeadGenerator::cras()->filter(fn (User $cra) => $cra->pancake_name)
             ->keyBy(fn (User $cra) => PancakeEngagement::staffKey($cra->pancake_name));
 
         if ($cras->isEmpty()) {
-            return 0;
+            return ['added' => 0, 'marked' => 0];
         }
 
         $orders = PancakeOrder::whereDate('ordered_on', $day)->whereIn('seller_name', $cras->keys())
@@ -42,16 +46,48 @@ class PosLeads
             ->get()
             ->unique('phone_key');
 
-        $known = $this->trackedPhones($orders->pluck('phone_key')->all());
+        $tracked = $this->trackedLeads($orders->pluck('phone_key')->all());
         $catalog = new ProductCatalog;
-        $added = 0;
+        $result = ['added' => 0, 'marked' => 0];
 
-        foreach ($orders->reject(fn (PancakeOrder $order) => isset($known[$order->phone_key])) as $order) {
-            $this->addLead($order, $cras[$order->seller_name], $catalog);
-            $added++;
+        foreach ($orders as $order) {
+            $leads = $tracked[$order->phone_key] ?? null;
+
+            if ($leads === null) {
+                $this->addLead($order, $cras[$order->seller_name], $catalog);
+                $result['added']++;
+            } elseif ($this->markBought($leads, $order)) {
+                $result['marked']++;
+            }
         }
 
-        return $added;
+        return $result;
+    }
+
+    /**
+     * Repeat Purchase = Yes on the order day for the customer's latest lead up to that day (else their
+     * earliest later one); false when that lead is Yes already.
+     *
+     * @param  Collection<int, Lead>  $leads
+     */
+    private function markBought(Collection $leads, PancakeOrder $order): bool
+    {
+        $day = $order->ordered_on;
+        $lead = $leads->filter(fn (Lead $lead) => $lead->est_out_of_stock_date->lessThanOrEqualTo($day))->sortByDesc('est_out_of_stock_date')->first()
+            ?? $leads->sortBy('est_out_of_stock_date')->first();
+
+        if ($lead->repeat_purchase === 'yes') {
+            return false;
+        }
+
+        $lead->forceFill([
+            'repeat_purchase' => 'yes',
+            'repeat_purchase_on' => $day->toDateString(),
+            // Off the Pending list: the customer bought.
+            ...($lead->isProcessed() ? [] : ['processed_at' => now()]),
+        ])->save();
+
+        return true;
     }
 
     private function addLead(PancakeOrder $order, User $cra, ProductCatalog $catalog): void
@@ -89,19 +125,18 @@ class PosLeads
     }
 
     /**
-     * The numbers (last 10 digits) among $phoneKeys that already have a lead, on any lead day.
+     * The leads of the numbers (last 10 digits) among $phoneKeys that are in the tracker, on any lead day.
      *
      * @param  list<string>  $phoneKeys
-     * @return array<string, true>
+     * @return Collection<string, Collection<int, Lead>>
      */
-    private function trackedPhones(array $phoneKeys): array
+    private function trackedLeads(array $phoneKeys): Collection
     {
         // Lead numbers are stored as entered: 9…, 09…, 639… or +639….
         $formats = collect($phoneKeys)->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key]);
 
         return $formats->chunk(1000)
-            ->flatMap(fn (Collection $chunk) => Lead::whereIn('phone_number', $chunk->values()->all())->pluck('phone_number'))
-            ->mapWithKeys(fn (string $phone) => [LeadGenerator::normalizePhone($phone) => true])
-            ->all();
+            ->flatMap(fn (Collection $chunk) => Lead::whereIn('phone_number', $chunk->values()->all())->get())
+            ->groupBy(fn (Lead $lead) => LeadGenerator::normalizePhone($lead->phone_number));
     }
 }

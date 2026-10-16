@@ -20,6 +20,7 @@ use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
+use App\Http\Controllers\RepeatPurchaseController;
 use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SalesGoalController;
@@ -72,6 +73,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/summary', [SegmentationController::class, 'summary'])->name('summary');
         Route::get('/weekly', [WeeklySegmentationController::class, 'index'])->name('weekly');
         Route::get('/overview', [SegmentationSummaryController::class, 'index'])->name('overview');
+        Route::get('/repeat-purchases', [RepeatPurchaseController::class, 'index'])->name('repeat-purchases');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');

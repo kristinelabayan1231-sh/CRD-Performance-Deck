@@ -40,22 +40,38 @@ class SegmentationStats
     /**
      * The dashboard's Retained and Repeat tiles, from the Segmentation Tracker, one per customer (contact number):
      * Retained = FSD Leads and Repeat = CRD Leads with Repeat Purchase = Yes bought in $from–$to (the day it
-     * was set to Yes, whatever the lead day). Out of the leads: the customers with a lead on lead days $leadFrom–$leadTo.
+     * was set to Yes, whatever the lead day). Out of the leads: the tracker's Leads on lead days $leadFrom–$leadTo, as the
+     * Segmentation panel counts them.
      *
      * @param  Collection<int, User>  $cras  CRAs included (a CRA sees only themselves)
      * @return array{leads: int, retained: int, repeat: int}
      */
     public function customers(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $leadFrom, CarbonImmutable $leadTo): array
     {
-        $ids = $cras->pluck('id');
-        $bought = fn (string $type) => Lead::whereIn('assigned_to', $ids)->where('lead_type', $type)
-            ->repeatPurchasedBetween($from, $to)->distinct()->count('phone_number');
-
         return [
-            'leads' => $this->scope($ids, $leadFrom, $leadTo)->distinct()->count('phone_number'),
-            'retained' => $bought(Lead::TYPE_FSD),
-            'repeat' => $bought(Lead::TYPE_CRD),
+            'leads' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->count(),
+            'retained' => $this->repeatPurchases($cras, 'retained', $from, $to)->count(),
+            'repeat' => $this->repeatPurchases($cras, 'repeat', $from, $to)->count(),
         ];
+    }
+
+    /**
+     * The customers behind a Retained ('retained': FSD Leads) or Repeat ('repeat': CRD Leads) tile: leads with Repeat
+     * Purchase = Yes bought in $from–$to, one per contact number (their first purchase in the dates), first bought first.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return Collection<int, Lead>
+     */
+    public function repeatPurchases(Collection $cras, string $segment, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        return Lead::whereIn('assigned_to', $cras->pluck('id'))
+            ->where('lead_type', $segment === 'retained' ? Lead::TYPE_FSD : Lead::TYPE_CRD)
+            ->repeatPurchasedBetween($from, $to)
+            ->with('assignee')
+            ->orderBy('repeat_purchase_on')->orderBy('customer_name')->orderBy('id')
+            ->get()
+            ->unique(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))
+            ->values();
     }
 
     private function period(
