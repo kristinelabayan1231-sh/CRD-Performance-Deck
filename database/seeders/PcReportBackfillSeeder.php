@@ -9,10 +9,11 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 
 /**
- * PC Report: Total Inquiries and Total Engagement for Oct 1–15, 2026, from the CRAs' Google Sheets
- * (data/pc-report-october-2026.json). Safe to run again: only days still empty are filled, so a
- * number typed in the app is never replaced. A page with Dormant / Active numbers gets its split
- * rows (usual months) when the CRA doesn't have them yet. CRAs are matched by display name.
+ * PC Report: Total Inquiries and Total Engagement (data/pc-report-october-2026.json) and the Creation/Update Time
+ * (data/pc-report-october-2026-times.json) for Oct 1–15, 2026, from the CRAs' Google Sheets. Safe to run again:
+ * only what is still empty is filled, so numbers typed and months picked in the app are never replaced. A page with
+ * Dormant / Active rows gets its split rows (usual months) when the CRA doesn't have them yet. CRAs are matched by
+ * display name. A sheet time naming separate months ("May 2025, Aug 2026") is saved as its first to last month.
  *
  * php artisan db:seed --class=PcReportBackfillSeeder --force
  */
@@ -20,38 +21,70 @@ class PcReportBackfillSeeder extends Seeder
 {
     public const DATA = __DIR__.'/data/pc-report-october-2026.json';
 
+    public const TIMES = __DIR__.'/data/pc-report-october-2026-times.json';
+
     public function run(): void
     {
         $rows = collect(json_decode(file_get_contents(self::DATA), true));
-        $users = User::whereIn('display_name', $rows->pluck('cra')->unique())->pluck('id', 'display_name');
+        $times = collect(json_decode(file_get_contents(self::TIMES), true));
+        $cras = $rows->pluck('cra')->merge($times->pluck('cra'))->unique();
+        $users = User::whereIn('display_name', $cras)->pluck('id', 'display_name');
 
-        $missing = $rows->pluck('cra')->unique()->diff($users->keys());
+        $missing = $cras->diff($users->keys());
         if ($missing->isNotEmpty()) {
             $this->command?->warn('No user for: '.$missing->implode(', ').' (their rows are left out).');
         }
 
         $rows = $rows->filter(fn (array $row) => $users->has($row['cra']));
-        $this->splitRows($rows, $users);
+        $times = $times->filter(fn (array $row) => $users->has($row['cra']));
+        $this->splitRows($rows->merge($times), $users);
 
-        $existing = PcReportEntry::whereIn('user_id', $users->values())->whereDate('date', '>=', $rows->min('date'))->whereDate('date', '<=', $rows->max('date'))->get()
-            ->map(fn (PcReportEntry $entry) => $entry->user_id.'|'.$entry->page.'|'.$entry->category.'|'.$entry->date->toDateString())
-            ->flip();
+        $existing = $this->entries($users, $rows->merge($times));
 
         $created = 0;
         foreach ($rows as $row) {
-            $userId = $users[$row['cra']];
-            if ($existing->has($userId.'|'.$row['page'].'|'.$row['category'].'|'.$row['date'])) {
+            $key = $users[$row['cra']].'|'.$row['page'].'|'.$row['category'].'|'.$row['date'];
+            if ($existing->has($key)) {
                 continue;
             }
 
-            PcReportEntry::create([
-                'user_id' => $userId, 'page' => $row['page'], 'category' => $row['category'], 'date' => $row['date'],
+            $existing[$key] = PcReportEntry::create([
+                'user_id' => $users[$row['cra']], 'page' => $row['page'], 'category' => $row['category'], 'date' => $row['date'],
                 'inquiries' => $row['inquiries'], 'engagements' => $row['engagements'],
             ]);
             $created++;
         }
 
-        $this->command?->info("PC Report: {$created} days filled, ".($rows->count() - $created).' already had numbers.');
+        $timed = 0;
+        foreach ($times as $row) {
+            $key = $users[$row['cra']].'|'.$row['page'].'|'.$row['category'].'|'.$row['date'];
+            $entry = $existing[$key] ?? new PcReportEntry([
+                'user_id' => $users[$row['cra']], 'page' => $row['page'], 'category' => $row['category'], 'date' => $row['date'],
+            ]);
+            if ($entry->from_month !== null) {
+                continue;
+            }
+
+            $entry->fill(['from_month' => $row['from'].'-01', 'to_month' => $row['to'].'-01'])->save();
+            $existing[$key] = $entry;
+            $timed++;
+        }
+
+        $this->command?->info("PC Report: {$created} days of numbers filled, ".($rows->count() - $created)." already had them; {$timed} Creation/Update Times set, ".($times->count() - $timed).' already set.');
+    }
+
+    /**
+     * The CRAs' entries already saved for the backfilled days, keyed "user|page|category|date".
+     *
+     * @param  Collection<string, int>  $users
+     * @param  Collection<int, array{date: string}>  $rows
+     * @return Collection<string, PcReportEntry>
+     */
+    private function entries(Collection $users, Collection $rows): Collection
+    {
+        return PcReportEntry::whereIn('user_id', $users->values())
+            ->whereDate('date', '>=', $rows->min('date'))->whereDate('date', '<=', $rows->max('date'))->get()
+            ->keyBy(fn (PcReportEntry $entry) => $entry->user_id.'|'.$entry->page.'|'.$entry->category.'|'.$entry->date->toDateString());
     }
 
     /**

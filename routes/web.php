@@ -7,6 +7,7 @@ use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
+use App\Http\Controllers\CvrTrackerController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\HighValueCustomerController;
@@ -111,6 +112,12 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/split', [PcReportController::class, 'split'])->middleware('can:pc_report.manage')->name('split');
         Route::delete('/split', [PcReportController::class, 'merge'])->middleware('can:pc_report.manage')->name('merge');
         Route::put('/entries', [PcReportController::class, 'entry'])->name('entries.update');
+    });
+
+    Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
+        Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
+        Route::put('/orders/{orderId}', [CvrTrackerController::class, 'updateOrder'])->name('orders.update');
+        Route::put('/days', [CvrTrackerController::class, 'updateDay'])->name('days.update');
     });
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.

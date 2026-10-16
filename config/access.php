@@ -61,6 +61,10 @@ $modules = [
         'pc_report.view_all' => 'View every CRA\'s PC Report sets',
         'pc_report.manage' => 'Set each CRA\'s Creation/Update Time per page',
     ],
+    'CVR Tracker' => [
+        'cvr_tracker.view' => 'View and fill in own CVR Tracker (each day\'s reorders, upsell, type of order, point of contact and unconfirmed)',
+        'cvr_tracker.view_all' => 'View and fill in every CRA\'s CVR Tracker',
+    ],
     'Product Performance' => [
         'product_performance.view' => 'View Product Performance: every CRD account\'s sales, delivered, RTS and cancelled orders per product, with trends and insights',
     ],

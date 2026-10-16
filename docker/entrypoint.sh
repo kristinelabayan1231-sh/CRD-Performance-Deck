@@ -22,8 +22,9 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-# ONE-TIME: PC Report Total Inquiries / Total Engagement for Oct 1–15 from the CRAs' sheets. Fills only empty
-# days, so running again is harmless; a failure doesn't stop the app. Remove once the deploy has run it.
+# ONE-TIME: PC Report Total Inquiries / Total Engagement and Creation/Update Time for Oct 1–15 from the CRAs' sheets.
+# Fills only what is empty, so running again is harmless; a failure doesn't stop the app. Remove once the deploy has
+# run it (left in, a time a Supervisor clears on Oct 1–15 would come back on the next deploy).
 php artisan db:seed --class=PcReportBackfillSeeder --force || echo "WARNING: PcReportBackfillSeeder failed" >&2
 
 # Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php).
