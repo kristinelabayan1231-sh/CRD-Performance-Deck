@@ -328,7 +328,8 @@ class LeadGenerator
      */
     public function assign(CarbonImmutable $date): int
     {
-        $cras = self::cras();
+        // Oldest account first, not the display order: ties go to the earliest CRA, as they always have.
+        $cras = self::cras()->sortBy('id')->values();
 
         if ($cras->isEmpty()) {
             return 0;
@@ -376,7 +377,7 @@ class LeadGenerator
     }
 
     /**
-     * Active users holding the CRA role, in a stable order.
+     * Active users holding the CRA role, in the order every module lists them (User::scopeInCraOrder()).
      *
      * @return Collection<int, User>
      */
@@ -384,7 +385,7 @@ class LeadGenerator
     {
         return User::whereHas('role', fn ($q) => $q->where('slug', Role::CRA))
             ->where('is_active', true)
-            ->orderBy('id')
+            ->inCraOrder()
             ->get();
     }
 

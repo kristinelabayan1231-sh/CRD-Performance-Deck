@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PancakeEngagement;
 use App\Models\Product;
+use App\Models\User;
 use App\Services\CraPerformance;
 use App\Services\ProductReport;
 use App\Support\OrderPeriod;
@@ -76,8 +77,12 @@ class OrderDatabaseController extends Controller
         $period = $filters['period'] ?? 'month';
         [$from, $to] = OrderPeriod::resolve($period, $filters, $today);
 
-        // Staff key => the name as entered in Settings; a CRA without "every CRA" sees only their own account.
-        $accounts = collect(PancakeAccounts::crd())->mapWithKeys(fn (string $name) => [PancakeEngagement::staffKey($name) => $name]);
+        // Staff key => the name as entered in Settings, a CRA's account in the CRA order (User::scopeInCraOrder()), then
+        // the other accounts as entered; a CRA without "every CRA" sees only their own account.
+        $craRank = PancakeAccounts::craUsers()->values()->mapWithKeys(fn (User $cra, int $rank) => [PancakeEngagement::staffKey($cra->pancake_name) => $rank]);
+        $accounts = collect(PancakeAccounts::crd())
+            ->mapWithKeys(fn (string $name) => [PancakeEngagement::staffKey($name) => $name])
+            ->sortBy(fn (string $name, string $key) => $craRank->get($key, PHP_INT_MAX), SORT_NUMERIC);
         $canViewAll = $user->can('order_database.view_all');
         $ownKey = $user->pancake_name ? PancakeEngagement::staffKey($user->pancake_name) : null;
         $seller = $canViewAll ? ($filters['seller'] ?? null) : null;

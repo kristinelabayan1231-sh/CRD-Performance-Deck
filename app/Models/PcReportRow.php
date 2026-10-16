@@ -7,8 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * PC Report: a CRA's page row with its Tagging and Creation/Update Time (the months its
- * conversations were created in). A split page has a DORMANT and an ACTIVE row instead.
+ * PC Report: a CRA's page row with its Tagging. A split page has a DORMANT and an ACTIVE row instead.
+ * The Creation/Update Time is set per day on PcReportEntry; from_month / to_month here are no longer read.
  */
 #[Fillable(['user_id', 'page', 'category', 'from_month', 'to_month', 'tagging'])]
 class PcReportRow extends Model

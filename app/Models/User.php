@@ -6,12 +6,13 @@ namespace App\Models;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-#[Fillable(['name', 'display_name', 'pancake_name', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
+#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -99,6 +100,25 @@ class User extends Authenticatable
     public function displayName(): string
     {
         return $this->display_name ?: ($this->name ?: $this->email);
+    }
+
+    /**
+     * The order every module lists CRAs in (users.cra_order: Regina, July Ann, Joanna Rose, Lhea, Rose-An);
+     * anyone without one comes after, oldest account first.
+     */
+    public function scopeInCraOrder(Builder $query): void
+    {
+        $query->orderByRaw('cra_order is null')->orderBy('cra_order')->orderBy('id');
+    }
+
+    /**
+     * The same order as scopeInCraOrder(), for sorting a collection.
+     *
+     * @return array{int, int}
+     */
+    public function craSortKey(): array
+    {
+        return [$this->cra_order ?? PHP_INT_MAX, $this->id];
     }
 
     public function initials(): string

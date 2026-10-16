@@ -88,7 +88,7 @@ class PancakeAccounts
         return User::whereHas('role', fn ($q) => $q->where('slug', Role::CRA))
             ->whereNotNull('pancake_name')
             ->orderByDesc('is_active')
-            ->orderBy('pancake_name')
+            ->inCraOrder()
             ->get();
     }
 
