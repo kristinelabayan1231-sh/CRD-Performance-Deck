@@ -84,7 +84,7 @@
         <p class="flex items-center gap-1.5 text-xs text-muted">
             @if ($canEdit)
                 <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16z"/></svg>
-                Click a Creation/Update Time to set the months each CRA's page row covers (by when the conversations were created). + splits a page into Dormant and Active.
+                Click a Creation/Update Time to set the months each CRA's page row covers on the day picked (by when the conversations were created); each day is set on its own. + splits a page into Dormant and Active.
             @else
                 <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
                 The Creation/Update Time is set by your CRA Supervisor.
@@ -192,7 +192,7 @@
                     <h2 id="pc-window-title" class="text-base font-bold">Creation/Update Time</h2>
                     <p class="text-sm text-muted" data-pc-window-for></p>
                 </div>
-                <p class="text-xs text-muted">The row covers the page's conversations created from the first month to the end of the last. Click the first month, then the last; the range can cross years.</p>
+                <p class="text-xs text-muted">For {{ $day->format('M j, Y') }} only: the row covers the page's conversations created from the first month to the end of the last. Click the first month, then the last; the range can cross years.</p>
 
                 <div class="flex items-center justify-between">
                     <button type="button" data-pc-year="-1" class="grid size-8 place-items-center rounded-lg border border-line hover:border-brand-400 hover:text-brand-600" aria-label="Previous year">‹</button>

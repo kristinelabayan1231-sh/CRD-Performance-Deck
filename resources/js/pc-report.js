@@ -89,7 +89,7 @@ export function initPcReport() {
         if (!button) return;
         button.disabled = true;
         try {
-            await send(dialog.dataset.splitUrl, button.hasAttribute('data-pc-split') ? 'POST' : 'DELETE', { cra: button.dataset.cra, page: button.dataset.page });
+            await send(dialog.dataset.splitUrl, button.hasAttribute('data-pc-split') ? 'POST' : 'DELETE', { cra: button.dataset.cra, page: button.dataset.page, date: root.dataset.date });
             window.location.reload();
         } catch {
             button.disabled = false;
@@ -147,10 +147,10 @@ export function initPcReport() {
         } else if (button.hasAttribute('data-pc-cancel')) {
             return dialog.close();
         } else if (button.hasAttribute('data-pc-save')) {
-            // Saved, then the page reloads with the new months.
+            // Saved for the day picked only, then the page reloads with the new months.
             const { craId: cra, page, category } = target.dataset;
             button.disabled = true;
-            send(dialog.dataset.url, 'PUT', { cra, page, category, from: from || null, to: from ? to || from : null })
+            send(dialog.dataset.url, 'PUT', { cra, page, category, date: root.dataset.date, from: from || null, to: from ? to || from : null })
                 .then(() => window.location.reload())
                 .catch(() => {
                     button.disabled = false;

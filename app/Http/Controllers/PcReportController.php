@@ -72,8 +72,9 @@ class PcReportController extends Controller
                     'page' => $page,
                     'category' => $category,
                     'tagging' => $row?->tagging,
-                    'from' => $row?->from_month?->format('Y-m') ?? '',
-                    'to' => $row?->to_month?->format('Y-m') ?? '',
+                    // Set per day: a day nobody set it for shows "Not set", whatever earlier days had.
+                    'from' => $entry?->from_month?->format('Y-m') ?? '',
+                    'to' => $entry?->to_month?->format('Y-m') ?? '',
                     'inquiries' => $entry?->inquiries,
                     'engagements' => $entry?->engagements,
                     'orders' => $category === PcReportRow::ACTIVE ? null : $pageOrders,
@@ -101,43 +102,57 @@ class PcReportController extends Controller
     }
 
     /**
-     * Save a row's Tagging (the CRA or anyone who sees every CRA) or its Creation/Update Time (CRA Supervisor).
+     * Save a row's Tagging (the CRA or anyone who sees every CRA), or its Creation/Update Time for one day (CRA
+     * Supervisor).
      */
     public function update(Request $request): JsonResponse
     {
+        $user = $request->user();
+        $setsTime = $request->hasAny(['from', 'to']);
+        abort_unless($setsTime ? $user->can('pc_report.manage') : ((int) $request->input('cra') === $user->id || $user->can('pc_report.view_all')), 403);
+
         $data = $request->validate([
             ...$this->rowRules(),
             'category' => ['present', 'nullable', Rule::in(array_keys(PcReportRow::SPLIT))],
             'tagging' => ['sometimes', 'nullable', 'string', 'max:50'],
             'from' => ['sometimes', 'nullable', 'date_format:Y-m'],
             'to' => ['sometimes', 'nullable', 'date_format:Y-m', 'after_or_equal:from'],
+            'date' => [Rule::requiredIf($setsTime), 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
         ]);
 
-        $user = $request->user();
-        $setsTime = $request->hasAny(['from', 'to']);
-        abort_unless($setsTime ? $user->can('pc_report.manage') : ((int) $data['cra'] === $user->id || $user->can('pc_report.view_all')), 403);
+        $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''];
 
-        $values = $setsTime
-            ? ['from_month' => isset($data['from']) ? $data['from'].'-01' : null, 'to_month' => isset($data['to']) ? $data['to'].'-01' : null]
-            : ['tagging' => isset($data['tagging']) ? strtoupper(trim($data['tagging'])) : null];
-
-        PcReportRow::updateOrCreate(['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''], $values);
+        if ($setsTime) {
+            $this->entryFor($key, $data['date'])->fill([
+                'from_month' => isset($data['from']) ? $data['from'].'-01' : null,
+                'to_month' => isset($data['to']) ? $data['to'].'-01' : null,
+            ])->save();
+        } else {
+            PcReportRow::updateOrCreate($key, ['tagging' => isset($data['tagging']) ? strtoupper(trim($data['tagging'])) : null]);
+        }
 
         return response()->json(['ok' => true]);
     }
 
     /**
-     * Split a CRA's page into a Dormant and an Active row with their usual Creation/Update Times.
+     * Split a CRA's page into a Dormant and an Active row; the day it's split on gets their usual
+     * Creation/Update Times (a day not set yet only), other days stay as they are.
      */
     public function split(Request $request): JsonResponse
     {
-        $data = $request->validate($this->rowRules());
+        $data = $request->validate([
+            ...$this->rowRules(),
+            'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
+        ]);
 
         foreach (PcReportRow::SPLIT as $category => [$from, $to]) {
-            PcReportRow::firstOrCreate(
-                ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $category],
-                ['from_month' => $from.'-01', 'to_month' => $to ? $to.'-01' : null],
-            );
+            $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $category];
+            PcReportRow::firstOrCreate($key);
+
+            $entry = $this->entryFor($key, $data['date']);
+            if ($entry->from_month === null) {
+                $entry->fill(['from_month' => $from.'-01', 'to_month' => $to ? $to.'-01' : null])->save();
+            }
         }
 
         return response()->json(['ok' => true]);
@@ -172,9 +187,7 @@ class PcReportController extends Controller
         abort_unless((int) $data['cra'] === $user->id || $user->can('pc_report.view_all'), 403);
 
         $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''];
-        PcReportEntry::where($key)->whereDate('date', $data['date'])->firstOrNew([], [...$key, 'date' => $data['date']])
-            ->fill(Arr::only($data, ['inquiries', 'engagements']))
-            ->save();
+        $this->entryFor($key, $data['date'])->fill(Arr::only($data, ['inquiries', 'engagements']))->save();
 
         return response()->json(['ok' => true]);
     }
@@ -224,6 +237,16 @@ class PcReportController extends Controller
             ->countBy(fn (array $order) => $order['seller'].'|'.$order['page']);
 
         return ['counts' => $counts, 'missingPage' => $missingPage];
+    }
+
+    /**
+     * A row's saved day, or a new one for it.
+     *
+     * @param  array{user_id: int|string, page: string, category: string}  $key
+     */
+    private function entryFor(array $key, string $date): PcReportEntry
+    {
+        return PcReportEntry::where($key)->whereDate('date', $date)->firstOrNew([], [...$key, 'date' => $date]);
     }
 
     /**

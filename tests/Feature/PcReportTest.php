@@ -4,12 +4,16 @@ namespace Tests\Feature;
 
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
+use App\Models\PcReportEntry;
 use App\Models\PcReportRow;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\PancakeSync;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Mockery;
 use Tests\TestCase;
 
@@ -84,17 +88,30 @@ class PcReportTest extends TestCase
         $this->actingAs($this->user('Plain', Role::USER))->get(route('pc-report.index'))->assertForbidden();
     }
 
-    public function test_supervisor_saves_the_creation_update_time(): void
+    public function test_supervisor_saves_the_creation_update_time_for_the_day_picked_only(): void
     {
+        CarbonImmutable::setTestNow('2026-10-16 06:00:00');
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $show = fn (string $date) => $this->actingAs($supervisor)->get(route('pc-report.index', ['product' => 'clearsight', 'cra' => $this->regina->id, 'date' => $date]));
+        $set = fn (string $date, ?string $from, ?string $to) => $this->actingAs($supervisor)->putJson(route('pc-report.rows.update'), [
+            'cra' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => null, 'date' => $date, 'from' => $from, 'to' => $to,
+        ]);
 
-        $this->actingAs($supervisor)->putJson(route('pc-report.rows.update'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => null, 'from' => '2025-05', 'to' => '2025-06'])
-            ->assertOk();
+        $set('2026-10-15', '2025-05', '2025-06')->assertOk();
+        $set('2026-10-14', '2026-01', '2026-03')->assertOk();
 
-        $this->assertDatabaseHas('pc_report_rows', ['user_id' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => '', 'from_month' => '2025-05-01 00:00:00']);
-        $this->actingAs($supervisor)->get(route('pc-report.index', ['product' => 'clearsight', 'cra' => $this->regina->id]))
-            ->assertOk()
-            ->assertSee('May – Jun 2025');
+        $this->assertDatabaseHas('pc_report_entries', ['user_id' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => '', 'from_month' => '2025-05-01 00:00:00']);
+        $show('2026-10-15')->assertOk()->assertSee('May – Jun 2025')->assertDontSee('Jan – Mar 2026');
+        $show('2026-10-14')->assertOk()->assertSee('Jan – Mar 2026')->assertDontSee('May – Jun 2025');
+        // A later day isn't carried over from the days before it.
+        $show('2026-10-16')->assertOk()->assertDontSee('May – Jun 2025')->assertDontSee('Jan – Mar 2026')->assertSee('Not set');
+
+        // Clearing a day leaves it Not set; the inquiries typed that day stay.
+        $this->actingAs($supervisor)->putJson(route('pc-report.entries.update'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => null, 'date' => '2026-10-15', 'inquiries' => 7])->assertOk();
+        $set('2026-10-15', null, null)->assertOk();
+        $this->assertDatabaseHas('pc_report_entries', ['page' => 'Clear Sight Hub', 'from_month' => null, 'inquiries' => 7]);
+
+        $set('2026-10-17', '2025-05', '2025-06')->assertUnprocessable();
     }
 
     public function test_counts_typed_for_a_day_show_on_that_day_only_and_add_up_in_the_total(): void
@@ -159,10 +176,15 @@ class PcReportTest extends TestCase
     {
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
         $show = fn () => $this->actingAs($supervisor)->get(route('pc-report.index', ['product' => 'clearsight', 'cra' => $this->regina->id]));
+        $today = WorkingDate::realToday()->toDateString();
+        $yesterday = WorkingDate::realToday()->subDay()->toDateString();
 
-        $this->actingAs($supervisor)->postJson(route('pc-report.split'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub'])->assertOk();
+        $this->actingAs($supervisor)->postJson(route('pc-report.split'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub', 'date' => $today])->assertOk();
 
         $show()->assertSeeInOrder(['PC - Clear Sight Hub - DORMANT', 'May 2024 – Dec 2025', 'PC - Clear Sight Hub - ACTIVE', 'Jan 2026 onwards']);
+        // Only the day it was split on gets the usual months.
+        $this->actingAs($supervisor)->get(route('pc-report.index', ['product' => 'clearsight', 'cra' => $this->regina->id, 'date' => $yesterday]))
+            ->assertSee('PC - Clear Sight Hub - DORMANT')->assertDontSee('May 2024 – Dec 2025');
 
         $this->actingAs($supervisor)->deleteJson(route('pc-report.merge'), ['cra' => $this->regina->id, 'page' => 'Clear Sight Hub'])->assertOk();
 
@@ -273,5 +295,22 @@ class PcReportTest extends TestCase
         preg_match_all('/data-pc-orders>(.*?)<\/td>/s', $html, $matches);
 
         return array_map(fn (string $cell) => trim(strip_tags($cell)), $matches[1]);
+    }
+
+    public function test_the_migration_moves_a_picked_creation_update_time_to_the_day_it_was_saved_but_not_the_usual_split_months(): void
+    {
+        Schema::table('pc_report_entries', fn ($table) => $table->dropColumn(['from_month', 'to_month']));
+        $saved = ['created_at' => '2026-10-14 13:51:58', 'updated_at' => '2026-10-14 13:51:58'];
+        DB::table('pc_report_rows')->insert([
+            ['user_id' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => 'ACTIVE', 'from_month' => '2025-07-01', 'to_month' => '2026-02-01', ...$saved],
+            ['user_id' => $this->regina->id, 'page' => 'Clear Sight Hub', 'category' => 'DORMANT', 'from_month' => '2024-05-01', 'to_month' => '2025-12-01', ...$saved],
+            ['user_id' => $this->julyAnn->id, 'page' => 'Clear Sight Hub', 'category' => 'ACTIVE', 'from_month' => '2026-01-01', 'to_month' => null, ...$saved],
+        ]);
+
+        (require database_path('migrations/2026_10_16_090000_add_creation_update_time_to_pc_report_entries_table.php'))->up();
+
+        // 13:51 UTC is 21:51 on Oct 14 in Manila; the two rows still on the usual split months stay unset.
+        $this->assertSame([['ACTIVE', '2026-10-14', '2025-07-01']], PcReportEntry::all()
+            ->map(fn (PcReportEntry $entry) => [$entry->category, $entry->date->toDateString(), $entry->from_month->toDateString()])->all());
     }
 }
