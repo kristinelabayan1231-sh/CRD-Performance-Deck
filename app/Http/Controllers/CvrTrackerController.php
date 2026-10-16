@@ -91,7 +91,7 @@ class CvrTrackerController extends Controller
     }
 
     /**
-     * The order's CRA (its seller) or anyone who sees every CRA.
+     * The order's CRA (its seller, or the CRA it counts for when made under another account) or anyone who sees every CRA.
      */
     private function canEdit(User $user, PancakeOrder $order): bool
     {
@@ -99,6 +99,10 @@ class CvrTrackerController extends Controller
             return true;
         }
 
-        return $user->pancake_name !== null && $order->seller_name === PancakeEngagement::staffKey($user->pancake_name);
+        $countsFor = CvrOrderEntry::where('pancake_order_id', $order->pancake_order_id)->value('user_id');
+
+        return $countsFor !== null
+            ? $countsFor === $user->id
+            : $user->pancake_name !== null && $order->seller_name === PancakeEngagement::staffKey($user->pancake_name);
     }
 }

@@ -74,6 +74,14 @@
                     <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $day->format('D, M j') }}</span>
                 </x-slot:badges>
 
+                @if ($missing = $data['sheet_missing'])
+                    <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-3 py-2 text-sm text-[#473821]">
+                        <span class="font-semibold">{{ count($missing) }} {{ Str::plural('order', count($missing)) }} missing here from {{ $cra->displayName() }}'s manual sheet</span>
+                        · {{ collect($missing)->map(fn ($row) => $row['customer'].($row['amount'] ? ' ('.$peso($row['amount']).')' : ''))->join(', ') }}.
+                        They match no Pancake order, so they aren't counted.
+                    </div>
+                @endif
+
                 @if (! $cra->pancake_name)
                     <p class="rounded-lg border border-coral/60 bg-coral/10 px-3 py-2 text-sm text-coral-700">{{ $cra->displayName() }} has no Pancake account set, so their orders can't be found. Set it in Settings → Pancake Accounts.</p>
                 @endif
@@ -141,7 +149,12 @@
                         <tbody class="divide-y divide-line">
                             @forelse ($data['orders'] as $order)
                                 <tr data-cvr-order data-url="{{ route('cvr-tracker.orders.update', $order['id']) }}" data-amount="{{ $order['amount'] }}">
-                                    <td class="px-3 py-2 font-mono text-xs">{{ $order['id'] }}</td>
+                                    <td class="px-3 py-2 font-mono text-xs">
+                                        {{ $order['id'] }}
+                                        @if ($cra->pancake_name && $order['seller'] !== \App\Models\PancakeEngagement::staffKey($cra->pancake_name))
+                                            <span class="block font-sans text-[11px] text-muted" title="Made under another Pancake account; counted for {{ $cra->displayName() }}">via {{ $order['seller'] }}</span>
+                                        @endif
+                                    </td>
                                     <td class="px-3 py-2 text-center">
                                         @if ($order['total_orders'] === null)
                                             {!! $dash !!}

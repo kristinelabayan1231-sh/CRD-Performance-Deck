@@ -30,12 +30,14 @@ use Illuminate\Support\Collection;
 class CvrTracker
 {
     /**
-     * @return array{orders: list<array<string, mixed>>, summary: array<string, int|float|null>, issues: Collection<int, array<string, mixed>>}
+     * @return array{orders: list<array<string, mixed>>, summary: array<string, int|float|null>, sheet_missing: list<array{customer: string, amount: ?float}>, issues: Collection<int, array<string, mixed>>}
      */
     public function day(User $cra, CarbonImmutable $day): array
     {
-        $orders = $cra->pancake_name ? $this->orders(PancakeEngagement::staffKey($cra->pancake_name), $day) : collect();
+        $orders = $this->orders($cra, $day);
         $entries = CvrOrderEntry::whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))->get()->keyBy('pancake_order_id');
+        // The sheet's order first, then the rest by time.
+        $orders = $orders->sortBy(fn (PancakeOrder $order) => [$entries->get($order->pancake_order_id)?->position ?? PHP_INT_MAX, $order->ordered_at?->getTimestamp() ?? 0, $order->id]);
         $assigned = $this->assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
 
@@ -49,7 +51,10 @@ class CvrTracker
                 'page' => $order->page_name,
                 'customer' => $order->customer_name,
                 'amount' => $order->sales(),
-                'assigned' => $order->phone_key !== null && isset($assigned[$order->phone_key]),
+                'assigned' => $entry?->lead_source !== null
+                    ? $entry->lead_source === CvrOrderEntry::ASSIGNED
+                    : $order->phone_key !== null && isset($assigned[$order->phone_key]),
+                'seller' => $order->seller_name,
                 'upsell' => $entry?->upsell,
                 'tagged_type' => $order->conversion_type,
                 'type' => $entry?->order_type ?? $order->conversion_type,
@@ -61,6 +66,7 @@ class CvrTracker
         return [
             'orders' => $rows,
             'summary' => $this->summary($cra, $day, collect($rows)),
+            'sheet_missing' => CvrDayEntry::where('user_id', $cra->id)->whereDate('date', $day)->value('sheet_missing') ?? [],
             'issues' => app(CraIssues::class)->for(collect([$cra]), $day)
                 ->filter(fn (array $issue) => $issue['day']?->isSameDay($day))->values(),
         ];
@@ -74,22 +80,29 @@ class CvrTracker
      */
     public function orderCounts(Collection $cras, CarbonImmutable $day): Collection
     {
-        $accounts = ConversionBreakdown::accounts($cras);
-        $counts = $accounts->isEmpty() ? collect() : $this->tagged($day)->whereIn('seller_name', $accounts->keys())
-            ->selectRaw('seller_name, count(*) as n')->groupBy('seller_name')->pluck('n', 'seller_name');
-
-        return $cras->mapWithKeys(fn (User $cra) => [
-            $cra->id => (int) ($cra->pancake_name ? ($counts[PancakeEngagement::staffKey($cra->pancake_name)] ?? 0) : 0),
-        ]);
+        return $cras->mapWithKeys(fn (User $cra) => [$cra->id => $this->ordersQuery($cra, $day)->count()]);
     }
 
     /**
      * @return Collection<int, PancakeOrder>
      */
-    private function orders(string $seller, CarbonImmutable $day): Collection
+    private function orders(User $cra, CarbonImmutable $day): Collection
     {
-        return $this->tagged($day)->where('seller_name', $seller)->orderBy('ordered_at')->orderBy('id')
-            ->get(['pancake_order_id', 'ordered_at', 'customer_name', 'phone_number', 'phone_key', 'page_name', 'conversion_type', 'total_price', 'shecom_sales']);
+        return $this->ordersQuery($cra, $day)
+            ->get(['id', 'pancake_order_id', 'ordered_at', 'seller_name', 'customer_name', 'phone_number', 'phone_key', 'page_name', 'conversion_type', 'total_price', 'shecom_sales']);
+    }
+
+    /**
+     * The CRA's tagged orders on $day: their own (unless counted for another CRA) and others' counted for them.
+     */
+    private function ordersQuery(User $cra, CarbonImmutable $day): Builder
+    {
+        $seller = $cra->pancake_name ? PancakeEngagement::staffKey($cra->pancake_name) : null;
+        $claimed = CvrOrderEntry::whereNotNull('user_id')->select('pancake_order_id');
+
+        return $this->tagged($day)->where(fn (Builder $q) => $q
+            ->when($seller, fn (Builder $q) => $q->where('seller_name', $seller)->whereNotIn('pancake_order_id', (clone $claimed)->where('user_id', '!=', $cra->id)))
+            ->orWhereIn('pancake_order_id', (clone $claimed)->where('user_id', $cra->id)));
     }
 
     private function tagged(CarbonImmutable $day): Builder

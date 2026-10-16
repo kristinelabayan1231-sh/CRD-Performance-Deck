@@ -116,6 +116,53 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([1, 0], [$summary['bc_orders'], $summary['sc_orders']]);
     }
 
+    public function test_orders_follow_the_sheet_including_one_made_under_another_account(): void
+    {
+        $late = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000001', ['ordered_at' => '2026-10-12 05:00:00']);
+        $early = $this->order($this->regina, PancakeOrder::SEGMENTATION, 499, '9170000002', ['ordered_at' => '2026-10-12 01:00:00']);
+        $unlisted = $this->order($this->regina, PancakeOrder::SEGMENTATION, 749, '9170000003', ['ordered_at' => '2026-10-12 00:30:00']);
+        $otherAccount = $this->order($this->julyAnn, PancakeOrder::SEGMENTATION, 1000, '9170000004', ['seller_name' => 'AJ DELA CRUZ']);
+        // July Ann's own order, counted for Regina instead.
+        $moved = $this->order($this->julyAnn, PancakeOrder::BROADCAST, 600, '9170000005');
+        CvrOrderEntry::create(['pancake_order_id' => $late->pancake_order_id, 'position' => 1, 'lead_source' => CvrOrderEntry::ASSIGNED]);
+        CvrOrderEntry::create(['pancake_order_id' => $otherAccount->pancake_order_id, 'user_id' => $this->regina->id, 'position' => 2]);
+        CvrOrderEntry::create(['pancake_order_id' => $early->pancake_order_id, 'position' => 3]);
+        CvrOrderEntry::create(['pancake_order_id' => $moved->pancake_order_id, 'user_id' => $this->regina->id, 'position' => 4]);
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cvr-tracker.index', ['date' => self::DAY, 'cra' => $this->regina->id]));
+
+        $orders = $response->viewData('data')['orders'];
+        $this->assertSame(
+            [$late->pancake_order_id, $otherAccount->pancake_order_id, $early->pancake_order_id, $moved->pancake_order_id, $unlisted->pancake_order_id],
+            array_column($orders, 'id'),
+        );
+        $this->assertTrue($orders[0]['assigned']);
+        $this->assertSame([$this->regina->id => 5, $this->julyAnn->id => 0], $response->viewData('counts')->all());
+    }
+
+    public function test_cra_can_edit_an_order_counted_for_them_but_its_seller_cannot(): void
+    {
+        $order = $this->order($this->julyAnn, PancakeOrder::SEGMENTATION, 1000, '9170000004');
+        CvrOrderEntry::create(['pancake_order_id' => $order->pancake_order_id, 'user_id' => $this->regina->id]);
+        $url = route('cvr-tracker.orders.update', $order->pancake_order_id);
+
+        $this->actingAs($this->regina)->putJson($url, ['point_of_contact' => 'text'])->assertOk();
+        $this->actingAs($this->julyAnn)->putJson($url, ['point_of_contact' => 'chat'])->assertForbidden();
+
+        $this->assertDatabaseHas('cvr_order_entries', ['pancake_order_id' => $order->pancake_order_id, 'point_of_contact' => 'text']);
+    }
+
+    public function test_manual_sheet_rows_with_no_order_show_as_missing(): void
+    {
+        CvrDayEntry::create(['user_id' => $this->regina->id, 'date' => self::DAY, 'sheet_missing' => [
+            ['customer' => 'Sofia Ochar', 'amount' => 799], ['customer' => 'Rio Soriano', 'amount' => 499],
+        ]]);
+
+        $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => self::DAY]))
+            ->assertSee("2 orders missing here from Regina's manual sheet", false)
+            ->assertSee('Sofia Ochar (₱799), Rio Soriano (₱499)');
+    }
+
     public function test_cra_sees_only_their_own_tracker(): void
     {
         $this->order($this->julyAnn, PancakeOrder::SEGMENTATION, 600, '9170000005');

@@ -27,6 +27,10 @@ php artisan migrate --force
 # run it (left in, a time a Supervisor clears on Oct 1–15 would come back on the next deploy).
 php artisan db:seed --class=PcReportBackfillSeeder --force || echo "WARNING: PcReportBackfillSeeder failed" >&2
 
+# ONE-TIME: CVR Tracker picks (Upsell, Type of Order, Point of Contact, Assigned / Pancake, list order) from the CRAs'
+# October sheets. Fills only what is empty, so running again is harmless; a failure doesn't stop the app.
+php artisan db:seed --class=CvrBackfillSeeder --force || echo "WARNING: CvrBackfillSeeder failed" >&2
+
 # Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php).
 php artisan schedule:work &
 
