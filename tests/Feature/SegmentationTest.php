@@ -441,6 +441,36 @@ class SegmentationTest extends TestCase
             ->assertViewHas('tiles', fn (array $tiles) => $tiles['total']['value'] === '2');
     }
 
+    public function test_repeat_purchase_yes_is_dated_the_day_it_is_set_and_cleared_otherwise(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $lead = Lead::create(['order_id' => '1', 'customer_name' => 'Sept Sam', 'phone_number' => '9171111111', 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-08-20', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-09-20',
+            'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $alice->id]);
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['repeat_purchase' => 'yes'])->assertOk();
+        $this->assertSame('2026-10-05', $lead->fresh()->repeat_purchase_on->toDateString());
+
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['repeat_purchase' => 'no'])->assertOk();
+        $this->assertNull($lead->fresh()->repeat_purchase_on);
+    }
+
+    public function test_repeat_filter_lists_the_repeat_purchases_bought_in_the_month_whatever_their_lead_day(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        foreach ([['1', 'Sept Sam', '2026-09-20', '2026-10-03'], ['2', 'Old Olga', '2026-09-10', '2026-09-28'], ['3', 'Oct Ona', '2026-10-02', null]] as [$id, $name, $leadDay, $bought]) {
+            Lead::create(['order_id' => $id, 'customer_name' => $name, 'phone_number' => '917'.$id, 'product_name' => 'Sinuxyl', 'qty' => 1,
+                'delivered_date' => '2026-08-20', 'consumption_days' => 30, 'est_out_of_stock_date' => $leadDay, 'lead_type' => Lead::TYPE_CRD,
+                'assigned_to' => $alice->id, 'status' => 'active', 'repeat_purchase' => $bought ? 'yes' : null, 'repeat_purchase_on' => $bought]);
+        }
+
+        $this->actingAs($this->owner)->get('/segmentation?month=2026-10&repeat=yes&type=crd')->assertOk()
+            ->assertSee('Sept Sam')->assertDontSee('Old Olga')->assertDontSee('Oct Ona')
+            ->assertSee('Show all leads')
+            ->assertViewHas('tiles', fn (array $tiles) => $tiles['total']['value'] === '1');
+    }
+
     public function test_choosing_pjr_sets_the_feedback_to_no_verbal_conv(): void
     {
         $alice = $this->cra('alice@gmail.com');

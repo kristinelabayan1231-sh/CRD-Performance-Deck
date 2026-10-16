@@ -244,6 +244,7 @@ class SheetLeadImporter
 
         $contactDate = $this->date($row['contact_date'], $row['year'], $warnings, "{$where} Date of Contact");
         $status = $this->optionKey('statuses', $row['status'], $warnings, "{$where} Status");
+        $repeatPurchase = $this->optionKey('repeat_purchase', $row['repeat_purchase'], $warnings, "{$where} Repeat Purchase");
         $notes = $row['notes'] !== '' ? $row['notes'] : null;
         // Updates are dated to the contact day (else the lead day) so today's views treat them as old work.
         $updatedAt = CarbonImmutable::parse(($contactDate ?? $est)->toDateString().' 12:00', config('segmentation.timezone'))->utc();
@@ -264,7 +265,9 @@ class SheetLeadImporter
             'status' => $status,
             'status_updated_by' => $status ? $craId : null,
             'status_updated_at' => $status ? $updatedAt : null,
-            'repeat_purchase' => $this->optionKey('repeat_purchase', $row['repeat_purchase'], $warnings, "{$where} Repeat Purchase"),
+            'repeat_purchase' => $repeatPurchase,
+            // A Yes is counted on its date of contact (else the lead day), not the day of the import.
+            'repeat_purchase_on' => $repeatPurchase === 'yes' ? ($contactDate ?? $est)->toDateString() : null,
             'customer_tag' => $this->optionKey('customer_tags', $row['customer_tag'], $warnings, "{$where} Customer Tagging"),
             'contact_date' => $contactDate?->toDateString(),
             'contact_time' => $this->contactTime($row['contact_time'], $warnings, $where),

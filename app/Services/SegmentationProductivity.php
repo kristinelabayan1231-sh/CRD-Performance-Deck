@@ -40,14 +40,14 @@ class SegmentationProductivity
         // Leads worked on a real day are from its paired lead day (Settings → Working Date).
         $lag = WorkingDate::lagDays();
         $assigned = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)
+            Lead::whereIn('assigned_to', $ids)->withoutPosSales()
                 ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
                 ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
             $lag,
         );
 
         $calls = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
+            Lead::whereIn('assigned_to', $ids)->withoutPosSales()->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
                 ->selectRaw('assigned_to as cra, date(contact_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
         );
 
@@ -146,7 +146,7 @@ class SegmentationProductivity
         }
 
         // Each CRA's own leads, as "cra id|phone".
-        $ownLeads = Lead::whereIn('assigned_to', $ids)->get(['phone_number', 'assigned_to'])
+        $ownLeads = Lead::whereIn('assigned_to', $ids)->withoutPosSales()->get(['phone_number', 'assigned_to'])
             ->map(fn (Lead $lead) => $lead->assigned_to.'|'.LeadGenerator::normalizePhone($lead->phone_number))
             ->flip();
 

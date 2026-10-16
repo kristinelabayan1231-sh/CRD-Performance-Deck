@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Lead;
 use App\Services\CancelledOrders;
 use App\Services\CustomerChurn;
-use App\Services\CustomerDatabase;
 use App\Services\LeadGenerator;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
@@ -20,7 +19,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CustomerDatabase $customerDatabase, CancelledOrders $cancelledOrders): View
+    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CancelledOrders $cancelledOrders): View
     {
         $user = $request->user();
         $realToday = WorkingDate::realToday();
@@ -77,12 +76,11 @@ class DashboardController extends Controller
             // Database's counts). This month's is worked out ahead every 2 minutes by customers:warm-cache.
             $churnRate = $churn->cached($range->from, $range->to);
 
-            // Retained and Repeat Customers as in the Customer Database (delivered in the dates picked), kept for a few minutes.
-            if ($user->can('customers.view')) {
-                $customers = $customerDatabase->cachedCounts(['from' => $range->from, 'to' => $range->to, 'search' => null]);
-                // Out of all the leads: every customer the Customer Database has for these dates (FSD and CRD deliveries of
-                // a listed product, one per customer), those not retained or repeated included, so it matches that page.
-                $customers['leads'] = $customers['all'];
+            // Retained and Repeat Customers from the Segmentation Tracker: Repeat Purchase = Yes bought in the dates picked,
+            // FSD Leads = Retained, CRD Leads = Repeat, out of the customers with a lead on the paired lead days.
+            if ($user->can('segmentation.view')) {
+                $trackerCras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
+                $customers = $stats->customers($trackerCras, $range->from, $range->to, $leadFrom, $leadTo);
                 // Monthly goals (Settings → Sales Goals), as a percent of those leads.
                 $customers['goals'] = ['retained' => SalesGoals::retainedRate(), 'repeat' => SalesGoals::repeatRate()];
             }

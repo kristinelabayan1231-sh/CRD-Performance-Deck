@@ -335,8 +335,10 @@ class LeadGenerator
             return 0;
         }
 
+        // Leads added from a CRA's own POS sale don't use up their daily quota.
         $load = Lead::whereDate('est_out_of_stock_date', $date)
             ->whereIn('assigned_to', $cras->pluck('id'))
+            ->withoutPosSales()
             ->selectRaw('assigned_to, count(*) as total')
             ->groupBy('assigned_to')
             ->pluck('total', 'assigned_to');
