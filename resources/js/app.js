@@ -1,6 +1,7 @@
 import { initAccountLists } from './account-list';
 import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
+import { initCvrTracker } from './cvr-tracker';
 import { initLive } from './live';
 import { initMonthlyCost } from './monthly-cost';
 import { initPcReport, initProductGroups } from './pc-report';
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCraOrders();
     initMonthlyCost();
     initPcReport();
+    initCvrTracker();
     initProductGroups();
     initProductPerformance();
 });

@@ -37,4 +37,23 @@ class PcReportBackfillSeederTest extends TestCase
         $this->assertDatabaseHas('pc_report_entries', ['user_id' => $regina->id, 'page' => 'Clear Sight Hub', 'category' => 'DORMANT', 'inquiries' => 1, 'engagements' => 2]);
         $this->assertEqualsCanonicalizing(['DORMANT', 'ACTIVE'], PcReportRow::where(['user_id' => $regina->id, 'page' => 'Clear Sight Hub'])->pluck('category')->all());
     }
+
+    public function test_it_sets_each_days_creation_update_time_and_keeps_months_already_picked(): void
+    {
+        $regina = $this->cra('Regina');
+        $lhea = $this->cra('Lhea');
+        // Picked by a Supervisor before the backfill ran: kept.
+        PcReportEntry::create(['user_id' => $regina->id, 'page' => 'Clear Sight Hub', 'category' => 'ACTIVE', 'date' => '2026-10-04', 'from_month' => '2026-03-01', 'to_month' => '2026-03-01']);
+
+        $this->seed(PcReportBackfillSeeder::class);
+
+        $time = fn (User $cra, string $page, string $category, string $date) => PcReportEntry::where(['user_id' => $cra->id, 'page' => $page, 'category' => $category])
+            ->whereDate('date', $date)->first(['from_month', 'to_month'])?->only(['from_month', 'to_month']);
+
+        // "July, Feb 2026" on a day with numbers: February to July 2026.
+        $this->assertEquals(['from_month' => now()->parse('2026-02-01'), 'to_month' => now()->parse('2026-07-01')], $time($regina, 'Clear Sight Hub', 'ACTIVE', '2026-10-01'));
+        $this->assertEquals(['from_month' => now()->parse('2026-03-01'), 'to_month' => now()->parse('2026-03-01')], $time($regina, 'Clear Sight Hub', 'ACTIVE', '2026-10-04'));
+        // A day with a time but no numbers in the sheet.
+        $this->assertEquals(['from_month' => now()->parse('2025-02-01'), 'to_month' => now()->parse('2025-06-01')], $time($lhea, 'Audicure Ear Drops', '', '2026-10-08'));
+    }
 }

@@ -47,6 +47,9 @@
                 @can('pc_report.view')
                     <x-nav-link :href="route('pc-report.index')" :active="request()->routeIs('pc-report.*')" icon="pc">PC Report</x-nav-link>
                 @endcan
+                @can('cvr_tracker.view')
+                    <x-nav-link :href="route('cvr-tracker.index')" :active="request()->routeIs('cvr-tracker.*')" icon="cvr">CVR Tracker</x-nav-link>
+                @endcan
                 @can('order_database.view')
                     <x-nav-link :href="route('order-database.cra-performance')" :active="request()->routeIs('order-database.*')" icon="orders">Order Database</x-nav-link>
                 @endcan
