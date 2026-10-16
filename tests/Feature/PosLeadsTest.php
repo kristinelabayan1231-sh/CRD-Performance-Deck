@@ -45,11 +45,11 @@ class PosLeadsTest extends TestCase
         ]);
     }
 
-    private function trackerLead(string $phone): void
+    private function trackerLead(string $phone, string $leadDay): Lead
     {
-        Lead::create([
+        return Lead::create([
             'order_id' => "L{$phone}", 'customer_name' => 'Known', 'phone_number' => $phone, 'product_name' => 'Pterygium',
-            'qty' => 1, 'delivered_date' => '2026-08-20', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-09-05',
+            'qty' => 1, 'delivered_date' => '2026-08-01', 'consumption_days' => 15, 'est_out_of_stock_date' => $leadDay,
             'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $this->lhea->id,
         ]);
     }
@@ -58,7 +58,7 @@ class PosLeadsTest extends TestCase
     {
         $this->order('5001', '9171111111');
 
-        $this->assertSame(1, app(PosLeads::class)->addMissing($this->today));
+        $this->assertSame(['added' => 1, 'marked' => 0], app(PosLeads::class)->record($this->today));
 
         $lead = Lead::sole();
         $this->assertSame('POS-5001', $lead->order_id);
@@ -79,21 +79,49 @@ class PosLeadsTest extends TestCase
         $this->order('5002', '9172222222');
         $this->order('5003', '9173333333');
 
-        app(PosLeads::class)->addMissing($this->today);
+        app(PosLeads::class)->record($this->today);
 
         $this->assertSame([Lead::TYPE_CRD, Lead::TYPE_CRD], Lead::orderBy('order_id')->pluck('lead_type')->all());
     }
 
-    public function test_customers_already_in_the_tracker_and_other_orders_are_left_out(): void
+    public function test_a_cra_sale_to_a_tracker_customer_marks_their_latest_lead_bought(): void
     {
-        $this->trackerLead('09174444444');               // stored as 09…: same customer
+        $earlier = $this->trackerLead('09174444444', '2026-08-20');   // stored as 09…: same customer
+        $latest = $this->trackerLead('9174444444', '2026-09-05');
+        $later = $this->trackerLead('639174444444', '2026-11-01');     // lead day after the order
         $this->order('5004', '9174444444');
+
+        $this->assertSame(['added' => 0, 'marked' => 1], app(PosLeads::class)->record($this->today));
+
+        $this->assertSame(['yes', '2026-10-16'], [$latest->fresh()->repeat_purchase, $latest->fresh()->repeat_purchase_on->toDateString()]);
+        $this->assertTrue($latest->fresh()->isProcessed());
+        $this->assertSame([null, null], [$earlier->fresh()->repeat_purchase, $later->fresh()->repeat_purchase]);
+
+        // Already Yes: left as it was, dated the first purchase.
+        $this->order('5012', '9174444444', ['ordered_on' => '2026-10-17', 'ordered_at' => '2026-10-17 01:00:00']);
+        $this->assertSame(['added' => 0, 'marked' => 0], app(PosLeads::class)->record(CarbonImmutable::parse('2026-10-17')));
+        $this->assertSame('2026-10-16', $latest->fresh()->repeat_purchase_on->toDateString());
+    }
+
+    public function test_other_orders_are_left_out(): void
+    {
         $this->order('5005', '9175555555', ['status' => PancakeOrder::CANCELED]);
         $this->order('5006', '9176666666', ['seller_name' => 'KIM GAN']);   // not a CRA account
         $this->order('5007', '9177777777', ['non_crd' => true]);           // no listed product
         $this->order('5008', '9178888888', ['ordered_on' => '2026-10-15', 'ordered_at' => '2026-10-15 01:00:00']);
 
-        $this->assertSame(0, app(PosLeads::class)->addMissing($this->today));
+        $this->assertSame(['added' => 0, 'marked' => 0], app(PosLeads::class)->record($this->today));
+    }
+
+    public function test_the_command_records_earlier_days(): void
+    {
+        $this->order('5013', '9171212121', ['ordered_on' => '2026-10-01', 'ordered_at' => '2026-10-01 01:00:00']);
+        $this->order('5014', '9171313131', ['ordered_on' => '2026-10-15', 'ordered_at' => '2026-10-15 01:00:00']);
+
+        $this->artisan('leads:record-pos-sales', ['from' => '2026-10-01', 'to' => '2026-10-15'])
+            ->expectsOutputToContain('2 customers added')->assertSuccessful();
+
+        $this->assertSame(['2026-10-01', '2026-10-15'], Lead::orderBy('order_id')->get()->map(fn (Lead $lead) => $lead->repeat_purchase_on->toDateString())->all());
     }
 
     public function test_running_again_adds_each_customer_once(): void
@@ -101,8 +129,8 @@ class PosLeadsTest extends TestCase
         $this->order('5009', '9179999999');
         $this->order('5010', '9179999999', ['ordered_at' => '2026-10-16 03:00:00']);
 
-        app(PosLeads::class)->addMissing($this->today);
-        app(PosLeads::class)->addMissing($this->today);
+        app(PosLeads::class)->record($this->today);
+        app(PosLeads::class)->record($this->today);
 
         $this->assertSame(['POS-5009'], Lead::pluck('order_id')->all());
     }
@@ -113,7 +141,7 @@ class PosLeadsTest extends TestCase
         Http::fake(['*' => Http::response(['count' => 0, 'stock_outs' => []])]);
         User::create(['email' => 'joanna@example.com', 'display_name' => 'Joanna', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
         $this->order('5011', '9170000011');
-        app(PosLeads::class)->addMissing($this->today);
+        app(PosLeads::class)->record($this->today);
         Lead::create([
             'order_id' => 'NEW1', 'customer_name' => 'New', 'phone_number' => '9170000012', 'product_name' => 'Pterygium', 'qty' => 1,
             'delivered_date' => '2026-10-01', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-10-16', 'lead_type' => Lead::TYPE_FSD,

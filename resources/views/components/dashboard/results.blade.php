@@ -183,18 +183,16 @@
     @if ($customers)
         {{-- Segmentation Tracker customers with Repeat Purchase = Yes bought in these dates (FSD Leads = Retained, CRD Leads =
          Repeat), out of the tracker's leads (one per customer), against the monthly goal (% of those leads, Settings → Sales Goals);
-         opens the tracker's repeat purchases for the date (one day) or the month --}}
-        @php($trackerRange = $results['range']->from->isSameDay($results['range']->to)
-            ? ['date' => $results['range']->from->toDateString()]
-            : ['month' => $results['range']->from->format('Y-m')])
+         opens the list of those customers for the same dates --}}
+        @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         @php($leads = $customers['leads'])
         @php($segments = [])
         <x-dashboard.flip class="sm:col-span-6">
         <div class="grid gap-3 sm:grid-cols-2">
         @foreach ([
-            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', \App\Models\Lead::TYPE_FSD, 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
-            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', \App\Models\Lead::TYPE_CRD, 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
-        ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentType, $segmentTitle])
+            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
+            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
+        ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
             @php($count = $customers[$segment])
             @php($goal = $customers['goals'][$segment])
             @php($goalLabel = rtrim(rtrim(number_format($goal, 1), '0'), '.').'%')
@@ -202,7 +200,7 @@
             @php($toGoal = max(0, $goalCount - $count))
             @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
             @php($segments[$segment] = ['label' => $segmentLabel, 'count' => $count, 'goal' => $goalLabel, 'goal_count' => $goalCount])
-            <a href="{{ route('segmentation.index', [...$trackerRange, 'type' => $segmentType, 'repeat' => 'yes']) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
+            <a href="{{ route('segmentation.repeat-purchases', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
                 {!! $bubble !!}
                 <div class="relative flex items-start justify-between gap-2">
                     <p class="{{ $label }}">{{ $segmentLabel }}</p>

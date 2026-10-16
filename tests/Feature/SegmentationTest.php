@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
@@ -447,6 +448,9 @@ class SegmentationTest extends TestCase
         $lead = Lead::create(['order_id' => '1', 'customer_name' => 'Sept Sam', 'phone_number' => '9171111111', 'product_name' => 'Sinuxyl', 'qty' => 1,
             'delivered_date' => '2026-08-20', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-09-20',
             'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $alice->id]);
+
+        // Working on September's leads: still the real date.
+        Setting::put('working_date', '2026-09-20');
 
         $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['repeat_purchase' => 'yes'])->assertOk();
         $this->assertSame('2026-10-05', $lead->fresh()->repeat_purchase_on->toDateString());
