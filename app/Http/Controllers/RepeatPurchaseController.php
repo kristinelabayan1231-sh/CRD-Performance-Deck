@@ -29,10 +29,18 @@ class RepeatPurchaseController extends Controller
             'month' => ['nullable', 'date_format:Y-m', 'before_or_equal:'.$today->format('Y-m')],
             'from' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today->toDateString()],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'cra' => ['nullable', 'integer'],
         ]);
         $segment = $filters['segment'] ?? 'retained';
         $range = DashboardRange::fromFilters($filters, $today);
-        $cras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
+        $canViewAll = $user->can('segmentation.view_all');
+        $allCras = LeadGenerator::cras();
+        // A supervisor sees every CRA or the one picked; a CRA sees their own.
+        $cras = match (true) {
+            ! $canViewAll => collect([$user]),
+            filled($filters['cra'] ?? null) => $allCras->where('id', (int) $filters['cra'])->values(),
+            default => $allCras,
+        };
 
         // Both lists, so each tab shows its count.
         $lists = collect(self::SEGMENTS)->map(fn (array $labels, string $key) => $stats->repeatPurchases($cras, $key, $range->from, $range->to));
@@ -43,7 +51,9 @@ class RepeatPurchaseController extends Controller
             'counts' => $lists->map->count(),
             'range' => $range,
             'dates' => ['from' => $range->from->toDateString(), 'to' => $range->to->toDateString()],
-            'canViewAll' => $user->can('segmentation.view_all'),
+            'cra' => $canViewAll && filled($filters['cra'] ?? null) ? (int) $filters['cra'] : null,
+            'cras' => $allCras,
+            'canViewAll' => $canViewAll,
         ]);
     }
 }

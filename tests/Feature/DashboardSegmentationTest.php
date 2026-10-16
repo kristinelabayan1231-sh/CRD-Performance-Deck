@@ -170,9 +170,15 @@ class DashboardSegmentationTest extends TestCase
             ->assertViewHas('counts', fn ($counts) => $counts->all() === ['retained' => 1, 'repeat' => 1])
             ->assertSee('Oct 10, 2026')->assertDontSee('Old Olga');
 
-        // A CRA: only their own.
-        $this->actingAs($this->alice)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'retained']))
-            ->assertOk()->assertDontSee('Fsd Fay');
+        // A supervisor picks a CRA: their customers and counts only.
+        $this->actingAs($this->owner)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'repeat', 'cra' => $this->alice->id]))
+            ->assertOk()
+            ->assertViewHas('customers', fn ($customers) => $customers->pluck('customer_name')->all() === ['Sept Sam'])
+            ->assertViewHas('counts', fn ($counts) => $counts->all() === ['retained' => 0, 'repeat' => 1]);
+
+        // A CRA: only their own, whatever CRA is asked for.
+        $this->actingAs($this->alice)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'retained', 'cra' => $this->bob->id]))
+            ->assertOk()->assertDontSee('Fsd Fay')->assertDontSee('All CRAs');
     }
 
     public function test_users_without_segmentation_access_see_no_card(): void
