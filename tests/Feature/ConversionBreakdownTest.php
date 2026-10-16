@@ -333,6 +333,9 @@ class ConversionBreakdownTest extends TestCase
         $lhea = $this->cra('Lhea', 'CRD Lhei');
         $this->cra('Regina', 'CRD Rej Vergara');
         $this->cra('Newbie', null);
+        // Listed in the CRA order: Regina, then Lhea, then anyone without a place.
+        User::where('display_name', 'Regina')->update(['cra_order' => 1]);
+        $lhea->update(['cra_order' => 4]);
         $this->orders = [
             $this->order('CRD Lhei', [17], 999),                                      // no CRD tag
             $this->order('CRD Lhei', [self::BROADCAST, self::SEGMENTATION], 500),     // both CRD tags
@@ -346,7 +349,7 @@ class ConversionBreakdownTest extends TestCase
             ->assertSeeText('4 issues')
             ->assertSeeText('2 no crd tag, 1 both crd tags, 1 no pancake account')
             ->assertSee('id="issues-dialog"', false)
-            ->assertSeeInOrder(['Lhea', 'No CRD tag', 'Both CRD tags', 'Newbie', 'No Pancake account', 'Regina', 'No CRD tag']);
+            ->assertSeeInOrder(['Regina', 'No CRD tag', 'Lhea', 'No CRD tag', 'Both CRD tags', 'Newbie', 'No Pancake account']);
 
         $this->actingAs($lhea)->get(route('conversion.index'))->assertOk()
             ->assertSeeText('2 issues')->assertDontSee('Regina');

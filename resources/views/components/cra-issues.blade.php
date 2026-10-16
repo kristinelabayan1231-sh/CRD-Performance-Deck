@@ -54,7 +54,7 @@
                     @endforeach
                 </ul>
 
-                @foreach ($issues->groupBy(fn ($issue) => $issue['cra']->id)->sortBy(fn ($mine) => $mine->first()['cra']->displayName(), SORT_NATURAL | SORT_FLAG_CASE) as $mine)
+                @foreach ($issues->groupBy(fn ($issue) => $issue['cra']->id)->sortBy(fn ($mine) => $mine->first()['cra']->craSortKey()) as $mine)
                     @php($cra = $mine->first()['cra'])
                     <section class="overflow-hidden rounded-xl border border-line">
                         <h3 class="flex items-center gap-2 bg-canvas/60 px-4 py-2.5 text-sm font-semibold">
