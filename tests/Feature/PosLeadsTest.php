@@ -85,6 +85,27 @@ class PosLeadsTest extends TestCase
         $this->assertSame('2026-10-16', $lead->repeat_purchase_on->toDateString());
     }
 
+    public function test_the_migration_moves_pos_leads_saved_on_their_purchase_day_to_the_paired_lead_day(): void
+    {
+        // Working date 30 days behind: Oct 17 → Sept 17.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-17'));
+        $lead = fn (string $orderId, string $leadDay) => Lead::create([
+            'order_id' => $orderId, 'customer_name' => $orderId, 'phone_number' => '917'.random_int(1000000, 9999999), 'product_name' => 'Pterygium',
+            'qty' => 1, 'delivered_date' => '2026-10-16', 'consumption_days' => 15, 'est_out_of_stock_date' => $leadDay,
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $this->lhea->id, 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-16',
+        ]);
+        $old = $lead('POS-1', '2026-10-16');        // saved on its purchase day: moves
+        $new = $lead('POS-2', '2026-09-16');        // already on its lead day: stays
+        $tracker = $lead('L-3', '2026-10-16');      // a tracker lead: never touched
+
+        (require database_path('migrations/2026_10_17_084008_move_pos_leads_to_their_paired_lead_day.php'))->up();
+
+        $this->assertSame(['2026-09-16', '2026-09-16', '2026-10-16'], [
+            $old->fresh()->est_out_of_stock_date->toDateString(), $new->fresh()->est_out_of_stock_date->toDateString(), $tracker->fresh()->est_out_of_stock_date->toDateString(),
+        ]);
+        $this->assertSame('2026-10-16', $old->fresh()->repeat_purchase_on->toDateString());
+    }
+
     public function test_a_customer_with_an_earlier_cra_handled_order_is_a_crd_lead(): void
     {
         // Earlier sale from a CRA account, and a CRD delivery for another customer.

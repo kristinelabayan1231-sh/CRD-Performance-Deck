@@ -62,7 +62,12 @@
                             </span>
                         </p>
                         @if ($kpi['label'] === 'Converted')
-                            <p class="relative mt-0.5 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles">Retained <span class="font-semibold text-white">{{ number_format($p['retained'], 1) }}%</span> · Repeat <span class="font-semibold text-white">{{ number_format($p['repeat'], 1) }}%</span></p>
+                            {{-- The tiles above, added up: Converted = Retained + Repeat out of FSD + CRD leads --}}
+                            @php($c = $p['counts'])
+                            <p class="relative mt-1 grid gap-0.5 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
+                                <span>Retained <span class="font-semibold text-white tabular-nums">{{ number_format($c['retained']) }}/{{ number_format($c['fsd']) }} · {{ number_format($p['retained'], 1) }}%</span></span>
+                                <span>Repeat <span class="font-semibold text-white tabular-nums">{{ number_format($c['repeat']) }}/{{ number_format($c['crd']) }} · {{ number_format($p['repeat'], 1) }}%</span></span>
+                            </p>
                         @endif
                     </div>
                 @endforeach

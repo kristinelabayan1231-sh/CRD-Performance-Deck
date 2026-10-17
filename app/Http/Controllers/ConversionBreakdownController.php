@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
@@ -132,19 +131,18 @@ class ConversionBreakdownController extends Controller
         $accounts = ConversionBreakdown::accounts($shown);
         $byId = $allCras->keyBy('id');
 
-        $query = PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
-            ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->where('ordered_on', '>=', $range->from->toDateString())->where('ordered_on', '<', $range->to->addDay()->toDateString());
+        // As the dashboard counts them, with the CVR Tracker's corrections (type, and orders counted for another CRA).
+        $query = ConversionBreakdown::taggedOrders($accounts, $range->from, $range->to);
 
         // The list and count are confirmed orders; gross sales counts every status, as on the dashboard.
-        $all = (clone $query)->get(['status', 'total_price', 'shecom_sales']);
+        $all = (clone $query)->get();
         $gross = $all->sum(fn (PancakeOrder $order) => $order->sales());
         $all = $all->filter(fn (PancakeOrder $order) => $order->isCounted());
-        $query->counted();
+        $query->where(fn ($q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES));
 
         return view('conversion.orders', [
-            'orders' => $query->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
-            'craFor' => fn (PancakeOrder $order) => $byId[$accounts[$order->seller_name] ?? 0] ?? null,
+            'orders' => $query->orderByDesc('pancake_orders.ordered_on')->orderByDesc('pancake_orders.ordered_at')->orderByDesc('pancake_orders.id')->paginate(50)->withQueryString(),
+            'craFor' => fn (PancakeOrder $order) => $byId[ConversionBreakdown::craFor($order, $accounts) ?? 0] ?? null,
             'count' => $all->count(),
             'gross' => $gross,
             'aov' => $all->count() ? $gross / $all->count() : null,
@@ -173,15 +171,14 @@ class ConversionBreakdownController extends Controller
         $from = CarbonImmutable::parse($data['from']);
         $to = CarbonImmutable::parse($data['to']);
 
+        // As the dashboard counts them, with the CVR Tracker's corrections (type, and orders counted for another CRA).
         $orders = $cra->pancake_name
-            ? PancakeOrder::crdProducts()->where('seller_name', PancakeEngagement::staffKey($cra->pancake_name))
-                ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-                ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
+            ? ConversionBreakdown::taggedOrders(ConversionBreakdown::accounts(collect([$cra])), $from, $to)
                 // First to most recent, by when the order was created in Pancake.
-                ->orderBy('ordered_at')->orderBy('id')
-                ->get(['pancake_order_id', 'ordered_on', 'ordered_at', 'customer_name', 'page_name', 'conversion_type', 'status', 'status_name', 'total_price', 'shecom_sales'])
+                ->orderBy('pancake_orders.ordered_at')->orderBy('pancake_orders.id')
+                ->get()
             : collect();
-        $gross = fn (string $type) => $orders->where('conversion_type', $type)->sum(fn (PancakeOrder $order) => $order->sales());
+        $gross = fn (string $type) => $orders->where('counted_type', $type)->sum(fn (PancakeOrder $order) => $order->sales());
 
         return view('conversion._cra-orders', [
             'cra' => $cra,

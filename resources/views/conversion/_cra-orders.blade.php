@@ -55,7 +55,7 @@
                             <td class="px-3 py-2 tabular-nums">{{ $order->pancake_order_id }}</td>
                             <td class="px-3 py-2">{{ $order->customer_name ?: '—' }}</td>
                             <td class="px-3 py-2">{{ $order->page_name ?: '—' }}</td>
-                            <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $tags[$order->conversion_type][1] }}">{{ $tags[$order->conversion_type][0] }}</span></td>
+                            <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $tags[$order->counted_type][1] }}">{{ $tags[$order->counted_type][0] }}</span></td>
                             <td class="px-3 py-2">
                                 @php($status = $statuses[$order->status] ?? [$order->status_name ?: '—', 'bg-canvas text-muted'])
                                 <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $status[1] }}">{{ $status[0] }}</span>
