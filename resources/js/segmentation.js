@@ -560,9 +560,9 @@ function initRowMenu() {
         item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
         item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
         menu.hidden = false;
-        // At the pointer; from the keyboard (menu key), under the row's first cell.
+        // At the pointer; from the keyboard (menu key), under the row's first shown cell (columns can be hidden).
         const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : (() => {
-            const rect = row.cells[0].getBoundingClientRect();
+            const rect = ([...row.cells].find((cell) => cell.getClientRects().length) ?? row).getBoundingClientRect();
             return { x: rect.left + 16, y: rect.bottom };
         })();
         menu.style.left = `${Math.min(at.x, window.innerWidth - menu.offsetWidth - 8)}px`;

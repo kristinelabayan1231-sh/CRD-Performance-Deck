@@ -76,8 +76,12 @@
             <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
         </summary>
         <div class="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-line bg-white p-3 shadow-lg">
-            <p class="px-1 pb-2 text-xs text-muted">Customer Name to Status are always shown.</p>
-            @foreach ($optionalColumns as $key => $column)
+            <p class="px-1 pb-2 text-xs text-muted">Status is always shown.</p>
+            <div class="max-h-[60vh] overflow-y-auto">
+            @foreach ([...config('segmentation.lead_columns'), ...$optionalColumns] as $key => $column)
+                @if ($loop->index === count(config('segmentation.lead_columns')))
+                    <hr class="my-1.5 border-line">
+                @endif
                 <label @class(['flex items-center justify-between gap-2 rounded-lg px-1 py-1.5 text-sm', 'text-muted' => $column['coming_soon'] ?? false])>
                     <span class="flex items-center gap-2">
                         <input type="checkbox" class="size-4 accent-brand-500" data-column-toggle="{{ $key }}"
@@ -89,6 +93,7 @@
                     @endif
                 </label>
             @endforeach
+            </div>
             <div class="mt-2 flex gap-2 border-t border-line pt-2">
                 <button type="button" data-columns-all="show" class="flex-1 rounded-lg px-2 py-1.5 text-sm font-medium text-brand-600 hover:bg-brand-50">Show all</button>
                 <button type="button" data-columns-all="hide" class="flex-1 rounded-lg px-2 py-1.5 text-sm font-medium text-brand-600 hover:bg-brand-50">Hide all</button>

@@ -25,16 +25,16 @@
             <table class="w-max min-w-full text-left text-sm">
                 <thead class="sticky top-0 z-20 bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
-                        <th class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
-                        <th class="px-4 py-3 text-right font-semibold">Qty</th>
-                        <th class="px-4 py-3 font-semibold">Product</th>
-                        <th class="px-4 py-3 font-semibold">Contact #</th>
-                        <th class="px-4 py-3 font-semibold">Delivered Date</th>
-                        <th class="bg-[#fff4d6] px-4 py-3 text-center font-semibold text-[#7a5a00]">Days since Delivered</th>
-                        <th class="px-4 py-3 font-semibold">Est. Out of Stock</th>
-                        <th class="px-4 py-3 font-semibold">Recommended Replenishment Day</th>
-                        <th class="px-4 py-3 font-semibold">Type</th>
-                        <th class="px-4 py-3 font-semibold">Assigned to</th>
+                        <th data-col="customer_name" class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
+                        <th data-col="qty" class="px-4 py-3 text-right font-semibold">Qty</th>
+                        <th data-col="product" class="px-4 py-3 font-semibold">Product</th>
+                        <th data-col="contact_number" class="px-4 py-3 font-semibold">Contact #</th>
+                        <th data-col="delivered_date" class="px-4 py-3 font-semibold">Delivered Date</th>
+                        <th data-col="days_since_delivered" class="bg-[#fff4d6] px-4 py-3 text-center font-semibold text-[#7a5a00]">Days since Delivered</th>
+                        <th data-col="est_out_of_stock" class="px-4 py-3 font-semibold">Est. Out of Stock</th>
+                        <th data-col="replenishment_day" class="px-4 py-3 font-semibold">Recommended Replenishment Day</th>
+                        <th data-col="type" class="px-4 py-3 font-semibold">Type</th>
+                        <th data-col="assigned_to" class="px-4 py-3 font-semibold">Assigned to</th>
                         <th class="px-4 py-3 font-semibold">Status</th>
                         @foreach ($visibleOptional as $key => $column)
                             <th data-col="{{ $key }}" class="bg-[#e3f1ea] px-4 py-3 font-semibold text-[#1d5b45]">{{ $column['label'] }}</th>

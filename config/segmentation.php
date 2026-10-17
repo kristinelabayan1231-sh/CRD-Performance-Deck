@@ -192,6 +192,23 @@ return [
     |
     */
 
+    /*
+     * The lead's own columns, Customer Name to Assigned to: shown by default, each can be hidden from the column
+     * picker like the optional columns (Status always shows).
+     */
+    'lead_columns' => [
+        'customer_name' => ['label' => 'Customer Name'],
+        'qty' => ['label' => 'Qty'],
+        'product' => ['label' => 'Product'],
+        'contact_number' => ['label' => 'Contact #'],
+        'delivered_date' => ['label' => 'Delivered Date'],
+        'days_since_delivered' => ['label' => 'Days since Delivered'],
+        'est_out_of_stock' => ['label' => 'Est. Out of Stock'],
+        'replenishment_day' => ['label' => 'Recommended Replenishment Day'],
+        'type' => ['label' => 'Type'],
+        'assigned_to' => ['label' => 'Assigned to'],
+    ],
+
     'optional_columns' => [
         'repeat_purchase' => ['label' => 'Repeat Purchase?'],
         'customer_tag' => ['label' => 'Customer Tagging'],

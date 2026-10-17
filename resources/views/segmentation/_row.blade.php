@@ -5,7 +5,7 @@
 <tr class="align-middle hover:bg-canvas/30"
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
-    <td class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
+    <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
         <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"
@@ -45,23 +45,23 @@
             @endif
         @endif
     </td>
-    <td class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
-    <td class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
-    <td class="px-4 py-3 tabular-nums">
+    <td data-col="qty" class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
+    <td data-col="product" class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
+    <td data-col="contact_number" class="px-4 py-3 tabular-nums">
         <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
     </td>
-    <td class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
-    <td class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
-    <td class="px-4 py-3 whitespace-nowrap">{{ $lead->est_out_of_stock_date->format('M j, Y') }}</td>
-    <td class="px-4 py-3 whitespace-nowrap">{{ $lead->recommendedReplenishmentDay()->format('M j, Y') }}</td>
-    <td class="px-4 py-3">
+    <td data-col="delivered_date" class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
+    <td data-col="days_since_delivered" class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
+    <td data-col="est_out_of_stock" class="px-4 py-3 whitespace-nowrap">{{ $lead->est_out_of_stock_date->format('M j, Y') }}</td>
+    <td data-col="replenishment_day" class="px-4 py-3 whitespace-nowrap">{{ $lead->recommendedReplenishmentDay()->format('M j, Y') }}</td>
+    <td data-col="type" class="px-4 py-3">
         <span @class([
             'rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap',
             'bg-teal/15 text-teal-700' => $lead->lead_type === \App\Models\Lead::TYPE_CRD,
             'bg-sky/15 text-sky-800' => $lead->lead_type === \App\Models\Lead::TYPE_FSD,
         ])>{{ $lead->typeLabel() }}</span>
     </td>
-    <td class="px-4 py-3">
+    <td data-col="assigned_to" class="px-4 py-3">
         @if ($canManage)
             <form method="POST" action="{{ route('segmentation.update', $lead) }}" data-autosave>
                 @csrf @method('PATCH')
