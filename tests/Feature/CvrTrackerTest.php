@@ -116,6 +116,23 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([1, 0], [$summary['bc_orders'], $summary['sc_orders']]);
     }
 
+    public function test_a_segmentation_order_is_always_assigned(): void
+    {
+        // No assigned lead with these numbers: a Segmentation order is Assigned anyway, even where the sheet said Pancake.
+        $segmentation = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000001', ['ordered_at' => '2026-10-12 01:00:00']);
+        $sheetPancake = $this->order($this->regina, PancakeOrder::SEGMENTATION, 499, '9170000002', ['ordered_at' => '2026-10-12 02:00:00']);
+        CvrOrderEntry::create(['pancake_order_id' => $sheetPancake->pancake_order_id, 'lead_source' => CvrOrderEntry::PANCAKE]);
+        // Tagged Segmentation but changed to Broadcast: Pancake again.
+        $changed = $this->order($this->regina, PancakeOrder::SEGMENTATION, 749, '9170000003', ['ordered_at' => '2026-10-12 03:00:00']);
+        CvrOrderEntry::create(['pancake_order_id' => $changed->pancake_order_id, 'order_type' => PancakeOrder::BROADCAST]);
+        $broadcast = $this->order($this->regina, PancakeOrder::BROADCAST, 600, '9170000004', ['ordered_at' => '2026-10-12 04:00:00']);
+
+        $data = $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => self::DAY]))->viewData('data');
+
+        $this->assertSame([true, true, false, false], array_column($data['orders'], 'assigned'));
+        $this->assertSame([2, 2], [$data['summary']['assigned_leads'], $data['summary']['pancake_leads']]);
+    }
+
     public function test_orders_follow_the_sheet_including_one_made_under_another_account(): void
     {
         $late = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000001', ['ordered_at' => '2026-10-12 05:00:00']);

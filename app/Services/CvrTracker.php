@@ -20,8 +20,8 @@ use Illuminate\Support\Collection;
  *
  * Orders = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION, not canceled or deleted,
  * by when they were created. Untagged ones are left out (they're in the order issues).
- * Assigned = the order's number matches a lead assigned to any CRA in the Segmentation Tracker (leads added from POS
- * sales left out, since they come from the order itself); otherwise Pancake.
+ * Assigned = Type of Order is Segmentation, or the order's number matches a lead assigned to any CRA in the Segmentation
+ * Tracker (leads added from POS sales left out, since they come from the order itself); otherwise Pancake.
  * Total # of Orders = the customer's delivered orders before that day (Customer Database, merged numbers too) + this one.
  * Engaged / Reserved / Not answering = the CRA's Segmentation Tracker leads on that day's list (the paired lead day when
  * a working date is set): a Time of Contact and feedback other than PURCHASED / Repeat Purchase = Reserve /
@@ -43,6 +43,10 @@ class CvrTracker
 
         $rows = $orders->map(function (PancakeOrder $order) use ($entries, $assigned, $earlier) {
             $entry = $entries[$order->pancake_order_id] ?? null;
+            $type = $entry?->order_type ?? $order->conversion_type;
+            $matched = $entry?->lead_source !== null
+                ? $entry->lead_source === CvrOrderEntry::ASSIGNED
+                : $order->phone_key !== null && isset($assigned[$order->phone_key]);
 
             return [
                 'id' => $order->pancake_order_id,
@@ -51,13 +55,13 @@ class CvrTracker
                 'page' => $order->page_name,
                 'customer' => $order->customer_name,
                 'amount' => $order->sales(),
-                'assigned' => $entry?->lead_source !== null
-                    ? $entry->lead_source === CvrOrderEntry::ASSIGNED
-                    : $order->phone_key !== null && isset($assigned[$order->phone_key]),
+                // A Segmentation order is always an assigned lead; else the sheet's pick or a matching tracker lead.
+                'assigned' => $type === PancakeOrder::SEGMENTATION || $matched,
+                'matched' => $matched,
                 'seller' => $order->seller_name,
                 'upsell' => $entry?->upsell,
                 'tagged_type' => $order->conversion_type,
-                'type' => $entry?->order_type ?? $order->conversion_type,
+                'type' => $type,
                 'point_of_contact' => $entry?->point_of_contact,
                 'time' => $order->ordered_at?->copy()->setTimezone(config('segmentation.timezone')),
             ];
