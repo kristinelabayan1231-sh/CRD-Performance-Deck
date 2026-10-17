@@ -128,7 +128,7 @@
                         @endif
                         <div><dt class="font-semibold text-ink">Goal per CRA</dt><dd>The CRA's gross sales ÷ (their daily goal × days in the dates picked). Daily goal = their own, else the general {{ '₱'.number_format(\App\Support\SalesGoals::craDaily()) }}. Left = goal − sales.</dd></div>
                         <div><dt class="font-semibold text-ink">Top product sales per CRA</dt><dd>The product with the most of the CRA's gross sales in the dates picked. Each order item is matched to a Settings → Product Consumption product; an order with several products is split by quantity × SRP.</dd></div>
-                        <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's customers who bought (Broadcast + Segmentation, each counted once) ÷ (their engagements + their leads) × 100, as the Conversion rate tile counts it. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
+                        <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's (Broadcast + Segmentation orders) ÷ (their engagements + their leads) × 100, the same as Conversion Breakdown. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
                     @endif
                     @if ($segmentation)
                         <div><dt class="font-semibold text-ink">Live from Logistics</dt><dd>From the logistics retention report, by delivered date. Retention rate = Retained by CRD ÷ FB delivered. Repeat rate = Actual Order (CRD-delivered customers who placed another CRD order) ÷ CRD delivered.</dd></div>

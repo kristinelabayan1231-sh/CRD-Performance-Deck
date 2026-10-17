@@ -274,9 +274,10 @@ class SalesGoalsTest extends TestCase
                 'Broadcast CVR', '20.00%', '2 customers of 10 engagements'])
             ->assertSeeText(['Conversion rate per day'])
             ->assertDontSee('data-tabs="dashboard-conversion"', false)
-            // Goal & conversion per CRA counts the same way: Lhea's 2 customers of her 15.
-            ->assertViewHas('results', fn (array $results) => $results['cras']->first()['conversion']['customers'] === 2
-                && $results['cras']->first()['conversion']['base'] === 15);
+            // Goal & conversion per CRA stays as Conversion Breakdown: Lhea's 3 orders of her 15 engagements + leads.
+            ->assertViewHas('results', fn (array $results) => $results['cras']->first()['totals']['orders'] === 3
+                && $results['cras']->first()['totals']['reach'] === 15)
+            ->assertSeeText('20.00%');
     }
 
     public function test_results_graphs_get_every_day_of_the_dates_and_the_flip_button(): void

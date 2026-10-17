@@ -78,11 +78,6 @@ class DashboardController extends Controller
 
             // The Conversion rate tabs, counting customers: SC = Converted, BC = Broadcast buyers, BC + SC = every buyer once.
             $results['conversion'] = $stats->conversion($cras, $range->from, $range->to, $results['daily']);
-            // Each CRA's, the same way (Goal & conversion per CRA): every customer they sold to, once ÷ their engagements + leads.
-            $results['cras'] = $results['cras']->map(fn (array $row) => [...$row, 'conversion' => $stats->conversion(
-                collect([$row['cra']]), $range->from, $range->to,
-                ['total' => ['engagements' => (int) $row['totals']['engagements'], 'leads' => (int) $row['totals']['leads']]],
-            )['all']]);
 
             // Retained and Repeat Customers from the Segmentation Tracker: Repeat Purchase = Yes bought in the dates picked,
             // FSD Leads = Retained out of the FSD leads, CRD Leads = Repeat out of the CRD leads, on the paired lead days.
