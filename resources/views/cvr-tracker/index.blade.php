@@ -117,8 +117,8 @@
                     <div class="{{ $tile }}">
                         <span class="{{ $label }}">Leads</span>
                         <div class="grid grid-cols-2 gap-3">
-                            <div class="grid gap-0.5"><span class="text-xs text-muted">Pancake leads</span><span class="text-xl font-bold">{{ $s['pancake_leads'] }}</span></div>
-                            <div class="grid gap-0.5"><span class="text-xs text-muted">Assigned leads</span><span class="text-xl font-bold">{{ $s['assigned_leads'] }}</span></div>
+                            <div class="grid gap-0.5"><span class="text-xs text-muted">Pancake leads</span><span class="text-xl font-bold" data-cvr-sum="pancake_leads">{{ $s['pancake_leads'] }}</span></div>
+                            <div class="grid gap-0.5"><span class="text-xs text-muted">Assigned leads</span><span class="text-xl font-bold" data-cvr-sum="assigned_leads">{{ $s['assigned_leads'] }}</span></div>
                         </div>
                     </div>
                 </div>
@@ -148,7 +148,7 @@
                         </thead>
                         <tbody class="divide-y divide-line">
                             @forelse ($data['orders'] as $order)
-                                <tr data-cvr-order data-url="{{ route('cvr-tracker.orders.update', $order['id']) }}" data-amount="{{ $order['amount'] }}">
+                                <tr data-cvr-order data-url="{{ route('cvr-tracker.orders.update', $order['id']) }}" data-amount="{{ $order['amount'] }}" data-matched="{{ $order['matched'] ? 1 : 0 }}">
                                     <td class="px-3 py-2 font-mono text-xs">
                                         {{ $order['id'] }}
                                         @if ($cra->pancake_name && $order['seller'] !== \App\Models\PancakeEngagement::staffKey($cra->pancake_name))
@@ -167,11 +167,9 @@
                                     <td class="px-3 py-2 font-semibold whitespace-nowrap">{{ $order['customer'] ?? '—' }}</td>
                                     <td class="px-3 py-2 text-right">{{ $peso($order['amount']) }}</td>
                                     <td class="px-3 py-2">
-                                        @if ($order['assigned'])
-                                            <span class="rounded-full bg-[#dbe7ff] px-2.5 py-1 text-xs font-semibold text-[#1d4396]" title="The number matches an assigned lead in the Segmentation Tracker">Assigned</span>
-                                        @else
-                                            <span class="rounded-full bg-[#3b3f46] px-2.5 py-1 text-xs font-semibold text-white" title="Not in the Segmentation Tracker's assigned leads">Pancake</span>
-                                        @endif
+                                        {{-- Both rendered; the Type of Order pick switches them on screen --}}
+                                        <span data-cvr-source="assigned" @class(['rounded-full bg-[#dbe7ff] px-2.5 py-1 text-xs font-semibold text-[#1d4396]', 'hidden' => ! $order['assigned']]) title="Type of Order is Segmentation, or the number matches an assigned lead in the Segmentation Tracker">Assigned</span>
+                                        <span data-cvr-source="pancake" @class(['rounded-full bg-[#3b3f46] px-2.5 py-1 text-xs font-semibold text-white', 'hidden' => $order['assigned']]) title="Not a Segmentation order and not in the Segmentation Tracker's assigned leads">Pancake</span>
                                     </td>
                                     @foreach ([['upsell', CvrOrderEntry::UPSELLS, 'Pick upsell', 'Upsell'], ['type', CvrOrderEntry::ORDER_TYPES, null, 'Type of order'], ['point_of_contact', CvrOrderEntry::POINTS_OF_CONTACT, 'Pick', 'Point of contact']] as [$field, $options, $placeholder, $name])
                                         @php($value = $order[$field])
@@ -216,7 +214,7 @@
 
             <p class="text-xs text-muted">
                 Orders are {{ $cra->displayName() }}'s Pancake orders tagged CRD - Broadcast or CRD - Segmentation, not canceled or deleted.
-                Assigned means the number matches an assigned lead in the Segmentation Tracker. Total # of orders counts the customer's delivered orders before this day, plus this one.
+                Assigned means the Type of Order is Segmentation, or the number matches an assigned lead in the Segmentation Tracker. Total # of orders counts the customer's delivered orders before this day, plus this one.
                 Engaged, Reserved and Not answering/CBR count the leads on {{ \App\Support\WorkingDate::leadDayFor($day)->format('M j') }}'s list in the Segmentation Tracker.
             </p>
         @endif

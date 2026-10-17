@@ -1,5 +1,6 @@
 // CVR Tracker: each order's Upsell, Type of Order and Point of Contact save as they're picked, and the day's
-// Unconfirmed when its box changes; the sales by type, Contacted CX and status Total follow on screen.
+// Unconfirmed when its box changes; the sales by type, Assigned / Pancake (a Segmentation order is always Assigned),
+// the lead counts, Contacted CX and status Total follow on screen.
 async function send(url, body) {
     const response = await fetch(url, {
         method: 'PUT',
@@ -16,7 +17,7 @@ async function send(url, body) {
 const peso = (n) => `₱${Math.round(n).toLocaleString('en-US')}`;
 
 function recount(root) {
-    const sums = { bc_orders: 0, bc_amount: 0, sc_orders: 0, sc_amount: 0, contacted: 0 };
+    const sums = { bc_orders: 0, bc_amount: 0, sc_orders: 0, sc_amount: 0, contacted: 0, assigned_leads: 0, pancake_leads: 0 };
     root.querySelectorAll('[data-cvr-order]').forEach((row) => {
         const amount = Number(row.dataset.amount);
         const type = row.querySelector('[data-cvr-field="order_type"]').value;
@@ -24,6 +25,10 @@ function recount(root) {
         sums[`${prefix}_orders`] += 1;
         sums[`${prefix}_amount`] += amount;
         if (row.querySelector('[data-cvr-field="point_of_contact"]').value) sums.contacted += 1;
+        const assigned = type === 'segmentation' || row.dataset.matched === '1';
+        sums[assigned ? 'assigned_leads' : 'pancake_leads'] += 1;
+        row.querySelector('[data-cvr-source="assigned"]')?.classList.toggle('hidden', !assigned);
+        row.querySelector('[data-cvr-source="pancake"]')?.classList.toggle('hidden', assigned);
     });
     root.querySelectorAll('[data-cvr-sum]').forEach((el) => {
         const key = el.dataset.cvrSum;
