@@ -11,7 +11,7 @@
 
         <x-panel :title="$tabTitle" icon="table" title-id="product-report-title" body-class="p-0" :tinted="false">
             <x-slot:badges>
-                <span class="text-xs text-muted">Orders by status, created {{ $label }}. Total qty counts every piece; an order with several products splits its sale between them.</span>
+                <span class="text-xs text-muted">Orders by status, created {{ $label }}. As Pancake's Product Performance: Total qty counts every piece (a 5-piece bundle is 5), sales each item at its Pancake price, Product cost each at its variation's cost. Items not in Settings → Product Consumption show under their own name, after the listed products.</span>
             </x-slot:badges>
 
             @if ($rows->isEmpty())
@@ -36,7 +36,12 @@
                         <tbody>
                             @foreach ($rows as $row)
                                 <tr class="border-t border-line">
-                                    <th scope="row" class="{{ $sticky }} bg-white px-4 py-2.5 text-left font-semibold">{{ $row['product'] }}</th>
+                                    <th scope="row" class="{{ $sticky }} bg-white px-4 py-2.5 text-left font-semibold">
+                                        {{ $row['product'] }}
+                                        @unless ($row['listed'])
+                                            <span class="block text-xs font-normal text-muted">Not in Product Consumption</span>
+                                        @endunless
+                                    </th>
                                     @include('order-database._status-cells', ['counts' => $row['statuses']])
                                     @include('order-database._product-cells', ['row' => $row, 'cell' => 'py-2.5'])
                                 </tr>

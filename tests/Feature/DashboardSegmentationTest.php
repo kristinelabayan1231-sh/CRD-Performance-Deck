@@ -93,6 +93,21 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame(['day' => '2026-10-08', 'label' => 'Oct 8', 'processed' => 4, 'unprocessed' => 0], $today['series'][5]);
     }
 
+    public function test_catered_counts_as_the_trackers_catered_list(): void
+    {
+        $this->lead($this->alice, '2026-10-09', ['status' => 'active']);
+        $this->lead($this->alice, '2026-10-09', ['contact_date' => '2026-10-09']);   // contacted, no status yet
+        $this->lead($this->alice, '2026-10-09')->forceFill(['processed_at' => now()])->save();   // marked as processed
+        $this->lead($this->alice, '2026-10-09');
+
+        $day = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-09'));
+
+        $this->assertSame(3, Lead::processed()->count());
+        $this->assertSame('75%', collect($day['kpis'])->firstWhere('label', 'Catered')['value']);
+        $this->assertSame([3, 1], [$day['series'][6]['processed'], $day['series'][6]['unprocessed']]);
+        $this->assertSame([3, 1], [$day['ranking'][0]['processed'], $day['ranking'][0]['unprocessed']]);
+    }
+
     public function test_a_range_of_lead_days(): void
     {
         $this->lead($this->bob, '2026-10-08', ['status' => 'active']);
