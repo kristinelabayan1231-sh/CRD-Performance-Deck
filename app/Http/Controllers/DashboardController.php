@@ -47,7 +47,8 @@ class DashboardController extends Controller
 
             // Supervisors see every CRA; a CRA sees only their own numbers.
             $cras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
-            $segmentation = $stats->range($cras, $leadFrom, $leadTo);
+            // Converted counts purchases on the real dates, as the Retained and Repeat tiles do.
+            $segmentation = $stats->range($cras, $leadFrom, $leadTo, $range->from, $range->to);
 
             // Company-wide retention from the logistics report; the lead sync above usually just refreshed it.
             $logistics->ensureFresh();

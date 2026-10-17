@@ -62,7 +62,7 @@
                             </span>
                         </p>
                         @if ($kpi['label'] === 'Converted')
-                            <p class="relative mt-0.5 text-[10px] leading-snug text-white/90">Retained <span class="font-semibold text-white">{{ $p['retained'] }}%</span> · FSD <span class="font-semibold text-white">{{ $p['fsd_converted'] }}%</span></p>
+                            <p class="relative mt-0.5 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles">Retained <span class="font-semibold text-white">{{ number_format($p['retained'], 1) }}%</span> · Repeat <span class="font-semibold text-white">{{ number_format($p['repeat'], 1) }}%</span></p>
                         @endif
                     </div>
                 @endforeach
