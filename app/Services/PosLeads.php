@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
@@ -21,7 +22,8 @@ use Illuminate\Support\Collection;
  *   else FSD Lead. On the paired lead day it shows in the tracker the CRAs are working and counts in the dashboard's leads.
  *
  * Only orders sold from a CRA's own Pancake account (User Access), with a product from the Product
- * Consumption list, not canceled or deleted.
+ * Consumption list, not canceled or deleted. An order the CVR Tracker counts for another CRA (also one made under an
+ * account not listed, e.g. AJ DELA CRUZ) is that CRA's sale.
  */
 class PosLeads
 {
@@ -42,11 +44,19 @@ class PosLeads
             return ['added' => 0, 'marked' => 0];
         }
 
-        $orders = PancakeOrder::whereDate('ordered_on', $day)->whereIn('seller_name', $cras->keys())
+        // The CVR Tracker's CRA for an order made under another account, or moved to another CRA.
+        $byId = $cras->keyBy('id');
+        $claimed = CvrOrderEntry::whereNotNull('user_id')->pluck('user_id', 'pancake_order_id');
+
+        $orders = PancakeOrder::whereDate('ordered_on', $day)
+            ->where(fn ($q) => $q->whereIn('seller_name', $cras->keys())->orWhereIn('pancake_order_id', $claimed->keys()))
             ->crdProducts()->counted()->whereNotNull('phone_key')
             ->orderBy('ordered_at')->orderBy('id')
-            ->get()
-            ->unique('phone_key');
+            ->get();
+        $craFor = fn (PancakeOrder $order): ?User => isset($claimed[$order->pancake_order_id])
+            ? $byId->get($claimed[$order->pancake_order_id])
+            : $cras->get($order->seller_name);
+        $orders = $orders->filter(fn (PancakeOrder $order) => $craFor($order) !== null)->unique('phone_key');
 
         $tracked = $this->trackedLeads($orders->pluck('phone_key')->all());
         $catalog = new ProductCatalog;
@@ -56,7 +66,7 @@ class PosLeads
             $leads = $tracked[$order->phone_key] ?? null;
 
             if ($leads === null) {
-                $this->addLead($order, $cras[$order->seller_name], $catalog);
+                $this->addLead($order, $craFor($order), $catalog);
                 $result['added']++;
             } elseif ($this->markBought($leads, $order)) {
                 $result['marked']++;

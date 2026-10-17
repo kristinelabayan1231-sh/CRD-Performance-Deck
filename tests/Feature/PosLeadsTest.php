@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
@@ -158,6 +159,31 @@ class PosLeadsTest extends TestCase
             ->expectsOutputToContain('2 customers added')->assertSuccessful();
 
         $this->assertSame(['2026-10-01', '2026-10-15'], Lead::orderBy('order_id')->get()->map(fn (Lead $lead) => $lead->repeat_purchase_on->toDateString())->all());
+    }
+
+    public function test_an_order_counted_for_a_cra_in_the_cvr_tracker_is_their_sale(): void
+    {
+        $regina = User::create(['email' => 'regina@example.com', 'display_name' => 'Regina', 'pancake_name' => 'CRD Rej Vergara',
+            'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        // Made under another account, counted for Lhea; Lhea's own, counted for Regina.
+        $this->order('5020', '9172020202', ['seller_name' => 'AJ DELA CRUZ']);
+        $this->order('5021', '9172121212');
+        CvrOrderEntry::create(['pancake_order_id' => '5020', 'user_id' => $this->lhea->id]);
+        CvrOrderEntry::create(['pancake_order_id' => '5021', 'user_id' => $regina->id]);
+
+        $this->assertSame(['added' => 2, 'marked' => 0], app(PosLeads::class)->record($this->today));
+
+        $this->assertSame(['POS-5020' => $this->lhea->id, 'POS-5021' => $regina->id], Lead::orderBy('order_id')->pluck('assigned_to', 'order_id')->all());
+    }
+
+    public function test_the_command_records_the_last_days(): void
+    {
+        $this->order('5022', '9172222223', ['ordered_on' => '2026-10-10', 'ordered_at' => '2026-10-10 01:00:00']);
+        $this->order('5023', '9172323232', ['ordered_on' => '2026-10-09', 'ordered_at' => '2026-10-09 01:00:00']);   // outside the last 7 days (Oct 10-16)
+
+        $this->artisan('leads:record-pos-sales', ['--last' => 7])->expectsOutputToContain('1 customers added')->assertSuccessful();
+
+        $this->assertSame(['POS-5022'], Lead::pluck('order_id')->all());
     }
 
     public function test_running_again_adds_each_customer_once(): void

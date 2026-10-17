@@ -39,6 +39,13 @@ Schedule::command('pancake:sync --date=yesterday')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(60);
 
+// The CRAs' POS sales of the last week in the Segmentation Tracker again: late orders, products added to Settings
+// later and orders counted for another CRA in the CVR Tracker (a customer is never added twice).
+Schedule::command('leads:record-pos-sales --last=7')
+    ->hourlyAt(20)
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30);
+
 // Customer Database: one-time backfill from Pancake POS, a few days per run, oldest
 // first in 2-month windows from January; once it reaches yesterday it does nothing.
 Schedule::command('customers:backfill')

@@ -76,6 +76,9 @@ class DashboardController extends Controller
             // Database's counts). This month's is worked out ahead every 2 minutes by customers:warm-cache.
             $churnRate = $churn->cached($range->from, $range->to);
 
+            // The Conversion rate tabs, counting customers: SC = Converted, BC = Broadcast buyers, BC + SC = every buyer once.
+            $results['conversion'] = $stats->conversion($cras, $range->from, $range->to, $results['daily']);
+
             // Retained and Repeat Customers from the Segmentation Tracker: Repeat Purchase = Yes bought in the dates picked,
             // FSD Leads = Retained out of the FSD leads, CRD Leads = Repeat out of the CRD leads, on the paired lead days.
             if ($user->can('segmentation.view')) {

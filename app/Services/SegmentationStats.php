@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\PancakeOrder;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -62,6 +63,60 @@ class SegmentationStats
             ],
             'retained' => $this->repeatPurchases($cras, 'retained', $from, $to)->count(),
             'repeat' => $this->repeatPurchases($cras, 'repeat', $from, $to)->count(),
+        ];
+    }
+
+    /**
+     * The dashboard's Conversion rate tabs, all counting customers (one each):
+     * - sc: Retained + Repeat customers (the Segmentation Tracker's Converted) ÷ tracker leads;
+     * - bc: customers with a Broadcast order (as Total confirmed orders counts them) ÷ Pancake engagements;
+     * - all: every customer who bought, once (Converted, plus Broadcast buyers not among them) ÷ (engagements + leads).
+     * Per day too, from $daily (SalesGoalProgress' days: engagements and the paired lead day's leads).
+     *
+     * @param  Collection<int, User>  $cras
+     * @param  array<string, array{engagements: int, leads: int}>  $daily
+     * @return array<string, array{customers: int, base: int, rate: ?float, daily: array<string, ?float>}>
+     */
+    public function conversion(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, array $daily): array
+    {
+        $phone = fn (?string $number) => LeadGenerator::normalizePhone((string) $number);
+        $converted = $this->repeatPurchases($cras, 'retained', $from, $to)->concat($this->repeatPurchases($cras, 'repeat', $from, $to));
+        $convertedPhones = $converted->map(fn (Lead $lead) => $phone($lead->phone_number))->flip();
+
+        // Broadcast buyers, one per number (an order with no number is its own customer).
+        $broadcast = ConversionBreakdown::taggedOrders(ConversionBreakdown::accounts($cras), $from, $to)->get()
+            ->filter(fn (PancakeOrder $order) => $order->isCounted() && $order->counted_type === PancakeOrder::BROADCAST)
+            ->map(fn (PancakeOrder $order) => [
+                'customer' => $order->phone_key ? $phone($order->phone_key) : 'order:'.$order->pancake_order_id,
+                'day' => $order->ordered_on->toDateString(),
+            ]);
+        $bcCustomers = $broadcast->pluck('customer')->unique();
+        $bcOnly = $bcCustomers->reject(fn (string $customer) => isset($convertedPhones[$customer]));
+
+        $leads = (int) array_sum(array_column($daily, 'leads'));
+        $engagements = (int) array_sum(array_column($daily, 'engagements'));
+        $rate = fn (int $part, int $of) => $of ? $part / $of : null;
+
+        $scDay = $converted->countBy(fn (Lead $lead) => $lead->repeat_purchase_on->toDateString());
+        $bcDay = $broadcast->unique(fn (array $sale) => $sale['day'].'|'.$sale['customer'])->countBy('day');
+        $bcOnlyDay = $broadcast->reject(fn (array $sale) => isset($convertedPhones[$sale['customer']]))
+            ->unique(fn (array $sale) => $sale['day'].'|'.$sale['customer'])->countBy('day');
+        $perDay = fn (callable $value) => collect($daily)->map(fn (array $day, string $key) => $value($day, $key))->all();
+
+        return [
+            'all' => [
+                'customers' => $converted->count() + $bcOnly->count(), 'base' => $engagements + $leads,
+                'rate' => $rate($converted->count() + $bcOnly->count(), $engagements + $leads),
+                'daily' => $perDay(fn ($day, $key) => $rate(($scDay[$key] ?? 0) + ($bcOnlyDay[$key] ?? 0), $day['engagements'] + $day['leads'])),
+            ],
+            'sc' => [
+                'customers' => $converted->count(), 'base' => $leads, 'rate' => $rate($converted->count(), $leads),
+                'daily' => $perDay(fn ($day, $key) => $rate($scDay[$key] ?? 0, $day['leads'])),
+            ],
+            'bc' => [
+                'customers' => $bcCustomers->count(), 'base' => $engagements, 'rate' => $rate($bcCustomers->count(), $engagements),
+                'daily' => $perDay(fn ($day, $key) => $rate($bcDay[$key] ?? 0, $day['engagements'])),
+            ],
         ];
     }
 
