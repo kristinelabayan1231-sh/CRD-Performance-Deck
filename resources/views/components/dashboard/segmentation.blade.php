@@ -38,7 +38,7 @@
                             <svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">{!! $kpiIcons[$i] !!}</svg>
                             <span class="truncate">{{ $kpi['label'] }}</span>
                         </p>
-                        <p class="relative flex items-baseline gap-1.5">
+                        <p class="relative flex flex-wrap items-baseline gap-x-1.5">
                             <span class="text-2xl font-bold tabular-nums">{{ $kpi['value'] }}</span>
                             @if ($kpi['count'])
                                 <span class="text-sm font-semibold tabular-nums text-white/90" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>

@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 /**
  * Dashboard numbers for the Segmentation Tracker, for a range of lead days.
  *
- * Processed = status set. Unprocessed = no status yet.
+ * Processed (Catered) = as the tracker's Catered list: a status, a contact date, or marked as processed. Unprocessed = none of these.
  * Converted = Retained + Repeat, as the dashboard's tiles count them: Repeat Purchase = Yes bought on the real days
  * paired with the lead days, one per customer; Retained = FSD Leads (of the FSD leads), Repeat = CRD Leads (of the CRD leads).
  */
@@ -22,6 +22,9 @@ class SegmentationStats
     private const WARM = ['warm', 'canpro_warm'];
 
     private const COLD = ['cold', 'canpro_cold'];
+
+    /** Catered, as the tracker's Catered list: a status, a contact date, or marked as processed (Lead::processed()). */
+    private const CATERED = 'status is not null or contact_date is not null or processed_at is not null';
 
     /**
      * Lead days $from–$to, compared with the same number of days just before. A single day's
@@ -129,7 +132,7 @@ class SegmentationStats
     {
         $t = $this->scope($ids, $from, $to)
             ->selectRaw('count(*) as leads')
-            ->selectRaw('sum(case when status is not null then 1 else 0 end) as processed')
+            ->selectRaw('sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
             ->selectRaw('sum(case when customer_tag in (?, ?) then 1 else 0 end) as hot', self::HOT)
             ->selectRaw('sum(case when customer_tag in (?, ?) then 1 else 0 end) as warm', self::WARM)
             ->selectRaw('sum(case when customer_tag in (?, ?) then 1 else 0 end) as cold', self::COLD)
@@ -195,7 +198,7 @@ class SegmentationStats
         $end = $to->min($today);
 
         $rows = $this->scope($ids, $from, $end)
-            ->selectRaw('date(est_out_of_stock_date) as day, count(*) as leads, sum(case when status is not null then 1 else 0 end) as processed')
+            ->selectRaw('date(est_out_of_stock_date) as day, count(*) as leads, sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
             ->groupBy('day')
             ->get()
             ->keyBy(fn ($r) => CarbonImmutable::parse($r->day)->toDateString());
@@ -224,7 +227,7 @@ class SegmentationStats
     private function ranking(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, array $converted): array
     {
         $rows = $this->scope($cras->pluck('id'), $from, $to)
-            ->selectRaw('assigned_to, count(*) as leads, sum(case when status is not null then 1 else 0 end) as processed')
+            ->selectRaw('assigned_to, count(*) as leads, sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
             ->groupBy('assigned_to')->get()->keyBy('assigned_to');
 
         return $cras->map(function (User $cra) use ($rows, $converted) {

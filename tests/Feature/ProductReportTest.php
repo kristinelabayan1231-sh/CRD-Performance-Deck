@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ProductReportTest extends TestCase
@@ -79,6 +80,49 @@ class ProductReportTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('order-database.product-report', ['product' => 'Canpro']))
             ->assertOk()->assertSeeText('₱1,200')->assertDontSeeText('₱800');
+    }
+
+    public function test_items_not_on_the_list_show_under_their_own_name_with_the_rest_of_the_price(): void
+    {
+        // Sinuxyl + an oil for ₱800: Shecom's ₱300 is the Sinuxyl's, the other ₱500 the oil's.
+        $this->order('CRD LHEI', 3, 800, ['Sinuxyl' => 1, 'LUMICARE OIL' => 1]);
+        PancakeOrder::latest('id')->first()->forceFill(['shecom_sales' => 300])->save();
+        // An order of unlisted items only: split between them by pieces.
+        $this->order('CRD LHEI', 3, 300, ['LUMICARE OIL' => 2, 'Turmeric Soap' => 1]);
+
+        $response = $this->actingAs($this->owner)->get(route('order-database.product-report'))
+            ->assertOk()
+            ->assertSeeTextInOrder(['Sinuxyl', '1', '₱300', 'LUMICARE OIL', 'Not in Product Consumption', '3', '₱700', 'Turmeric Soap', '1', '₱100', 'TOTAL', '5', '₱1,100'])
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['Sinuxyl', 'LUMICARE OIL', 'Turmeric Soap']);
+
+        // "Other products" in the filter: every item not on the list.
+        $this->actingAs($this->owner)->get(route('order-database.product-report', ['product' => 'Other products']))
+            ->assertOk()
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['LUMICARE OIL', 'Turmeric Soap']);
+    }
+
+    public function test_orders_fetched_again_count_pancakes_pieces_prices_and_costs(): void
+    {
+        config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
+        $item = fn (string $name, int $qty, string $code, float $price, float $cost) => ['quantity' => $qty,
+            'variation_info' => ['name' => $name, 'custom_id' => $code, 'retail_price' => $price, 'exact_price' => $cost]];
+        // Two 5-piece Sinuxyl bundles at ₱999 (₱150 cost each) and an oil at ₱1,000, in one ₱2,998 order.
+        Http::fake(fn () => Http::response(['success' => true, 'total_pages' => 1, 'data' => [
+            ['display_id' => 8101, 'inserted_at' => '2026-10-05T02:00:00', 'status' => 3, 'total_price' => 2998, 'total_discount' => 0,
+                'assigning_seller' => ['id' => 'lh', 'name' => 'CRD LHEI'],
+                'items' => [$item('Sinuxyl', 2, '5 Sinuxyl Drops', 999, 150), $item('LUMICARE OIL', 1, '3 Lumicare Oil', 1000, 138)]],
+        ]]));
+
+        $this->artisan('pancake:sync', ['--orders' => true, '--from' => '2026-10-05', '--to' => '2026-10-05'])->assertSuccessful();
+
+        $this->assertEquals(
+            [['name' => 'Sinuxyl', 'qty' => 2, 'pieces' => 5, 'price' => 999.0, 'cost' => 150.0], ['name' => 'LUMICARE OIL', 'qty' => 1, 'pieces' => 3, 'price' => 1000.0, 'cost' => 138.0]],
+            PancakeOrder::sole()->items,
+        );
+        // 10 pieces, ₱1,998, ₱300 cost (not 10 × the ₱35 in Settings); the oil 3 pieces, ₱1,000, ₱138.
+        $this->actingAs($this->owner)->get(route('order-database.product-report'))
+            ->assertOk()
+            ->assertSeeTextInOrder(['Sinuxyl', '10', '₱1,998', '₱300', 'LUMICARE OIL', '3', '₱1,000', '₱138', 'TOTAL', '13', '₱2,998', '₱438']);
     }
 
     public function test_a_cra_sees_only_their_own_account(): void

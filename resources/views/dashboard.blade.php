@@ -132,7 +132,7 @@
                     @endif
                     @if ($segmentation)
                         <div><dt class="font-semibold text-ink">Live from Logistics</dt><dd>From the logistics retention report, by delivered date. Retention rate = Retained by CRD ÷ FB delivered. Repeat rate = Actual Order (CRD-delivered customers who placed another CRD order) ÷ CRD delivered.</dd></div>
-                        <div><dt class="font-semibold text-ink">Segmentation Tracker</dt><dd>Leads = leads for the lead days. Catered = leads with a status ÷ leads. Converted = Retained + Repeat customers (as the tiles above: Repeat Purchase = Yes bought in the dates picked, one per customer) ÷ leads; under it, Retained (of the FSD Leads) and Repeat (of the CRD Leads), the same % as the tiles. Top CRAs' Conv. counts them the same way. Went cold = leads tagged Cold or CanPro Cold ÷ leads. Each is compared with the same number of days just before.</dd></div>
+                        <div><dt class="font-semibold text-ink">Segmentation Tracker</dt><dd>Leads = leads for the lead days. Catered = leads in the tracker's Catered list (a status, a contact date, or marked as processed) ÷ leads. Converted = Retained + Repeat customers (as the tiles above: Repeat Purchase = Yes bought in the dates picked, one per customer) ÷ leads; under it, Retained (of the FSD Leads) and Repeat (of the CRD Leads), the same % as the tiles. Top CRAs' Conv. counts them the same way. Went cold = leads tagged Cold or CanPro Cold ÷ leads. Each is compared with the same number of days just before.</dd></div>
                     @endif
                 </dl>
             </details>

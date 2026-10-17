@@ -40,7 +40,7 @@ class ProductPerformance
         };
 
         // Only the products CRD handles (Settings → Product Consumption); orders' other items are left out.
-        $handled = fn (array $line) => $line['product'] !== CraPerformance::OTHER_PRODUCTS;
+        $handled = fn (array $line) => $line['listed'];
         $lines = $this->report->lines($sellers, $from, $to)->filter($handled)->values();
         $previous = $this->report->lines($sellers, $previousFrom, $previousTo)->filter($handled)->values();
         $buckets = self::buckets($unit, $from, $to);

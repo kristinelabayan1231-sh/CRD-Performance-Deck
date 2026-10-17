@@ -305,17 +305,27 @@ class PancakeClient
     }
 
     /**
-     * An order's items as product name and quantity.
+     * An order's items as product name and quantity, with what Pancake's own Product Performance counts when it is
+     * there: pieces in the variation (a bundle's code starts with them: "5 Pterygium Drops" = 5), its price and its
+     * cost, each per item.
      *
      * @param  list<array<string, mixed>>  $items
-     * @return list<array{name: string, qty: int}>
+     * @return list<array{name: string, qty: int, pieces?: int, price?: float, cost?: float}>
      */
     private static function slimItems(array $items): array
     {
-        return collect($items)->map(fn (array $item) => [
-            'name' => trim((string) ($item['variation_info']['name'] ?? '')),
-            'qty' => max(1, (int) ($item['quantity'] ?? 1)),
-        ])->filter(fn (array $item) => $item['name'] !== '')->values()->all();
+        return collect($items)->map(function (array $item) {
+            $variation = $item['variation_info'] ?? [];
+            $pieces = preg_match('/^\s*(\d{1,3})\s+\pL/u', (string) ($variation['custom_id'] ?? ''), $match) ? (int) $match[1] : null;
+
+            return array_filter([
+                'name' => trim((string) ($variation['name'] ?? '')),
+                'qty' => max(1, (int) ($item['quantity'] ?? 1)),
+                'pieces' => $pieces > 0 ? $pieces : null,
+                'price' => isset($variation['retail_price']) ? (float) $variation['retail_price'] : null,
+                'cost' => isset($variation['exact_price']) ? (float) $variation['exact_price'] : null,
+            ], fn ($value) => $value !== null);
+        })->filter(fn (array $item) => ($item['name'] ?? '') !== '')->values()->all();
     }
 
     /**

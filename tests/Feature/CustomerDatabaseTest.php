@@ -273,7 +273,8 @@ class CustomerDatabaseTest extends TestCase
         ]]])]);
 
         $this->assertSame(1, app(PancakeSync::class)->syncOrders(CarbonImmutable::parse('2026-10-08')));
-        $this->assertSame([['name' => 'CANPRO 60s', 'qty' => 2]], PancakeOrder::firstWhere('pancake_order_id', '501')->items);
+        // The item's price is kept; the rest of the product record (images…) isn't.
+        $this->assertSame([['name' => 'CANPRO 60s', 'qty' => 2, 'price' => 499]], PancakeOrder::firstWhere('pancake_order_id', '501')->items);
     }
 
     public function test_date_range_counts_crd_accounts_from_the_list_as_handled_by_a_cra(): void
