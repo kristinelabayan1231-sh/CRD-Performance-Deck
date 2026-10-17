@@ -143,16 +143,17 @@ class DashboardSegmentationTest extends TestCase
         // The same customer twice on October lead days: two leads, as the tracker counts them.
         $this->lead($this->alice, '2026-10-08', ['phone_number' => '9179999999']);
         $this->lead($this->bob, '2026-10-09', ['phone_number' => '9179999999']);
+        $this->lead($this->bob, '2026-10-09', ['lead_type' => Lead::TYPE_CRD]);
 
         $response = $this->actingAs($this->owner)->get('/dashboard')->assertOk()
             ->assertSee(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'repeat']));
-        // Out of the tracker's Leads on October's lead days, as the Segmentation panel counts them.
-        $this->assertSame(['leads' => 5, 'retained' => 1, 'repeat' => 1], array_diff_key($response->viewData('customers'), ['goals' => 0]));
-        $this->assertSame(5, $response->viewData('segmentation')['leads']);
+        // Each out of its own leads on October's lead days: Retained of the FSD Leads, Repeat of the CRD Leads.
+        $this->assertSame(['leads' => ['retained' => 5, 'repeat' => 1], 'retained' => 1, 'repeat' => 1], array_diff_key($response->viewData('customers'), ['goals' => 0]));
+        $this->assertSame(6, $response->viewData('segmentation')['leads']);
 
         // A CRA: only their own leads.
         $mine = $this->actingAs($this->alice)->get('/dashboard')->viewData('customers');
-        $this->assertSame([2, 0, 1], [$mine['leads'], $mine['retained'], $mine['repeat']]);
+        $this->assertSame([2, 0, 0, 1], [$mine['leads']['retained'], $mine['leads']['repeat'], $mine['retained'], $mine['repeat']]);
     }
 
     public function test_a_tile_opens_its_customers_for_the_dashboards_dates(): void

@@ -48,7 +48,7 @@
         @php($rateControl = 'h-10 w-full rounded-lg border border-line bg-white pr-8 pl-3 text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
         <section class="rounded-xl bg-white p-4 shadow-sm">
             <h2 class="text-base font-semibold">Customer goals <span class="text-sm font-normal text-muted">(monthly)</span></h2>
-            <p class="text-sm text-muted">Share of all the leads (every FSD and CRD delivery in the dates picked) the CRAs should retain or get to order again. The dashboard's Retained and Repeat customers tiles compare against these.</p>
+            <p class="text-sm text-muted">Share of the leads in the dates picked the CRAs should retain (of the FSD Leads) or get to order again (of the CRD Leads). The dashboard's Retained and Repeat customers tiles compare against these.</p>
 
             <div class="mt-5 grid gap-5 sm:grid-cols-2 lg:max-w-4xl lg:grid-cols-3">
                 @foreach ([

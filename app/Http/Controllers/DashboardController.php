@@ -77,7 +77,7 @@ class DashboardController extends Controller
             $churnRate = $churn->cached($range->from, $range->to);
 
             // Retained and Repeat Customers from the Segmentation Tracker: Repeat Purchase = Yes bought in the dates picked,
-            // FSD Leads = Retained, CRD Leads = Repeat, out of the customers with a lead on the paired lead days.
+            // FSD Leads = Retained out of the FSD leads, CRD Leads = Repeat out of the CRD leads, on the paired lead days.
             if ($user->can('segmentation.view')) {
                 $trackerCras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
                 $customers = $stats->customers($trackerCras, $range->from, $range->to, $leadFrom, $leadTo);
