@@ -42,4 +42,19 @@ class CvrOrderEntry extends Model
 
     /** A choice not picked yet. */
     public const UNSET_CLASSES = 'bg-white text-[#8a5f00] ring-1 ring-inset ring-[#e9b949]';
+
+    /**
+     * Orders the CVR Tracker counts for a CRA other than their seller, as Pancake order id => that CRA's account
+     * (staff key), for the pages that group orders by account (Order Database).
+     *
+     * @return array<string, string>
+     */
+    public static function claimedAccounts(): array
+    {
+        return self::query()->whereNotNull('cvr_order_entries.user_id')
+            ->join('users', 'users.id', '=', 'cvr_order_entries.user_id')->whereNotNull('users.pancake_name')
+            ->pluck('users.pancake_name', 'cvr_order_entries.pancake_order_id')
+            ->map(fn (string $name) => PancakeEngagement::staffKey($name))
+            ->all();
+    }
 }

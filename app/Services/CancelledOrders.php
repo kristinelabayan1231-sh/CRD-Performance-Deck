@@ -11,10 +11,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * Cancelled / waiting orders: every Pancake order a CRD account sold whose status is Canceled (6) or Waiting
- * for goods (11), by the day the order was created, whatever its tags or products (as the team tallies them).
- * With $everyCrdAccount, all of Settings → Pancake Accounts (former CRAs and second accounts too); otherwise
- * only the CRAs' own accounts (User Access). Amounts are the sale (Shecom's, else Pancake's total).
+ * Cancelled / waiting orders: the CRAs' orders as the dashboard counts them (ConversionBreakdown::taggedOrders():
+ * tagged CRD - BROADCAST / SEGMENTATION, a listed product, with the CVR Tracker's corrections) whose status is
+ * Canceled (6) or Waiting for goods (11), by the day the order was created. The rate is out of those same orders,
+ * deleted ones left out (confirmed + canceled), so it lines up with Total confirmed orders. Amounts are the sale
+ * (Shecom's, else Pancake's total).
  */
 class CancelledOrders
 {
@@ -23,9 +24,9 @@ class CancelledOrders
      *
      * @param  Collection<int, User>  $cras
      */
-    public function query(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, ?string $status = null, bool $everyCrdAccount = false): Builder
+    public function query(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, ?string $status = null): Builder
     {
-        return $this->crdOrders($cras, $from, $to, $everyCrdAccount)->whereIn('status', match ($status) {
+        return $this->crdOrders($cras, $from, $to)->whereIn('pancake_orders.status', match ($status) {
             'cancelled' => [PancakeOrder::CANCELED],
             'waiting' => [PancakeOrder::WAITING],
             default => PancakeOrder::CANCELLED_OR_WAITING_STATUSES,
@@ -33,20 +34,15 @@ class CancelledOrders
     }
 
     /**
-     * Every order the CRD accounts of $cras sold $from–$to, any status (the rate's basis).
+     * Every order of $cras created $from–$to as the dashboard counts them, deleted ones left out (the rate's basis:
+     * confirmed + canceled).
      *
      * @param  Collection<int, User>  $cras
      */
-    public function crdOrders(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, bool $everyCrdAccount = false): Builder
+    public function crdOrders(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
-        $sellers = ConversionBreakdown::accounts($cras)->keys();
-
-        if ($everyCrdAccount) {
-            $sellers = $sellers->merge(PancakeOrder::crdAccounts())->unique()->values();
-        }
-
-        return PancakeOrder::whereIn('seller_name', $sellers)
-            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString());
+        return ConversionBreakdown::taggedOrders(ConversionBreakdown::accounts($cras), $from, $to)
+            ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhere('pancake_orders.status', '!=', CraPerformance::DELETED));
     }
 
     /**
@@ -56,10 +52,10 @@ class CancelledOrders
      * @param  Collection<int, User>  $cras
      * @return Collection<int, OrderStatusChange>
      */
-    public function changes(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, bool $everyCrdAccount = false): Collection
+    public function changes(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
         $timezone = config('segmentation.timezone');
-        $orders = $this->crdOrders($cras, CarbonImmutable::create(2000), WorkingDate::realToday(), $everyCrdAccount)->select('pancake_order_id');
+        $orders = $this->crdOrders($cras, CarbonImmutable::create(2000), WorkingDate::realToday())->select('pancake_orders.pancake_order_id');
 
         return OrderStatusChange::with('order')
             ->whereIn('pancake_order_id', $orders)
@@ -77,10 +73,10 @@ class CancelledOrders
      * @param  Collection<int, User>  $cras
      * @return array{cancelled: int, waiting: int, total: int, amount: float, orders: int, rate: ?float}
      */
-    public function totals(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, bool $everyCrdAccount = false): array
+    public function totals(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $totals = self::sum($this->query($cras, $from, $to, everyCrdAccount: $everyCrdAccount)->get(['status', 'total_price', 'shecom_sales']));
-        $orders = $this->crdOrders($cras, $from, $to, $everyCrdAccount)->count();
+        $totals = self::sum($this->query($cras, $from, $to)->get());
+        $orders = $this->crdOrders($cras, $from, $to)->count();
 
         return [...$totals, 'orders' => $orders, 'rate' => $orders ? $totals['total'] / $orders : null];
     }
@@ -91,9 +87,9 @@ class CancelledOrders
      * @param  Collection<int, User>  $cras
      * @return Collection<string, array{cancelled: int, waiting: int, total: int, amount: float}>
      */
-    public function perDay(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, ?string $status = null, bool $everyCrdAccount = false): Collection
+    public function perDay(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, ?string $status = null): Collection
     {
-        return $this->query($cras, $from, $to, $status, $everyCrdAccount)->get(['ordered_on', 'status', 'total_price', 'shecom_sales'])
+        return $this->query($cras, $from, $to, $status)->get()
             ->groupBy(fn (PancakeOrder $order) => $order->ordered_on->toDateString())
             ->sortKeysDesc()
             ->map(fn (Collection $orders) => self::sum($orders));

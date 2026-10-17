@@ -68,11 +68,10 @@ class DashboardController extends Controller
 
             $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
             $results = $goals->for($cras, $range);
-            // Orders the CRD accounts sold that were canceled or are waiting for goods (opens Cancelled / Waiting Orders):
-            // supervisors get every account in Settings → Pancake Accounts, a CRA their own.
-            $everyCrdAccount = $user->can('conversion.view_all');
-            $results['cancelled'] = $cancelledOrders->totals($cras, $range->from, $range->to, $everyCrdAccount);
-            $results['cancelled']['days'] = $cancelledOrders->perDay($cras, $range->from, $range->to, everyCrdAccount: $everyCrdAccount);
+            // The CRAs' orders (as Total confirmed orders counts them) that were canceled or are waiting for goods, out of
+            // confirmed + canceled (opens Cancelled / Waiting Orders); a CRA sees their own.
+            $results['cancelled'] = $cancelledOrders->totals($cras, $range->from, $range->to);
+            $results['cancelled']['days'] = $cancelledOrders->perDay($cras, $range->from, $range->to);
             // Company-wide; tens of thousands of deliveries to look through, so kept for a few minutes (as the Customer
             // Database's counts). This month's is worked out ahead every 2 minutes by customers:warm-cache.
             $churnRate = $churn->cached($range->from, $range->to);

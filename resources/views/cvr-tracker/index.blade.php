@@ -12,7 +12,7 @@
 @endphp
 
 <x-layouts.app title="CVR Tracker">
-    <div class="space-y-4" data-cvr-tracker data-day-url="{{ route('cvr-tracker.days.update') }}" data-date="{{ $day->toDateString() }}" data-cra="{{ $cra?->id }}"
+    <div class="space-y-4" data-cvr-tracker data-canceled-bc="{{ $s['canceled']['bc_amount'] ?? 0 }}" data-canceled-sc="{{ $s['canceled']['sc_amount'] ?? 0 }}" data-day-url="{{ route('cvr-tracker.days.update') }}" data-date="{{ $day->toDateString() }}" data-cra="{{ $cra?->id }}"
          data-empty-classes="{{ CvrOrderEntry::UNSET_CLASSES }}">
         <header class="flex flex-wrap items-center justify-between gap-4">
             <h1 class="text-xl font-semibold">CVR Tracker <span class="text-sm font-normal text-muted">· Reorders each CRA converted</span></h1>
@@ -87,11 +87,11 @@
                 @endif
 
                 <div class="grid grid-cols-2 gap-2.5 md:grid-cols-4 xl:grid-cols-7 tabular-nums">
-                    <div class="{{ $tile }} border-brand-200 bg-brand-50"><span class="{{ $label }}">Total gross sales</span><span class="text-2xl font-bold">{{ $peso($s['gross']) }}</span><span class="text-xs text-muted">Broadcast + Segmentation</span></div>
+                    <div class="{{ $tile }} border-brand-200 bg-brand-50"><span class="{{ $label }}">Total gross sales</span><span class="text-2xl font-bold">{{ $peso($s['gross']) }}</span><span class="text-xs text-muted">Broadcast + Segmentation{{ $s['canceled']['orders'] ? ' · incl. '.$peso($s['canceled']['amount']).' canceled ('.$s['canceled']['orders'].')' : '' }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">Broadcast sales</span><span class="text-xl font-bold" data-cvr-sum="bc_amount">{{ $peso($s['bc_amount']) }}</span><span class="text-xs text-muted"><span data-cvr-sum="bc_orders">{{ $s['bc_orders'] }}</span> {{ Str::plural('order', $s['bc_orders']) }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">Segmentation sales</span><span class="text-xl font-bold" data-cvr-sum="sc_amount">{{ $peso($s['sc_amount']) }}</span><span class="text-xs text-muted"><span data-cvr-sum="sc_orders">{{ $s['sc_orders'] }}</span> {{ Str::plural('order', $s['sc_orders']) }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">Total orders</span><span class="text-xl font-bold">{{ $s['orders'] }}</span></div>
-                    <div class="{{ $tile }}"><span class="{{ $label }}">AOV</span><span class="text-xl font-bold">{{ $peso($s['aov']) }}</span><span class="text-xs text-muted">Gross ÷ orders</span></div>
+                    <div class="{{ $tile }}"><span class="{{ $label }}">AOV</span><span class="text-xl font-bold">{{ $peso($s['aov']) }}</span><span class="text-xs text-muted">Gross ÷ orders{{ $s['canceled']['orders'] ? ' (canceled in gross)' : '' }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">CVR</span><span class="text-xl font-bold">{{ $s['cvr'] === null ? '—' : number_format($s['cvr'] * 100, 1).'%' }}</span>
                         @if ($s['cvr'] === null)<span class="{{ $pending }}">Needs engagements</span>@else<span class="text-xs text-muted">Segmentation ÷ engagements</span>@endif
                     </div>
@@ -199,7 +199,12 @@
                             <tfoot class="border-t-2 border-line bg-brand-50/50 font-bold">
                                 <tr>
                                     <td class="px-3 py-2.5" colspan="5">TOTAL · {{ $s['orders'] }} {{ Str::plural('order', $s['orders']) }}</td>
-                                    <td class="px-3 py-2.5 text-right">{{ $peso($s['gross']) }}</td>
+                                    <td class="px-3 py-2.5 text-right">
+                                        {{ $peso($s['gross']) }}
+                                        @if ($s['canceled']['orders'])
+                                            <span class="block text-[11px] font-normal text-muted">incl. {{ $peso($s['canceled']['amount']) }} canceled</span>
+                                        @endif
+                                    </td>
                                     <td class="px-3 py-2.5 whitespace-nowrap">{{ $s['pancake_leads'] }} Pancake · {{ $s['assigned_leads'] }} Assigned</td>
                                     <td class="px-3 py-2.5"></td>
                                     <td class="px-3 py-2.5 whitespace-nowrap"><span data-cvr-sum="sc_orders">{{ $s['sc_orders'] }}</span> Seg · <span data-cvr-sum="bc_orders">{{ $s['bc_orders'] }}</span> BC</td>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\OrderStatusChange;
 use App\Models\PancakeOrder;
 use App\Models\Role;
@@ -54,7 +55,7 @@ class CancelledOrdersTest extends TestCase
         $this->order('CRD LHEI', '2026-10-10', 6);
         $this->order('CRD LHEI', '2026-10-09', 11);
         $this->order('CRD LHEI', '2026-10-09', 11);
-        // Untagged counts too; not counted: delivered, a non-CRD seller, last month.
+        // Not counted: untagged (not a confirmed order either), a non-CRD seller, last month; delivered is in the basis.
         $this->order('CRD LHEI', '2026-10-10', 6, type: null);
         $this->order('CRD LHEI', '2026-10-10', 3);
         $this->order('FSD AGENT', '2026-10-10', 6);
@@ -62,8 +63,8 @@ class CancelledOrdersTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
-            // 4 of the 5 orders the CRD accounts sold in October (the delivered one counts in the basis).
-            ->assertSeeTextInOrder(['AOV', 'Cancelled / Waiting', '4', '80.0%', 'Cancelled 2', 'Waiting 2'])
+            // 3 of the 4 tagged October orders (confirmed + canceled), as Total confirmed orders counts them.
+            ->assertSeeTextInOrder(['AOV', 'Cancelled / Waiting', '3', '75.0%', 'Cancelled 1', 'Waiting 2'])
             ->assertSee(route('cancelled-orders.index'));
     }
 
@@ -98,28 +99,34 @@ class CancelledOrdersTest extends TestCase
             ->assertOk()->assertSee('7001')->assertSee('7002')->assertDontSee('7003');
     }
 
-    public function test_any_order_a_crd_account_sold_counts_whatever_its_tags_or_products(): void
+    public function test_orders_count_as_total_confirmed_orders_counts_them(): void
     {
-        // Settings → Pancake Accounts, as before anything is saved there: Lhea's second account and a former CRA's.
-        config(['customers.crd_accounts' => ['CRD LHEI', 'LHEA GATDULA', 'CRD JULY DE LOS SANTOS']]);
+        config(['customers.crd_accounts' => ['CRD LHEI', 'CRD JULY DE LOS SANTOS']]);
         $lhea = $this->cra('Lhea', 'CRD LHEI');
-        $this->order('CRD LHEI', '2026-10-09', 6, 499, type: null);
-        $this->order('LHEA GATDULA', '2026-10-09', 11, 1000);
-        $this->order('CRD JULY DE LOS SANTOS', '2026-10-09', 11, 800, type: null);
-        PancakeOrder::where('pancake_order_id', '7003')->update(['non_crd' => true]);
-        $this->order('CRD LHEI', '2026-10-09', 3, 9999);
-        $this->order('FSD AGENT', '2026-10-09', 6, 777);
+        $this->order('CRD LHEI', '2026-10-09', 6, 499);                              // 7001: counts
+        $this->order('AJ DELA CRUZ', '2026-10-09', 11, 1000);                        // 7002: counted for Lhea in the CVR Tracker
+        CvrOrderEntry::create(['pancake_order_id' => '7002', 'user_id' => $lhea->id]);
+        // Not counted: untagged, an unlisted product, a former CRA's account, a non-CRD seller.
+        $this->order('CRD LHEI', '2026-10-09', 6, 300, type: null);                  // 7003
+        $this->order('CRD LHEI', '2026-10-09', 11, 400);                             // 7004
+        PancakeOrder::where('pancake_order_id', '7004')->update(['non_crd' => true]);
+        $this->order('CRD JULY DE LOS SANTOS', '2026-10-09', 11, 800);               // 7005
+        $this->order('FSD AGENT', '2026-10-09', 6, 777);                             // 7006
+        // In the basis: a delivered order; deleted isn't.
+        $this->order('CRD LHEI', '2026-10-09', 3, 9999);                             // 7007
+        $this->order('CRD LHEI', '2026-10-09', 7, 5000);                             // 7008
 
         $this->actingAs($this->owner)->get(route('cancelled-orders.index', ['period' => 'day', 'date' => '2026-10-09']))
             ->assertOk()
-            ->assertSeeTextInOrder(['Cancelled + waiting', '3', 'Cancelled', '1', 'Waiting for goods', '2', 'Amount', '₱2,299.00'])
-            ->assertSeeText('LHEA GATDULA')->assertSeeText('CRD JULY DE LOS SANTOS')->assertSeeText('No tag')
-            ->assertDontSee('7004')->assertDontSee('7005');
+            ->assertSeeTextInOrder(['Cancelled + waiting', '2', 'Cancelled', '1', 'Waiting for goods', '1', 'Amount', '₱1,499.00'])
+            ->assertSee('7001')->assertSee('7002')
+            ->assertDontSee('7003')->assertDontSee('7004')->assertDontSee('7005')->assertDontSee('7006');
 
-        // A CRA: only the account in User Access; the basis for the % is the orders it sold that day (2).
+        // The % basis: the 3 tagged orders of that day (confirmed + canceled), the same orders Total confirmed orders counts.
         $this->actingAs($lhea)->get(route('dashboard', ['from' => '2026-10-09', 'to' => '2026-10-09']))
             ->assertOk()
-            ->assertViewHas('results', fn (array $results) => $results['cancelled']['total'] === 1 && $results['cancelled']['orders'] === 2);
+            ->assertViewHas('results', fn (array $results) => $results['cancelled']['total'] === 2 && $results['cancelled']['orders'] === 3
+                && $results['team']['orders'] === 2);
     }
 
     public function test_the_sync_records_orders_that_leave_cancelled_or_waiting(): void

@@ -75,7 +75,7 @@ class CvrTrackerTest extends TestCase
         $pancake = $this->order($this->regina, PancakeOrder::BROADCAST, 500, '9170000002');
         // A lead added from a POS sale doesn't make its order Assigned.
         $this->lead($this->regina, ['order_id' => Lead::POS_PREFIX.'1', 'est_out_of_stock_date' => '2026-10-02'], '09170000002');
-        // Left out: canceled, untagged, another CRA's.
+        // Not listed: canceled (but in gross sales, as on the dashboard), untagged, another CRA's.
         $this->order($this->regina, PancakeOrder::SEGMENTATION, 700, '9170000003', ['status' => PancakeOrder::CANCELED]);
         $this->order($this->regina, null, 800, '9170000004');
         $this->order($this->julyAnn, PancakeOrder::SEGMENTATION, 600, '9170000005');
@@ -99,7 +99,8 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([true, false], array_column($data['orders'], 'assigned'));
         $this->assertSame([3, 1], array_column($data['orders'], 'total_orders'));
         $this->assertSame([
-            'gross' => 1499.0, 'bc_orders' => 1, 'bc_amount' => 500.0, 'sc_orders' => 1, 'sc_amount' => 999.0, 'orders' => 2, 'aov' => 749.5,
+            'gross' => 2199.0, 'bc_orders' => 1, 'bc_amount' => 500.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
+            'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1099.5,
             'engagements' => null, 'cvr' => null, 'contacted' => 1, 'unconfirmed' => 2, 'engaged' => 1, 'reserved' => 1, 'not_answering' => 1,
             'status_total' => 5, 'pancake_leads' => 1, 'assigned_leads' => 1,
         ], $data['summary']);
@@ -114,6 +115,24 @@ class CvrTrackerTest extends TestCase
         $summary = $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => self::DAY]))->viewData('data')['summary'];
 
         $this->assertSame([1, 0], [$summary['bc_orders'], $summary['sc_orders']]);
+    }
+
+    public function test_canceled_orders_count_in_gross_sales_but_are_not_listed(): void
+    {
+        $this->order($this->regina, PancakeOrder::SEGMENTATION, 1000, '9170000001');
+        $this->order($this->regina, PancakeOrder::BROADCAST, 500, '9170000002');
+        // Canceled: in gross and Segmentation sales (as on the dashboard), not an order and not listed.
+        $canceled = $this->order($this->regina, PancakeOrder::SEGMENTATION, 800, '9170000003', ['status' => 6]);
+
+        $response = $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => self::DAY]));
+        $data = $response->viewData('data');
+
+        $this->assertNotContains($canceled->pancake_order_id, array_column($data['orders'], 'id'));
+        $s = $data['summary'];
+        $this->assertSame([2300.0, 1800.0, 500.0, 2], [$s['gross'], $s['sc_amount'], $s['bc_amount'], $s['orders']]);
+        $this->assertEqualsWithDelta(1150.0, $s['aov'], 0.001);
+        $this->assertSame(['orders' => 1, 'amount' => 800.0, 'bc_amount' => 0.0, 'sc_amount' => 800.0], $s['canceled']);
+        $response->assertSee('incl. ₱800 canceled (1)');
     }
 
     public function test_a_segmentation_order_is_always_assigned(): void

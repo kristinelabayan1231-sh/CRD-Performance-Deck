@@ -53,17 +53,16 @@ class CancelledOrderController extends Controller
         $accounts = ConversionBreakdown::accounts($shown);
         $byId = $allCras->keyBy('id');
         $status = $filters['status'] ?? null;
-        // All CRAs shown: every account in Settings → Pancake Accounts (former CRAs and second accounts too).
-        $everyCrdAccount = $user->can('conversion.view_all') && blank($filters['cra'] ?? null);
-        $days = $cancelledOrders->perDay($shown, $from, $to, $status, $everyCrdAccount);
+        // The CRAs' orders as the dashboard counts them (CVR Tracker corrections included).
+        $days = $cancelledOrders->perDay($shown, $from, $to, $status);
 
         // Orders that left Canceled / Waiting (e.g. recovered to Shipped) in these dates; supervisors and leads get a
         // pop-up for the ones since their last visit.
-        $changes = $cancelledOrders->changes($shown, $from, $to, $everyCrdAccount);
+        $changes = $cancelledOrders->changes($shown, $from, $to);
         $seenKey = "cancelled_orders.changes_seen.{$user->id}";
         $seenAt = Cache::get($seenKey);
         $unseen = $user->can('conversion.view_all')
-            ? $cancelledOrders->changes($shown, $seenAt ? CarbonImmutable::parse($seenAt) : $today->subDays(7), $today, $everyCrdAccount)
+            ? $cancelledOrders->changes($shown, $seenAt ? CarbonImmutable::parse($seenAt) : $today->subDays(7), $today)
                 ->filter(fn (OrderStatusChange $change) => ! $seenAt || $change->created_at->greaterThan(CarbonImmutable::parse($seenAt)))
             : collect();
         Cache::forever($seenKey, now()->toIso8601String());
@@ -78,8 +77,8 @@ class CancelledOrderController extends Controller
             : OrderStatusChange::with('order')->whereKey(Cache::get($popupKey, []))->latest()->orderByDesc('id')->get();
 
         return view('cancelled-orders.index', [
-            'orders' => $cancelledOrders->query($shown, $from, $to, $status, $everyCrdAccount)
-                ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')->paginate(50)->withQueryString(),
+            'orders' => $cancelledOrders->query($shown, $from, $to, $status)
+                ->orderByDesc('pancake_orders.ordered_on')->orderByDesc('pancake_orders.ordered_at')->orderByDesc('pancake_orders.id')->paginate(50)->withQueryString(),
             'days' => $days,
             'changes' => $changes,
             'unseen' => $unseen,
@@ -90,7 +89,7 @@ class CancelledOrderController extends Controller
                 'total' => $days->sum('total'),
                 'amount' => $days->sum('amount'),
             ],
-            'craFor' => fn (PancakeOrder $order) => $byId[$accounts[$order->seller_name] ?? 0] ?? null,
+            'craFor' => fn (PancakeOrder $order) => $byId[ConversionBreakdown::craFor($order, $accounts) ?? 0] ?? null,
             'period' => $period,
             'from' => $from,
             'to' => $to,

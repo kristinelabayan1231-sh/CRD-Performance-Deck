@@ -182,7 +182,7 @@
                 <div class="min-w-0">
                     <p class="flex items-baseline gap-2">
                         <span class="text-2xl font-bold tabular-nums">{{ number_format($cancelled['total']) }}</span>
-                        <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders sold in these dates">{{ $pct($cancelled['rate']) }}</span>
+                        <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders in these dates (confirmed + canceled, as Total confirmed orders counts them)">{{ $pct($cancelled['rate']) }}</span>
                     </p>
                     {{-- The amount of these orders: a small pill under the count --}}
                     <p class="mt-1 inline-block rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums" title="Amount of the cancelled and waiting orders">{{ $peso($cancelled['amount']) }}</p>

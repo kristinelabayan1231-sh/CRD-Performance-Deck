@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\CraPerformance;
+use App\Services\ProductReport;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,6 +46,29 @@ class CraPerformanceTest extends TestCase
             'pancake_order_id' => (string) (8000 + $this->seq), 'ordered_on' => $day, 'seller_name' => $seller, 'status' => $status,
             'total_price' => $total, 'total_discount' => $discount, 'items' => array_map(fn (string $name) => ['qty' => 1, 'name' => $name], $items),
         ]);
+    }
+
+    public function test_an_order_counted_for_another_cra_in_the_cvr_tracker_moves_to_their_account(): void
+    {
+        $cra = Role::firstWhere('slug', Role::CRA)->id;
+        $julyAnn = User::create(['email' => 'ja@example.com', 'display_name' => 'July Ann', 'pancake_name' => 'CRD July Ann', 'role_id' => $cra, 'is_active' => true]);
+        User::create(['email' => 'lh@example.com', 'display_name' => 'Lhea', 'pancake_name' => 'CRD Lhei', 'role_id' => $cra, 'is_active' => true]);
+        $this->order('CRD JULY ANN', 3, 1000, ['Clear Sight 3.0']);   // 8001
+        $this->order('AJ DELA CRUZ', 3, 4000, ['Canpro']);            // 8002: another account, counted for July Ann
+        $this->order('CRD LHEI', 3, 700, ['Canpro']);                 // 8003: Lhei's, counted for July Ann
+        $this->order('CRD LHEI', 3, 300, ['Canpro']);                 // 8004: stays Lhei's
+        CvrOrderEntry::create(['pancake_order_id' => '8002', 'user_id' => $julyAnn->id]);
+        CvrOrderEntry::create(['pancake_order_id' => '8003', 'user_id' => $julyAnn->id]);
+
+        $sellers = ['CRD JULY ANN' => 'CRD July Ann', 'CRD LHEI' => 'CRD Lhei'];
+        $from = CarbonImmutable::parse('2026-10-01');
+        $to = CarbonImmutable::parse('2026-10-10');
+        $rows = app(CraPerformance::class)->rows($sellers, $from, $to)->keyBy('seller');
+        $this->assertSame([5700.0, 300.0], [(float) $rows['CRD JULY ANN']['sales'], (float) $rows['CRD LHEI']['sales']]);
+
+        // Product Report: the same orders, so Canpro has all three and July Ann's account alone has 4,700 of it.
+        $this->assertEqualsWithDelta(5000.0, app(ProductReport::class)->rows($sellers, $from, $to)->firstWhere('product', 'Canpro')['sales'], 0.001);
+        $this->assertEqualsWithDelta(4700.0, app(ProductReport::class)->rows(['CRD JULY ANN' => 'CRD July Ann'], $from, $to)->firstWhere('product', 'Canpro')['sales'], 0.001);
     }
 
     public function test_sellers_show_orders_per_status_and_products_under_their_main_product(): void
