@@ -182,24 +182,24 @@
 
     @if ($customers)
         {{-- Segmentation Tracker customers with Repeat Purchase = Yes bought in these dates (FSD Leads = Retained, CRD Leads =
-         Repeat), out of the tracker's leads (one per customer), against the monthly goal (% of those leads, Settings → Sales Goals);
+         Repeat), each out of its own leads in the tracker (FSD or CRD), against the monthly goal (% of those leads, Settings → Sales Goals);
          opens the list of those customers for the same dates --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
-        @php($leads = $customers['leads'])
         @php($segments = [])
         <x-dashboard.flip class="sm:col-span-6">
         <div class="grid gap-3 sm:grid-cols-2">
         @foreach ([
-            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
-            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s leads (one per customer). Click to see them.'],
+            'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s FSD Leads. Click to see them.'],
+            'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s CRD Leads. Click to see them.'],
         ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
             @php($count = $customers[$segment])
+            @php($leads = $customers['leads'][$segment])
             @php($goal = $customers['goals'][$segment])
             @php($goalLabel = rtrim(rtrim(number_format($goal, 1), '0'), '.').'%')
             @php($goalCount = \App\Support\SalesGoals::customersForGoal($leads, $goal))
             @php($toGoal = max(0, $goalCount - $count))
             @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
-            @php($segments[$segment] = ['label' => $segmentLabel, 'count' => $count, 'goal' => $goalLabel, 'goal_count' => $goalCount])
+            @php($segments[$segment] = ['label' => $segmentLabel, 'note' => $segmentNote, 'count' => $count, 'leads' => $leads, 'goal' => $goalLabel, 'goal_count' => $goalCount])
             <a href="{{ route('segmentation.repeat-purchases', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
                 {!! $bubble !!}
                 <div class="relative flex items-start justify-between gap-2">
@@ -210,7 +210,7 @@
                 </div>
                 <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                     <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($count) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($leads) }}</span></span>
-                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} tracker leads (FSD and CRD)">{{ $pct($leads ? $count / $leads : null) }}</span>
+                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} tracker {{ $segmentNote }}">{{ $pct($leads ? $count / $leads : null) }}</span>
                 </p>
 
                 {{-- Progress toward the goal: full bar = goal reached --}}
@@ -243,17 +243,17 @@
                 <div class="flex h-full flex-col gap-3">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3">
                         <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Retained & repeat vs goal</p>
-                        <p class="flex items-center gap-1 text-[11px] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · out of {{ number_format($leads) }} leads</p>
+                        <p class="flex items-center gap-1 text-[11px] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · each out of its own leads</p>
                     </div>
                     <div class="flex flex-1 flex-col justify-center gap-4">
                         @foreach ($segments as $segment => $row)
                             @php($color = $segment === 'retained' ? '#4f46e5' : '#d4458f')
                             <div>
                                 <p class="mb-1 flex justify-between gap-2 text-xs tabular-nums">
-                                    <span class="font-semibold text-ink">{{ $row['label'] }} <span class="font-normal text-muted">{{ number_format($row['count']) }} · {{ $pct($leads ? $row['count'] / $leads : null) }}</span></span>
+                                    <span class="font-semibold text-ink">{{ $row['label'] }} <span class="font-normal text-muted">{{ number_format($row['count']) }}/{{ number_format($row['leads']) }} · {{ $pct($row['leads'] ? $row['count'] / $row['leads'] : null) }}</span></span>
                                     <span class="text-muted">Goal {{ $row['goal'] }} · {{ number_format($row['goal_count']) }}</span>
                                 </p>
-                                <div class="relative h-4 rounded bg-canvas" data-tip="{{ $row['label'] }}: {{ number_format($row['count']) }} of {{ number_format($leads) }} leads ({{ $pct($leads ? $row['count'] / $leads : null) }})&#10;Goal {{ $row['goal'] }}: {{ number_format($row['goal_count']) }}">
+                                <div class="relative h-4 rounded bg-canvas" data-tip="{{ $row['label'] }}: {{ number_format($row['count']) }} of {{ number_format($row['leads']) }} {{ $row['note'] }} ({{ $pct($row['leads'] ? $row['count'] / $row['leads'] : null) }})&#10;Goal {{ $row['goal'] }}: {{ number_format($row['goal_count']) }}">
                                     <span class="absolute inset-y-0 left-0 rounded" style="width: {{ $row['count'] / $scale * 100 }}%; background: {{ $color }}"></span>
                                     <span aria-hidden="true" class="absolute -inset-y-1 w-0.5 rounded bg-ink" style="left: calc({{ $row['goal_count'] / $scale * 100 }}% - 1px)"></span>
                                 </div>

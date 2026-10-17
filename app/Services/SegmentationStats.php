@@ -40,16 +40,19 @@ class SegmentationStats
     /**
      * The dashboard's Retained and Repeat tiles, from the Segmentation Tracker, one per customer (contact number):
      * Retained = FSD Leads and Repeat = CRD Leads with Repeat Purchase = Yes bought in $from–$to (the day it
-     * was set to Yes, whatever the lead day). Out of the leads: the tracker's Leads on lead days $leadFrom–$leadTo, as the
-     * Segmentation panel counts them.
+     * was set to Yes, whatever the lead day). Each out of its own leads: the tracker's FSD Leads (Retained) or CRD Leads
+     * (Repeat) on lead days $leadFrom–$leadTo.
      *
      * @param  Collection<int, User>  $cras  CRAs included (a CRA sees only themselves)
-     * @return array{leads: int, retained: int, repeat: int}
+     * @return array{leads: array{retained: int, repeat: int}, retained: int, repeat: int}
      */
     public function customers(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $leadFrom, CarbonImmutable $leadTo): array
     {
         return [
-            'leads' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->count(),
+            'leads' => [
+                'retained' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_FSD)->count(),
+                'repeat' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_CRD)->count(),
+            ],
             'retained' => $this->repeatPurchases($cras, 'retained', $from, $to)->count(),
             'repeat' => $this->repeatPurchases($cras, 'repeat', $from, $to)->count(),
         ];
