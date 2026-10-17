@@ -370,6 +370,11 @@ class SegmentationTest extends TestCase
         $response->assertSeeInOrder(['Status', 'Repeat Purchase?', 'Customer Tagging', 'Date of Contact', 'Time of Contact', 'Customer&#039;s Feedback', 'Callback Date'], false);
         $response->assertSee('data-column-toggle="call_recording_url"', false)->assertSee('Coming soon');
         $response->assertDontSee('data-col="call_recording_url"', false);
+        // Customer Name to Assigned to can be hidden too; Status always shows.
+        foreach (array_keys(config('segmentation.lead_columns')) as $key) {
+            $response->assertSee('data-column-toggle="'.$key.'"', false)->assertSee('data-col="'.$key.'"', false);
+        }
+        $response->assertDontSee('data-column-toggle="status"', false);
         $response->assertSee('Hot Leads / Recent Buyers (0 to 15 days)')->assertSee('11:00AM-12:00NN')->assertSee('STOPPED BY THE DR.')->assertSee('PURCHASED');
     }
 
