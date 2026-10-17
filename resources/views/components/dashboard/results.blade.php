@@ -104,50 +104,57 @@
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ number_format($team['orders']) }}</p>
-        <p class="{{ $note }}">BC {{ number_format($team['bc_orders']) }} · SC {{ number_format($team['sc_orders']) }}</p>
+        <p class="{{ $note }}">Broadcast {{ number_format($team['bc_orders']) }} · Segmentation {{ number_format($team['sc_orders']) }}</p>
         <p class="relative text-xs font-semibold text-white group-hover:underline">View orders &rarr;</p>
     </a>
         <x-slot:back>
             <x-dashboard.trend title="Confirmed orders per day" type="bars" :format="$formatCount"
-                :series="[['label' => 'BC', 'color' => '#1f8fb8', 'values' => $daily->map->bc_orders->all()], ['label' => 'SC', 'color' => '#8b3ff0', 'values' => $daily->map->sc_orders->all()]]"
-                :legend="[['BC', '#1f8fb8', number_format($team['bc_orders']), false], ['SC', '#8b3ff0', number_format($team['sc_orders']), false]]" />
+                :series="[['label' => 'Broadcast', 'color' => '#1f8fb8', 'values' => $daily->map->bc_orders->all()], ['label' => 'Segmentation', 'color' => '#8b3ff0', 'values' => $daily->map->sc_orders->all()]]"
+                :legend="[['Broadcast', '#1f8fb8', number_format($team['bc_orders']), false], ['Segmentation', '#8b3ff0', number_format($team['sc_orders']), false]]" />
         </x-slot:back>
     </x-dashboard.flip>
 
-    {{-- Conversion rate, three views switched by the tabs (resources/js/tabs.js, remembered per browser), the graph on the
-         back following, all counting customers (SegmentationStats::conversion()): SC = the Segmentation Tracker's Converted
-         (Retained + Repeat) ÷ tracker leads; BC = Broadcast buyers ÷ engagements; BC + SC = every buyer once ÷ both. --}}
+    {{-- Conversion rate, all counting customers (SegmentationStats::conversion()): Broadcast + Segmentation on top (every
+         buyer once ÷ engagements + leads), then Segmentation CVR (the Segmentation Tracker's Converted: Retained + Repeat
+         ÷ tracker leads) and Broadcast CVR (Broadcast buyers ÷ engagements) as bars; the back has all three per day. --}}
     @php($conv = $results['conversion'])
-    @php($conversionViews = [
-        'all' => ['BC + SC', $conv['all']['rate'], number_format($conv['all']['customers']).' customers of '.number_format($conv['all']['base']).' engagements + leads', $conv['all']['daily'], '#1f8fb8'],
-        'sc' => ['SC', $conv['sc']['rate'], number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads · = Converted', $conv['sc']['daily'], '#8b3ff0'],
-        'bc' => ['BC', $conv['bc']['rate'], number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements', $conv['bc']['daily'], '#1f8fb8'],
+    @php($cvrRows = [
+        ['Segmentation CVR', $conv['sc'], number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads · same as Converted'],
+        ['Broadcast CVR', $conv['bc'], number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements'],
     ])
-    <x-dashboard.flip :class="$span" data-tabs="dashboard-conversion">
+    <x-dashboard.flip :class="$span">
     <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]">
         {!! $bubble !!}
-        <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
-        <div role="tablist" aria-label="Conversion view" class="relative z-10 flex w-fit gap-0.5 rounded-full bg-white/20 p-0.5">
-            @foreach ($conversionViews as $view => [$viewLabel])
-                <button type="button" role="tab" data-tab="{{ $view }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}"
-                        class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none aria-selected:bg-white aria-selected:text-[#156c8c]">{{ $viewLabel }}</button>
-            @endforeach
+        <div class="relative grid gap-1">
+            <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }} · Broadcast + Segmentation</p>
+            <p class="text-3xl font-bold tabular-nums">{{ $pct($conv['all']['rate'], 2) }}</p>
+            <p class="{{ $note }}">{{ number_format($conv['all']['customers']) }} customers of {{ number_format($conv['all']['base']) }} engagements + leads</p>
         </div>
-        @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote])
-            <div data-tab-panel="{{ $view }}" @unless ($loop->first) hidden @endunless class="relative grid gap-1">
-                <p class="text-3xl font-bold tabular-nums">{{ $pct($viewRate, 2) }}</p>
-                <p class="{{ $note }}">{{ $viewNote }}</p>
-            </div>
-        @endforeach
-    </article>
-        <x-slot:back>
-            @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote, $viewDaily, $viewColor])
-                <div data-tab-panel="{{ $view }}" @unless ($loop->first) hidden @endunless class="h-full">
-                    <x-dashboard.trend title="Conversion rate per day · {{ $viewLabel }}" :format="$graphPct"
-                        :series="[['label' => $viewLabel, 'color' => $viewColor, 'values' => $viewDaily]]"
-                        :legend="[[$viewLabel, $viewColor, $pct($viewRate, 2), false]]" />
+        <div class="relative mt-2 grid gap-2.5 border-t border-white/30 pt-3">
+            @foreach ($cvrRows as [$rowLabel, $row, $rowNote])
+                <div class="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1 tabular-nums">
+                    <span class="text-[13px] font-bold">{{ $rowLabel }}</span>
+                    <span class="text-[15px] font-bold">{{ $pct($row['rate'], 2) }}</span>
+                    <span class="col-span-2 h-1.5 overflow-hidden rounded-full bg-white/25" aria-hidden="true">
+                        <span class="block h-full min-w-1.5 rounded-full bg-white" style="width: {{ min(100, ($row['rate'] ?? 0) * 100) }}%"></span>
+                    </span>
+                    <span class="col-span-2 text-[11px] text-white/85">{{ $rowNote }}</span>
                 </div>
             @endforeach
+        </div>
+    </article>
+        <x-slot:back>
+            <x-dashboard.trend title="Conversion rate per day" :format="$graphPct"
+                :series="[
+                    ['label' => 'Broadcast + Segmentation', 'color' => '#4f5563', 'values' => $conv['all']['daily']],
+                    ['label' => 'Segmentation CVR', 'color' => '#8b3ff0', 'values' => $conv['sc']['daily']],
+                    ['label' => 'Broadcast CVR', 'color' => '#1f8fb8', 'values' => $conv['bc']['daily']],
+                ]"
+                :legend="[
+                    ['Broadcast + Segmentation', '#4f5563', $pct($conv['all']['rate'], 2), false],
+                    ['Segmentation CVR', '#8b3ff0', $pct($conv['sc']['rate'], 2), false],
+                    ['Broadcast CVR', '#1f8fb8', $pct($conv['bc']['rate'], 2), false],
+                ]" />
         </x-slot:back>
     </x-dashboard.flip>
 

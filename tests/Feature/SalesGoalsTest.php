@@ -243,7 +243,7 @@ class SalesGoalsTest extends TestCase
             ->assertViewHas('results', fn ($results) => $results['cras']->pluck('cra.id')->all() === [$lhea->id]);
     }
 
-    public function test_conversion_rate_tabs_count_customers(): void
+    public function test_conversion_rate_counts_customers(): void
     {
         $lhea = $this->cra('Lhea', 'CRD LHEI');
         PancakeEngagement::create(['date' => '2026-10-10', 'pancake_user_id' => 'lh', 'staff_name' => 'CRD LHEI', 'engagements' => 10]);
@@ -264,13 +264,19 @@ class SalesGoalsTest extends TestCase
         $order('O3', '9170000009', PancakeOrder::BROADCAST);      // a chat customer, not in the tracker
 
         // Opening the dashboard records Lhea's POS sales: the chat customer (O3) joins the tracker as a lead who bought.
-        // SC = Converted 2 of 5 leads; BC = 2 customers of 10 engagements; BC + SC = the same 2 customers, once, of 15.
+        // Segmentation CVR = Converted 2 of 5 leads; Broadcast CVR = 2 customers of 10 engagements; Broadcast + Segmentation =
+        // the same 2 customers, once, of 15. One tile, words spelled out, no BC / SC.
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
-            ->assertSee('data-tabs="dashboard-conversion"', false)
-            ->assertSeeInOrder(['data-tab="all"', 'data-tab="sc"', 'data-tab="bc"'], false)
-            ->assertSeeTextInOrder(['Conversion rate', '13.33%', '2 customers of 15 engagements + leads', '40.00%', '2 customers of 5 leads · = Converted', '20.00%', '2 customers of 10 engagements'])
-            ->assertSeeText(['Conversion rate per day · BC + SC', 'Conversion rate per day · SC', 'Conversion rate per day · BC']);
+            ->assertSeeTextInOrder(['Total confirmed orders', '3', 'Broadcast 2 · Segmentation 1'])
+            ->assertSeeTextInOrder(['Conversion rate · Broadcast + Segmentation', '13.33%', '2 customers of 15 engagements + leads',
+                'Segmentation CVR', '40.00%', '2 customers of 5 leads · same as Converted',
+                'Broadcast CVR', '20.00%', '2 customers of 10 engagements'])
+            ->assertSeeText(['Conversion rate per day'])
+            ->assertDontSee('data-tabs="dashboard-conversion"', false)
+            // Goal & conversion per CRA counts the same way: Lhea's 2 customers of her 15.
+            ->assertViewHas('results', fn (array $results) => $results['cras']->first()['conversion']['customers'] === 2
+                && $results['cras']->first()['conversion']['base'] === 15);
     }
 
     public function test_results_graphs_get_every_day_of_the_dates_and_the_flip_button(): void

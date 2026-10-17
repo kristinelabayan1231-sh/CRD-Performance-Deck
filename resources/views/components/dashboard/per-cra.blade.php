@@ -6,12 +6,13 @@
     $short = fn (float $value) => '₱'.($value >= 1e6 ? rtrim(rtrim(number_format($value / 1e6, 2), '0'), '.').'M' : ($value >= 1e3 ? rtrim(rtrim(number_format($value / 1e3, 1), '0'), '.').'k' : number_format($value)));
     $pct = fn (?float $value, int $decimals = 1) => $value === null ? '—' : number_format($value * 100, $decimals).'%';
     $range = $results['range'];
-    $topRate = max(0.0001, $results['cras']->max(fn ($row) => $row['totals']['total_rate'] ?? 0) ?? 0);
+    $topRate = max(0.0001, $results['cras']->max(fn ($row) => $row['conversion']['rate'] ?? 0) ?? 0);
 @endphp
 
 {{--
     Per CRA for the dashboard's month (to date) or range: sales against their goal (daily goal × days)
-    and Total conv % = (BC + SC orders) ÷ (engagements + leads). Goal bars brand purple (teal once hit);
+    and Conv % as the Conversion rate tile counts it: every customer they sold to (Broadcast + Segmentation), once ÷ their
+    engagements + leads. Goal bars brand purple (teal once hit);
     conversion bars sky, scaled to the highest rate.
 --}}
 <x-panel {{ $attributes }} title="Goal & conversion per CRA" accent="teal" icon="chart" title-id="per-cra-title">
@@ -58,12 +59,12 @@
                         </td>
                         {{-- Sales still needed to reach the goal --}}
                         <td @class(['py-2 pl-3 text-right text-xs font-semibold whitespace-nowrap tabular-nums', 'text-teal-700' => $left <= 0, 'text-coral-700' => $left > 0])>{{ $left > 0 ? $short($left).' left' : 'Goal hit' }}</td>
-                        <td class="w-full min-w-20 py-2 pr-2 pl-6" title="{{ number_format($t['orders']) }} orders ÷ {{ number_format($t['reach']) }} engagements + leads">
+                        <td class="w-full min-w-20 py-2 pr-2 pl-6" title="{{ number_format($row['conversion']['customers']) }} customers ÷ {{ number_format($row['conversion']['base']) }} engagements + leads">
                             <span class="relative block h-2 rounded-full bg-canvas">
-                                <span class="absolute inset-y-0 left-0 rounded-full bg-[#1f8fb8]" style="width: {{ min(100, ($t['total_rate'] ?? 0) / $topRate * 100) }}%"></span>
+                                <span class="absolute inset-y-0 left-0 rounded-full bg-[#1f8fb8]" style="width: {{ min(100, ($row['conversion']['rate'] ?? 0) / $topRate * 100) }}%"></span>
                             </span>
                         </td>
-                        <td class="w-16 py-2 text-right font-semibold tabular-nums">{{ $pct($t['total_rate'], 2) }}</td>
+                        <td class="w-16 py-2 text-right font-semibold tabular-nums">{{ $pct($row['conversion']['rate'], 2) }}</td>
                         {{-- Best-selling product in their gross sales, e.g. CanPro ₱20,000 --}}
                         <td class="py-2 pl-6 text-sm whitespace-nowrap" @if ($row['top_product']) title="{{ $row['top_product']['name'] }}: {{ $peso($row['top_product']['amount']) }} of {{ $peso($row['sales']) }} gross sales" @endif>
                             @if ($row['top_product'])
@@ -80,7 +81,7 @@
             </tbody>
         </table>
         <p class="mt-2 text-[11px] text-muted">
-            Conv % = (BC + SC orders) ÷ (engagements + leads). Top product sales = the product with the most of their gross sales.
+            Conv % = customers they sold to (Broadcast + Segmentation, each once) ÷ (their engagements + leads), as the Conversion rate tile. Top product sales = the product with the most of their gross sales.
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
         </p>
     </div>
