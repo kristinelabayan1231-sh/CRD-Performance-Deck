@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PosLeads;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -68,6 +69,20 @@ class PosLeadsTest extends TestCase
         $this->assertTrue($lead->isProcessed());
         // No earlier CRA-handled order: an FSD Lead.
         $this->assertSame(Lead::TYPE_FSD, $lead->lead_type);
+    }
+
+    public function test_with_a_working_date_a_new_customer_is_filed_on_the_paired_lead_day(): void
+    {
+        // Working date 30 days behind: on Oct 16 the CRAs work Sep 16's leads.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-17'));
+        $this->order('5015', '9171414141');
+
+        app(PosLeads::class)->record($this->today);
+
+        $lead = Lead::sole();
+        $this->assertSame('2026-09-16', $lead->est_out_of_stock_date->toDateString());
+        // Still bought on the real order day.
+        $this->assertSame('2026-10-16', $lead->repeat_purchase_on->toDateString());
     }
 
     public function test_a_customer_with_an_earlier_cra_handled_order_is_a_crd_lead(): void

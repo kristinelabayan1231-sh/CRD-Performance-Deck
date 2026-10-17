@@ -73,9 +73,10 @@ class DashboardSegmentationTest extends TestCase
             array_intersect_key($kpis['Leads'], array_flip(['value', 'previous', 'change', 'direction', 'good'])));
         // Catered 40% vs 100%: -60 pts, down and bad.
         $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Catered']['value'], $kpis['Catered']['previous'], $kpis['Catered']['change'], $kpis['Catered']['good']]);
-        // Converted 2 of 5 = 40%; retained 1 of 2 CRD = 50%; new 1 of 3 = 33%.
-        $this->assertSame('40%', $kpis['Converted']['value']);
-        $this->assertSame([50.0, 33.0], [$today['retained'], $today['fsd_converted']]);
+        // Converted = Retained + Repeat (Repeat Purchase = Yes bought that day; No + PURCHASED isn't one): 1 of 5 = 20%;
+        // Retained 0 of 3 FSD, Repeat 1 of 2 CRD = 50%.
+        $this->assertSame(['20%', '1/5'], [$kpis['Converted']['value'], $kpis['Converted']['count']]);
+        $this->assertSame([0.0, 50.0], [$today['retained'], $today['repeat']]);
         // Went cold 1 of 5 = 20%, up from 0: bad, since lower is better.
         $this->assertSame(['20%', false], [$kpis['Went cold']['value'], $kpis['Went cold']['good']]);
         $this->assertSame('1/5', $kpis['Went cold']['count']);
@@ -85,7 +86,7 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame(1, $today['untagged']);
 
         // Top CRAs: Alice first with 2 processed.
-        $this->assertSame(['name' => 'Alice', 'processed' => 2, 'unprocessed' => 1, 'converted' => 2], $today['ranking'][0]);
+        $this->assertSame(['name' => 'Alice', 'processed' => 2, 'unprocessed' => 1, 'converted' => 1], $today['ranking'][0]);
 
         // A single day's trend covers the 7 days up to it.
         $this->assertCount(7, $today['series']);
@@ -150,6 +151,10 @@ class DashboardSegmentationTest extends TestCase
         // Each out of its own leads on October's lead days: Retained of the FSD Leads, Repeat of the CRD Leads.
         $this->assertSame(['leads' => ['retained' => 5, 'repeat' => 1], 'retained' => 1, 'repeat' => 1], array_diff_key($response->viewData('customers'), ['goals' => 0]));
         $this->assertSame(6, $response->viewData('segmentation')['leads']);
+        // The Segmentation Tracker panel agrees: Converted = Retained + Repeat, the same % as the tiles (1 of 5, 1 of 1).
+        $panel = $response->viewData('segmentation');
+        $this->assertSame('2/6', collect($panel['kpis'])->firstWhere('label', 'Converted')['count']);
+        $this->assertSame([20.0, 100.0], [$panel['retained'], $panel['repeat']]);
 
         // A CRA: only their own leads.
         $mine = $this->actingAs($this->alice)->get('/dashboard')->viewData('customers');

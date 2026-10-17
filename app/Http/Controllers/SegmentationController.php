@@ -273,7 +273,8 @@ class SegmentationController extends Controller
      */
     private function perCraBreakdown(array $filters, CarbonImmutable $from, CarbonImmutable $to, $cras): array
     {
-        $rows = Lead::whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+        // Assigned leads only: POS sales added to the tracker aren't part of a CRA's share.
+        $rows = Lead::whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)->withoutPosSales()
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->whereIn('assigned_to', $cras->pluck('id'))

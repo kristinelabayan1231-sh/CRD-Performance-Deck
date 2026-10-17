@@ -12,8 +12,8 @@ use Illuminate\Support\Collection;
  * Dashboard numbers for the Segmentation Tracker, for a range of lead days.
  *
  * Processed = status set. Unprocessed = no status yet.
- * Converted = Repeat Purchase "yes", or "no" with feedback PURCHASED.
- * Retained = converted CRD (returning) leads; FSD converted = converted FSD leads.
+ * Converted = Retained + Repeat, as the dashboard's tiles count them: Repeat Purchase = Yes bought on the real days
+ * paired with the lead days, one per customer; Retained = FSD Leads (of the FSD leads), Repeat = CRD Leads (of the CRD leads).
  */
 class SegmentationStats
 {
@@ -25,15 +25,19 @@ class SegmentationStats
 
     /**
      * Lead days $from–$to, compared with the same number of days just before. A single day's
-     * trend line shows the week up to it.
+     * trend line shows the week up to it. Purchases are by the real days $boughtFrom–$boughtTo paired with
+     * them (Settings → Working Date); the lead days themselves when not given.
      *
      * @param  Collection<int, User>  $cras  CRAs included (a CRA sees only themselves)
      */
-    public function range(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    public function range(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, ?CarbonImmutable $boughtFrom = null, ?CarbonImmutable $boughtTo = null): array
     {
         $days = (int) $from->diffInDays($to) + 1;
+        $boughtFrom ??= $from;
+        $boughtTo ??= $to;
 
         return $this->period('Range', $from, $to, $from->subDays($days), $from->subDay(), $cras, $to,
+            [$boughtFrom, $boughtTo], [$boughtFrom->subDays($days), $boughtFrom->subDay()],
             chartFrom: $days === 1 ? $from->subDays(6) : null);
     }
 
@@ -80,11 +84,12 @@ class SegmentationStats
     private function period(
         string $name, CarbonImmutable $from, CarbonImmutable $to,
         CarbonImmutable $prevFrom, CarbonImmutable $prevTo,
-        Collection $cras, CarbonImmutable $today, ?CarbonImmutable $chartFrom = null,
+        Collection $cras, CarbonImmutable $today, array $bought, array $prevBought, ?CarbonImmutable $chartFrom = null,
     ): array {
         $ids = $cras->pluck('id');
-        $now = $this->totals($ids, $from, $to);
-        $before = $this->totals($ids, $prevFrom, $prevTo);
+        $now = [...$this->totals($ids, $from, $to), ...$this->bought($cras, ...$bought)];
+        $before = [...$this->totals($ids, $prevFrom, $prevTo), ...$this->bought($cras, ...$prevBought)];
+        $share = fn (int $part, int $of) => $of ? round($part / $of * 100, 1) : 0.0;
 
         $pct = fn (array $t, string $key) => $t['leads'] ? $t[$key] / $t['leads'] * 100 : 0.0;
 
@@ -94,13 +99,15 @@ class SegmentationStats
             'kpis' => [
                 $this->kpi('Leads', $now['leads'], $before['leads'], 'count', higherIsBetter: true),
                 $this->kpi('Catered', $pct($now, 'processed'), $pct($before, 'processed'), 'percent', higherIsBetter: true),
-                $this->kpi('Converted', $pct($now, 'converted'), $pct($before, 'converted'), 'percent', higherIsBetter: true),
+                $this->kpi('Converted', $pct($now, 'converted'), $pct($before, 'converted'), 'percent', higherIsBetter: true,
+                    count: number_format($now['converted']).'/'.number_format($now['leads'])),
                 // Cold = leads tagged Cold / CanPro Cold, shown as a share and as "cold/leads".
                 $this->kpi('Went cold', $pct($now, 'cold'), $pct($before, 'cold'), 'percent', higherIsBetter: false,
                     count: number_format($now['cold']).'/'.number_format($now['leads'])),
             ],
-            'retained' => $now['crd'] ? round($now['crd_converted'] / $now['crd'] * 100) : 0,
-            'fsd_converted' => $now['fsd'] ? round($now['fsd_converted'] / $now['fsd'] * 100) : 0,
+            // Same as the dashboard's Retained and Repeat tiles.
+            'retained' => $share($now['retained'], $now['fsd']),
+            'repeat' => $share($now['repeat'], $now['crd']),
             'series' => $this->series($ids, $chartFrom ?? $from, $to, $today),
             'tags' => [
                 ['label' => 'Hot', 'value' => $now['hot'], 'color' => '#E0663F'],
@@ -110,7 +117,7 @@ class SegmentationStats
             ],
             'untagged' => $now['leads'] - $now['hot'] - $now['cold'] - $now['warm'] - $now['high_value'],
             'leads' => $now['leads'],
-            'ranking' => $this->ranking($cras, $from, $to),
+            'ranking' => $this->ranking($cras, $from, $to, $now['by_cra']),
         ];
     }
 
@@ -131,13 +138,27 @@ class SegmentationStats
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
             ->first();
 
-        $c = $this->scope($ids, $from, $to)->converted()
-            ->selectRaw('count(*) as converted')
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd_converted', [Lead::TYPE_CRD])
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd_converted', [Lead::TYPE_FSD])
-            ->first();
+        return collect($t->getAttributes())->map(fn ($v) => (int) ($v ?? 0))->all();
+    }
 
-        return collect([...$t->getAttributes(), ...$c->getAttributes()])->map(fn ($v) => (int) ($v ?? 0))->all();
+    /**
+     * Retained and Repeat customers bought on real days $from–$to (as the dashboard's tiles), their sum
+     * (converted), and the converted per CRA.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array{retained: int, repeat: int, converted: int, by_cra: array<int, int>}
+     */
+    private function bought(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $retained = $this->repeatPurchases($cras, 'retained', $from, $to);
+        $repeat = $this->repeatPurchases($cras, 'repeat', $from, $to);
+
+        return [
+            'retained' => $retained->count(),
+            'repeat' => $repeat->count(),
+            'converted' => $retained->count() + $repeat->count(),
+            'by_cra' => $retained->concat($repeat)->countBy('assigned_to')->all(),
+        ];
     }
 
     /**
@@ -197,16 +218,14 @@ class SegmentationStats
     /**
      * Top 5 CRAs by processed leads.
      *
+     * @param  array<int, int>  $converted  Retained + Repeat customers per CRA
      * @return list<array{name: string, processed: int, unprocessed: int, converted: int}>
      */
-    private function ranking(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    private function ranking(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, array $converted): array
     {
-        $ids = $cras->pluck('id');
-        $rows = $this->scope($ids, $from, $to)
+        $rows = $this->scope($cras->pluck('id'), $from, $to)
             ->selectRaw('assigned_to, count(*) as leads, sum(case when status is not null then 1 else 0 end) as processed')
             ->groupBy('assigned_to')->get()->keyBy('assigned_to');
-        $converted = $this->scope($ids, $from, $to)->converted()
-            ->selectRaw('assigned_to, count(*) as n')->groupBy('assigned_to')->pluck('n', 'assigned_to');
 
         return $cras->map(function (User $cra) use ($rows, $converted) {
             $leads = (int) ($rows[$cra->id]->leads ?? 0);

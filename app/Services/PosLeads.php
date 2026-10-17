@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -15,8 +16,9 @@ use Illuminate\Support\Collection;
  *
  * - Customer already in the tracker: their latest lead (by lead day, up to the order day) gets Repeat
  *   Purchase = Yes and moves to Catered, unless it is Yes already.
- * - Customer not in the tracker: a catered lead for that CRA on the order day, with Repeat Purchase = Yes;
- *   CRD Lead when they had an earlier CRA-handled order, else FSD Lead.
+ * - Customer not in the tracker: a catered lead for that CRA on the lead day paired with the order day (Settings →
+ *   Working Date), with Repeat Purchase = Yes on the order day; CRD Lead when they had an earlier CRA-handled order,
+ *   else FSD Lead. On the paired lead day it shows in the tracker the CRAs are working and counts in the dashboard's leads.
  *
  * Only orders sold from a CRA's own Pancake account (User Access), with a product from the Product
  * Consumption list, not canceled or deleted.
@@ -105,10 +107,10 @@ class PosLeads
             'product_name' => $product?->name ?? ($names->first() ?? '—'),
             'product_raw' => $names->implode(', '),
             'qty' => max(1, (int) $items->sum('qty')),
-            // Not delivered yet: the order day stands in, and the order day is its lead day.
+            // Not delivered yet: the order day stands in. Its lead day is the one the CRAs were working that day.
             'delivered_date' => $day,
             'consumption_days' => (int) $product?->consumption_days,
-            'est_out_of_stock_date' => $day,
+            'est_out_of_stock_date' => WorkingDate::leadDayFor($order->ordered_on)->toDateString(),
             'lead_type' => $this->customers->hasCraOrderBefore($order->phone_key, $orderedAt) ? Lead::TYPE_CRD : Lead::TYPE_FSD,
             'assigned_to' => $cra->id,
             'assigned_at' => $orderedAt,
