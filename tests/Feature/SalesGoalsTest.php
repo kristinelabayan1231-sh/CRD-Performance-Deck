@@ -243,26 +243,33 @@ class SalesGoalsTest extends TestCase
             ->assertViewHas('results', fn ($results) => $results['cras']->pluck('cra.id')->all() === [$lhea->id]);
     }
 
-    public function test_conversion_rate_tile_has_bc_plus_sc_sc_and_bc_views(): void
+    public function test_conversion_rate_tabs_count_customers(): void
     {
         $lhea = $this->cra('Lhea', 'CRD LHEI');
-        // 1 BC order of 10 engagements, 1 SC order of 4 tracker leads.
-        $this->sale('CRD LHEI', '2026-10-10', 1000, PancakeOrder::BROADCAST);
-        $this->sale('CRD LHEI', '2026-10-10', 1000);
         PancakeEngagement::create(['date' => '2026-10-10', 'pancake_user_id' => 'lh', 'staff_name' => 'CRD LHEI', 'engagements' => 10]);
+        // 4 tracker leads; customer 1 bought (Repeat Purchase = Yes): Converted.
         foreach (range(1, 4) as $i) {
             Lead::create([
-                'order_id' => "L{$i}", 'customer_name' => "Lead {$i}", 'phone_number' => "091700000{$i}", 'product_name' => 'Pterygium', 'qty' => 1,
-                'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-10', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $lhea->id,
+                'order_id' => "L{$i}", 'customer_name' => "Lead {$i}", 'phone_number' => "0917000000{$i}", 'product_name' => 'Pterygium', 'qty' => 1,
+                'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-10', 'lead_type' => Lead::TYPE_CRD,
+                'assigned_to' => $lhea->id, ...($i === 1 ? ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-10'] : []),
             ]);
         }
+        $order = fn (string $id, string $phoneKey, string $type) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => '2026-10-10', 'seller_name' => 'CRD LHEI', 'status' => 2, 'total_price' => 1000,
+            'conversion_type' => $type, 'phone_key' => $phoneKey,
+        ]);
+        $order('O1', '9170000001', PancakeOrder::SEGMENTATION);   // customer 1
+        $order('O2', '9170000001', PancakeOrder::BROADCAST);      // customer 1 again, through Broadcast
+        $order('O3', '9170000009', PancakeOrder::BROADCAST);      // a chat customer, not in the tracker
 
-        // BC + SC = 2 of 14 (shown first), SC = 1 of 4, BC = 1 of 10; each tab with its own graph on the back.
+        // Opening the dashboard records Lhea's POS sales: the chat customer (O3) joins the tracker as a lead who bought.
+        // SC = Converted 2 of 5 leads; BC = 2 customers of 10 engagements; BC + SC = the same 2 customers, once, of 15.
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSee('data-tabs="dashboard-conversion"', false)
             ->assertSeeInOrder(['data-tab="all"', 'data-tab="sc"', 'data-tab="bc"'], false)
-            ->assertSeeTextInOrder(['Conversion rate', '14.29%', '2 orders of 14 engagements + leads', '25.00%', '1 SC orders of 4 leads', '10.00%', '1 BC orders of 10 engagements'])
+            ->assertSeeTextInOrder(['Conversion rate', '13.33%', '2 customers of 15 engagements + leads', '40.00%', '2 customers of 5 leads · = Converted', '20.00%', '2 customers of 10 engagements'])
             ->assertSeeText(['Conversion rate per day · BC + SC', 'Conversion rate per day · SC', 'Conversion rate per day · BC']);
     }
 

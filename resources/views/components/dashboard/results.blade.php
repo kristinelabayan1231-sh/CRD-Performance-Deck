@@ -115,11 +115,13 @@
     </x-dashboard.flip>
 
     {{-- Conversion rate, three views switched by the tabs (resources/js/tabs.js, remembered per browser), the graph on the
-         back following: BC + SC = (BC + SC orders) ÷ (engagements + leads); SC = SC orders ÷ leads; BC = BC orders ÷ engagements --}}
+         back following, all counting customers (SegmentationStats::conversion()): SC = the Segmentation Tracker's Converted
+         (Retained + Repeat) ÷ tracker leads; BC = Broadcast buyers ÷ engagements; BC + SC = every buyer once ÷ both. --}}
+    @php($conv = $results['conversion'])
     @php($conversionViews = [
-        'all' => ['BC + SC', $team['total_rate'], number_format($team['orders']).' orders of '.number_format($team['reach']).' engagements + leads', 'total_rate', '#1f8fb8'],
-        'sc' => ['SC', $team['sc_rate'], number_format($team['sc_orders']).' SC orders of '.number_format($team['leads']).' leads', 'sc_rate', '#8b3ff0'],
-        'bc' => ['BC', $team['bc_rate'], number_format($team['bc_orders']).' BC orders of '.number_format($team['engagements']).' engagements', 'bc_rate', '#1f8fb8'],
+        'all' => ['BC + SC', $conv['all']['rate'], number_format($conv['all']['customers']).' customers of '.number_format($conv['all']['base']).' engagements + leads', $conv['all']['daily'], '#1f8fb8'],
+        'sc' => ['SC', $conv['sc']['rate'], number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads · = Converted', $conv['sc']['daily'], '#8b3ff0'],
+        'bc' => ['BC', $conv['bc']['rate'], number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements', $conv['bc']['daily'], '#1f8fb8'],
     ])
     <x-dashboard.flip :class="$span" data-tabs="dashboard-conversion">
     <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]">
@@ -139,10 +141,10 @@
         @endforeach
     </article>
         <x-slot:back>
-            @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote, $viewKey, $viewColor])
+            @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote, $viewDaily, $viewColor])
                 <div data-tab-panel="{{ $view }}" @unless ($loop->first) hidden @endunless class="h-full">
                     <x-dashboard.trend title="Conversion rate per day · {{ $viewLabel }}" :format="$graphPct"
-                        :series="[['label' => $viewLabel, 'color' => $viewColor, 'values' => $daily->map->{$viewKey}->all()]]"
+                        :series="[['label' => $viewLabel, 'color' => $viewColor, 'values' => $viewDaily]]"
                         :legend="[[$viewLabel, $viewColor, $pct($viewRate, 2), false]]" />
                 </div>
             @endforeach
