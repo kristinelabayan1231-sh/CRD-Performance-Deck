@@ -19,7 +19,8 @@ use Illuminate\Support\Collection;
  * CVR Tracker: one CRA's reorders for one day, laid out like the CRAs' Google Sheet.
  *
  * Orders = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION, not canceled or deleted,
- * by when they were created. Untagged ones are left out (they're in the order issues).
+ * by when they were created. Untagged ones are left out (they're in the order issues). Gross sales (and Broadcast /
+ * Segmentation sales, AOV) also count the canceled and deleted ones, as the dashboard does; they aren't listed.
  * Assigned = Type of Order is Segmentation, or the order's number matches a lead assigned to any CRA in the Segmentation
  * Tracker (leads added from POS sales left out, since they come from the order itself); otherwise Pancake.
  * Total # of Orders = the customer's delivered orders before that day (Customer Database, merged numbers too) + this one.
@@ -40,6 +41,15 @@ class CvrTracker
         $orders = $orders->sortBy(fn (PancakeOrder $order) => [$entries->get($order->pancake_order_id)?->position ?? PHP_INT_MAX, $order->ordered_at?->getTimestamp() ?? 0, $order->id]);
         $assigned = $this->assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
+
+        // Canceled / deleted: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged).
+        $notCounted = $this->ordersQuery($cra, $day, counted: false)->whereIn('status', PancakeOrder::NOT_COUNTED_STATUSES)
+            ->get(['pancake_order_id', 'conversion_type', 'total_price', 'shecom_sales']);
+        $types = CvrOrderEntry::whereIn('pancake_order_id', $notCounted->pluck('pancake_order_id'))->whereNotNull('order_type')->pluck('order_type', 'pancake_order_id');
+        $canceled = $notCounted->map(fn (PancakeOrder $order) => [
+            'type' => $types[$order->pancake_order_id] ?? $order->conversion_type,
+            'amount' => $order->sales(),
+        ]);
 
         $rows = $orders->map(function (PancakeOrder $order) use ($entries, $assigned, $earlier) {
             $entry = $entries[$order->pancake_order_id] ?? null;
@@ -69,7 +79,7 @@ class CvrTracker
 
         return [
             'orders' => $rows,
-            'summary' => $this->summary($cra, $day, collect($rows)),
+            'summary' => $this->summary($cra, $day, collect($rows), $canceled),
             'sheet_missing' => CvrDayEntry::where('user_id', $cra->id)->whereDate('date', $day)->value('sheet_missing') ?? [],
             'issues' => app(CraIssues::class)->for(collect([$cra]), $day)
                 ->filter(fn (array $issue) => $issue['day']?->isSameDay($day))->values(),
@@ -99,19 +109,19 @@ class CvrTracker
     /**
      * The CRA's tagged orders on $day: their own (unless counted for another CRA) and others' counted for them.
      */
-    private function ordersQuery(User $cra, CarbonImmutable $day): Builder
+    private function ordersQuery(User $cra, CarbonImmutable $day, bool $counted = true): Builder
     {
         $seller = $cra->pancake_name ? PancakeEngagement::staffKey($cra->pancake_name) : null;
         $claimed = CvrOrderEntry::whereNotNull('user_id')->select('pancake_order_id');
 
-        return $this->tagged($day)->where(fn (Builder $q) => $q
+        return $this->tagged($day, $counted)->where(fn (Builder $q) => $q
             ->when($seller, fn (Builder $q) => $q->where('seller_name', $seller)->whereNotIn('pancake_order_id', (clone $claimed)->where('user_id', '!=', $cra->id)))
             ->orWhereIn('pancake_order_id', (clone $claimed)->where('user_id', $cra->id)));
     }
 
-    private function tagged(CarbonImmutable $day): Builder
+    private function tagged(CarbonImmutable $day, bool $counted = true): Builder
     {
-        return PancakeOrder::crdProducts()->counted()
+        return PancakeOrder::crdProducts()->when($counted, fn (Builder $q) => $q->counted())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', $day);
     }
@@ -164,10 +174,14 @@ class CvrTracker
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int|float|null>
      */
-    private function summary(User $cra, CarbonImmutable $day, Collection $rows): array
+    /**
+     * @param  Collection<int, array{type: ?string, amount: float}>  $canceled  canceled / deleted orders, in gross sales only
+     */
+    private function summary(User $cra, CarbonImmutable $day, Collection $rows, Collection $canceled): array
     {
         $ofType = fn (string $type) => $rows->where('type', $type);
-        $gross = (float) $rows->sum('amount');
+        $canceledOf = fn (string $type) => (float) $canceled->where('type', $type)->sum('amount');
+        $gross = (float) $rows->sum('amount') + (float) $canceled->sum('amount');
         $leads = Lead::where('assigned_to', $cra->id)->withoutPosSales()->whereDate('est_out_of_stock_date', WorkingDate::leadDayFor($day));
 
         $status = [
@@ -183,9 +197,11 @@ class CvrTracker
         return [
             'gross' => $gross,
             'bc_orders' => $ofType(PancakeOrder::BROADCAST)->count(),
-            'bc_amount' => (float) $ofType(PancakeOrder::BROADCAST)->sum('amount'),
+            'bc_amount' => (float) $ofType(PancakeOrder::BROADCAST)->sum('amount') + $canceledOf(PancakeOrder::BROADCAST),
             'sc_orders' => $ofType(PancakeOrder::SEGMENTATION)->count(),
-            'sc_amount' => (float) $ofType(PancakeOrder::SEGMENTATION)->sum('amount'),
+            'sc_amount' => (float) $ofType(PancakeOrder::SEGMENTATION)->sum('amount') + $canceledOf(PancakeOrder::SEGMENTATION),
+            'canceled' => ['orders' => $canceled->count(), 'amount' => (float) $canceled->sum('amount'),
+                'bc_amount' => $canceledOf(PancakeOrder::BROADCAST), 'sc_amount' => $canceledOf(PancakeOrder::SEGMENTATION)],
             'orders' => $rows->count(),
             'aov' => $rows->isEmpty() ? null : $gross / $rows->count(),
             'engagements' => $engagements,

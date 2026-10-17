@@ -12,7 +12,7 @@
 <x-layouts.app title="Cancelled / Waiting Orders">
     <div class="space-y-4">
         <header class="flex flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Cancelled / Waiting Orders <span class="text-sm font-normal text-muted">· {{ $label }} · sold by a CRD account (Settings → Pancake Accounts), any tag or product</span></h1>
+            <h1 class="text-xl font-semibold">Cancelled / Waiting Orders <span class="text-sm font-normal text-muted">· {{ $label }} · the CRAs' tagged orders, as Total confirmed orders counts them (CVR Tracker corrections included)</span></h1>
             <a href="{{ route('dashboard', $dashboardQuery) }}" class="text-sm font-semibold text-brand-600 hover:underline">&larr; Dashboard</a>
         </header>
 

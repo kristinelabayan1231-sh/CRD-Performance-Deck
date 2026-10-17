@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
@@ -157,13 +158,15 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame(2, $day['bc_orders']);
         $this->assertSame(2, $day['sc_orders']);
         $this->assertSame(20, $day['engagements']);
-        $this->assertSame(4, $day['leads']);
+        // 4 assigned leads + 5 added from her POS sales (the sync records them), as the Segmentation Tracker counts them.
+        $this->assertSame(4, Lead::where('assigned_to', $lhea->id)->withoutPosSales()->whereDate('est_out_of_stock_date', '2026-10-01')->count());
+        $this->assertSame(9, $day['leads']);
         $this->assertEqualsWithDelta(1799.0, $day['bc_gross'], 0.001);
         $this->assertEqualsWithDelta(2819.0, $day['sc_gross'], 0.001);
         $this->assertEqualsWithDelta(4618.0, $day['gross'], 0.001);
         $this->assertEqualsWithDelta(2 / 20, $day['bc_rate'], 1e-9);
-        $this->assertEqualsWithDelta(2 / 4, $day['sc_rate'], 1e-9);
-        $this->assertEqualsWithDelta(4 / 24, $day['total_rate'], 1e-9);
+        $this->assertEqualsWithDelta(2 / 9, $day['sc_rate'], 1e-9);
+        $this->assertEqualsWithDelta(4 / 29, $day['total_rate'], 1e-9);
     }
 
     public function test_with_a_working_date_leads_are_the_paired_lead_day_and_results_stay_on_the_real_day(): void
@@ -232,6 +235,36 @@ class ConversionBreakdownTest extends TestCase
         // A CRA can open only their own orders.
         $this->actingAs($regina)->get($url)->assertForbidden();
         $this->actingAs($lhea)->get($url)->assertOk();
+    }
+
+    public function test_the_cvr_trackers_corrections_count_on_the_dashboard_and_the_orders_pages(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+        $make = fn (string $id, string $seller, string $type, float $total) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => '2026-10-01', 'ordered_at' => '2026-10-01 02:00:00', 'seller_name' => $seller,
+            'customer_name' => "Buyer {$id}", 'page_name' => 'Trusted Eye Care', 'status' => 2, 'total_price' => $total, 'conversion_type' => $type,
+        ]);
+        $make('B1', 'CRD LHEI', PancakeOrder::BROADCAST, 1000);
+        $make('B2', 'CRD LHEI', PancakeOrder::BROADCAST, 2000);
+        $make('A1', 'AJ DELA CRUZ', PancakeOrder::SEGMENTATION, 4000);
+        $make('L1', 'CRD LHEI', PancakeOrder::SEGMENTATION, 8000);
+        // In the CVR Tracker: B2 changed to Segmentation; A1 (another account) counted for Lhea; L1 counted for Regina.
+        CvrOrderEntry::create(['pancake_order_id' => 'B2', 'order_type' => PancakeOrder::SEGMENTATION]);
+        CvrOrderEntry::create(['pancake_order_id' => 'A1', 'user_id' => $lhea->id]);
+        CvrOrderEntry::create(['pancake_order_id' => 'L1', 'user_id' => $regina->id]);
+
+        $days = app(ConversionBreakdown::class)->days(collect([$lhea, $regina]), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-01'));
+        $lheaDay = $days[$lhea->id]['2026-10-01'];
+        $this->assertSame([1, 2, 1000.0, 6000.0], [$lheaDay['bc_orders'], $lheaDay['sc_orders'], (float) $lheaDay['bc_gross'], (float) $lheaDay['sc_gross']]);
+        $this->assertSame([0, 1, 8000.0], [$days[$regina->id]['2026-10-01']['bc_orders'], $days[$regina->id]['2026-10-01']['sc_orders'], (float) $days[$regina->id]['2026-10-01']['gross']]);
+
+        // The pages behind the numbers list the same orders, with the corrected type and CRA.
+        $this->actingAs($this->owner)->get(route('conversion.cra-orders', ['cra' => $lhea, 'from' => '2026-10-01', 'to' => '2026-10-01']))->assertOk()
+            ->assertSeeInOrder(['Gross BC', '₱1,000.00', 'Gross SC', '₱6,000.00'])
+            ->assertSee('A1')->assertDontSee('L1');
+        $this->actingAs($this->owner)->get(route('conversion.orders', ['from' => '2026-10-01', 'to' => '2026-10-01', 'cra' => $regina->id]))->assertOk()
+            ->assertViewHas('count', 1)->assertSee('L1')->assertSee('Regina');
     }
 
     public function test_sync_saves_the_order_tags(): void

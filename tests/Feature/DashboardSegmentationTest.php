@@ -75,7 +75,7 @@ class DashboardSegmentationTest extends TestCase
         $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Catered']['value'], $kpis['Catered']['previous'], $kpis['Catered']['change'], $kpis['Catered']['good']]);
         // Converted = Retained + Repeat (Repeat Purchase = Yes bought that day; No + PURCHASED isn't one): 1 of 5 = 20%;
         // Retained 0 of 3 FSD, Repeat 1 of 2 CRD = 50%.
-        $this->assertSame(['20%', '1/5'], [$kpis['Converted']['value'], $kpis['Converted']['count']]);
+        $this->assertSame(['20.0%', '1/5'], [$kpis['Converted']['value'], $kpis['Converted']['count']]);
         $this->assertSame([0.0, 50.0], [$today['retained'], $today['repeat']]);
         // Went cold 1 of 5 = 20%, up from 0: bad, since lower is better.
         $this->assertSame(['20%', false], [$kpis['Went cold']['value'], $kpis['Went cold']['good']]);
@@ -170,6 +170,9 @@ class DashboardSegmentationTest extends TestCase
         $panel = $response->viewData('segmentation');
         $this->assertSame('2/6', collect($panel['kpis'])->firstWhere('label', 'Converted')['count']);
         $this->assertSame([20.0, 100.0], [$panel['retained'], $panel['repeat']]);
+        // The counts behind them, shown under Converted: 1 of 5 FSD + 1 of 1 CRD = 2 of 6.
+        $this->assertSame(['retained' => 1, 'fsd' => 5, 'repeat' => 1, 'crd' => 1], $panel['counts']);
+        $response->assertSeeInOrder(['Converted', '33.3%', '2/6', 'Retained', '1/5 · 20.0%', 'Repeat', '1/1 · 100.0%']);
 
         // A CRA: only their own leads.
         $mine = $this->actingAs($this->alice)->get('/dashboard')->viewData('customers');

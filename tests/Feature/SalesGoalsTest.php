@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
@@ -240,6 +241,29 @@ class SalesGoalsTest extends TestCase
             ->assertOk()
             ->assertSee('Your confirmed orders')
             ->assertViewHas('results', fn ($results) => $results['cras']->pluck('cra.id')->all() === [$lhea->id]);
+    }
+
+    public function test_conversion_rate_tile_has_bc_plus_sc_sc_and_bc_views(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD LHEI');
+        // 1 BC order of 10 engagements, 1 SC order of 4 tracker leads.
+        $this->sale('CRD LHEI', '2026-10-10', 1000, PancakeOrder::BROADCAST);
+        $this->sale('CRD LHEI', '2026-10-10', 1000);
+        PancakeEngagement::create(['date' => '2026-10-10', 'pancake_user_id' => 'lh', 'staff_name' => 'CRD LHEI', 'engagements' => 10]);
+        foreach (range(1, 4) as $i) {
+            Lead::create([
+                'order_id' => "L{$i}", 'customer_name' => "Lead {$i}", 'phone_number' => "091700000{$i}", 'product_name' => 'Pterygium', 'qty' => 1,
+                'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-10', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $lhea->id,
+            ]);
+        }
+
+        // BC + SC = 2 of 14 (shown first), SC = 1 of 4, BC = 1 of 10; each tab with its own graph on the back.
+        $this->actingAs($this->owner)->get(route('dashboard'))
+            ->assertOk()
+            ->assertSee('data-tabs="dashboard-conversion"', false)
+            ->assertSeeInOrder(['data-tab="all"', 'data-tab="sc"', 'data-tab="bc"'], false)
+            ->assertSeeTextInOrder(['Conversion rate', '14.29%', '2 orders of 14 engagements + leads', '25.00%', '1 SC orders of 4 leads', '10.00%', '1 BC orders of 10 engagements'])
+            ->assertSeeText(['Conversion rate per day · BC + SC', 'Conversion rate per day · SC', 'Conversion rate per day · BC']);
     }
 
     public function test_results_graphs_get_every_day_of_the_dates_and_the_flip_button(): void

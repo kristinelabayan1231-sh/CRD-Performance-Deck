@@ -8,16 +8,19 @@ use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
  * Conversion Breakdown numbers per CRA per day.
  *
- * Orders BC / SC = the CRA's own Pancake POS orders that day tagged "CRD - BROADCAST" / "CRD - SEGMENTATION"
- * (canceled and deleted orders don't count). Gross BC / SC = those orders' totals.
+ * Orders BC / SC = the CRA's Pancake POS orders that day tagged "CRD - BROADCAST" / "CRD - SEGMENTATION"
+ * (canceled and deleted orders don't count), with the CRAs' corrections in the CVR Tracker: a changed Type of Order,
+ * and an order counted for another CRA (e.g. made under another account). Gross BC / SC = those orders' totals.
  * Engagements = the CRA's Pancake customer engagements (Chat → Analytics → Engagements).
  * Leads = Segmentation Tracker leads assigned to the CRA for the lead day worked that day (base 70; actual
- * count shown). With a working date set, that's the lead day the gap points to (Oct 7 → Sept 7).
+ * count shown), leads added from their POS sales included as in the Segmentation Tracker. With a working date set,
+ * that's the lead day the gap points to (Oct 7 → Sept 7).
  * Gross uses Shecom's sales per order, which leaves out the child (TSD) row; Pancake's total until it is synced.
  * BC conv % = Orders BC ÷ Engagements. SC conv % = Orders SC ÷ Leads.
  * Total conv % = (Orders BC + Orders SC) ÷ (Engagements + Leads). Gross sales = Gross BC + Gross SC.
@@ -38,7 +41,7 @@ class ConversionBreakdown
         // Leads worked on a real day are from its paired lead day (Settings → Working Date).
         $lag = WorkingDate::lagDays();
         $leads = [];
-        Lead::whereIn('assigned_to', $ids)->withoutPosSales()
+        Lead::whereIn('assigned_to', $ids)
             ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
             ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get()
             ->each(function ($row) use (&$leads, $lag) {
@@ -77,7 +80,7 @@ class ConversionBreakdown
 
     /**
      * Tagged orders per CRA per day: counts (confirmed orders, not canceled or deleted) and gross sales
-     * (every status) for broadcast and segmentation.
+     * (every status) for broadcast and segmentation, with the CVR Tracker's corrections (taggedOrders()).
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
      * @return array<int, array<string, array{bc_orders: int, sc_orders: int, bc_gross: float, sc_gross: float}>>
@@ -90,20 +93,49 @@ class ConversionBreakdown
 
         $out = [];
 
-        PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
-            ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
-            ->get(['ordered_on', 'seller_name', 'conversion_type', 'status', 'total_price', 'shecom_sales'])
+        self::taggedOrders($accounts, $from, $to)
+            ->get()
             ->each(function (PancakeOrder $order) use (&$out, $accounts) {
-                $cra = $accounts[$order->seller_name];
+                $cra = self::craFor($order, $accounts);
                 $day = $order->ordered_on->toDateString();
-                $prefix = $order->conversion_type === PancakeOrder::BROADCAST ? 'bc' : 'sc';
+                $prefix = $order->counted_type === PancakeOrder::BROADCAST ? 'bc' : 'sc';
                 $out[$cra][$day] ??= ['bc_orders' => 0, 'sc_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0];
                 $out[$cra][$day]["{$prefix}_orders"] += $order->isCounted() ? 1 : 0;
                 $out[$cra][$day]["{$prefix}_gross"] += $order->sales();
             });
 
         return $out;
+    }
+
+    /**
+     * The CRAs' (by $accounts) Pancake orders created $from–$to tagged CRD - BROADCAST or CRD - SEGMENTATION, every
+     * status, as the CVR Tracker counts them: an order counted for another CRA there goes to that CRA (also when made
+     * under an account not in $accounts), and its Type of Order there wins over the tag. Each order carries
+     * counted_type (broadcast / segmentation) and counted_for (the CVR Tracker's CRA id, or null: its seller's CRA).
+     *
+     * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
+     */
+    public static function taggedOrders(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): Builder
+    {
+        return PancakeOrder::crdProducts()
+            ->leftJoin('cvr_order_entries as cvr', 'cvr.pancake_order_id', '=', 'pancake_orders.pancake_order_id')
+            ->whereIn('pancake_orders.conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+            ->where('pancake_orders.ordered_on', '>=', $from->toDateString())->where('pancake_orders.ordered_on', '<', $to->addDay()->toDateString())
+            ->where(fn (Builder $q) => $q
+                ->where(fn (Builder $q) => $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()))
+                ->orWhereIn('cvr.user_id', $accounts->values()))
+            ->select('pancake_orders.*')
+            ->selectRaw('coalesce(cvr.order_type, pancake_orders.conversion_type) as counted_type, cvr.user_id as counted_for');
+    }
+
+    /**
+     * The CRA an order from taggedOrders() counts for.
+     *
+     * @param  Collection<string, int>  $accounts
+     */
+    public static function craFor(PancakeOrder $order, Collection $accounts): ?int
+    {
+        return $order->counted_for !== null ? (int) $order->counted_for : ($accounts[$order->seller_name] ?? null);
     }
 
     /**

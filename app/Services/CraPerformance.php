@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CvrOrderEntry;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use Carbon\CarbonImmutable;
@@ -9,8 +10,9 @@ use Illuminate\Support\Collection;
 
 /**
  * Order Database → CRA's Performance: the Pancake POS orders each seller account sold, by the day the order was
- * created, counted per status with their qty (orders) and total sales, and the same per product. Deleted orders
- * (status 7) are left out. An order counts once, under its main product: the first item on Settings → Product
+ * created, counted per status with their qty (orders) and total sales, and the same per product. An order the CVR
+ * Tracker counts for another CRA is under that CRA's account (also when made under an account not listed). Deleted
+ * orders (status 7) are left out. An order counts once, under its main product: the first item on Settings → Product
  * Consumption (else "Other products"), with the whole sale before Pancake's discount (Shecom's amount, else Pancake's total plus its discount).
  */
 class CraPerformance
@@ -32,14 +34,21 @@ class CraPerformance
         // Plain rows, 2,000 at a time, kept as just what the table needs: a long range has tens of thousands of orders.
         $orders = [];
         $keys = [];
-        PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
+        // Orders counted for another CRA in the CVR Tracker go to that CRA's account.
+        $claimed = CvrOrderEntry::claimedAccounts();
+        $claimedHere = array_keys(array_intersect($claimed, array_keys($sellers)));
+        PancakeOrder::where(fn ($q) => $q->whereIn('seller_name', array_keys($sellers) ?: [''])->orWhereIn('pancake_order_id', $claimedHere ?: ['']))
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', self::DELETED))
-            ->toBase()->select(['id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
+            ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
             ->lazyById(2000, 'id')
-            ->each(function (object $order) use (&$orders, &$keys) {
+            ->each(function (object $order) use (&$orders, &$keys, $claimed, $sellers) {
+                $seller = $claimed[$order->pancake_order_id] ?? ($keys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name));
+                if (! isset($sellers[$seller])) {
+                    return;
+                }
                 $orders[] = [
-                    'seller' => $keys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name),
+                    'seller' => $seller,
                     'status' => $order->status === null ? -1 : (int) $order->status,
                     'product' => $this->mainProduct(json_decode((string) $order->items, true) ?? []),
                     // The order's value before Pancake's discount (PancakeOrder::salesBeforeDiscount()).

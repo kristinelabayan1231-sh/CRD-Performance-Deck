@@ -17,7 +17,11 @@ async function send(url, body) {
 const peso = (n) => `₱${Math.round(n).toLocaleString('en-US')}`;
 
 function recount(root) {
-    const sums = { bc_orders: 0, bc_amount: 0, sc_orders: 0, sc_amount: 0, contacted: 0, assigned_leads: 0, pancake_leads: 0 };
+    // Canceled orders aren't listed but stay in Broadcast / Segmentation sales, as on the dashboard.
+    const sums = {
+        bc_orders: 0, bc_amount: Number(root.dataset.canceledBc || 0), sc_orders: 0, sc_amount: Number(root.dataset.canceledSc || 0),
+        contacted: 0, assigned_leads: 0, pancake_leads: 0,
+    };
     root.querySelectorAll('[data-cvr-order]').forEach((row) => {
         const amount = Number(row.dataset.amount);
         const type = row.querySelector('[data-cvr-field="order_type"]').value;

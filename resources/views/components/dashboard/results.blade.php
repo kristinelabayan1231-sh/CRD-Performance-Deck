@@ -114,17 +114,38 @@
         </x-slot:back>
     </x-dashboard.flip>
 
-    <x-dashboard.flip :class="$span">
-    <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]" title="(BC + SC orders) ÷ (engagements + leads)">
+    {{-- Conversion rate, three views switched by the tabs (resources/js/tabs.js, remembered per browser), the graph on the
+         back following: BC + SC = (BC + SC orders) ÷ (engagements + leads); SC = SC orders ÷ leads; BC = BC orders ÷ engagements --}}
+    @php($conversionViews = [
+        'all' => ['BC + SC', $team['total_rate'], number_format($team['orders']).' orders of '.number_format($team['reach']).' engagements + leads', 'total_rate', '#1f8fb8'],
+        'sc' => ['SC', $team['sc_rate'], number_format($team['sc_orders']).' SC orders of '.number_format($team['leads']).' leads', 'sc_rate', '#8b3ff0'],
+        'bc' => ['BC', $team['bc_rate'], number_format($team['bc_orders']).' BC orders of '.number_format($team['engagements']).' engagements', 'bc_rate', '#1f8fb8'],
+    ])
+    <x-dashboard.flip :class="$span" data-tabs="dashboard-conversion">
+    <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]">
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
-        <p class="relative text-3xl font-bold tabular-nums">{{ $pct($team['total_rate'], 2) }}</p>
-        <p class="{{ $note }}">{{ number_format($team['orders']) }} of {{ number_format($team['reach']) }} engagements + leads</p>
+        <div role="tablist" aria-label="Conversion view" class="relative z-10 flex w-fit gap-0.5 rounded-full bg-white/20 p-0.5">
+            @foreach ($conversionViews as $view => [$viewLabel])
+                <button type="button" role="tab" data-tab="{{ $view }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}"
+                        class="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none aria-selected:bg-white aria-selected:text-[#156c8c]">{{ $viewLabel }}</button>
+            @endforeach
+        </div>
+        @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote])
+            <div data-tab-panel="{{ $view }}" @unless ($loop->first) hidden @endunless class="relative grid gap-1">
+                <p class="text-3xl font-bold tabular-nums">{{ $pct($viewRate, 2) }}</p>
+                <p class="{{ $note }}">{{ $viewNote }}</p>
+            </div>
+        @endforeach
     </article>
         <x-slot:back>
-            <x-dashboard.trend title="Conversion rate per day" :format="$graphPct"
-                :series="[['label' => 'Conversion', 'color' => '#1f8fb8', 'values' => $daily->map->total_rate->all()]]"
-                :legend="[['Overall', '#1f8fb8', $pct($team['total_rate'], 2), false]]" />
+            @foreach ($conversionViews as $view => [$viewLabel, $viewRate, $viewNote, $viewKey, $viewColor])
+                <div data-tab-panel="{{ $view }}" @unless ($loop->first) hidden @endunless class="h-full">
+                    <x-dashboard.trend title="Conversion rate per day · {{ $viewLabel }}" :format="$graphPct"
+                        :series="[['label' => $viewLabel, 'color' => $viewColor, 'values' => $daily->map->{$viewKey}->all()]]"
+                        :legend="[[$viewLabel, $viewColor, $pct($viewRate, 2), false]]" />
+                </div>
+            @endforeach
         </x-slot:back>
     </x-dashboard.flip>
 
@@ -161,7 +182,7 @@
                 <div class="min-w-0">
                     <p class="flex items-baseline gap-2">
                         <span class="text-2xl font-bold tabular-nums">{{ number_format($cancelled['total']) }}</span>
-                        <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders sold in these dates">{{ $pct($cancelled['rate']) }}</span>
+                        <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders in these dates (confirmed + canceled, as Total confirmed orders counts them)">{{ $pct($cancelled['rate']) }}</span>
                     </p>
                     {{-- The amount of these orders: a small pill under the count --}}
                     <p class="mt-1 inline-block rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums" title="Amount of the cancelled and waiting orders">{{ $peso($cancelled['amount']) }}</p>

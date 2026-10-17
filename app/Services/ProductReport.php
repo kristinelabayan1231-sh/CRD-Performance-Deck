@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CvrOrderEntry;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
@@ -70,13 +71,20 @@ class ProductReport
         $lines = [];
 
         // Plain rows, 2,000 at a time: a long range has tens of thousands of orders, too many to hold as models.
-        PancakeOrder::whereIn('seller_name', array_keys($sellers) ?: [''])
+        // Orders counted for another CRA in the CVR Tracker go to that CRA's account (CraPerformance does the same).
+        $claimed = CvrOrderEntry::claimedAccounts();
+        $claimedHere = array_keys(array_intersect($claimed, array_keys($sellers)));
+        PancakeOrder::where(fn ($q) => $q->whereIn('seller_name', array_keys($sellers) ?: [''])->orWhereIn('pancake_order_id', $claimedHere ?: ['']))
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
-            ->toBase()->select(['id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on', 'ordered_at'])
+            ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on', 'ordered_at'])
             ->lazyById(2000, 'id')
-            ->each(function (object $order) use (&$lines, $costs, $timezone) {
-                foreach ($this->linesOf($order, $costs, $timezone) as $line) {
+            ->each(function (object $order) use (&$lines, $costs, $timezone, $claimed, $sellers) {
+                $seller = $claimed[$order->pancake_order_id] ?? null;
+                if ($seller !== null && ! isset($sellers[$seller])) {
+                    return;
+                }
+                foreach ($this->linesOf($order, $costs, $timezone, $seller) as $line) {
                     $lines[] = $line;
                 }
             });
@@ -147,7 +155,7 @@ class ProductReport
      * @param  Collection<string, ?string>  $costs  product name => unit cost
      * @return list<array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool}>
      */
-    private function linesOf(object $order, Collection $costs, DateTimeZone $timezone): array
+    private function linesOf(object $order, Collection $costs, DateTimeZone $timezone, ?string $seller = null): array
     {
         $products = [];
         foreach (json_decode((string) $order->items, true) ?? [] as $item) {
@@ -171,7 +179,8 @@ class ProductReport
         }
 
         $salesOf = self::salesOf($order, $products);
-        $seller = self::$sellerKeys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name);
+        // The CRA's account the order counts for: the CVR Tracker's, else its seller's.
+        $seller ??= self::$sellerKeys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name);
         $hour = $order->ordered_at === null ? 0 : (int) (new DateTimeImmutable($order->ordered_at, new DateTimeZone('UTC')))->setTimezone($timezone)->format('G');
 
         $lines = [];

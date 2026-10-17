@@ -103,7 +103,8 @@ class SegmentationStats
                 $this->kpi('Leads', $now['leads'], $before['leads'], 'count', higherIsBetter: true),
                 $this->kpi('Catered', $pct($now, 'processed'), $pct($before, 'processed'), 'percent', higherIsBetter: true),
                 $this->kpi('Converted', $pct($now, 'converted'), $pct($before, 'converted'), 'percent', higherIsBetter: true,
-                    count: number_format($now['converted']).'/'.number_format($now['leads'])),
+                    // One decimal, as the Retained and Repeat tiles.
+                    count: number_format($now['converted']).'/'.number_format($now['leads']), decimals: 1),
                 // Cold = leads tagged Cold / CanPro Cold, shown as a share and as "cold/leads".
                 $this->kpi('Went cold', $pct($now, 'cold'), $pct($before, 'cold'), 'percent', higherIsBetter: false,
                     count: number_format($now['cold']).'/'.number_format($now['leads'])),
@@ -111,6 +112,8 @@ class SegmentationStats
             // Same as the dashboard's Retained and Repeat tiles.
             'retained' => $share($now['retained'], $now['fsd']),
             'repeat' => $share($now['repeat'], $now['crd']),
+            // Counts behind them, so Converted visibly adds up: Retained + Repeat out of FSD + CRD leads.
+            'counts' => ['retained' => $now['retained'], 'fsd' => $now['fsd'], 'repeat' => $now['repeat'], 'crd' => $now['crd']],
             'series' => $this->series($ids, $chartFrom ?? $from, $to, $today),
             'tags' => [
                 ['label' => 'Hot', 'value' => $now['hot'], 'color' => '#E0663F'],
@@ -167,9 +170,9 @@ class SegmentationStats
     /**
      * One KPI card: value, previous value, and the change between them.
      * Counts change in %, percentages change in points. $count is an optional
-     * "part/total" shown beside a percentage.
+     * "part/total" shown beside a percentage; $decimals, the percentage's decimals.
      */
-    private function kpi(string $label, float $value, float $previous, string $format, bool $higherIsBetter, ?string $count = null): array
+    private function kpi(string $label, float $value, float $previous, string $format, bool $higherIsBetter, ?string $count = null, int $decimals = 0): array
     {
         $delta = $format === 'count'
             ? ($previous ? ($value - $previous) / $previous * 100 : null)
@@ -178,8 +181,8 @@ class SegmentationStats
 
         return [
             'label' => $label,
-            'value' => $format === 'count' ? number_format($value) : round($value).'%',
-            'previous' => $format === 'count' ? number_format($previous) : round($previous).'%',
+            'value' => $format === 'count' ? number_format($value) : number_format($value, $decimals).'%',
+            'previous' => $format === 'count' ? number_format($previous) : number_format($previous, $decimals).'%',
             'change' => $delta === null ? '—' : (($delta > 0 ? '+' : '').round($delta).($format === 'count' ? '%' : ' pts')),
             'direction' => $direction,
             'good' => $direction === 'flat' ? null : (($direction === 'up') === $higherIsBetter),
