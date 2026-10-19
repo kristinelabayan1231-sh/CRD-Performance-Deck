@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable([
     'order_id', 'tracking_number', 'customer_name', 'phone_number', 'product_name', 'product_raw', 'qty', 'qty_unknown',
-    'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'lead_type',
+    'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'listed_on', 'lead_type',
     'assigned_to', 'assigned_at', 'status', 'status_updated_by', 'status_updated_at',
     'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
     'call_recording_url', 'notes', 'notes_updated_by', 'notes_updated_at',
@@ -32,12 +32,21 @@ class Lead extends Model
     public const POS_PREFIX = 'POS-';
 
     /**
+     * The lead day (listed_on) follows the out-of-stock date until the backlog fill moves the lead.
      * Repeat Purchase set to Yes dates the purchase unless a date was given: the real date, not the working
      * date (a September lead bought on Oct 16 counts on Oct 16). Anything else clears it.
      */
     protected static function booted(): void
     {
         static::saving(function (Lead $lead) {
+            // Listed on its out-of-stock date until the backlog fill moves it; a moved lead stays where it was moved.
+            $moved = $lead->exists && $lead->getOriginal('listed_on') !== null
+                && ! $lead->getOriginal('listed_on')->isSameDay($lead->getOriginal('est_out_of_stock_date'));
+
+            if ($lead->listed_on === null || ($lead->isDirty('est_out_of_stock_date') && ! $lead->isDirty('listed_on') && ! $moved)) {
+                $lead->listed_on = $lead->est_out_of_stock_date;
+            }
+
             if (! $lead->isDirty('repeat_purchase')) {
                 return;
             }
@@ -54,6 +63,7 @@ class Lead extends Model
             'consumption_days' => 'integer',
             'delivered_date' => 'immutable_date',
             'est_out_of_stock_date' => 'immutable_date',
+            'listed_on' => 'immutable_date',
             'assigned_at' => 'datetime',
             'status_updated_at' => 'datetime',
             'processed_at' => 'datetime',
@@ -89,6 +99,17 @@ class Lead extends Model
         return $query->whereNull('status')->whereNull('contact_date')->whereNull('processed_at');
     }
 
+    /**
+     * Never touched by a CRA: unprocessed and every tracking field blank (no note, feedback, Repeat Purchase, tag,
+     * time, callback date or recording). Only these leads may be moved by the backlog fill.
+     */
+    public function scopeUntouched(Builder $query): Builder
+    {
+        return $query->unprocessed()
+            ->whereNull('notes')->whereNull('feedback')->whereNull('repeat_purchase')->whereNull('customer_tag')
+            ->whereNull('contact_time')->whereNull('callback_date')->whereNull('call_recording_url');
+    }
+
     public function scopeProcessed(Builder $query): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereNotNull('status')->orWhereNotNull('contact_date')->orWhereNotNull('processed_at'));
@@ -120,6 +141,16 @@ class Lead extends Model
         return $query->where(fn (Builder $q) => $q
             ->where('repeat_purchase', 'yes')
             ->orWhere(fn (Builder $q) => $q->where('repeat_purchase', 'no')->where('feedback', 'purchased')));
+    }
+
+    /**
+     * The opposite of converted, counting a blank Repeat Purchase or feedback as not converted.
+     */
+    public function scopeNotConverted(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('repeat_purchase')
+            ->orWhere(fn (Builder $q) => $q->where('repeat_purchase', '!=', 'yes')
+                ->where(fn (Builder $q) => $q->where('repeat_purchase', '!=', 'no')->orWhereNull('feedback')->orWhere('feedback', '!=', 'purchased'))));
     }
 
     public function isConverted(): bool
@@ -157,7 +188,7 @@ class Lead extends Model
         $dayStarted = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'))->utc();
 
         return $query->whereNotNull('assigned_to')
-            ->whereDate('est_out_of_stock_date', '<', $day)
+            ->whereDate('listed_on', '<', $day)
             ->where(fn (Builder $q) => $q->whereNull('status')
                 ->orWhereIn('status', config('segmentation.carry_over_statuses'))
                 ->orWhere('status_updated_at', '>=', $dayStarted));
@@ -170,8 +201,34 @@ class Lead extends Model
     public function scopeCarryOver(Builder $query, ?CarbonImmutable $today = null): Builder
     {
         return $query->whereNotNull('assigned_to')
-            ->whereDate('est_out_of_stock_date', '<', $today ?? self::today())
+            ->whereDate('listed_on', '<', $today ?? self::today())
             ->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')));
+    }
+
+    /**
+     * Call back for today: a callback date on or before $today (the real date, as CRAs set it) that hasn't been
+     * followed by a contact on or after it, and no purchase yet.
+     */
+    public function scopeCallbackDue(Builder $query, CarbonImmutable $today): Builder
+    {
+        return $query->whereNotNull('assigned_to')
+            ->whereDate('callback_date', '<=', $today)
+            ->where(fn (Builder $q) => $q->whereNull('contact_date')->orWhereColumn('contact_date', '<', 'callback_date'))
+            ->notConverted();
+    }
+
+    /**
+     * Reactivation: a follow-up status (segmentation.reactivation_statuses) from an earlier lead day than $leadDay,
+     * no purchase, not contacted yet on $today (the real date) and no callback date still to come or due.
+     */
+    public function scopeReactivation(Builder $query, CarbonImmutable $leadDay, CarbonImmutable $today): Builder
+    {
+        return $query->whereNotNull('assigned_to')
+            ->whereDate('listed_on', '<', $leadDay)
+            ->whereIn('status', config('segmentation.reactivation_statuses'))
+            ->notConverted()
+            ->where(fn (Builder $q) => $q->whereNull('contact_date')->orWhereDate('contact_date', '<', $today))
+            ->where(fn (Builder $q) => $q->whereNull('callback_date')->orWhereColumn('contact_date', '>=', 'callback_date'));
     }
 
     public function carriesOver(): bool

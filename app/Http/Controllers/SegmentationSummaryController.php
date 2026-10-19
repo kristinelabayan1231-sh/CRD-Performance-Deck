@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\Product;
 use App\Services\LeadGenerator;
 use App\Services\SegmentationSummary;
@@ -50,13 +51,14 @@ class SegmentationSummaryController extends Controller
         }
 
         $scope = Lead::query()
-            ->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+            ->whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to)
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, string $product) => $q->where('product_name', $product));
 
         return view('segmentation.overview', [
-            'summary' => $summary->for($scope, $cras),
+            'summary' => $summary->for($scope, $cras, LeadMove::departed($from, $to,
+                ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null)),
             'filters' => $filters,
             'period' => $from->equalTo($to) ? $from->format('D, M j, Y') : $from->format('M j').'–'.$to->format('M j, Y'),
             'cras' => $allCras,

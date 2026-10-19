@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
@@ -41,10 +42,17 @@ class SegmentationProductivity
         $lag = WorkingDate::lagDays();
         $assigned = $this->grouped(
             Lead::whereIn('assigned_to', $ids)->withoutPosSales()
-                ->whereDate('est_out_of_stock_date', '>=', $from->subDays($lag))->whereDate('est_out_of_stock_date', '<=', $to->subDays($lag))
-                ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
+                ->whereDate('listed_on', '>=', $from->subDays($lag))->whereDate('listed_on', '<=', $to->subDays($lag))
+                ->selectRaw('assigned_to as cra, date(listed_on) as day, count(*) as n')->groupBy('cra', 'day')->get(),
             $lag,
         );
+        // Plus leads the backlog fill moved off those lead days.
+        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($from->subDays($lag), $to->subDays($lag), $ids)) as $cra => $perDay) {
+            foreach ($perDay as $day => $n) {
+                $real = CarbonImmutable::parse($day)->addDays($lag)->toDateString();
+                $assigned[$cra][$real] = ($assigned[$cra][$real] ?? 0) + $n;
+            }
+        }
 
         $calls = $this->grouped(
             Lead::whereIn('assigned_to', $ids)->withoutPosSales()->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)

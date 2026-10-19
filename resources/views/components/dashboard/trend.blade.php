@@ -64,7 +64,7 @@
         @endif
     </div>
 
-    <div class="relative min-h-12 flex-1">
+    <div class="relative min-h-6 flex-1">
         <span class="absolute -top-1 left-0 z-10 rounded bg-white/80 px-0.5 text-[10px] leading-none text-muted tabular-nums">{{ $format($top) }}</span>
         <svg viewBox="0 0 {{ $width }} {{ $height }}" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible" role="img" aria-label="{{ $title }}">
             <line x1="0" x2="{{ $width }}" y1="0" y2="0" stroke="#ebe6ee" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />

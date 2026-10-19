@@ -3,11 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\Product;
 use App\Models\Role;
 use App\Services\ChurnCustomerList;
 use App\Services\LeadGenerator;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -45,7 +48,7 @@ class SegmentationController extends Controller
         $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
             ->with(['assignee', 'notesAuthor'])
-            ->orderBy('est_out_of_stock_date')
+            ->orderBy('listed_on')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name');
 
@@ -64,6 +67,7 @@ class SegmentationController extends Controller
         if ($full) {
             return view('segmentation.full', [
                 'leads' => $unprocessed ?? $processed,
+                ...($show === 'unprocessed' ? $this->followUps($filters, $today) : []),
                 'show' => $show,
                 'canManage' => $user->can('segmentation.manage'),
                 'canViewAll' => $canViewAll,
@@ -83,7 +87,7 @@ class SegmentationController extends Controller
         //     : null;
         // $backlog = $backlogQuery
         //     ? (clone $backlogQuery)->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
-        //         ->orderBy('est_out_of_stock_date')->orderBy('customer_name')
+        //         ->orderBy('listed_on')->orderBy('customer_name')
         //         ->paginate(50, ['*'], 'backlog_page')->withQueryString()
         //     : collect();
         // $carryingOver = $backlogQuery
@@ -97,10 +101,10 @@ class SegmentationController extends Controller
         $greetedKey = 'segmentation.greeted.'.$today->toDateString();
         if ($user->role?->slug === Role::CRA && ! $request->session()->has($greetedKey)) {
             $request->session()->put($greetedKey, true);
-            $mine = Lead::where('assigned_to', $user->id)->whereDate('est_out_of_stock_date', $today);
+            $mine = Lead::where('assigned_to', $user->id)->whereDate('listed_on', $today);
             $greeting = [
                 'name' => strtok($user->displayName(), ' ') ?: $user->displayName(),
-                'total' => (clone $mine)->count(),
+                'total' => (clone $mine)->count() + LeadMove::departed($today, $today, [$user->id])->count(),
                 'unprocessed' => (clone $mine)->unprocessed()->count(),
                 'day' => $today,
             ];
@@ -189,11 +193,49 @@ class SegmentationController extends Controller
             ->when($filters['q'], fn (Builder $q, string $term) => $q->search($term),
                 fn (Builder $q) => ($filters['repeat'] ?? null)
                     ? $q->repeatPurchasedBetween($from, $to)
-                    : $q->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to))
+                    : $q->whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to))
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product));
+    }
+
+    /**
+     * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day): callbacks due
+     * today and Reactivation. They're catered leads, so they're never in Pending itself.
+     *
+     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator}
+     */
+    private function followUps(array $filters, CarbonImmutable $today): array
+    {
+        $realToday = WorkingDate::realToday();
+        $base = Lead::query()
+            ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereRaw('1 = 0'))
+            ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
+            ->with(['assignee', 'notesAuthor', 'transfers.fromUser']);
+
+        // The two never overlap: Reactivation leaves out leads with a callback date still to be followed.
+        return [
+            'callbacks' => (clone $base)->callbackDue($realToday)->orderBy('callback_date')->orderBy('customer_name')->paginate(self::FULL_PER_PAGE, ['*'], 'callback_page')->withQueryString(),
+            'reactivation' => (clone $base)->reactivation($today, $realToday)
+                ->orderBy('listed_on')->orderBy('customer_name')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'reactivation_page')->withQueryString(),
+        ];
+    }
+
+    /**
+     * Moves off the lead days picked (LeadMove) for the same CRA, type and product filters; null for a search,
+     * repeat purchases or the unassigned list, which aren't lead-day totals.
+     */
+    private function departed(array $filters, CarbonImmutable $from, CarbonImmutable $to): ?Builder
+    {
+        if ($filters['q'] || ($filters['repeat'] ?? null) || $filters['cra'] === 'unassigned') {
+            return null;
+        }
+
+        return LeadMove::departed($from, $to, ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null);
     }
 
     /**
@@ -211,6 +253,16 @@ class SegmentationController extends Controller
             ->first();
 
         $converted = (clone $scope)->converted()->count();
+
+        // Leads the backlog fill moved off these days still count there, as pending.
+        $departed = $this->departed($filters, $from, $to)
+            ?->selectRaw('count(*) as total')
+            ->selectRaw('sum(case when leads.lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
+            ->selectRaw('sum(case when leads.lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
+            ->toBase()->first();
+        foreach (['total', 'crd', 'fsd'] as $key) {
+            $summary->{$key} = (int) $summary->{$key} + (int) ($departed->{$key} ?? 0);
+        }
 
         $total = (int) $summary->total;
         $updated = (int) $summary->updated;
@@ -274,7 +326,7 @@ class SegmentationController extends Controller
     private function perCraBreakdown(array $filters, CarbonImmutable $from, CarbonImmutable $to, $cras): array
     {
         // Assigned leads only: POS sales added to the tracker aren't part of a CRA's share.
-        $rows = Lead::whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)->withoutPosSales()
+        $rows = Lead::whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to)->withoutPosSales()
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->whereIn('assigned_to', $cras->pluck('id'))
@@ -282,9 +334,13 @@ class SegmentationController extends Controller
             ->groupBy('assigned_to', 'lead_type')
             ->get()
             ->groupBy('assigned_to');
+        // Plus leads the backlog fill moved off these days.
+        $departed = LeadMove::departed($from, $to, $cras->pluck('id'), $filters['type'] ?? null, $filters['product'] ?? null)
+            ->selectRaw('lead_moves.assigned_to, leads.lead_type, count(*) as total')
+            ->groupBy('lead_moves.assigned_to', 'leads.lead_type')->toBase()->get()->groupBy('assigned_to');
 
-        $breakdown = $cras->map(function ($cra) use ($rows) {
-            $mine = $rows[$cra->id] ?? collect();
+        $breakdown = $cras->map(function ($cra) use ($rows, $departed) {
+            $mine = collect($rows[$cra->id] ?? [])->concat($departed[$cra->id] ?? []);
 
             return [
                 'id' => $cra->id,

@@ -18,6 +18,10 @@ return [
     // everyone's quota are spread evenly rather than left unassigned.
     'leads_per_cra' => (int) env('SEGMENTATION_LEADS_PER_CRA', 70),
 
+    // Most leads a CRA is listed for a day: after their own leads, the backlog fill (BacklogFill) tops each
+    // on-duty CRA up to this with their own oldest untouched backlog, then an even share of the unassigned pool.
+    'max_leads_per_cra' => (int) env('SEGMENTATION_MAX_LEADS_PER_CRA', 100),
+
     // Pancake POS order tag ids that make an order a CRD conversion (Conversion
     // Breakdown): "CRD - BROADCAST" and "CRD - SEGMENTATION". An order with
     // both tags counts as segmentation.
@@ -69,6 +73,9 @@ return [
     // Leads with no status, or one of these statuses, carry over to the next
     // day with the same CRA until their status changes to something else.
     'carry_over_statuses' => ['pjr_drop_call', 'inactive'],
+
+    // Follow-up statuses listed under Reactivation in the Pending full view once the lead day has passed.
+    'reactivation_statuses' => ['pjr_drop_call', 'busy_callback', 'inactive', 'reminders_ffup'],
 
     /*
     |--------------------------------------------------------------------------

@@ -813,6 +813,29 @@ class SegmentationTest extends TestCase
         $this->assertSame([false, false], array_column($breakdown, 'odd'));
     }
 
+    public function test_pending_full_view_lists_callbacks_due_and_reactivation_follow_ups(): void
+    {
+        $alice = $this->cra('alice@example.com');
+        $lead = fn (string $name, string $day, array $extra = []) => Lead::create([
+            'order_id' => $name, 'customer_name' => $name, 'phone_number' => '0917'.crc32($name), 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-08-01', 'consumption_days' => 15, 'est_out_of_stock_date' => $day, 'lead_type' => 'fsd', 'assigned_to' => $alice->id, ...$extra,
+        ]);
+        $lead('Pending Today', '2026-10-05');
+        $lead('Callback Due', '2026-09-20', ['status' => 'busy_callback', 'contact_date' => '2026-09-21', 'callback_date' => '2026-10-04']);
+        $lead('Called Back', '2026-09-20', ['status' => 'busy_callback', 'contact_date' => '2026-10-05', 'callback_date' => '2026-10-05']);
+        $lead('Callback Later', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21', 'callback_date' => '2026-10-09']);
+        $lead('Follow Up', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21']);
+        $lead('Bought Already', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21', 'repeat_purchase' => 'yes']);
+
+        // Tabs with counts: Pending 1, Call back for today 1, Reactivation 1.
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1')->assertOk()
+            ->assertSeeInOrder(['Call back for today', '1', 'Reactivation', '1', 'Pending Today'])->assertDontSee('Follow Up');
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=callback')->assertOk()
+            ->assertSee('Callback Due')->assertDontSee('Pending Today')->assertDontSee('Called Back')->assertDontSee('Callback Later');
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=reactivation')->assertOk()
+            ->assertSee('Follow Up')->assertDontSee('Callback Due')->assertDontSee('Bought Already');
+    }
+
     public function test_users_without_permission_are_blocked(): void
     {
         $plain = User::create(['email' => 'plain@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);

@@ -39,7 +39,7 @@
                 'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
                 'bg-coral/15 text-coral-700' => $lead->carriesOver(),
                 'bg-teal/15 text-teal-700' => ! $lead->carriesOver(),
-            ])>{{ $lead->carriesOver() ? ($lead->statusLabel() ?? 'Pending') : 'Catered · carried' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
+            ])>{{ $lead->carriesOver() ? ($lead->statusLabel() ?? 'Pending') : 'Catered · carried' }} since {{ $lead->listed_on->format('M j') }}</span>
             @if ($lead->transfers->first())
                 <span class="mt-1 ml-1 inline-block text-[11px] text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
             @endif

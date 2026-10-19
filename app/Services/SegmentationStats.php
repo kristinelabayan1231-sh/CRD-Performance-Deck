@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -256,10 +257,19 @@ class SegmentationStats
         $end = $to->min($today);
 
         $rows = $this->scope($ids, $from, $end)
-            ->selectRaw('date(est_out_of_stock_date) as day, count(*) as leads, sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
+            ->selectRaw('date(listed_on) as day, count(*) as leads, sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
             ->groupBy('day')
             ->get()
             ->keyBy(fn ($r) => CarbonImmutable::parse($r->day)->toDateString());
+        // Leads the backlog fill moved off a day still count there, as unprocessed.
+        $departed = collect(LeadMove::countsByCraAndDay(LeadMove::departed($from, $end, $ids)))
+            ->reduce(function (array $sum, array $days) {
+                foreach ($days as $day => $n) {
+                    $sum[$day] = ($sum[$day] ?? 0) + $n;
+                }
+
+                return $sum;
+            }, []);
 
         $points = [];
         for ($day = $from; $day->lessThanOrEqualTo($end); $day = $day->addDay()) {
@@ -269,7 +279,7 @@ class SegmentationStats
                 'day' => $day->toDateString(),
                 'label' => $day->format('M j'),
                 'processed' => $processed,
-                'unprocessed' => (int) ($r->leads ?? 0) - $processed,
+                'unprocessed' => (int) ($r->leads ?? 0) + ($departed[$day->toDateString()] ?? 0) - $processed,
             ];
         }
 
@@ -287,9 +297,11 @@ class SegmentationStats
         $rows = $this->scope($cras->pluck('id'), $from, $to)
             ->selectRaw('assigned_to, count(*) as leads, sum(case when '.self::CATERED.' then 1 else 0 end) as processed')
             ->groupBy('assigned_to')->get()->keyBy('assigned_to');
+        $departed = LeadMove::departed($from, $to, $cras->pluck('id'))
+            ->selectRaw('lead_moves.assigned_to as cra, count(*) as n')->groupBy('cra')->toBase()->pluck('n', 'cra');
 
-        return $cras->map(function (User $cra) use ($rows, $converted) {
-            $leads = (int) ($rows[$cra->id]->leads ?? 0);
+        return $cras->map(function (User $cra) use ($rows, $converted, $departed) {
+            $leads = (int) ($rows[$cra->id]->leads ?? 0) + (int) ($departed[$cra->id] ?? 0);
             $processed = (int) ($rows[$cra->id]->processed ?? 0);
 
             return [
@@ -306,7 +318,7 @@ class SegmentationStats
     private function scope(Collection $ids, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return Lead::whereIn('assigned_to', $ids)
-            ->whereDate('est_out_of_stock_date', '>=', $from)
-            ->whereDate('est_out_of_stock_date', '<=', $to);
+            ->whereDate('listed_on', '>=', $from)
+            ->whereDate('listed_on', '<=', $to);
     }
 }

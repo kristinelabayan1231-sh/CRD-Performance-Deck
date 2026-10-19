@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -25,10 +26,18 @@ class SegmentationSummary
     /**
      * @param  Builder<Lead>  $scope  the leads to sum up (period and filters already applied)
      * @param  Collection<int, User>  $cras  CRAs listed in the per-CRA table
+     * @param  Builder<LeadMove>|null  $departed  leads the backlog fill moved off these days (LeadMove::departed()):
+     *                                            counted as leads, pending, in the totals and per CRA / product
      * @return array<string, mixed>
      */
-    public function for(Builder $scope, Collection $cras): array
+    public function for(Builder $scope, Collection $cras, ?Builder $departed = null): array
     {
+        $departedPer = fn (string $column) => $departed
+            ? (clone $departed)->selectRaw("{$column} as owner, count(*) as n")->groupBy('owner')->toBase()->pluck('n', 'owner')
+            : collect();
+        $departedPerCra = $departedPer('lead_moves.assigned_to');
+        $departedPerProduct = $departedPer('leads.product_name');
+
         $catered = '(status is not null or contact_date is not null or processed_at is not null)';
         $converted = "(repeat_purchase = 'yes' or (repeat_purchase = 'no' and feedback = 'purchased'))";
         $sum = fn (string $condition) => "sum(case when {$condition} then 1 else 0 end)";
@@ -40,7 +49,7 @@ class SegmentationSummary
             ->selectRaw("{$sum('feedback is not null')} as with_feedback")
             ->selectRaw("{$sum("feedback = 'still_have_stocks' and callback_date is null")} as stocks_no_callback")
             ->toBase()->first();
-        $leads = (int) $totals->leads;
+        $leads = (int) $totals->leads + (int) $departedPerCra->sum();
 
         $countBy = fn (string $column) => (clone $scope)->whereNotNull($column)
             ->selectRaw("{$column} as value, count(*) as total")->groupBy($column)->toBase()->pluck('total', 'value')
@@ -89,9 +98,9 @@ class SegmentationSummary
                 'contacts' => (int) ($byHour[$hour]->contacts ?? 0),
                 'converted' => (int) ($byHour[$hour]->converted ?? 0),
             ]),
-            'cras' => $cras->map(function (User $cra) use ($perCra, $craFeedback, $rate) {
+            'cras' => $cras->map(function (User $cra) use ($perCra, $craFeedback, $rate, $departedPerCra) {
                 $row = $perCra[$cra->id] ?? null;
-                $craLeads = (int) ($row->leads ?? 0);
+                $craLeads = (int) ($row->leads ?? 0) + (int) ($departedPerCra[$cra->id] ?? 0);
 
                 return [
                     'name' => $cra->displayName(),
@@ -102,14 +111,15 @@ class SegmentationSummary
                     'top_feedback' => $craFeedback[$cra->id] ?? null,
                 ];
             })->values(),
-            'products' => $perProduct->map(fn (object $row) => [
-                'name' => $row->product_name,
-                'leads' => (int) $row->leads,
-                'catered_rate' => $rate((int) $row->catered, (int) $row->leads),
-                'converted' => (int) $row->converted,
-                'converted_rate' => $rate((int) $row->converted, (int) $row->leads),
-                'top_feedback' => $productFeedback[$row->product_name] ?? null,
-            ]),
+            'products' => $perProduct->map(fn (object $row) => [...(array) $row, 'leads' => (int) $row->leads + (int) ($departedPerProduct[$row->product_name] ?? 0)])
+                ->map(fn (array $row) => (object) $row)->sortByDesc('leads')->values()->map(fn (object $row) => [
+                    'name' => $row->product_name,
+                    'leads' => (int) $row->leads,
+                    'catered_rate' => $rate((int) $row->catered, (int) $row->leads),
+                    'converted' => (int) $row->converted,
+                    'converted_rate' => $rate((int) $row->converted, (int) $row->leads),
+                    'top_feedback' => $productFeedback[$row->product_name] ?? null,
+                ]),
         ];
 
         return [...$summary, 'no_verbal' => $this->noVerbalReasons($scope), 'insights' => $this->insights($summary)];

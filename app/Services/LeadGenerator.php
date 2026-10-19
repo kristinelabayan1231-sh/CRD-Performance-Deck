@@ -89,7 +89,12 @@ class LeadGenerator
 
         $assigned = $this->assign($date);
 
-        $forDay = Lead::whereDate('est_out_of_stock_date', $date)->get();
+        // Today's on-duty CRAs topped up to the daily maximum with backlog, after their own leads.
+        if ($date->isSameDay(Lead::today())) {
+            app(BacklogFill::class)->fillOnDuty($date);
+        }
+
+        $forDay = Lead::whereDate('listed_on', $date)->get();
 
         $result = [
             'found' => $leads->count(),
@@ -335,7 +340,7 @@ class LeadGenerator
             return 0;
         }
 
-        // Leads added from a CRA's own POS sale don't use up their daily quota.
+        // Leads added from a CRA's own POS sale don't use up their daily quota, nor does backlog the fill moved here (BacklogFill).
         $load = Lead::whereDate('est_out_of_stock_date', $date)
             ->whereIn('assigned_to', $cras->pluck('id'))
             ->withoutPosSales()
@@ -345,7 +350,7 @@ class LeadGenerator
 
         $load = $cras->mapWithKeys(fn (User $cra) => [$cra->id => (int) ($load[$cra->id] ?? 0)])->all();
 
-        $pending = Lead::whereDate('est_out_of_stock_date', $date)
+        $pending = Lead::whereDate('listed_on', $date)
             ->whereNull('assigned_to')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('delivered_date')
@@ -403,7 +408,7 @@ class LeadGenerator
         $cras = self::cras();
         $ids = $cras->pluck('id');
 
-        $todayCounts = Lead::whereDate('est_out_of_stock_date', $today)->whereIn('assigned_to', $ids)
+        $todayCounts = Lead::whereDate('listed_on', $today)->whereIn('assigned_to', $ids)
             ->selectRaw('assigned_to, count(*) as total')->groupBy('assigned_to')->pluck('total', 'assigned_to');
         $backlogCounts = Lead::carryOver($today)->whereIn('assigned_to', $ids)
             ->selectRaw('assigned_to, count(*) as total')->groupBy('assigned_to')->pluck('total', 'assigned_to');
