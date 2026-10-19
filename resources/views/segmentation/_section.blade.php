@@ -2,10 +2,10 @@
 @php($visibleOptional = collect($optionalColumns)->reject(fn ($c) => $c['coming_soon'] ?? false))
 @php($pending = $id === 'unprocessed')
 
-<x-panel :title="$title" :accent="$pending ? 'coral' : 'teal'" :icon="$pending ? 'clock' : 'check'" :title-id="$id.'-title'"
+<x-panel :title="$title" :accent="$accent ?? ($pending ? 'coral' : 'teal')" :icon="$icon ?? ($pending ? 'clock' : 'check')" :title-id="$id.'-title'"
          :tinted="false" body-class="" data-lead-section="{{ $id }}" class="flex flex-col">
     <x-slot:badges>
-        <span @class(['rounded-full bg-white px-2 py-0.5 text-xs font-bold tabular-nums shadow-sm', 'text-coral-700' => $pending, 'text-teal-700' => ! $pending])>{{ number_format($leads->total()) }}</span>
+        <span @class(['rounded-full bg-white px-2 py-0.5 text-xs font-bold tabular-nums shadow-sm', 'text-coral-700' => $pending, 'text-teal-700' => ! $pending && ! isset($accent), 'text-ink' => isset($accent)])>{{ number_format($leads->total()) }}</span>
         <p class="hidden text-xs text-muted sm:block">{{ $hint }}</p>
     </x-slot:badges>
     @if (! request()->boolean('full'))
@@ -43,7 +43,7 @@
                 </thead>
                 <tbody class="divide-y divide-line">
                     @foreach ($leads as $lead)
-                        @include('segmentation._row', ['lead' => $lead, 'backlogRow' => false])
+                        @include('segmentation._row', ['lead' => $lead, 'backlogRow' => $backlogRows ?? false])
                     @endforeach
                 </tbody>
             </table>

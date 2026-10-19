@@ -269,9 +269,9 @@ class SalesGoalsTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSeeTextInOrder(['Total confirmed orders', '3', 'Broadcast 2 · Segmentation 1'])
-            ->assertSeeTextInOrder(['Conversion rate · Broadcast + Segmentation', '13.33%', '2 customers of 15 engagements + leads',
-                'Segmentation CVR', '40.00%', '2 customers of 5 leads · same as Converted',
-                'Broadcast CVR', '20.00%', '2 customers of 10 engagements'])
+            ->assertSeeTextInOrder(['Conversion rate', '13.33%', 'Broadcast + Segmentation · 2 of 15',
+                'Segmentation CVR', '40.00%', '2 of 5 leads',
+                'Broadcast CVR', '20.00%', '2 of 10 engagements'])
             ->assertSeeText(['Conversion rate per day'])
             ->assertDontSee('data-tabs="dashboard-conversion"', false)
             // Goal & conversion per CRA stays as Conversion Breakdown: Lhea's 3 orders of her 15 engagements + leads.

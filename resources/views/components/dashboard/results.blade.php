@@ -119,24 +119,24 @@
          ÷ tracker leads) and Broadcast CVR (Broadcast buyers ÷ engagements) as bars; the back has all three per day. --}}
     @php($conv = $results['conversion'])
     @php($cvrRows = [
-        ['Segmentation CVR', $conv['sc'], number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads · same as Converted'],
-        ['Broadcast CVR', $conv['bc'], number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements'],
+        ['Segmentation CVR', $conv['sc'], number_format($conv['sc']['customers']).' of '.number_format($conv['sc']['base']).' leads', 'Same as the Segmentation Tracker\'s Converted: '.number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads'],
+        ['Broadcast CVR', $conv['bc'], number_format($conv['bc']['customers']).' of '.number_format($conv['bc']['base']).' engagements', number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements'],
     ])
     <x-dashboard.flip :class="$span">
     <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]">
         {!! $bubble !!}
-        <div class="relative grid gap-1">
-            <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }} · Broadcast + Segmentation</p>
+        <div class="relative grid gap-0.5" title="Broadcast + Segmentation: {{ number_format($conv['all']['customers']) }} customers of {{ number_format($conv['all']['base']) }} engagements + leads">
+            <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
             <p class="text-3xl font-bold tabular-nums">{{ $pct($conv['all']['rate'], 2) }}</p>
-            <p class="{{ $note }}">{{ number_format($conv['all']['customers']) }} customers of {{ number_format($conv['all']['base']) }} engagements + leads</p>
+            <p class="{{ $note }}">Broadcast + Segmentation · {{ number_format($conv['all']['customers']) }} of {{ number_format($conv['all']['base']) }}</p>
         </div>
-        <div class="relative mt-2 grid gap-2.5 border-t border-white/30 pt-3">
-            @foreach ($cvrRows as [$rowLabel, $row, $rowNote])
-                <div class="grid grid-cols-[1fr_auto] items-baseline gap-x-3 gap-y-1 tabular-nums">
-                    <span class="text-[13px] font-bold">{{ $rowLabel }}</span>
-                    <span class="text-[15px] font-bold">{{ $pct($row['rate'], 2) }}</span>
-                    <span class="col-span-2 h-1.5 overflow-hidden rounded-full bg-white/25" aria-hidden="true">
-                        <span class="block h-full min-w-1.5 rounded-full bg-white" style="width: {{ min(100, ($row['rate'] ?? 0) * 100) }}%"></span>
+        <div class="relative mt-1 grid gap-2 border-t border-white/30 pt-2">
+            @foreach ($cvrRows as [$rowLabel, $row, $rowNote, $rowTitle])
+                <div class="grid grid-cols-[1fr_auto] items-baseline gap-x-2 gap-y-0.5 tabular-nums" title="{{ $rowTitle }}">
+                    <span class="text-xs font-bold whitespace-nowrap">{{ $rowLabel }}</span>
+                    <span class="text-sm font-bold">{{ $pct($row['rate'], 2) }}</span>
+                    <span class="col-span-2 h-1 overflow-hidden rounded-full bg-white/25" aria-hidden="true">
+                        <span class="block h-full min-w-1 rounded-full bg-white" style="width: {{ min(100, ($row['rate'] ?? 0) * 100) }}%"></span>
                     </span>
                     <span class="col-span-2 text-[11px] text-white/85">{{ $rowNote }}</span>
                 </div>

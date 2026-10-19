@@ -34,6 +34,7 @@ return [
         'CRD Joanna Paclibare',
         'CRD JULY DE LOS SANTOS',
         'CRD Sha Galano',
+        'CRD Sharie',
     ],
 
     /*

@@ -187,7 +187,7 @@
                                     <td class="px-4 py-3 tabular-nums"><a href="tel:{{ $lead->phone_number }}" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a></td>
                                     <td class="px-4 py-3">{{ $lead->typeLabel() }}</td>
                                     <td class="px-4 py-3">
-                                        <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-coral-700">{{ $lead->statusLabel() ?? 'Pending' }} since {{ $lead->est_out_of_stock_date->format('M j') }}</span>
+                                        <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-coral-700">{{ $lead->statusLabel() ?? 'Pending' }} since {{ $lead->listed_on->format('M j') }}</span>
                                         @if ($lead->transfers->first())
                                             <span class="ml-1 text-xs text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
                                         @endif

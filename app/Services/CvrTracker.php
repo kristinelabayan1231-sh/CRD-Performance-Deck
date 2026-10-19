@@ -182,7 +182,7 @@ class CvrTracker
         $ofType = fn (string $type) => $rows->where('type', $type);
         $canceledOf = fn (string $type) => (float) $canceled->where('type', $type)->sum('amount');
         $gross = (float) $rows->sum('amount') + (float) $canceled->sum('amount');
-        $leads = Lead::where('assigned_to', $cra->id)->withoutPosSales()->whereDate('est_out_of_stock_date', WorkingDate::leadDayFor($day));
+        $leads = Lead::where('assigned_to', $cra->id)->withoutPosSales()->whereDate('listed_on', WorkingDate::leadDayFor($day));
 
         $status = [
             'engaged' => (clone $leads)->whereNotNull('contact_time')

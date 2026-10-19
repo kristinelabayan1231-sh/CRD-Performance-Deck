@@ -2,9 +2,33 @@
 <x-layouts.bare :title="$show === 'processed' ? 'Catered' : 'Pending'">
     @php($canTransfer = false)
 
-    @include('segmentation._section', $show === 'processed'
-        ? ['id' => 'processed', 'title' => 'Catered', 'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.', 'empty' => 'No catered customers for this filter yet.']
-        : ['id' => 'unprocessed', 'title' => 'Pending', 'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.', 'empty' => 'Nothing pending for this filter.'])
+    @if ($show === 'unprocessed')
+        {{-- Pending and the follow-up lists (callbacks due, Reactivation) one at a time; follow-ups are catered leads, so never in Pending --}}
+        @php($list = in_array(request('list'), ['callback', 'reactivation'], true) ? request('list') : 'pending')
+        <nav class="mb-3 flex gap-1 overflow-x-auto border-b border-line" aria-label="Pending lists">
+            @foreach (['pending' => ['Pending', $leads], 'callback' => ['Call back for today', $callbacks], 'reactivation' => ['Reactivation', $reactivation]] as $key => [$label, $tabLeads])
+                <a href="{{ request()->fullUrlWithQuery(['list' => $key === 'pending' ? null : $key, 'page' => null, 'callback_page' => null, 'reactivation_page' => null]) }}"
+                   @if ($list === $key) aria-current="page" @endif
+                   @class([
+                       '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition',
+                       'border-brand-500 text-brand-600' => $list === $key,
+                       'border-transparent text-muted hover:text-brand-600' => $list !== $key,
+                   ])>{{ $label }} <span class="rounded-full bg-canvas px-2 py-0.5 text-xs tabular-nums">{{ number_format($tabLeads->total()) }}</span></a>
+            @endforeach
+        </nav>
+
+        @if ($list === 'callback')
+            @include('segmentation._section', ['leads' => $callbacks, 'id' => 'callback', 'title' => 'Call back for today', 'accent' => 'amber', 'icon' => 'calendar', 'backlogRows' => true,
+                'hint' => 'Callback date is today or already passed, with no contact since. A reorder counts today.', 'empty' => 'No callbacks due today.'])
+        @elseif ($list === 'reactivation')
+            @include('segmentation._section', ['leads' => $reactivation, 'id' => 'reactivation', 'title' => 'Reactivation', 'accent' => 'sky', 'icon' => 'users', 'backlogRows' => true,
+                'hint' => 'Earlier days still on PJR/Drop call, Busy/Callback, Inactive or Reminders: follow up. A reorder counts today.', 'empty' => 'No follow-ups waiting.'])
+        @else
+            @include('segmentation._section', ['id' => 'unprocessed', 'title' => 'Pending', 'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.', 'empty' => 'Nothing pending for this filter.'])
+        @endif
+    @else
+        @include('segmentation._section', ['id' => 'processed', 'title' => 'Catered', 'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.', 'empty' => 'No catered customers for this filter yet.'])
+    @endif
 
     @include('segmentation._note-dialog')
 

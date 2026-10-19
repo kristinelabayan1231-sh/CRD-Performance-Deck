@@ -85,8 +85,8 @@ class PosLeads
     private function markBought(Collection $leads, PancakeOrder $order): bool
     {
         $day = $order->ordered_on;
-        $lead = $leads->filter(fn (Lead $lead) => $lead->est_out_of_stock_date->lessThanOrEqualTo($day))->sortByDesc('est_out_of_stock_date')->first()
-            ?? $leads->sortBy('est_out_of_stock_date')->first();
+        $lead = $leads->filter(fn (Lead $lead) => $lead->listed_on->lessThanOrEqualTo($day))->sortByDesc('listed_on')->first()
+            ?? $leads->sortBy('listed_on')->first();
 
         if ($lead->repeat_purchase === 'yes') {
             return false;
