@@ -8,6 +8,7 @@ use App\Models\PancakePage;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\BacklogFill;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
@@ -279,6 +280,34 @@ class SegmentationProductivityTest extends TestCase
         $this->artisan('connections:check')
             ->expectsOutputToContain('api_key is invalid')
             ->assertFailed();
+    }
+
+    public function test_backlog_progress_counts_leads_handed_out_catered_and_reordered(): void
+    {
+        $ana = $this->cra('Ana', null);
+        $old = fn (?User $cra, string $name) => Lead::create([
+            'order_id' => $name, 'customer_name' => $name, 'phone_number' => '0917'.crc32($name), 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-08-01', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-09-20', 'lead_type' => 'fsd', 'assigned_to' => $cra?->id,
+        ]);
+        $own = $old($ana, 'Own A');
+        $old($ana, 'Own B');
+        $pool = $old(null, 'Pool C');
+        $old($ana, 'Worked D')->update(['status' => 'active']);
+
+        app(BacklogFill::class)->fill(Lead::today(), collect([$ana]));
+        $own->update(['status' => 'pjr_drop_call', 'contact_date' => '2026-10-01']);
+        $pool->update(['status' => 'active', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-01']);
+
+        $today = CarbonImmutable::parse('2026-10-01');
+        $backlog = app(SegmentationProductivity::class)->backlog(collect([$ana]), $today, $today)[$ana->id];
+
+        // 3 handed out (2 own, 1 pool; the worked one stays put), 2 catered, 1 reordered.
+        $this->assertSame(['handed' => 3, 'catered' => 2, 'reordered' => 1], array_slice($backlog, 0, 3));
+        $this->assertEqualsWithDelta(2 / 3, $backlog['progress'], 0.0001);
+        $this->assertEqualsWithDelta(1 / 3, $backlog['rate'], 0.0001);
+
+        $this->actingAs($ana)->get('/segmentation-productivity')->assertOk()
+            ->assertSee('Backlog progress')->assertSeeInOrder(['Ana', '3', '2', '66.67%', '1', '33.33%']);
     }
 
     public function test_cra_sees_only_their_own_numbers(): void

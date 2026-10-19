@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BacklogHandout;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\PancakeEngagement;
@@ -89,6 +90,73 @@ class SegmentationProductivity
         }
 
         return $result;
+    }
+
+    /**
+     * Backlog progress per CRA: older leads handed to them (BacklogHandout: daily fill or transfer) on the lead days
+     * paired with real days $from–$to, how many they've catered since, and how many reordered (Repeat Purchase = Yes
+     * bought on or after the real day it was handed out). A lead handed out more than once counts once, from its first day.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}>
+     */
+    public function backlog(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $lag = WorkingDate::lagDays();
+        $handouts = BacklogHandout::query()
+            ->join('leads', 'leads.id', '=', 'backlog_handouts.lead_id')
+            ->whereIn('backlog_handouts.user_id', $cras->pluck('id'))
+            ->whereDate('backlog_handouts.handed_on', '>=', $from->subDays($lag))
+            ->whereDate('backlog_handouts.handed_on', '<=', $to->subDays($lag))
+            ->orderBy('backlog_handouts.handed_on')
+            ->toBase()
+            ->get(['backlog_handouts.user_id', 'backlog_handouts.lead_id', 'backlog_handouts.handed_on', 'backlog_handouts.created_at',
+                'leads.status', 'leads.contact_date', 'leads.processed_at', 'leads.repeat_purchase', 'leads.repeat_purchase_on'])
+            ->groupBy('user_id');
+
+        return $cras->mapWithKeys(function (User $cra) use ($handouts) {
+            $leads = ($handouts[$cra->id] ?? collect())->unique('lead_id');
+
+            return [$cra->id => self::backlogRates([
+                'handed' => $leads->count(),
+                'catered' => $leads->filter(fn ($l) => $l->status !== null || $l->contact_date !== null || $l->processed_at !== null)->count(),
+                // Purchases are on real dates, so compared with the real day it was handed out (not the lead day).
+                'reordered' => $leads->filter(fn ($l) => $l->repeat_purchase === 'yes' && $l->repeat_purchase_on !== null
+                    && substr((string) $l->repeat_purchase_on, 0, 10) >= CarbonImmutable::parse($l->created_at, 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString())->count(),
+            ])];
+        })->all();
+    }
+
+    /**
+     * Add up CRAs' backlog progress and work the rates out again.
+     *
+     * @param  iterable<array{handed: int, catered: int, reordered: int}>  $rows
+     * @return array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}
+     */
+    public static function sumBacklog(iterable $rows): array
+    {
+        $totals = ['handed' => 0, 'catered' => 0, 'reordered' => 0];
+
+        foreach ($rows as $row) {
+            foreach ($totals as $key => $value) {
+                $totals[$key] = $value + $row[$key];
+            }
+        }
+
+        return self::backlogRates($totals);
+    }
+
+    /**
+     * @param  array{handed: int, catered: int, reordered: int}  $counts
+     * @return array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}
+     */
+    private static function backlogRates(array $counts): array
+    {
+        return [
+            ...$counts,
+            'progress' => $counts['handed'] ? $counts['catered'] / $counts['handed'] : null,
+            'rate' => $counts['handed'] ? $counts['reordered'] / $counts['handed'] : null,
+        ];
     }
 
     /**
