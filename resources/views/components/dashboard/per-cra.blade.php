@@ -11,7 +11,7 @@
 
 {{--
     Per CRA for the dashboard's month (to date) or range: sales against their goal (daily goal × days)
-    and Total conv % = (BC + SC orders) ÷ (engagements + leads). Goal bars brand purple (teal once hit);
+    and Conv % as Conversion Breakdown: (Broadcast + Segmentation orders) ÷ (engagements + leads). Goal bars brand purple (teal once hit);
     conversion bars sky, scaled to the highest rate.
 --}}
 <x-panel {{ $attributes }} title="Goal & conversion per CRA" accent="teal" icon="chart" title-id="per-cra-title">
@@ -80,7 +80,7 @@
             </tbody>
         </table>
         <p class="mt-2 text-[11px] text-muted">
-            Conv % = (BC + SC orders) ÷ (engagements + leads). Top product sales = the product with the most of their gross sales.
+            Conv % = (Broadcast + Segmentation orders) ÷ (engagements + leads), as in Conversion Breakdown. Top product sales = the product with the most of their gross sales.
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
         </p>
     </div>
