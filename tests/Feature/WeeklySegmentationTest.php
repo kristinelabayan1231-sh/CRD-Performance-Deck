@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\LeadTransfer;
 use App\Models\Role;
 use App\Models\User;
@@ -165,6 +166,12 @@ class WeeklySegmentationTest extends TestCase
             ->assertSessionHasNoErrors()->assertSessionHas('status', 'Transferred 1 backlog lead from Alice to Bob.');
 
         $this->assertSame($bob->id, $backlog->fresh()->assigned_to);
+        // From today on: listed on today for Bob, while Oct 8 still counts it for Alice.
+        $this->assertSame('2026-10-09', $backlog->fresh()->listed_on->toDateString());
+        $this->assertSame('2026-10-08', $backlog->fresh()->est_out_of_stock_date->toDateString());
+        $move = LeadMove::sole();
+        $this->assertSame([$backlog->id, $alice->id, '2026-10-08', '2026-10-09'],
+            [$move->lead_id, $move->assigned_to, $move->listed_on->toDateString(), $move->moved_to->toDateString()]);
         $this->assertDatabaseHas('lead_transfers', ['lead_id' => $backlog->id, 'from_user_id' => $alice->id, 'to_user_id' => $bob->id, 'transferred_by' => $supervisor->id]);
 
         // Bob's tracker carry-over list (with "from Alice") is turned off for now.
