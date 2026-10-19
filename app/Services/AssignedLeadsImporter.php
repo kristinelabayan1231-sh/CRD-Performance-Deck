@@ -184,8 +184,9 @@ class AssignedLeadsImporter
         $key = substr(preg_replace('/\D+/', '', $row['phone_number']), -10);
         $product = $this->productKey($row['product']);
 
-        $ids = DeliveredOrder::whereIn('phone_number', [$key, '0'.$key, '63'.$key, '+63'.$key])
-            ->whereDate('delivered_date', $row['delivered_date'])
+        // Matched on the last 10 digits: Pancake numbers come in any format (09…, +639…, even +09…).
+        $ids = DeliveredOrder::whereDate('delivered_date', $row['delivered_date'])
+            ->where('phone_number', 'like', '%'.$key)
             ->get(['order_id', 'product_raw'])
             ->filter(fn (DeliveredOrder $order) => $this->productKey($order->product_raw) === $product)
             ->pluck('order_id')->unique();
@@ -209,7 +210,7 @@ class AssignedLeadsImporter
     {
         $key = substr(preg_replace('/\D+/', '', $phone), -10);
 
-        return Lead::whereIn('phone_number', [$key, '0'.$key, '63'.$key, '+63'.$key])->withoutPosSales()->value('lead_type') ?? Lead::TYPE_FSD;
+        return Lead::where('phone_number', 'like', '%'.$key)->withoutPosSales()->value('lead_type') ?? Lead::TYPE_FSD;
     }
 
     /**
