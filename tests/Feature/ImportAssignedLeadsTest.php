@@ -49,7 +49,8 @@ class ImportAssignedLeadsTest extends TestCase
     {
         $this->delivered('1350001', '09537589314', '2026-08-08');
         $this->delivered('1350009', '09537589314', '2026-07-01');
-        $this->delivered('1350002', '09214466878', '2026-04-10');
+        // Stored as Pancake had it, with a stray +0 prefix.
+        $this->delivered('1350002', '+09214466878', '2026-04-10');
 
         $this->import(
             ',Jane Zamora,1,Pterygium Drops,9537589314,August 8,2026,72,August 22,August 15,Rose,Active,YES,Hot Leads / Recent Buyers (0 to 15 days),08/26/2025,7:00PM-8:00PM,MAY STOCKS PA,MAY STOCK PA,,',

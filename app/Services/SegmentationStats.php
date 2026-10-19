@@ -57,10 +57,12 @@ class SegmentationStats
      */
     public function customers(Collection $cras, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $leadFrom, CarbonImmutable $leadTo): array
     {
+        $departed = $this->departedByType($cras->pluck('id'), $leadFrom, $leadTo);
+
         return [
             'leads' => [
-                'retained' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_FSD)->count(),
-                'repeat' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_CRD)->count(),
+                'retained' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_FSD)->count() + ($departed[Lead::TYPE_FSD] ?? 0),
+                'repeat' => $this->scope($cras->pluck('id'), $leadFrom, $leadTo)->where('lead_type', Lead::TYPE_CRD)->count() + ($departed[Lead::TYPE_CRD] ?? 0),
             ],
             'retained' => $this->repeatPurchases($cras, 'retained', $from, $to)->count(),
             'repeat' => $this->repeatPurchases($cras, 'repeat', $from, $to)->count(),
@@ -199,8 +201,28 @@ class SegmentationStats
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
             ->first();
+        $totals = collect($t->getAttributes())->map(fn ($v) => (int) ($v ?? 0))->all();
 
-        return collect($t->getAttributes())->map(fn ($v) => (int) ($v ?? 0))->all();
+        // Leads moved off these days (backlog fill, transfers) still count there, as listed but not catered.
+        foreach ($this->departedByType($ids, $from, $to) as $type => $count) {
+            $totals['leads'] += $count;
+            $totals[$type] += $count;
+        }
+
+        return $totals;
+    }
+
+    /**
+     * Leads moved off lead days $from–$to for these CRAs, per lead type.
+     *
+     * @return array<string, int>
+     */
+    private function departedByType(Collection $ids, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return LeadMove::departed($from, $to, $ids)
+            ->selectRaw('leads.lead_type, count(*) as total')->groupBy('leads.lead_type')
+            ->toBase()->pluck('total', 'lead_type')->map(fn ($n) => (int) $n)
+            ->only([Lead::TYPE_CRD, Lead::TYPE_FSD])->all();
     }
 
     /**
