@@ -825,6 +825,7 @@ class SegmentationTest extends TestCase
         $lead('Called Back', '2026-09-20', ['status' => 'busy_callback', 'contact_date' => '2026-10-05', 'callback_date' => '2026-10-05']);
         $lead('Callback Later', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21', 'callback_date' => '2026-10-09']);
         $lead('Follow Up', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21']);
+        $lead('Still Active', '2026-09-20', ['status' => 'active', 'contact_date' => '2026-09-21']);
         $lead('Bought Already', '2026-09-20', ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21', 'repeat_purchase' => 'yes']);
 
         // Tabs with counts: Pending 1, Call back for today 1, Reactivation 1.
@@ -833,7 +834,7 @@ class SegmentationTest extends TestCase
         $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=callback')->assertOk()
             ->assertSee('Callback Due')->assertDontSee('Pending Today')->assertDontSee('Called Back')->assertDontSee('Callback Later');
         $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=reactivation')->assertOk()
-            ->assertSee('Follow Up')->assertDontSee('Callback Due')->assertDontSee('Bought Already');
+            ->assertSee('Follow Up')->assertDontSee('Callback Due')->assertDontSee('Bought Already')->assertDontSee('Still Active');
     }
 
     public function test_users_without_permission_are_blocked(): void

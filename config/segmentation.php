@@ -74,8 +74,9 @@ return [
     // day with the same CRA until their status changes to something else.
     'carry_over_statuses' => ['pjr_drop_call', 'inactive'],
 
-    // Follow-up statuses listed under Reactivation in the Pending full view once the lead day has passed.
-    'reactivation_statuses' => ['pjr_drop_call', 'busy_callback', 'inactive', 'reminders_ffup'],
+    // Every status except these is a follow-up, listed under Reactivation in the Pending full view once the lead
+    // day has passed (so statuses added or renamed in Segmentation Options are included).
+    'reactivation_skip_statuses' => ['active', 'blocked'],
 
     /*
     |--------------------------------------------------------------------------

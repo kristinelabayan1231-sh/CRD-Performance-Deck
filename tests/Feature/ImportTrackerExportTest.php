@@ -68,6 +68,15 @@ class ImportTrackerExportTest extends TestCase
         $this->assertSame('2026-07-10', $untouched->est_out_of_stock_date->toDateString());
     }
 
+    public function test_sheet_status_wording_matches_a_renamed_status(): void
+    {
+        config(['segmentation.statuses.pjr_drop_call' => ['PJR', 'bg-[#e6cff2] text-[#5a3286]']]);
+
+        $this->import('3001,Mari Posa,A,9171111111,1 AudiCure,AudiCure,10:00 05/06/2026,Delivered,1,a,b,c,d,July,PJR/Inactive/CBR/Drop call,,07/11/2026,,ringing,,');
+
+        $this->assertSame('pjr_drop_call', Lead::firstWhere('order_id', '3001')->status);
+    }
+
     public function test_crd_type_follows_the_crd_pancake_accounts(): void
     {
         $this->import(
