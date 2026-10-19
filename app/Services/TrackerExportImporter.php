@@ -20,6 +20,13 @@ class TrackerExportImporter
     /** Days per unit for a product with none in Settings → Product Consumption. */
     public const DEFAULT_CONSUMPTION_DAYS = 15;
 
+    /** The sheet's status wording, for when the app's label was renamed (Segmentation Options), e.g. "PJR". */
+    private const SHEET_STATUSES = [
+        'PJR/INACTIVE/CBR/DROP CALL' => 'pjr_drop_call',
+        'BUSY/CALLBACK' => 'busy_callback',
+        'REMINDERS/FFUP' => 'reminders_ffup',
+    ];
+
     /** The sheet's default status: a row with only this and no contact date or note was never worked. */
     private const DEFAULT_STATUS = 'active';
 
@@ -204,6 +211,10 @@ class TrackerExportImporter
 
         $key = collect(config("segmentation.{$list}"))
             ->search(fn (array $option, string $key) => strcasecmp($option[0], $label) === 0 || strcasecmp($key, $label) === 0);
+
+        if ($key === false && $list === 'statuses' && config('segmentation.statuses.'.(self::SHEET_STATUSES[strtoupper($label)] ?? '-'))) {
+            $key = self::SHEET_STATUSES[strtoupper($label)];
+        }
 
         if ($key === false) {
             $warnings[] = "{$where}: \"{$label}\" is not an app option, left blank.";

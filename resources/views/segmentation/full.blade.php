@@ -22,7 +22,7 @@
                 'hint' => 'Callback date is today or already passed, with no contact since. A reorder counts today.', 'empty' => 'No callbacks due today.'])
         @elseif ($list === 'reactivation')
             @include('segmentation._section', ['leads' => $reactivation, 'id' => 'reactivation', 'title' => 'Reactivation', 'accent' => 'sky', 'icon' => 'users', 'backlogRows' => true,
-                'hint' => 'Earlier days still on PJR/Drop call, Busy/Callback, Inactive or Reminders: follow up. A reorder counts today.', 'empty' => 'No follow-ups waiting.'])
+                'hint' => 'Earlier days still on a follow-up status (anything but Active or Blocked): follow up. A reorder counts today.', 'empty' => 'No follow-ups waiting.'])
         @else
             @include('segmentation._section', ['id' => 'unprocessed', 'title' => 'Pending', 'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.', 'empty' => 'Nothing pending for this filter.'])
         @endif

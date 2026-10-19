@@ -218,14 +218,14 @@ class Lead extends Model
     }
 
     /**
-     * Reactivation: a follow-up status (segmentation.reactivation_statuses) from an earlier lead day than $leadDay,
+     * Reactivation: a follow-up status (any but segmentation.reactivation_skip_statuses) from an earlier lead day than $leadDay,
      * no purchase, not contacted yet on $today (the real date) and no callback date still to come or due.
      */
     public function scopeReactivation(Builder $query, CarbonImmutable $leadDay, CarbonImmutable $today): Builder
     {
         return $query->whereNotNull('assigned_to')
             ->whereDate('listed_on', '<', $leadDay)
-            ->whereIn('status', config('segmentation.reactivation_statuses'))
+            ->whereNotNull('status')->whereNotIn('status', config('segmentation.reactivation_skip_statuses'))
             ->notConverted()
             ->where(fn (Builder $q) => $q->whereNull('contact_date')->orWhereDate('contact_date', '<', $today))
             ->where(fn (Builder $q) => $q->whereNull('callback_date')->orWhereColumn('contact_date', '>=', 'callback_date'));
