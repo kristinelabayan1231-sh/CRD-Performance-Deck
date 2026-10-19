@@ -198,11 +198,15 @@
                                             <span class="font-semibold text-ink">{{ $note['customer'] }}</span>
                                             <span class="text-muted">{{ collect([$note['cra'], $note['contacted'], $note['status']])->filter()->join(' · ') }}</span>
                                         </p>
-                                        <p @class(['mt-0.5', 'text-muted italic' => ! $note['note']])>{{ $note['note'] ? '“'.$note['note'].'”' : 'No note' }}</p>
+                                        @if ($note['note'])
+                                            <p class="mt-0.5">“{{ $note['note'] }}”</p>
+                                        @elseif (! $note['status'])
+                                            <p class="mt-0.5 text-muted italic">No note</p>
+                                        @endif
                                     </li>
                                 @endforeach
                             </ul>
-                            <p class="text-[11px] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other.</p>
+                            <p class="text-[11px] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other; leads without a note are grouped by their status.</p>
                         </div>
                     @endif
                     </div>

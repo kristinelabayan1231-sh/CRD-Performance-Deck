@@ -118,6 +118,7 @@ class SegmentationSummary
     /**
      * Why there was no verbal conversation: the NO VERBAL CONV leads' notes sorted into reason groups
      * by keyword (config segmentation.no_verbal_reasons), with every note, latest contact first.
+     * A lead with no note is grouped under its status; only a lead with neither is "No note".
      *
      * @param  Builder<Lead>  $scope
      * @return array{reasons: list<array{key: string, label: string, total: int}>, notes: list<array{customer: string, cra: ?string, contacted: ?string, status: ?string, note: ?string, reason: string}>}
@@ -127,11 +128,17 @@ class SegmentationSummary
         $groups = config('segmentation.no_verbal_reasons');
         $labels = [...array_map(fn (array $group) => $group[0], $groups), 'other' => 'Other', 'no_note' => 'No note'];
         $statuses = config('segmentation.statuses');
-        $reasonFor = function (?string $note) use ($groups): string {
+        $reasonFor = function (?string $note, ?string $status) use ($groups, $statuses, &$labels): string {
             $note = mb_strtolower(trim((string) $note));
 
             if ($note === '') {
-                return 'no_note';
+                if (! $status) {
+                    return 'no_note';
+                }
+
+                $labels['status_'.$status] = $statuses[$status][0] ?? $status;
+
+                return 'status_'.$status;
             }
 
             foreach ($groups as $key => [, $keywords]) {
@@ -154,7 +161,7 @@ class SegmentationSummary
                 'contacted' => $lead->contact_date?->format('M j'),
                 'status' => $lead->status ? ($statuses[$lead->status][0] ?? $lead->status) : null,
                 'note' => $lead->notes,
-                'reason' => $reasonFor($lead->notes),
+                'reason' => $reasonFor($lead->notes, $lead->status),
             ]);
 
         return [
