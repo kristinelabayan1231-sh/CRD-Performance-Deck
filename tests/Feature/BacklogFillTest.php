@@ -7,6 +7,7 @@ use App\Models\LeadMove;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BacklogFill;
+use App\Services\SegmentationStats;
 use App\Services\SegmentationSummary;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -162,6 +163,9 @@ class BacklogFillTest extends TestCase
         $this->assertSame(3, $summary['pending']);
         $this->assertSame(5, $summary['cras'][0]['leads']);
         $this->assertSame(3, Lead::whereDate('listed_on', '2026-09-19')->count());
+
+        // The dashboard's FSD Leads base for Sep 18 is unchanged too.
+        $this->assertSame(5, app(SegmentationStats::class)->customers(collect([$this->july]), $sep18, $sep18, $sep18, $sep18)['leads']['retained']);
     }
 
     public function test_listed_on_follows_the_out_of_stock_date_until_moved(): void
