@@ -4,12 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\CvrDayEntry;
 use App\Models\CvrOrderEntry;
-use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\CvrTracker;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Support\PancakeAccounts;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -123,6 +123,6 @@ class CvrTrackerController extends Controller
 
         return $countsFor !== null
             ? $countsFor === $user->id
-            : $user->pancake_name !== null && $order->seller_name === PancakeEngagement::staffKey($user->pancake_name);
+            : in_array($order->seller_name, PancakeAccounts::keysOf($user), true);
     }
 }

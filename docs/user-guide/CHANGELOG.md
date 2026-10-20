@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-20 · Dashboard, Conversion Breakdown, Segmentation Productivity, Cancelled Orders, Report Summary, PC Report, Daily I.S., Order Database, Customer Database, Segmentation Tracker · A CRA's other Pancake account (Lhea's LHEA GATDULA) counts as theirs everywhere a CRA is credited: sales, orders, conversion, top product, engagements, page orders, untagged-order issues, POS-sale leads, "handled by a CRA", and the tracker export import. Order Database: a CRA sees both accounts, and CRA Performance shows Lhea's two accounts as one row · shots: —
+
 - 2026-10-20 · CVR Tracker · A CRA's orders include the ones made under their other Pancake account (Lhea's LHEA GATDULA counts as CRD LHEI), in the list and the CRA tab's count · shots: —
 
 - 2026-10-20 · Product Performance · Summary tiles (Gross sales, Orders, Top product, RTS) on top; Ranking and Graph & insights are one panel slid with ‹ › (note "Slide to see graph and insights"). Ranking: place, ▲ / ▼ places since the period before, share of gross sales, gross sales and RTS (returned of delivered + returned; green at or below all products' RTS, red above), ranked by Gross sales or RTS (lowest first). Graph shows Gross sales, Rank or RTS (dashed line = all products' RTS). Insights add the biggest climber / drop and the lowest RTS. "How the numbers" adds Ranking · shots: product-performance

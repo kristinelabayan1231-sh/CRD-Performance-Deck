@@ -89,7 +89,7 @@ class OrderDatabaseController extends Controller
 
         return [
             'shown' => match (true) {
-                ! $canViewAll => $ownKey ? [$ownKey => $accounts[$ownKey] ?? $user->pancake_name] : [],
+                ! $canViewAll => $ownKey ? collect(PancakeAccounts::keysOf($user))->mapWithKeys(fn (string $key) => [$key => $accounts[$key] ?? ($key === $ownKey ? $user->pancake_name : $key)])->all() : [],
                 filled($seller) => $accounts->only([$seller])->all(),
                 default => $accounts->all(),
             },

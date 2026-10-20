@@ -50,7 +50,7 @@ class TrackerExportImporter
 
         fgetcsv($handle, escape: '');
         // CRD = sold by a CRD team account (Settings → Pancake Accounts) or a CRA's own Pancake account.
-        $crd = array_flip([...PancakeAccounts::crdKeys(), ...PancakeAccounts::craUsers()->pluck('pancake_name')->map(PancakeEngagement::staffKey(...))->all()]);
+        $crd = array_flip([...PancakeAccounts::crdKeys(), ...PancakeAccounts::craUsers()->flatMap(PancakeAccounts::keysOf(...))->all()]);
         $rows = [];
         $line = 1;
 

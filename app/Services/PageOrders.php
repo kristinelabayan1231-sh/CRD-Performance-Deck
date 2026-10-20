@@ -6,6 +6,7 @@ use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -27,7 +28,7 @@ class PageOrders
      */
     public function forDay(Collection $cras, array $pages, CarbonImmutable $day): array
     {
-        $sellers = $cras->pluck('pancake_name')->filter()->map(PancakeEngagement::staffKey(...))->unique()->values();
+        $sellers = PancakeAccounts::craBySeller($cras)->keys();
         if ($sellers->isEmpty() || $pages === []) {
             return ['orders' => collect(), 'missingPage' => false];
         }

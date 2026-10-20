@@ -918,10 +918,9 @@ class CustomerDatabase
      */
     private function craAccounts(): Collection
     {
-        return $this->craAccounts ??= User::whereHas('role', fn ($q) => $q->where('slug', Role::CRA))
+        return $this->craAccounts ??= PancakeAccounts::craBySeller(User::whereHas('role', fn ($q) => $q->where('slug', Role::CRA))
             ->whereNotNull('pancake_name')
-            ->get()
-            ->keyBy(fn (User $cra) => PancakeEngagement::staffKey($cra->pancake_name));
+            ->get());
     }
 
     /**

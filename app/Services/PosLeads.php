@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Models\CvrOrderEntry;
 use App\Models\Lead;
-use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -37,8 +37,7 @@ class PosLeads
     public function record(CarbonImmutable $day): array
     {
         /** @var Collection<string, User> $cras */
-        $cras = LeadGenerator::cras()->filter(fn (User $cra) => $cra->pancake_name)
-            ->keyBy(fn (User $cra) => PancakeEngagement::staffKey($cra->pancake_name));
+        $cras = PancakeAccounts::craBySeller(LeadGenerator::cras());
 
         if ($cras->isEmpty()) {
             return ['added' => 0, 'marked' => 0];
