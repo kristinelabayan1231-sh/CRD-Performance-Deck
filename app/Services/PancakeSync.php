@@ -121,6 +121,44 @@ class PancakeSync
     }
 
     /**
+     * The CVR Tracker's quick refresh: only the POS orders created on $day since the last quick refresh (with
+     * some overlap), then the day's tag and status changes. Seconds, where the full sync() takes minutes.
+     * Returns null when another quick refresh of $day is running.
+     *
+     * @return int|null new or re-saved orders
+     */
+    public function syncNewOrders(CarbonImmutable $day): ?int
+    {
+        $day = $day->startOfDay();
+
+        return Cache::lock('pancake-new-orders-'.$day->toDateString(), 120)->get(function () use ($day) {
+            $last = Cache::get(self::newOrdersKey($day));
+            $startedAt = now();
+
+            $orders = collect($this->client->orders($day, $last ? CarbonImmutable::parse($last)->subMinutes(10) : null))
+                ->map(fn (array $order) => $this->toOrder($order))->filter()->values();
+
+            DB::transaction(fn () => $this->saveOrders($orders, $startedAt));
+
+            // Tags are often added after the order is made.
+            rescue(fn () => $this->refreshTags($day));
+
+            Cache::put(self::newOrdersKey($day), $startedAt->toIso8601String(), now()->addDays(2));
+
+            return $orders->count();
+        });
+    }
+
+    /**
+     * When $day's orders were last fetched from Pancake, by the quick refresh or the full sync.
+     */
+    public static function ordersRefreshedAt(CarbonImmutable $day): ?CarbonImmutable
+    {
+        return collect([Cache::get(self::newOrdersKey($day->startOfDay())), Cache::get(self::syncKey($day->startOfDay()))])
+            ->filter()->map(fn (string $at) => CarbonImmutable::parse($at))->sortDesc()->first();
+    }
+
+    /**
      * Save the POS orders delivered on $day as Customer Database deliveries (for days the
      * logistics report doesn't cover), with their amounts and items. CRD = sold by a CRD account.
      *
@@ -451,6 +489,11 @@ class PancakeSync
     private static function syncKey(CarbonImmutable $day): string
     {
         return 'pancake.sync.'.$day->toDateString();
+    }
+
+    private static function newOrdersKey(CarbonImmutable $day): string
+    {
+        return 'pancake.new_orders.'.$day->toDateString();
     }
 
     private static function tagsKey(CarbonImmutable $day): string

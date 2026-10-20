@@ -44,27 +44,10 @@
                                 <span class="text-sm font-semibold tabular-nums text-white/90" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>
                             @endif
                         </p>
-                        <p class="relative mt-1 flex flex-wrap items-center justify-between gap-x-1 border-t border-white/30 pt-1 text-[11px] text-white/90">
-                            <span>Prev <span class="font-semibold tabular-nums text-white">{{ $kpi['previous'] }}</span></span>
-                            {{-- Good / bad change as a white pill so it reads on the coloured tile --}}
-                            <span @class([
-                                'flex items-center gap-0.5 rounded-full px-1.5 font-semibold tabular-nums',
-                                'bg-white text-teal-700' => $kpi['good'] === true,
-                                'bg-white text-coral-700' => $kpi['good'] === false,
-                                'bg-white/20 text-white' => $kpi['good'] === null,
-                            ])>
-                                @if ($kpi['direction'] === 'up')
-                                    <svg class="size-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 4l6 8H4z"/></svg>
-                                @elseif ($kpi['direction'] === 'down')
-                                    <svg class="size-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 16l6-8H4z"/></svg>
-                                @endif
-                                {{ $kpi['change'] }}
-                            </span>
-                        </p>
                         @if ($kpi['label'] === 'Converted')
                             {{-- The tiles above, added up: Converted = Retained + Repeat out of FSD + CRD leads --}}
                             @php($c = $p['counts'])
-                            <p class="relative mt-1 grid gap-0.5 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
+                            <p class="relative mt-1 grid gap-0.5 border-t border-white/30 pt-1 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
                                 <span>Retained <span class="font-semibold text-white tabular-nums">{{ number_format($c['retained']) }}/{{ number_format($c['fsd']) }} · {{ number_format($p['retained'], 1) }}%</span></span>
                                 <span>Repeat <span class="font-semibold text-white tabular-nums">{{ number_format($c['repeat']) }}/{{ number_format($c['crd']) }} · {{ number_format($p['repeat'], 1) }}%</span></span>
                             </p>

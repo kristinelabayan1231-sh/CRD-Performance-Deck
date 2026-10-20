@@ -11,6 +11,8 @@ use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -261,5 +263,43 @@ class CvrTrackerTest extends TestCase
         $this->actingAs($this->regina)->putJson(route('cvr-tracker.days.update'), ['cra' => $this->julyAnn->id, 'date' => self::DAY, 'unconfirmed' => 9])->assertForbidden();
 
         $this->assertSame([4], CvrDayEntry::pluck('unconfirmed')->all());
+    }
+
+    public function test_refresh_fetches_only_the_orders_made_since_the_last_refresh(): void
+    {
+        config(['services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1']);
+        $starts = [];
+        Http::swap(new Factory);
+        Http::fake(function (Request $request) use (&$starts) {
+            if (! str_contains($request->url(), '/orders?')) {
+                return Http::response(['success' => true, 'total_pages' => 1, 'data' => []]);
+            }
+
+            parse_str(parse_url($request->url(), PHP_URL_QUERY), $query);
+
+            if (($query['updateStatus'] ?? null) === 'inserted_at') {
+                $starts[] = (int) $query['startDateTime'];
+            }
+
+            // 2026-10-16 01:55 UTC = 9:55 AM in Manila.
+            return Http::response(['success' => true, 'total_pages' => 1, 'data' => [[
+                'id' => 'p1', 'display_id' => 1395001, 'inserted_at' => '2026-10-16T01:55:00.000000', 'status' => 1, 'status_name' => 'new',
+                'bill_phone_number' => '09170000001', 'bill_full_name' => 'Buyer', 'total_price' => 1200, 'account_name' => 'Pterygium Eye Repair Drops',
+                'tags' => [], 'assigning_seller' => ['id' => 's1', 'name' => 'Regina V'],
+            ]]]);
+        });
+
+        $this->actingAs($this->regina)->post(route('cvr-tracker.refresh'))->assertRedirect()->assertSessionHas('status', 'Orders refreshed from Pancake.');
+        $this->assertSame(1, PancakeOrder::where('pancake_order_id', '1395001')->count());
+
+        $this->travel(3)->minutes();
+        $this->actingAs($this->regina)->post(route('cvr-tracker.refresh'));
+
+        // The first refresh of the day fetches from midnight; the next one from the last refresh, with 10 minutes' overlap.
+        $this->assertSame([
+            CarbonImmutable::parse('2026-10-16 00:00', 'Asia/Manila')->getTimestamp(),
+            CarbonImmutable::parse('2026-10-16 09:50', 'Asia/Manila')->getTimestamp(),
+        ], $starts);
+        $this->assertSame(1, PancakeOrder::where('pancake_order_id', '1395001')->count());
     }
 }

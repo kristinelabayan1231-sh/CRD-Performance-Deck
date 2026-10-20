@@ -17,7 +17,8 @@ class SyncPancake extends Command
         {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
         {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
         {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
-        {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}';
+        {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
+        {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
@@ -39,6 +40,15 @@ class SyncPancake extends Command
 
         if ($this->option('sales')) {
             $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('new')) {
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                $saved = $sync->syncNewOrders($day);
+                $this->info($saved === null ? "Pancake {$day->toDateString()}: new orders already being fetched." : "Pancake {$day->toDateString()}: {$saved} new orders saved.");
+            }
 
             return self::SUCCESS;
         }

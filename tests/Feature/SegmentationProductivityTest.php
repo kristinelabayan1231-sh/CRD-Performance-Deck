@@ -109,12 +109,14 @@ class SegmentationProductivityTest extends TestCase
             ['user_id' => 'u-x', 'name' => 'Someone Else', 'total_engagement' => 40],
         ];
         $this->orders = [
-            // Confirmed = Lhea's own orders tagged CRD - SEGMENTATION or CRD - BROADCAST. Her own lead's customer: assigned lead conversion.
-            $this->order('09170000002', 'CRD Lhei', tags: [398]),
-            // Anyone else, counted per order: a customer outside every list three times (one broadcast), and another CRA's lead.
+            // Confirmed = Lhea's own orders tagged CRD - SEGMENTATION or CRD - BROADCAST.
+            // Assigned lead conversion (as on the CVR Tracker): broadcast orders from her own lead and from another CRA's lead,
+            // and every CRD - SEGMENTATION order, even from a customer on no list.
+            $this->order('09170000002', 'CRD Lhei', tags: [397]),
+            $this->order('09170000004', 'CRD Lhei', tags: [397]),
             $this->order('639998887777', 'CRD Lhei', tags: [398]),
             $this->order('09998887777', 'CRD  LHEI', tags: [398]),
-            $this->order('09170000004', 'CRD Lhei', tags: [398]),
+            // Pancake conversion: a broadcast order from a customer on no list.
             $this->order('09998887777', 'CRD Lhei', tags: [397]),
             // Not Lhea's: another seller's sale to her Repeat Purchase = Yes lead. Untagged doesn't count; canceled is gross sales only.
             $this->order('+63 917 000 0001', 'Someone Else', tags: [398]),
@@ -130,8 +132,8 @@ class SegmentationProductivityTest extends TestCase
         $this->assertSame(2, $day['calls']);
         $this->assertSame(5, $day['chat']);
         $this->assertSame(7, $day['answered']);
-        $this->assertSame(1, $day['alc']);
-        $this->assertSame(4, $day['pc']);
+        $this->assertSame(4, $day['alc']);
+        $this->assertSame(1, $day['pc']);
         $this->assertSame(5, $day['confirmed']);
         $this->assertEqualsWithDelta(5 / 7, $day['conversion_rate'], 1e-9);
         $this->assertEqualsWithDelta(7 / 4, $day['pickup_rate'], 1e-9);

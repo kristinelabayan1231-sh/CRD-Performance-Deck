@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BacklogHandout;
+use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\PancakeEngagement;
@@ -18,7 +19,7 @@ use Illuminate\Support\Collection;
  * Assigned transactions = Segmentation Tracker leads assigned to the CRA for that lead day (base 70; actual count shown).
  * Answered = tracker leads with that Contact Date + Pancake customer engagements of the CRA's Pancake account.
  * Total confirmed = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION (canceled and deleted don't count).
- * Of those, assigned lead conversion = the customer is on the CRA's assigned leads; Pancake conversion = everyone else. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
+ * Of those, assigned lead conversion = Assigned on the CVR Tracker (Type of Order Segmentation, or an assigned lead); Pancake conversion = everyone else. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
  * Gross sales = Conversion Breakdown's gross: the CRA's orders tagged CRD - BROADCAST + CRD - SEGMENTATION. AOV = gross ÷ confirmed.
  */
 class SegmentationProductivity
@@ -72,7 +73,7 @@ class SegmentationProductivity
                 $chat[$cra][$row->date->toDateString()] = ($chat[$cra][$row->date->toDateString()] ?? 0) + $row->engagements;
             });
 
-        [$alc, $pc] = $this->conversions($ids, $accounts, $from, $to);
+        [$alc, $pc] = $this->conversions($accounts, $from, $to);
         $tagged = $this->breakdown->orders($accounts, $from, $to);
 
         $result = [];
@@ -199,13 +200,13 @@ class SegmentationProductivity
 
     /**
      * Confirmed orders per CRA per day, split [assigned lead conversion, Pancake conversion]: the CRA's own
-     * orders tagged CRD - BROADCAST or CRD - SEGMENTATION, by whether the customer is on that CRA's assigned leads.
+     * orders tagged CRD - BROADCAST or CRD - SEGMENTATION, by the CVR Tracker's Assigned / Pancake column
+     * (Type of Order is Segmentation, the sheet says Assigned, or the number matches a lead assigned to any CRA).
      *
-     * @param  Collection<int, int>  $ids
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
      * @return array{0: array<int, array<string, int>>, 1: array<int, array<string, int>>}
      */
-    private function conversions(Collection $ids, Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
+    private function conversions(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
     {
         if ($accounts->isEmpty()) {
             return [[], []];
@@ -215,16 +216,14 @@ class SegmentationProductivity
             ->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
-            ->get(['ordered_on', 'seller_name', 'phone_key']);
+            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'phone_key', 'conversion_type']);
 
         if ($orders->isEmpty()) {
             return [[], []];
         }
 
-        // Each CRA's own leads, as "cra id|phone".
-        $ownLeads = Lead::whereIn('assigned_to', $ids)->withoutPosSales()->get(['phone_number', 'assigned_to'])
-            ->map(fn (Lead $lead) => $lead->assigned_to.'|'.LeadGenerator::normalizePhone($lead->phone_number))
-            ->flip();
+        $entries = CvrOrderEntry::whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))->get()->keyBy('pancake_order_id');
+        $assigned = CvrTracker::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
 
         $alc = [];
         $pc = [];
@@ -233,7 +232,7 @@ class SegmentationProductivity
             $cra = $accounts[$order->seller_name];
             $day = $order->ordered_on->toDateString();
 
-            if ($order->phone_key && isset($ownLeads[$cra.'|'.$order->phone_key])) {
+            if (CvrTracker::isAssignedLead($order, $entries[$order->pancake_order_id] ?? null, $assigned)) {
                 $alc[$cra][$day] = ($alc[$cra][$day] ?? 0) + 1;
             } else {
                 $pc[$cra][$day] = ($pc[$cra][$day] ?? 0) + 1;

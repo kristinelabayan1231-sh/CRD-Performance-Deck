@@ -40,8 +40,7 @@ class MonthlyCostTest extends TestCase
     public function test_the_monthly_cost_adds_up_like_the_crd_sheet(): void
     {
         $this->sheetRows();
-        // The sheet's CEO share (44,095.59) is 33.33% of 132,300.
-        Setting::put(MonthlyCost::PREFIX.'ceo_salary', 132300);
+        // The sheet's CEO share (44,095.59) is 33.33% of 132,300, the default.
 
         $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))->assertOk()
             ->assertViewHas('totals', [
@@ -106,9 +105,9 @@ class MonthlyCostTest extends TestCase
 
         $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), $settings)->assertSessionHas('status', 'Settings saved.');
 
-        // 19,500 + 60,000 × 33.33% + 126,000 × 50%; gov. benefits 300 for the one person.
+        // 19,500 + 60,000 × 33.33% + 132,300 × 50%; gov. benefits 300 for the one person.
         $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))
-            ->assertViewHas('totals', fn (array $t) => $t['team'] === 19500.0 && $t['customer_retention'] === 102498.0 && $t['gov_benefits'] === 300.0);
+            ->assertViewHas('totals', fn (array $t) => $t['team'] === 19500.0 && $t['customer_retention'] === 105648.0 && $t['gov_benefits'] === 300.0);
 
         // The Gov. benefits card saves its three alone; the rest stay as they were.
         $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), ['phic' => 622.70, 'hdmf' => 400, 'sss' => 1878.10])
@@ -119,5 +118,18 @@ class MonthlyCostTest extends TestCase
         $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), [...$settings, 'ceo_share' => 120])
             ->assertSessionHasErrors('ceo_share');
         $this->assertSame('50', Setting::value(MonthlyCost::PREFIX.'ceo_share'));
+    }
+
+    public function test_a_shared_salary_is_edited_in_its_row(): void
+    {
+        $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))
+            ->assertSee('data-cost-edit="shared-vp"', false)
+            ->assertSee('name="vp_salary"', false);
+
+        // The row's form sends only its salary and share; the other shared salaries keep theirs.
+        $this->actingAs($this->supervisor)->put(route('monthly-cost.settings'), ['editing' => 'shared-vp', 'vp_salary' => 50000, 'vp_share' => 20])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(10000.0, (new MonthlyCost)->shared()[1]['amount']);
+        $this->assertNull(Setting::value(MonthlyCost::PREFIX.'ceo_salary'));
     }
 }

@@ -62,11 +62,12 @@ class MonthlyCost
     /**
      * The shared salaries: base salary × CRD's share.
      *
-     * @return list<array{label: string, salary: float, share: float, amount: float}>
+     * @return list<array{key: string, label: string, salary: float, share: float, amount: float}>
      */
     public function shared(): array
     {
         return array_map(fn (array $row) => [
+            'key' => $row[1],
             'label' => $row[0],
             'salary' => $this->setting($row[1].'_salary'),
             'share' => $this->setting($row[1].'_share'),

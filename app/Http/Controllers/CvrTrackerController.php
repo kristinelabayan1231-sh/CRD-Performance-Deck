@@ -9,12 +9,15 @@ use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\CvrTracker;
 use App\Services\LeadGenerator;
+use App\Services\PancakeSync;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * CVR Tracker: each CRA's reorders for a day, with the CRA's Upsell, Type of Order, Point of Contact and Unconfirmed.
@@ -42,7 +45,24 @@ class CvrTrackerController extends Controller
             'cra' => $cra,
             'counts' => $tracker->orderCounts($cras, $day),
             'data' => $cra ? $tracker->day($cra, $day) : null,
+            'refreshedAt' => PancakeSync::ordersRefreshedAt($day),
         ]);
+    }
+
+    /**
+     * Fetch today's new orders and tag changes from Pancake now (seconds), instead of waiting for the next run.
+     */
+    public function refresh(Request $request, PancakeSync $pancake): RedirectResponse
+    {
+        try {
+            $saved = $pancake->syncNewOrders(WorkingDate::realToday());
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->with('status', 'Pancake did not respond. Try again in a minute.');
+        }
+
+        return back()->with('status', $saved === null ? 'Orders are already being refreshed. Reload in a few seconds.' : 'Orders refreshed from Pancake.');
     }
 
     /**
