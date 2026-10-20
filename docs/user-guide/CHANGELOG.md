@@ -7,6 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-20 · Dashboard · Churn breakdown: "Delivered in" heading now reads "Reorder date <dates> (+ 30 days grace = <deadline dates>)", with a note that the chips split the Due to reorder customers by the month of the delivery that ran out · shots: 02-dashboard
+- 2026-10-20 · Dashboard · Customer churn moved out of Results into one short light-red strip of its own below Live from Logistics: Overall, CRD and FSD each show the rate then "lost of due"; any of them or "Breakdown →" opens the same breakdown. The Results tiles now use the full width · shots: 02-dashboard
+
 - 2026-10-20 · CVR Tracker · New orders are fetched from Pancake every minute (was the 10-minute full sync); today's view has a "Refresh orders" button and shows when orders were last updated · shots: cvr-tracker
 - 2026-10-20 · Segmentation Productivity · Assigned lead conversion now follows the CVR Tracker's Assigned / Pancake column: orders marked Assigned (an assigned lead of any CRA, or the CRA's sheet says Assigned) plus every Pancake order whose Type of Order is Segmentation; Pancake conversion is the rest; Total confirmed counts the orders the CVR Tracker lists for the CRA (an order counted for another CRA there moves to that CRA), so both pages match day by day; "How the numbers are worked out" updated · shots: productivity
 - 2026-10-20 · CRD - MC · Shared salaries (Sales Manager, VP of Internal Affairs, CEO) are edited in their own row: the pencil opens the full salary and CRD's share (%) in place, Save keeps the others as they are; CEO salary starts at ₱132,300 (as in the CRD sheet) · shots: monthly-cost
