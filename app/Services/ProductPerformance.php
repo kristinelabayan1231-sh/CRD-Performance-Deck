@@ -10,7 +10,8 @@ use Illuminate\Support\Collection;
  * Consumption) per product for a period, against the period of the
  * same length just before it. Gross sales is the order before Pancake's discount, an order with several products
  * split between them as in Order Database → Product Report. The rates count orders: Delivered is delivered ÷
- * (delivered + RTS), RTS is RTS ÷ the same, and Cancelled is out of every order.
+ * (delivered + RTS), RTS is RTS ÷ the same, and Cancelled is out of every order. Rank is the product's place by
+ * gross sales (1 = top), or by RTS (1 = the lowest), against its place the period before.
  */
 class ProductPerformance
 {
@@ -26,7 +27,7 @@ class ProductPerformance
 
     /**
      * @param  array<string, string>  $sellers  staff key => name, the CRD accounts
-     * @return array{unit: string, previousFrom: CarbonImmutable, previousTo: CarbonImmutable, total: array<string, int|float>, previousTotal: array<string, int|float>, labels: list<string>, series: list<float>, products: Collection<int, array<string, mixed>>, insights: list<array{tone: string, title: string, body: string}>}
+     * @return array{unit: string, previousFrom: CarbonImmutable, previousTo: CarbonImmutable, total: array<string, int|float>, previousTotal: array<string, int|float>, labels: list<string>, series: list<float>, products: Collection<int, array<string, mixed>>, rts: array{rts: int, finished: int, rate: ?float}, insights: list<array{tone: string, title: string, body: string}>}
      */
     public function build(array $sellers, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $today): array
     {
@@ -52,9 +53,11 @@ class ProductPerformance
                 ...self::counts($group),
                 'previous' => self::counts($previousByProduct->get($name, collect())),
                 'series' => self::series($group, $unit, $buckets),
+                'rts_series' => self::rtsSeries($group, $unit, $buckets),
             ])
             ->sortByDesc('sales')
             ->values();
+        $products = self::ranked($products);
 
         $total = self::counts($lines);
 
@@ -67,8 +70,117 @@ class ProductPerformance
             'labels' => self::labels($unit, $buckets),
             'series' => self::series($lines, $unit, $buckets),
             'products' => $products,
-            'insights' => self::insights($products, $total, $lines, $unit, $days, $today),
+            'rts' => ['rts' => $total['rts'], 'finished' => $total['delivered'] + $total['rts'], 'rate' => self::rtsRate($total)],
+            'insights' => [
+                ...self::insights($products, $total, $lines, $unit, $days, $today),
+                ...self::rankingInsights($products),
+                ...self::lowestRtsInsight($products),
+            ],
         ];
+    }
+
+    /**
+     * Each product's place now and the period before, by gross sales (1 = the most) and by RTS (1 = the lowest; null
+     * when it had no sales, or no delivered or returned orders, then), and its place by gross sales in every slot of the chart.
+     *
+     * @param  Collection<int, array<string, mixed>>  $products  sorted by gross sales
+     * @return Collection<int, array<string, mixed>>
+     */
+    private static function ranked(Collection $products): Collection
+    {
+        $places = fn (Collection $values) => $values->filter(fn (?float $value) => $value !== null)->sortDesc()->keys()->flip()->map(fn (int $i) => $i + 1);
+        $sales = $places($products->map(fn (array $product) => $product['sales'] > 0 ? $product['sales'] : null));
+        $previousSales = $places($products->map(fn (array $product) => $product['previous']['sales'] > 0 ? $product['previous']['sales'] : null));
+        // Lowest RTS first: the rates turned negative so the same descending sort puts the lowest on top.
+        $lowest = fn (?float $rate) => $rate === null ? null : -$rate;
+        $rts = $places($products->map(fn (array $product) => $lowest(self::rtsRate($product))));
+        $previousRts = $places($products->map(fn (array $product) => $lowest(self::rtsRate($product['previous']))));
+        $slots = count($products->first()['series'] ?? []);
+        $slotPlaces = collect(range(0, max(0, $slots - 1)))->map(fn (int $slot) => $places($products->map(fn (array $product) => $product['series'][$slot] ?? 0.0)));
+
+        return $products->map(fn (array $product, int $i) => [
+            ...$product,
+            'rank' => $sales[$i] ?? null,
+            'previous_rank' => $previousSales[$i] ?? null,
+            'rts_rate' => self::rtsRate($product),
+            'rts_rank' => $rts[$i] ?? null,
+            'previous_rts_rank' => $previousRts[$i] ?? null,
+            'rank_series' => $slots ? $slotPlaces->map(fn (Collection $slot) => $slot[$i])->all() : [],
+        ]);
+    }
+
+    /**
+     * RTS ÷ (delivered + RTS), or null with neither.
+     *
+     * @param  array{delivered: int, rts: int}  $counts
+     */
+    public static function rtsRate(array $counts): ?float
+    {
+        $finished = $counts['delivered'] + $counts['rts'];
+
+        return $finished > 0 ? $counts['rts'] / $finished : null;
+    }
+
+    /**
+     * RTS per slot of the chart, by the day (or hour) the orders were created; null where none was delivered or returned.
+     *
+     * @param  Collection<int, array{order: int, status: int, day: string, hour: int}>  $lines
+     * @param  list<int|string>  $buckets
+     * @return list<?float>
+     */
+    private static function rtsSeries(Collection $lines, string $unit, array $buckets): array
+    {
+        $rates = $lines->groupBy(fn (array $line) => match ($unit) {
+            'hour' => $line['hour'],
+            'week' => CarbonImmutable::parse($line['day'])->startOfWeek(CarbonImmutable::MONDAY)->toDateString(),
+            default => $line['day'],
+        })->map(fn (Collection $group) => self::rtsRate(self::counts($group)));
+
+        return array_map(fn (int|string $bucket) => $rates[$bucket] ?? null, $buckets);
+    }
+
+    /**
+     * The product that climbed the most places by gross sales, and the one that fell the most.
+     *
+     * @param  Collection<int, array<string, mixed>>  $products
+     * @return list<array{tone: string, title: string, body: string}>
+     */
+    private static function rankingInsights(Collection $products): array
+    {
+        $moved = $products->filter(fn (array $product) => $product['rank'] !== null && $product['previous_rank'] !== null)
+            ->map(fn (array $product) => [...$product, 'move' => $product['previous_rank'] - $product['rank']]);
+        $insights = [];
+        if ($up = $moved->where('move', '>', 0)->sortByDesc('move')->first()) {
+            $insights[] = ['tone' => 'good', 'title' => "{$up['product']} moved up to #{$up['rank']}", 'body' => "From #{$up['previous_rank']} by gross sales the period before."];
+        }
+        if ($down = $moved->where('move', '<', 0)->sortBy('move')->first()) {
+            $insights[] = ['tone' => 'bad', 'title' => "{$down['product']} dropped to #{$down['rank']}", 'body' => "It was #{$down['previous_rank']} by gross sales the period before."];
+        }
+
+        return $insights;
+    }
+
+    /**
+     * The product with the lowest RTS, once it has enough delivered or returned orders (the highest is in insights()).
+     *
+     * @param  Collection<int, array<string, mixed>>  $products
+     * @return list<array{tone: string, title: string, body: string}>
+     */
+    private static function lowestRtsInsight(Collection $products): array
+    {
+        $finished = $products->filter(fn (array $product) => $product['delivered'] + $product['rts'] >= self::MIN_FINISHED);
+        $best = $finished->sortBy(fn (array $product) => $product['rts_rate'])->first();
+        if (! $best || $finished->count() < 2) {
+            return [];
+        }
+
+        $done = $best['delivered'] + $best['rts'];
+
+        return [[
+            'tone' => 'good',
+            'title' => "{$best['product']} has the lowest RTS: ".self::rate($best['rts'], $done)."% ({$best['rts']}/{$done})",
+            'body' => "{$best['delivered']} of its {$done} delivered or returned orders were delivered.",
+        ]];
     }
 
     /**

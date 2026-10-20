@@ -84,6 +84,27 @@ class ProductPerformanceTest extends TestCase
             ->assertSeeInOrder(['Canpro', '₱900', '1 order']);
     }
 
+    public function test_ranking_moves_against_the_period_before_and_shows_rts_per_product(): void
+    {
+        // Oct 1–10: Canpro ₱900 (delivered) overtakes Sinuxyl ₱500 (4 delivered, 1 returned); Sep 21–30 Sinuxyl ₱1,000 led Canpro ₱900.
+        $this->order('CRD LHEI', 3, 900, 'Canpro');
+        foreach ([3, 3, 3, 3, 5] as $status) {
+            $this->order('CRD LHEI', $status, 100, 'Sinuxyl');
+        }
+        $this->order('CRD LHEI', 3, 1000, 'Sinuxyl', '2026-09-25');
+        $this->order('CRD LHEI', 3, 900, 'Canpro', '2026-09-26');
+
+        $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
+            ->assertOk()
+            ->assertSeeInOrder(['RTS', '16.7%', '1 returned of 6 delivered or returned'])
+            ->assertSeeInOrder(['Ranking', '1', '▲ 1', 'Canpro', '0.0%', '0 of 1', '2', '▼ 1', 'Sinuxyl', '20.0%', '1 of 5'])
+            ->assertSee('Canpro moved up to #1')
+            ->assertSee('Sinuxyl dropped to #2')
+            ->assertSee('Sinuxyl has the highest RTS: 20% (1/5)')
+            ->assertSee('data-pp-graph="rts"', false)
+            ->assertDontSee('Retention');
+    }
+
     public function test_cra_without_the_permission_is_refused(): void
     {
         $cra = User::create(['email' => 'cra@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);

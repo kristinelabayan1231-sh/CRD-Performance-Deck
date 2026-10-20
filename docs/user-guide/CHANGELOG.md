@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-20 · Product Performance · Summary tiles (Gross sales, Orders, Top product, RTS) on top; Ranking and Graph & insights are one panel slid with ‹ › (note "Slide to see graph and insights"). Ranking: place, ▲ / ▼ places since the period before, share of gross sales, gross sales and RTS (returned of delivered + returned; green at or below all products' RTS, red above), ranked by Gross sales or RTS (lowest first). Graph shows Gross sales, Rank or RTS (dashed line = all products' RTS). Insights add the biggest climber / drop and the lowest RTS. "How the numbers" adds Ranking · shots: product-performance
+
 - 2026-10-20 · Dashboard · Churn breakdown: "Delivered in" heading now reads "Reorder date <dates> (+ 30 days grace = <deadline dates>)", with a note that the chips split the Due to reorder customers by the month of the delivery that ran out · shots: 02-dashboard
 - 2026-10-20 · Dashboard · Customer churn moved out of Results into one short light-red strip of its own below Live from Logistics: Overall, CRD and FSD each show the rate then "lost of due"; any of them or "Breakdown →" opens the same breakdown. The Results tiles now use the full width · shots: 02-dashboard
 
