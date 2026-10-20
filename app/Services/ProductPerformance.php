@@ -10,7 +10,9 @@ use Illuminate\Support\Collection;
  * Consumption) per product for a period, against the period of the
  * same length just before it. Gross sales is the order before Pancake's discount, an order with several products
  * split between them as in Order Database → Product Report. The rates count orders: Delivered is delivered ÷
- * (delivered + RTS), RTS is RTS ÷ the same, and Cancelled is out of every order.
+ * (delivered + RTS), RTS is RTS ÷ the same, and Cancelled is out of every order. Rank is the product's place by
+ * gross sales (1 = top), against its place the period before. Retention = of the customers due to reorder in the
+ * period (as the churn rate counts them, by the product of their delivery), the share who came back in time.
  */
 class ProductPerformance
 {
@@ -22,11 +24,11 @@ class ProductPerformance
     /** A product needs this many delivered or returned orders before its RTS rate is called out. */
     private const MIN_FINISHED = 5;
 
-    public function __construct(private ProductReport $report) {}
+    public function __construct(private ProductReport $report, private CustomerChurn $churn) {}
 
     /**
      * @param  array<string, string>  $sellers  staff key => name, the CRD accounts
-     * @return array{unit: string, previousFrom: CarbonImmutable, previousTo: CarbonImmutable, total: array<string, int|float>, previousTotal: array<string, int|float>, labels: list<string>, series: list<float>, products: Collection<int, array<string, mixed>>, insights: list<array{tone: string, title: string, body: string}>}
+     * @return array{unit: string, previousFrom: CarbonImmutable, previousTo: CarbonImmutable, total: array<string, int|float>, previousTotal: array<string, int|float>, labels: list<string>, series: list<float>, products: Collection<int, array<string, mixed>>, retention: array{due: int, back: int, rate: ?float}, retentionGoal: float, insights: list<array{tone: string, title: string, body: string}>}
      */
     public function build(array $sellers, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $today): array
     {
@@ -46,17 +48,27 @@ class ProductPerformance
         $buckets = self::buckets($unit, $from, $to);
         $previousByProduct = $previous->groupBy('product');
 
+        $retention = $this->churn->byProduct($from, $to->min($today));
+        $previousRetention = $this->churn->byProduct($previousFrom, $previousTo);
         $products = $lines->groupBy('product')
             ->map(fn (Collection $group, string $name) => [
                 'product' => $name,
                 ...self::counts($group),
                 'previous' => self::counts($previousByProduct->get($name, collect())),
                 'series' => self::series($group, $unit, $buckets),
+                'retention' => self::retention($retention[$name] ?? null),
+                'previous_retention' => self::retention($previousRetention[$name] ?? null),
+                'retention_series' => self::retentionSeries($retention[$name]['days'] ?? [], $unit, $buckets),
             ])
             ->sortByDesc('sales')
             ->values();
+        $products = self::ranked($products);
 
         $total = self::counts($lines);
+        $due = $products->sum(fn (array $product) => $product['retention']['due']);
+        $back = $products->sum(fn (array $product) => $product['retention']['back']);
+        $totalRetention = ['due' => $due, 'back' => $back, 'rate' => $due > 0 ? $back / $due : null];
+        $goal = (float) config('customers.product_retention_goal') / 100;
 
         return [
             'unit' => $unit,
@@ -67,8 +79,142 @@ class ProductPerformance
             'labels' => self::labels($unit, $buckets),
             'series' => self::series($lines, $unit, $buckets),
             'products' => $products,
-            'insights' => self::insights($products, $total, $lines, $unit, $days, $today),
+            'retention' => $totalRetention,
+            'retentionGoal' => $goal,
+            'insights' => [
+                ...self::insights($products, $total, $lines, $unit, $days, $today),
+                ...self::rankingInsights($products),
+                ...self::retentionInsights($products, $goal),
+            ],
         ];
+    }
+
+    /**
+     * Each product's place now and the period before, by gross sales and by retention (1 = top; null when it had no
+     * sales, or no customers due, then), and its place by gross sales in every slot of the chart.
+     *
+     * @param  Collection<int, array<string, mixed>>  $products  sorted by gross sales
+     * @return Collection<int, array<string, mixed>>
+     */
+    private static function ranked(Collection $products): Collection
+    {
+        $places = fn (Collection $values) => $values->filter(fn (?float $value) => $value !== null)->sortDesc()->keys()->flip()->map(fn (int $i) => $i + 1);
+        $sales = $places($products->map(fn (array $product) => $product['sales'] > 0 ? $product['sales'] : null));
+        $previousSales = $places($products->map(fn (array $product) => $product['previous']['sales'] > 0 ? $product['previous']['sales'] : null));
+        $retention = $places($products->map(fn (array $product) => $product['retention']['rate']));
+        $previousRetention = $places($products->map(fn (array $product) => $product['previous_retention']['rate']));
+        $slots = count($products->first()['series'] ?? []);
+        $slotPlaces = collect(range(0, max(0, $slots - 1)))->map(fn (int $slot) => $places($products->map(fn (array $product) => $product['series'][$slot] ?? 0.0)));
+
+        return $products->map(fn (array $product, int $i) => [
+            ...$product,
+            'rank' => $sales[$i] ?? null,
+            'previous_rank' => $previousSales[$i] ?? null,
+            'retention_rank' => $retention[$i] ?? null,
+            'previous_retention_rank' => $previousRetention[$i] ?? null,
+            'rank_series' => $slots ? $slotPlaces->map(fn (Collection $slot) => $slot[$i])->all() : [],
+        ]);
+    }
+
+    /**
+     * @param  array{due: int, back: int}|null  $counts
+     * @return array{due: int, back: int, rate: ?float}
+     */
+    private static function retention(?array $counts): array
+    {
+        $due = $counts['due'] ?? 0;
+        $back = $counts['back'] ?? 0;
+
+        return ['due' => $due, 'back' => $back, 'rate' => $due > 0 ? $back / $due : null];
+    }
+
+    /**
+     * Retention per slot of the chart, by the customers' reorder deadline (null where nobody was due). A one-day chart
+     * runs by the hour, which deadlines don't have, so it has none.
+     *
+     * @param  array<string, array{due: int, back: int}>  $days
+     * @param  list<int|string>  $buckets
+     * @return list<?float>
+     */
+    private static function retentionSeries(array $days, string $unit, array $buckets): array
+    {
+        if ($unit === 'hour') {
+            return array_fill(0, count($buckets), null);
+        }
+
+        $slots = [];
+        foreach ($days as $day => $counts) {
+            $slot = $unit === 'week' ? CarbonImmutable::parse($day)->startOfWeek(CarbonImmutable::MONDAY)->toDateString() : $day;
+            $slots[$slot]['due'] = ($slots[$slot]['due'] ?? 0) + $counts['due'];
+            $slots[$slot]['back'] = ($slots[$slot]['back'] ?? 0) + $counts['back'];
+        }
+
+        return array_map(fn (int|string $bucket) => isset($slots[$bucket]) && $slots[$bucket]['due'] > 0 ? $slots[$bucket]['back'] / $slots[$bucket]['due'] : null, $buckets);
+    }
+
+    /**
+     * The product that climbed the most places by gross sales, and the one that fell the most.
+     *
+     * @param  Collection<int, array<string, mixed>>  $products
+     * @return list<array{tone: string, title: string, body: string}>
+     */
+    private static function rankingInsights(Collection $products): array
+    {
+        $moved = $products->filter(fn (array $product) => $product['rank'] !== null && $product['previous_rank'] !== null)
+            ->map(fn (array $product) => [...$product, 'move' => $product['previous_rank'] - $product['rank']]);
+        $insights = [];
+        if ($up = $moved->where('move', '>', 0)->sortByDesc('move')->first()) {
+            $insights[] = ['tone' => 'good', 'title' => "{$up['product']} moved up to #{$up['rank']}", 'body' => "From #{$up['previous_rank']} by gross sales the period before."];
+        }
+        if ($down = $moved->where('move', '<', 0)->sortBy('move')->first()) {
+            $insights[] = ['tone' => 'bad', 'title' => "{$down['product']} dropped to #{$down['rank']}", 'body' => "It was #{$down['previous_rank']} by gross sales the period before."];
+        }
+
+        return $insights;
+    }
+
+    /**
+     * The product that keeps the most customers, the one that loses the most, and how many are below the goal.
+     *
+     * @param  Collection<int, array<string, mixed>>  $products
+     * @return list<array{tone: string, title: string, body: string}>
+     */
+    private static function retentionInsights(Collection $products, float $goal): array
+    {
+        $due = $products->filter(fn (array $product) => $product['retention']['rate'] !== null)->sortByDesc(fn (array $product) => $product['retention']['rate'])->values();
+        if ($due->isEmpty()) {
+            return [];
+        }
+
+        $percent = fn (float $rate) => number_format($rate * 100, 1).'%';
+        $goalLabel = rtrim(rtrim(number_format($goal * 100, 1), '0'), '.').'%';
+        $best = $due->first();
+        $insights = [[
+            'tone' => 'good',
+            'title' => "{$best['product']} keeps the most customers: {$percent($best['retention']['rate'])}",
+            'body' => "{$best['retention']['back']} of {$best['retention']['due']} reordered before the deadline.",
+        ]];
+
+        $worst = $due->last();
+        if ($due->count() > 1 && $worst['retention']['rate'] < $goal) {
+            $lost = $worst['retention']['due'] - $worst['retention']['back'];
+            $insights[] = [
+                'tone' => 'bad',
+                'title' => "{$worst['product']} loses most of its customers",
+                'body' => "Only {$percent($worst['retention']['rate'])} came back. {$lost} lost, below the {$goalLabel} goal.",
+            ];
+        }
+
+        $below = $due->filter(fn (array $product) => $product['retention']['rate'] < $goal)->count();
+        if ($below > 0) {
+            $insights[] = [
+                'tone' => 'neutral',
+                'title' => "{$below} of {$due->count()} ".str('product')->plural($due->count()).' below the retention goal',
+                'body' => "Fewer than {$goalLabel} of their customers due to reorder came back in time.",
+            ];
+        }
+
+        return $insights;
     }
 
     /**

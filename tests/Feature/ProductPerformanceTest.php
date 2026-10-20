@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeliveredOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
@@ -82,6 +83,32 @@ class ProductPerformanceTest extends TestCase
             ->assertOk()
             ->assertSee('Gross sales per week')
             ->assertSeeInOrder(['Canpro', '₱900', '1 order']);
+    }
+
+    public function test_ranking_moves_against_the_period_before_and_retention_counts_customers_due_per_product(): void
+    {
+        // Oct 1–10: Canpro ₱900 overtakes Sinuxyl ₱300; Sep 21–30 Sinuxyl ₱1,000 led Canpro ₱900.
+        $this->order('CRD LHEI', 3, 900, 'Canpro');
+        $this->order('CRD LHEI', 3, 300, 'Sinuxyl');
+        $this->order('CRD LHEI', 3, 1000, 'Sinuxyl', '2026-09-25');
+        $this->order('CRD LHEI', 3, 900, 'Canpro', '2026-09-26');
+
+        // Two Sinuxyl customers ran out Sep 3, so their 30 days to reorder ended Oct 3: one reordered (back), one didn't (lost).
+        foreach (['9171111111', '9172222222'] as $phone) {
+            DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Sinuxyl',
+                'qty' => 1, 'delivered_date' => '2026-08-20', 'consumption_days_per_unit' => 15, 'source' => DeliveredOrder::SOURCE_SHECOM]);
+        }
+        PancakeOrder::create(['pancake_order_id' => 'back-1', 'ordered_on' => '2026-09-20', 'phone_key' => '9171111111', 'seller_name' => 'FSD AGENT',
+            'status' => 3, 'total_price' => 300, 'items' => [['qty' => 1, 'name' => 'Sinuxyl']]]);
+
+        $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
+            ->assertOk()
+            ->assertSeeInOrder(['Retention', '50.0%', '1 came back of 2 due'])
+            ->assertSeeInOrder(['Ranking', '1', '▲ 1', 'Canpro', 'No one due', '2', '▼ 1', 'Sinuxyl', '50.0%', '1 of 2'])
+            ->assertSee('Canpro moved up to #1')
+            ->assertSee('Sinuxyl dropped to #2')
+            ->assertSee('Sinuxyl keeps the most customers: 50.0%')
+            ->assertSee('data-pp-graph="retention"', false);
     }
 
     public function test_cra_without_the_permission_is_refused(): void

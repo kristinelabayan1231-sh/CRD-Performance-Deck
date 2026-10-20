@@ -101,6 +101,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Product retention goal
+    |--------------------------------------------------------------------------
+    |
+    | Product Performance: the share of a product's customers due to reorder
+    | (as the churn rate counts them) who should come back in time, in %.
+    |
+    */
+
+    'product_retention_goal' => 50,
+
+    /*
+    |--------------------------------------------------------------------------
     | Pancake POS order statuses
     |--------------------------------------------------------------------------
     |
