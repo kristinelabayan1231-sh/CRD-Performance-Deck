@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\MonthlyCostRow;
 use App\Models\Setting;
+use App\Services\LeadGenerator;
 use App\Support\MonthlyCost;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,7 @@ class MonthlyCostController extends Controller
 {
     public function index(MonthlyCost $cost): View
     {
-        $rows = MonthlyCostRow::orderBy('sort_order')->orderBy('id')->get();
+        $rows = MonthlyCostRow::with('cra')->orderBy('sort_order')->orderBy('id')->get();
         $lastChange = collect([
             MonthlyCostRow::with('editor')->latest('updated_at')->first(),
             Setting::where('key', 'like', MonthlyCost::PREFIX.'%')->with('editor')->latest('updated_at')->first(),
@@ -28,6 +29,7 @@ class MonthlyCostController extends Controller
             'totals' => $cost->totals($rows),
             'shared' => $cost->shared(),
             'lastChange' => $lastChange,
+            'cras' => LeadGenerator::cras(),
         ]);
     }
 
@@ -76,15 +78,16 @@ class MonthlyCostController extends Controller
     }
 
     /**
-     * Position, name (blank = vacant) and the monthly salary.
+     * Position, name (blank = vacant), the CRA it belongs to (for the Monthly MNI) and the monthly salary.
      *
-     * @return array{position: string, name: ?string, pay_type: string, salary: string}
+     * @return array{position: string, name: ?string, user_id: ?int, pay_type: string, salary: string}
      */
     private function validatedRow(Request $request): array
     {
         $data = $request->validate([
             'position' => ['required', 'string', 'max:255'],
             'name' => ['nullable', 'string', 'max:255'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
             'salary' => ['required', 'numeric', 'min:0', 'max:9999999999'],
         ], [
             'salary.required' => 'Enter the monthly salary.',
@@ -93,6 +96,7 @@ class MonthlyCostController extends Controller
         return [
             'position' => $data['position'],
             'name' => $data['name'] ?? null,
+            'user_id' => $data['user_id'] ?? null,
             'pay_type' => MonthlyCostRow::FIXED,
             'salary' => $data['salary'],
         ];

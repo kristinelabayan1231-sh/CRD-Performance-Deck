@@ -43,7 +43,7 @@ class MonthlyMniController extends Controller
     }
 
     /**
-     * Save one input: a CRA's (cra set) or the department's Tax Allocation / Advertising Cost. Empty clears it.
+     * Save one input: a CRA's (cra set) or one of the department's (MniDepartment::FIELDS). Empty clears it.
      */
     public function update(Request $request): JsonResponse
     {
@@ -57,7 +57,7 @@ class MonthlyMniController extends Controller
 
         $isDepartment = array_key_exists($data['field'], MniDepartment::FIELDS);
         if ($isDepartment === filled($data['cra'] ?? null)) {
-            abort(422, $isDepartment ? 'Tax Allocation and Advertising Cost are the department\'s.' : 'Pick the CRA this input is for.');
+            abort(422, $isDepartment ? 'This input is the department\'s.' : 'Pick the CRA this input is for.');
         }
         if (str_ends_with($data['field'], '_pct') || $data['field'] === 'conversion_rate') {
             $request->validate(['value' => ['nullable', 'numeric', 'max:100']]);

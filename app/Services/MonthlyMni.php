@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\MniDepartment;
 use App\Models\MniInput;
+use App\Models\MonthlyCostRow;
 use App\Models\User;
+use App\Support\MonthlyCost;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -16,10 +18,22 @@ use Illuminate\Support\Collection;
  * %. Projected Delivered = Gross Sales × (100% − % Cancelled − % Returns). Tax Allocation and Advertising Cost = the
  * department's ÷ number of CRAs. Product Cost = Gross Sales × % Product Cost. Gross Profit = Projected Delivered − Tax
  * Allocation − Product Cost. Ads VAT = 0. Shipping Fee = Orders × ₱75. COD Fee = Projected Delivered × 2%. VAT on COD
- * Fee = COD Fee × 12%. Fulfillment Fee = Orders × ₱25. Operating Costs and NET INCOME wait for their formulas.
+ * Fee = COD Fee × 12%. Fulfillment Fee = Orders × ₱25.
+ *
+ * Operating costs, from CRD - MC (today's figures): Salaries = the CRA's own row + an even share of the rest of TOTAL SALARY
+ * OF CRD (Manager, Supervisor, other staff and the shared salaries) ÷ number of CRAs. 13th Month = Salaries ÷ 12. SIL =
+ * Salaries × 24 ÷ 313. Government Benefits = CRD - MC's Gov. Benefits ÷ number of CRAs. Communication Allowance and
+ * Miscellaneous expenses and Product Research to HMO Expense = the department's (typed in) ÷ number of CRAs. Total Operating
+ * Costs = Salaries to HMO Expense. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
  */
 class MonthlyMni
 {
+    public const SIL_DAYS_A_YEAR = 24;
+
+    public const SIL_WORKING_DAYS = 313;
+
+    public function __construct(private MonthlyCost $cost) {}
+
     public const SHIPPING_PER_ORDER = 75;
 
     public const FULFILLMENT_PER_ORDER = 25;
@@ -28,7 +42,7 @@ class MonthlyMni
 
     public const VAT_ON_COD_RATE = 0.12;
 
-    /** Statement lines: [label, key, kind]; kind: count, percent, money, total, section, pending, net. */
+    /** Statement lines: [label, key, kind]; kind: count, percent, money, total, section, net. */
     public const LINES = [
         ['Target Number of Leads in one month', 'leads', 'count'],
         ['Number of Orders', 'orders', 'count'],
@@ -50,20 +64,23 @@ class MonthlyMni
         ['Fulfillment Fee', 'fulfillment', 'money'],
         ['Total Selling Costs', 'selling', 'total'],
         ['Operating Costs', null, 'section'],
-        ['Salaries', null, 'pending'], ['Communication Allowance', null, 'pending'], ['13th Month Allowance', null, 'pending'],
-        ['SIL', null, 'pending'], ['Government Benefits', null, 'pending'], ['Miscellaneous expenses', null, 'pending'],
-        ['Product Research', null, 'pending'], ['Magic Fund', null, 'pending'], ['Company Assets', null, 'pending'],
-        ['Executive Benefits', null, 'pending'], ['Office Miscellaneous', null, 'pending'], ['Maintenance Expenses', null, 'pending'],
-        ['Consultants', null, 'pending'], ["Manager's Allowance", null, 'pending'], ['Birthday Cake Allowance', null, 'pending'],
-        ['Water Bill', null, 'pending'], ['Internet', null, 'pending'], ['Rent', null, 'pending'], ['Electricity', null, 'pending'],
-        ['Geniusmakers Management Fee', null, 'pending'], ['Business Development Fund', null, 'pending'], ['HMO Expense', null, 'pending'],
-        ['Total Operating Costs', null, 'pending'],
-        ['NET INCOME', null, 'net'],
+        ['Salaries', 'salaries', 'money'], ['Communication Allowance', 'communication', 'money'], ['13th Month Allowance', 'thirteenth_month', 'money'],
+        ['SIL', 'sil', 'money'], ['Government Benefits', 'gov_benefits', 'money'], ['Miscellaneous expenses', 'misc', 'money'],
+        ['Product Research', 'product_research', 'money'], ['Magic Fund', 'magic_fund', 'money'], ['Company Assets', 'company_assets', 'money'],
+        ['Executive Benefits', 'executive_benefits', 'money'], ['Office Miscellaneous', 'office_miscellaneous', 'money'],
+        ['Maintenance Expenses', 'maintenance_expenses', 'money'], ['Consultants', 'consultants', 'money'],
+        ["Manager's Allowance", 'managers_allowance', 'money'], ['Birthday Cake Allowance', 'birthday_cake_allowance', 'money'],
+        ['Water Bill', 'water_bill', 'money'], ['Internet', 'internet', 'money'], ['Rent', 'rent', 'money'], ['Electricity', 'electricity', 'money'],
+        ['Geniusmakers Management Fee', 'management_fee', 'money'], ['Business Development Fund', 'business_development_fund', 'money'],
+        ['HMO Expense', 'hmo_expense', 'money'],
+        ['Total Operating Costs', 'operating', 'total'],
+        ['NET INCOME', 'net_income', 'net'],
     ];
 
     /** Money lines added up for the department (the rest are worked out from them). */
     private const SUMMED = ['leads', 'orders', 'gross', 'cancelled', 'returns', 'delivered', 'tax', 'product_cost', 'gross_profit',
-        'advertising', 'ads_vat', 'shipping', 'cod', 'vat_on_cod', 'fulfillment', 'selling'];
+        'advertising', 'ads_vat', 'shipping', 'cod', 'vat_on_cod', 'fulfillment', 'selling',
+        'salaries', 'communication', 'thirteenth_month', 'sil', 'gov_benefits', 'misc', 'operating', 'net_income'];
 
     /**
      * @param  Collection<int, User>  $cras
@@ -73,13 +90,21 @@ class MonthlyMni
     {
         $inputs = MniInput::where('plan', $plan)->whereDate('month', $month)->whereIn('user_id', $cras->pluck('id'))->get()->keyBy('user_id');
         $department = MniDepartment::where('plan', $plan)->whereDate('month', $month)->first() ?? new MniDepartment;
+        $craCount = max($cras->count(), 1);
+
+        // CRD - MC: each CRA's own row, and the rest of TOTAL SALARY OF CRD shared evenly.
+        $rows = MonthlyCostRow::all();
+        $costs = $this->cost->totals($rows);
+        $own = $rows->whereIn('user_id', $cras->pluck('id'))->groupBy('user_id')
+            ->map(fn (Collection $mine) => $mine->sum(fn (MonthlyCostRow $row) => $row->monthlySalary()));
+        $sharedSalary = ($costs['customer_retention'] - $own->sum()) / $craCount;
 
         $statements = $cras->mapWithKeys(fn (User $cra) => [
-            $cra->id => self::statement($inputs->get($cra->id), $department, max($cras->count(), 1)),
+            $cra->id => self::statement($inputs->get($cra->id), $department, $craCount, ($own[$cra->id] ?? 0) + $sharedSalary, $costs['gov_benefits']),
         ]);
 
         $total = [];
-        foreach (self::SUMMED as $key) {
+        foreach ([...self::SUMMED, ...array_keys(MniDepartment::OPERATING)] as $key) {
             $total[$key] = $statements->sum($key);
         }
         $total['conversion_rate'] = $total['leads'] ? $total['orders'] / $total['leads'] : null;
@@ -89,11 +114,11 @@ class MonthlyMni
     }
 
     /**
-     * One CRA's statement. Empty inputs count as 0.
+     * One CRA's statement. Empty inputs count as 0. $salaries is the CRA's (own + share); $govBenefits the department's.
      *
      * @return array<string, float|int|null>
      */
-    public static function statement(?MniInput $input, MniDepartment $department, int $craCount): array
+    public static function statement(?MniInput $input, MniDepartment $department, int $craCount, float $salaries = 0.0, float $govBenefits = 0.0): array
     {
         $orders = (int) ($input?->orders ?? 0);
         $rate = ($input?->conversion_rate ?? 0) / 100;
@@ -110,6 +135,21 @@ class MonthlyMni
         $cod = $delivered * self::COD_RATE;
         $vatOnCod = $cod * self::VAT_ON_COD_RATE;
         $fulfillment = $orders * self::FULFILLMENT_PER_ORDER;
+        $selling = $advertising + $shipping + $cod + $vatOnCod + $fulfillment;
+        $grossProfit = $delivered - $tax - $productCost;
+
+        $operating = [
+            'salaries' => $salaries,
+            'communication' => ($department->communication_allowance ?? 0) / $craCount,
+            'thirteenth_month' => $salaries / 12,
+            'sil' => $salaries * self::SIL_DAYS_A_YEAR / self::SIL_WORKING_DAYS,
+            'gov_benefits' => $govBenefits / $craCount,
+            'misc' => ($department->miscellaneous_expenses ?? 0) / $craCount,
+        ];
+        foreach (array_keys(MniDepartment::OPERATING) as $field) {
+            $operating[$field] = ($department->{$field} ?? 0) / $craCount;
+        }
+        $operatingTotal = array_sum($operating);
 
         return [
             'leads' => $rate > 0 ? $orders / $rate : 0.0,
@@ -122,14 +162,17 @@ class MonthlyMni
             'delivered' => $delivered,
             'tax' => $tax,
             'product_cost' => $productCost,
-            'gross_profit' => $delivered - $tax - $productCost,
+            'gross_profit' => $grossProfit,
             'advertising' => $advertising,
             'ads_vat' => 0.0,
             'shipping' => $shipping,
             'cod' => $cod,
             'vat_on_cod' => $vatOnCod,
             'fulfillment' => $fulfillment,
-            'selling' => $advertising + $shipping + $cod + $vatOnCod + $fulfillment,
+            'selling' => $selling,
+            ...$operating,
+            'operating' => $operatingTotal,
+            'net_income' => $grossProfit - $selling - $operatingTotal,
         ];
     }
 }

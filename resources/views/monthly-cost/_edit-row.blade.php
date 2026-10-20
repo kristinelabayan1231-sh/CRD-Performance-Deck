@@ -13,6 +13,13 @@
         <label class="sr-only" for="{{ $formId }}-position">Position</label>
         <input id="{{ $formId }}-position" form="{{ $formId }}" name="position" value="{{ $value('position', $row?->position) }}" placeholder="Position" required maxlength="255"
                class="{{ $control }} mt-1.5 text-xs">
+        <label class="sr-only" for="{{ $formId }}-cra">CRA account</label>
+        <select id="{{ $formId }}-cra" form="{{ $formId }}" name="user_id" class="{{ $control }} mt-1.5 text-xs">
+            <option value="">Not a CRA (salary shared in the MNI)</option>
+            @foreach ($cras as $cra)
+                <option value="{{ $cra->id }}" @selected((string) $value('user_id', $row?->user_id) === (string) $cra->id)>CRA: {{ $cra->displayName() }}</option>
+            @endforeach
+        </select>
     </td>
     <td class="px-3 py-3 text-right">
         <label class="sr-only" for="{{ $formId }}-salary">Monthly salary</label>

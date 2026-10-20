@@ -120,6 +120,17 @@ class MonthlyCostTest extends TestCase
         $this->assertSame('50', Setting::value(MonthlyCost::PREFIX.'ceo_share'));
     }
 
+    public function test_a_row_is_linked_to_its_cra(): void
+    {
+        $regina = User::create(['email' => 'regina@example.com', 'display_name' => 'Regina', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        $row = MonthlyCostRow::factory()->create(['name' => 'Ma Regina Vergara']);
+
+        $this->actingAs($this->supervisor)->patch(route('monthly-cost.update', $row), ['position' => $row->position, 'name' => $row->name, 'user_id' => $regina->id, 'salary' => 19500])
+            ->assertSessionHasNoErrors();
+        $this->assertSame($regina->id, $row->fresh()->user_id);
+        $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))->assertSeeText('CRA: Regina');
+    }
+
     public function test_a_shared_salary_is_edited_in_its_row(): void
     {
         $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))
