@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-21 · PC Report · Amount is typed per row for the day (saves on leaving the box; TOTAL adds them up in ₱). Conversion Rate = # of Orders ÷ Total Engagement per page (a split page's Dormant and Active together) and in the TOTAL, updating as engagement is typed · shots: pc-report
+
 - 2026-10-20 · Dashboard, Conversion Breakdown, Segmentation Productivity, Cancelled Orders, Report Summary, PC Report, Daily I.S., Order Database, Customer Database, Segmentation Tracker · A CRA's other Pancake account (Lhea's LHEA GATDULA) counts as theirs everywhere a CRA is credited: sales, orders, conversion, top product, engagements, page orders, untagged-order issues, POS-sale leads, "handled by a CRA", and the tracker export import. Order Database: a CRA sees both accounts, and CRA Performance shows Lhea's two accounts as one row · shots: —
 
 - 2026-10-20 · CVR Tracker · A CRA's orders include the ones made under their other Pancake account (Lhea's LHEA GATDULA counts as CRD LHEI), in the list and the CRA tab's count · shots: —

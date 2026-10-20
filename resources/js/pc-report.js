@@ -25,21 +25,50 @@ async function send(url, method, body) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 }
 
-// Total Inquiries and Total Engagement, typed per row for the day picked: saved when the box changes (empty clears it),
-// and the set's TOTAL adds up what's in its boxes.
+// Total Inquiries, Total Engagement and Amount, typed per row for the day picked: saved when the box changes (empty
+// clears it), and the set's TOTAL adds up what's in its boxes. Conversion Rate = # of Orders ÷ Total Engagement, per page
+// (a split page's two rows together) and in all, worked out again as engagement is typed.
 function initPcCounts(root) {
+    const dash = '—';
+    const filled = (inputs) => [...inputs].filter((input) => input.value !== '').map(Number);
+    const sum = (values) => values.reduce((a, b) => a + b, 0);
+    const percent = (orders, engagements) => (engagements > 0 ? `${((orders / engagements) * 100).toFixed(2)}%` : dash);
+
     const total = (table, field) => {
-        const values = [...table.querySelectorAll(`[data-pc-count="${field}"]`)].filter((input) => input.value !== '').map(Number);
-        table.querySelector(`[data-pc-totals] [data-pc-total="${field}"]`).textContent = values.length ? values.reduce((a, b) => a + b, 0).toLocaleString('en-US') : '—';
+        const values = filled(table.querySelectorAll(`[data-pc-count="${field}"]`));
+        const text = field === 'amount'
+            ? `₱${sum(values).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : sum(values).toLocaleString('en-US');
+        table.querySelector(`[data-pc-totals] [data-pc-total="${field}"]`).textContent = values.length ? text : dash;
+    };
+
+    const conversion = (table) => {
+        const engagementsOf = (page) => sum(filled([...table.querySelectorAll('[data-pc-count="engagements"]')].filter((input) => input.dataset.page === page)));
+        let orders = 0;
+        let counted = false;
+        table.querySelectorAll('[data-pc-orders]').forEach((cell) => {
+            if (cell.dataset.pcOrders === '') return;
+            const page = cell.dataset.page;
+            const pageOrders = Number(cell.dataset.pcOrders);
+            orders += pageOrders;
+            counted = true;
+            const rate = table.querySelector(`[data-pc-conversion][data-page="${CSS.escape(page)}"]`);
+            if (rate) rate.textContent = percent(pageOrders, engagementsOf(page));
+        });
+        const all = sum(filled(table.querySelectorAll('[data-pc-count="engagements"]')));
+        table.querySelector('[data-pc-totals] [data-pc-total="conversion"]').textContent = counted ? percent(orders, all) : dash;
     };
 
     root.addEventListener('change', async (event) => {
         const input = event.target.closest('[data-pc-count]');
         if (!input) return;
         const { cra, page, category, pcCount: field } = input.dataset;
-        const value = input.value === '' ? null : Math.max(0, Math.floor(Number(input.value)));
+        const number = Math.max(0, Number(input.value));
+        const value = input.value === '' ? null : field === 'amount' ? Math.round(number * 100) / 100 : Math.floor(number);
         if (value !== null) input.value = value;
-        total(input.closest('table'), field);
+        const table = input.closest('table');
+        total(table, field);
+        if (field === 'engagements') conversion(table);
         try {
             await send(root.dataset.entriesUrl, 'PUT', { cra, page, category, date: root.dataset.date, [field]: value });
             input.classList.remove('border-coral');

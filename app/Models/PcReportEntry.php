@@ -7,10 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * PC Report: a CRA's page row for one day: Total Inquiries and Total Engagement, typed in by the CRA or their
+ * PC Report: a CRA's page row for one day: Total Inquiries, Total Engagement and Amount, typed in by the CRA or their
  * Supervisor, and the Creation/Update Time (the months the conversations were created in) set by the Supervisor.
  */
-#[Fillable(['user_id', 'page', 'category', 'date', 'inquiries', 'engagements', 'from_month', 'to_month'])]
+#[Fillable(['user_id', 'page', 'category', 'date', 'inquiries', 'engagements', 'amount', 'from_month', 'to_month'])]
 class PcReportEntry extends Model
 {
     protected function casts(): array
@@ -19,6 +19,7 @@ class PcReportEntry extends Model
             'date' => 'immutable_date',
             'inquiries' => 'integer',
             'engagements' => 'integer',
+            'amount' => 'decimal:2',
             'from_month' => 'immutable_date',
             'to_month' => 'immutable_date',
         ];

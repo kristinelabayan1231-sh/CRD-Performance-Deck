@@ -72,7 +72,7 @@
         @endif
 
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
-            <span class="font-semibold">How it fills in:</span> type each row's Total Inquiries and Total Engagement for the day picked; they save when you leave the box. # of Orders is the CRA's Pancake orders on that page for the day picked (canceled and deleted left out); a split page's Dormant and Active rows share one. Conversion Rate and Amount aren't filled in yet.
+            <span class="font-semibold">How it fills in:</span> type each row's Total Inquiries, Total Engagement and Amount for the day picked; they save when you leave the box. # of Orders is the CRA's Pancake orders on that page for the day picked (canceled and deleted left out); a split page's Dormant and Active rows share one. Conversion Rate = # of Orders ÷ Total Engagement (a split page's two rows together).
         </div>
 
         @if ($ordersMissingPage)
@@ -137,11 +137,14 @@
                                         </td>
                                     @endforeach
                                     @if ($line['orders_rows'] > 0)
-                                        <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle" data-pc-orders>{!! $line['orders'] === null ? $dash : number_format($line['orders']) !!}</td>
+                                        <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle" data-pc-orders="{{ $line['orders'] }}" data-page="{{ $line['page'] }}">{!! $line['orders'] === null ? $dash : number_format($line['orders']) !!}</td>
+                                        {{-- # of Orders ÷ Total Engagement; a split page's two rows together --}}
+                                        <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle font-semibold" data-pc-conversion data-page="{{ $line['page'] }}">{!! $line['conversion'] === null ? $dash : number_format($line['conversion'] * 100, 2).'%' !!}</td>
                                     @endif
-                                    @foreach (array_slice($columns, 3) as $column)
-                                        <td class="px-4 py-2.5 text-right">{!! $dash !!}</td>
-                                    @endforeach
+                                    <td class="px-4 py-2 text-right">
+                                        <input type="number" min="0" step="0.01" inputmode="decimal" data-pc-count="amount" data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}"
+                                               value="{{ $line['amount'] }}" placeholder="—" aria-label="Amount for {{ $cra->displayName() }}, {{ $name }}" class="{{ $countInput }} w-28">
+                                    </td>
                                     <td class="px-4 py-2"><input type="text" data-pc-tagging data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}" value="{{ $line['tagging'] }}" maxlength="50" placeholder="e.g. SW1, SJJ" autocomplete="off" spellcheck="false" aria-label="Tagging for {{ $cra->displayName() }}, {{ $name }}" class="h-8 w-32 rounded-lg border border-line bg-white px-2 text-xs font-semibold uppercase placeholder:font-normal placeholder:normal-case focus:border-brand-400 focus:ring-2 focus:ring-brand-200 focus:outline-none"></td>
                                     <td class="px-4 py-2.5">
                                         @php($rangeLabel = $range($line['from'], $line['to']))
@@ -164,14 +167,14 @@
                             @php($counted = collect($lines)->pluck('inquiries')->filter(fn ($n) => $n !== null))
                             @php($engaged = collect($lines)->pluck('engagements')->filter(fn ($n) => $n !== null))
                             @php($ordered = collect($lines)->pluck('orders')->filter(fn ($n) => $n !== null))
+                            @php($amounts = collect($lines)->pluck('amount')->filter(fn ($n) => $n !== null))
                             <tr class="border-t-2 border-line bg-brand-50/50 font-bold" data-pc-totals>
                                 <td class="px-4 py-2.5">TOTAL</td>
                                 <td class="px-4 py-2.5 text-right" data-pc-total="inquiries">{!! $counted->isEmpty() ? $dash : number_format($counted->sum()) !!}</td>
                                 <td class="px-4 py-2.5 text-right" data-pc-total="engagements">{!! $engaged->isEmpty() ? $dash : number_format($engaged->sum()) !!}</td>
                                 <td class="px-4 py-2.5 text-right" data-pc-total="orders">{!! $ordered->isEmpty() ? $dash : number_format($ordered->sum()) !!}</td>
-                                @foreach (array_slice($columns, 3) as $column)
-                                    <td class="px-4 py-2.5 text-right">{!! $dash !!}</td>
-                                @endforeach
+                                <td class="px-4 py-2.5 text-right" data-pc-total="conversion">{!! $ordered->isEmpty() || $engaged->sum() == 0 ? $dash : number_format($ordered->sum() / $engaged->sum() * 100, 2).'%' !!}</td>
+                                <td class="px-4 py-2.5 text-right" data-pc-total="amount">{!! $amounts->isEmpty() ? $dash : '₱'.number_format($amounts->sum(), 2) !!}</td>
                                 <td class="px-4 py-2.5"></td>
                                 <td class="px-4 py-2.5"></td>
                             </tr>
