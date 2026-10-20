@@ -1,4 +1,4 @@
-@props(['results', 'churn', 'customers' => null, 'query' => []])
+@props(['results', 'customers' => null, 'query' => []])
 
 @php
     $peso = fn (float $value) => '₱'.number_format($value);
@@ -34,14 +34,12 @@
 {{--
     Results for the dashboard's month (to date) or range: the CRD monthly goal (team gross sales), then
     confirmed orders, conversion rate, AOV beside Cancelled / Waiting, and (with Customer Database access) Retained and Repeat
-    Customers. A CRA's orders, conversion and AOV are their own. Churn sits apart in a small, light card
-    on the right (below on narrow screens), so the results stay the focus: it judges customers delivered
-    months earlier whose time to reorder ran out in these dates.
+    Customers. A CRA's orders, conversion and AOV are their own. Churn is its own strip further down the
+    dashboard (x-dashboard.churn).
 --}}
-<div {{ $attributes->merge(['class' => 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_15rem]']) }}>
 {{-- With customers: eight columns, so the goal, orders and conversion fill the first row and AOV (a quarter),
      Retained and Repeat (three eighths each) the second; six on tablets, so orders, conversion and AOV share a row --}}
-<section @class(['grid content-start gap-3', 'sm:grid-cols-6 lg:grid-cols-8' => $customers, 'sm:grid-cols-2 lg:grid-cols-5' => ! $customers]) aria-label="Results">
+<section {{ $attributes->class(['grid content-start gap-3', 'sm:grid-cols-6 lg:grid-cols-8' => $customers, 'sm:grid-cols-2 lg:grid-cols-5' => ! $customers]) }} aria-label="Results">
     {{-- CRD monthly goal --}}
     <x-dashboard.flip :class="$customers ? 'sm:col-span-6 lg:col-span-4' : 'sm:col-span-2'">
     <article class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
@@ -295,112 +293,3 @@
         </x-dashboard.flip>
     @endif
 </section>
-
-{{-- Churn: its own light card so it isn't read as these dates' customers; any row opens the CRD / FSD / overall breakdown --}}
-@php($deadlines = $results['range']->label())
-@php($monthLabel = fn (string $month) => \Carbon\CarbonImmutable::parse($month.'-01')->format($results['range']->from->isSameYear($month.'-01') ? 'M' : 'M Y'))
-@php($churnTeams = ['all' => 'Overall', 'crd' => 'CRD', 'fsd' => 'FSD'])
-<section aria-labelledby="churn-title" class="flex flex-col gap-2 rounded-xl bg-[#fdeeee] p-3 text-[#8f3236] ring-1 ring-[#f6d3d4]">
-    <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <h3 id="churn-title" class="text-sm font-bold">Customer churn</h3>
-        <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
-    </div>
-
-    <ul class="flex flex-1 flex-col gap-1.5 sm:flex-row xl:flex-col">
-        @foreach ($churnTeams as $team => $teamLabel)
-            @php($teamChurn = $churn[$team])
-            <li class="flex-1">
-                <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
-                        class="flex h-full w-full items-center justify-between gap-2 rounded-lg bg-white/70 px-3 py-2 text-left transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-coral"
-                        title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
-                    <span>
-                        <span class="block text-[11px] font-semibold tracking-wide uppercase">{{ $teamLabel }}</span>
-                        <span class="block text-[11px] text-[#8f3236]/80 tabular-nums">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</span>
-                    </span>
-                    <span class="text-lg font-bold tabular-nums">{{ $pct($teamChurn['rate'], 2) }}</span>
-                </button>
-            </li>
-        @endforeach
-    </ul>
-    <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog" class="self-start text-xs font-semibold hover:underline">View breakdown &rarr;</button>
-
-    <dialog id="churn-dialog" aria-labelledby="churn-dialog-title" onclick="if (event.target === this) this.close()"
-            class="m-auto max-h-[90dvh] w-[min(44rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">
-        <div class="flex max-h-[90dvh] flex-col">
-            <div class="flex shrink-0 items-start justify-between gap-4 border-b border-line px-5 py-4">
-                <div class="min-w-0">
-                    <h2 id="churn-dialog-title" class="text-base font-semibold">Customer churn · reorder deadline {{ $deadlines }}</h2>
-                    <p class="text-sm text-muted">
-                        Not the customers of {{ $deadlines }}: CRD- and FSD-delivered customers from earlier months who ran out, and whose {{ $churn['grace_days'] }} days to reorder ended in these dates.
-                        Overall counts a customer on both lists once. Lower is better.
-                    </p>
-                </div>
-                <button type="button" onclick="this.closest('dialog').close()" aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">
-                    <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
-                </button>
-            </div>
-
-            {{-- Due / came back / lost counts open those customers in Customer Database → Churn, for the same dates --}}
-            @php($churnLinks = auth()->user()->can('customers.view'))
-            @php($churnStatus = ['Due to reorder' => 'due', 'Came back in time' => 'back', 'Lost' => 'lost'])
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-                <div class="overflow-x-auto rounded-xl border border-line">
-                    <table class="w-full text-sm">
-                        <thead class="bg-canvas/60 text-xs text-muted">
-                            <tr>
-                                <th scope="col" class="px-4 py-2 text-left font-semibold"></th>
-                                <th scope="col" class="px-4 py-2 text-right font-semibold">CRD</th>
-                                <th scope="col" class="px-4 py-2 text-right font-semibold">FSD</th>
-                                <th scope="col" class="px-4 py-2 text-right font-semibold text-ink">Overall</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-line tabular-nums">
-                            @foreach ([
-                                'Churn rate' => fn ($c) => $pct($c['rate'], 2),
-                                'Due to reorder' => fn ($c) => number_format($c['customers']),
-                                'Came back in time' => fn ($c) => number_format($c['customers'] - $c['lost']),
-                                'Lost' => fn ($c) => number_format($c['lost']),
-                            ] as $row => $value)
-                                <tr>
-                                    <th scope="row" class="px-4 py-2 text-left font-medium">{{ $row }}</th>
-                                    @foreach (['crd', 'fsd', 'all'] as $team)
-                                        <td @class(['px-4 py-2 text-right', 'font-semibold' => $team === 'all', 'text-coral-700' => $row === 'Churn rate', 'text-teal-700' => $row === 'Came back in time'])>
-                                            @if ($churnLinks && isset($churnStatus[$row]))
-                                                <a href="{{ route('customers.churn', [...$query, 'status' => $churnStatus[$row], 'list' => $team]) }}" class="hover:underline" title="See these customers">{{ $value($churn[$team]) }}</a>
-                                            @else
-                                                {{ $value($churn[$team]) }}
-                                            @endif
-                                        </td>
-                                    @endforeach
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <p class="max-w-prose text-xs text-muted">Due = their {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Came back = a Pancake order (not canceled) or a new delivery in that time.</p>
-                    @if ($churnLinks)
-                        <a href="{{ route('customers.churn', $query) }}" class="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">See customers &rarr;</a>
-                    @endif
-                </div>
-
-                <div class="rounded-xl border border-line p-4">
-                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Delivered in</p>
-                    <dl class="mt-2 space-y-2 text-xs">
-                        @foreach (['crd' => 'CRD', 'fsd' => 'FSD'] as $team => $teamLabel)
-                            <div class="flex flex-wrap items-center gap-1.5">
-                                <dt class="w-10 font-semibold text-ink">{{ $teamLabel }}</dt>
-                                @forelse ($churn[$team]['delivered_months'] as $month => $count)
-                                    <dd class="rounded-full bg-brand-50 px-2 py-0.5 text-ink tabular-nums">{{ $monthLabel($month) }} <span class="font-semibold">{{ number_format($count) }}</span></dd>
-                                @empty
-                                    <dd class="text-muted">No customers due in these dates.</dd>
-                                @endforelse
-                            </div>
-                        @endforeach
-                    </dl>
-                </div>
-            </div>
-        </div>
-    </dialog>
-</section>
-</div>

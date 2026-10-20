@@ -82,7 +82,7 @@
                         <svg data-graphs-icon="tiles" hidden class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
                     </button>
                 </x-slot:actions>
-                <x-dashboard.results :results="$results" :churn="$churn" :customers="$customers" :query="array_filter($filters)" />
+                <x-dashboard.results :results="$results" :customers="$customers" :query="array_filter($filters)" />
             </x-panel>
         @endif
 
@@ -98,6 +98,11 @@
 
         @if ($logistics)
             <x-dashboard.logistics :periods="$logisticsPeriod ? ['range' => $logisticsPeriod] : null" :fetched-at="$logisticsFetchedAt" active="range" />
+        @endif
+
+        {{-- Churn: a short strip of its own, below the sections --}}
+        @if ($results)
+            <x-dashboard.churn :churn="$churn" :range="$results['range']" :query="array_filter($filters)" />
         @endif
 
 
