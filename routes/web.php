@@ -13,6 +13,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\MonthlyCostController;
+use App\Http\Controllers\MonthlyMniController;
 use App\Http\Controllers\OnDutyController;
 use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
@@ -113,6 +114,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/split', [PcReportController::class, 'split'])->middleware('can:pc_report.manage')->name('split');
         Route::delete('/split', [PcReportController::class, 'merge'])->middleware('can:pc_report.manage')->name('merge');
         Route::put('/entries', [PcReportController::class, 'entry'])->name('entries.update');
+    });
+
+    Route::prefix('monthly-mni')->name('mni.')->middleware('can:mni.view')->group(function () {
+        Route::get('/', [MonthlyMniController::class, 'index'])->name('index');
+        Route::put('/', [MonthlyMniController::class, 'update'])->middleware('can:mni.manage')->name('update');
     });
 
     Route::get('/daily-is', DailyIncomeStatementController::class)->middleware('can:daily_is.view')->name('daily-is.index');

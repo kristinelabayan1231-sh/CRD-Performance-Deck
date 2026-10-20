@@ -59,10 +59,10 @@
                     ])>{{ $month['progress'] >= 1 ? '✓ Goal hit' : ($month['pace'] === null ? '▼ Below goal' : ($ahead ? '▲ Ahead' : '▼ Behind')) }}</span>
                 @endif
             </div>
-            <p class="mt-1 text-3xl font-bold tabular-nums">{{ $pct($month['progress']) }}</p>
-            {{-- Gross sales so far on the left, the target at the far right --}}
+            <p class="mt-1 text-3xl font-bold tabular-nums" title="Gross sales so far">{{ $peso($month['sales']) }}</p>
+            {{-- Share of the goal on the left, the target at the far right --}}
             <p class="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span class="text-base font-semibold text-white tabular-nums" title="Gross sales so far">{{ $peso($month['sales']) }}</span>
+                <span class="text-base font-semibold text-white tabular-nums" title="Share of the goal">{{ $pct($month['progress']) }} of goal</span>
                 <span class="rounded-full bg-white/20 px-2.5 py-0.5 font-medium text-white/90 tabular-nums">Target <span class="font-bold text-white">{{ $peso($month['goal']) }}</span></span>
             </p>
         </div>

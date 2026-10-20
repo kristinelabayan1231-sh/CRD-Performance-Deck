@@ -14,19 +14,20 @@
         ['bc_gross', 'Gross sales', 'Broadcast', 'money', 'w-[132px]'],
         ['sc_gross', 'Gross sales', 'Segmentation', 'money', 'w-[140px]'],
         ['gross', 'Total gross', 'BC & SC', 'money', 'w-[148px]'],
-        ['leads', 'Leads', null, 'soon', 'w-[108px]'],
-        ['engagement', 'Engagement', null, 'soon', 'w-[116px]'],
-        ['conv', 'Conv %', null, 'waits', 'w-[90px]'],
+        ['is_leads', 'Leads', null, 'count', 'w-[108px]'],
+        ['is_engagements', 'Engagement', null, 'count', 'w-[116px]'],
+        ['conv', 'Conv %', null, 'percent', 'w-[90px]'],
         ['aov', 'AOV', null, 'money', 'w-[116px]'],
         ['net_income', 'Net income', null, 'soon', 'w-[116px]'],
         ['ibsc', 'I.BSC %', null, 'waits', 'w-[90px]'],
     ];
     // Group labels are sticky, so they stay centered in view instead of sliding under the pinned Team column.
     // The first column of each group (Orders & sales, Reach & conversion, Profit) gets a divider on its left.
-    $groupStarts = ['bc_orders', 'leads', 'net_income'];
+    $groupStarts = ['bc_orders', 'is_leads', 'net_income'];
     $cell = fn (array $m, array $col) => match ($col[3]) {
         'count' => number_format($m[$col[0]]),
         'money' => $money($m[$col[0]]),
+        'percent' => $m[$col[0]] === null ? '—' : number_format($m[$col[0]] * 100, 2).'%',
         default => '—',
     };
     $onDuty = $report['on_duty'];
@@ -56,7 +57,7 @@
                             <span class="block font-medium tracking-normal normal-case">{{ $col[2] }}</span>
                         @endif
                         @if ($col[3] === 'soon')
-                            <span class="mt-0.5 inline-block rounded-full border border-dashed border-line bg-canvas px-1.5 text-[10px] font-semibold tracking-normal whitespace-nowrap normal-case" title="From the Oct 1 I.S., not in yet">Coming soon</span>
+                            <span class="mt-0.5 inline-block rounded-full border border-dashed border-line bg-canvas px-1.5 text-[10px] font-semibold tracking-normal whitespace-nowrap normal-case" title="From the Daily I.S. once the MNI is in">Coming soon</span>
                         @endif
                     </th>
                 @endforeach
@@ -72,7 +73,7 @@
                             'px-3 py-2.5 text-right',
                             'border-l border-line' => in_array($col[0], $groupStarts),
                             'font-semibold' => $col[0] === 'gross',
-                            'text-muted' => in_array($col[3], ['count', 'money']) && ! $value,
+                            'text-muted' => in_array($col[3], ['count', 'money', 'percent']) && ! $value,
                             $soon => in_array($col[3], ['soon', 'waits']),
                         ])>{{ $cell($row['metrics'], $col) }}</td>
                     @endforeach

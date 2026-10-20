@@ -69,6 +69,10 @@ $modules = [
         'daily_is.view' => 'View own Daily I.S. (income statement per product, per day)',
         'daily_is.view_all' => 'View the department\'s and every CRA\'s Daily I.S.',
     ],
+    'Monthly MNI' => [
+        'mni.view' => 'View the Monthly MNI (each CRA\'s monthly targets and target income statement)',
+        'mni.manage' => 'Type in the Monthly MNI targets (orders, conversion rate, AOV, percentages, Tax Allocation, Advertising Cost)',
+    ],
     'Product Performance' => [
         'product_performance.view' => 'View Product Performance: every CRD account\'s sales, delivered, RTS and cancelled orders per product, with trends and insights',
     ],
