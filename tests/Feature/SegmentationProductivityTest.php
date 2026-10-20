@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\PancakePage;
@@ -9,6 +10,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BacklogFill;
+use App\Services\CvrTracker;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
@@ -141,6 +143,36 @@ class SegmentationProductivityTest extends TestCase
         // AOV = gross ÷ the five confirmed orders.
         $this->assertEqualsWithDelta(4800.0, $day['gross'], 0.001);
         $this->assertEqualsWithDelta(960.0, $day['aov'], 0.001);
+    }
+
+    public function test_conversions_match_the_cvr_trackers_orders_and_assigned_column(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+
+        $this->orders = [
+            // Made under another account, counted for Lhea on the CVR Tracker: a broadcast order from no list.
+            $this->order('09998887771', 'AJ Dela Cruz', tags: [397]),
+            // Lhea's own, but counted for Regina there.
+            $this->order('09998887772', 'CRD Lhei', tags: [397]),
+            // Lhea's own broadcast order the CRA's sheet marked Assigned.
+            $this->order('09998887773', 'CRD Lhei', tags: [397]),
+        ];
+        app(PancakeSync::class)->sync(Lead::today());
+        [$claimed, $given, $marked] = collect($this->orders)->pluck('display_id')->map(fn ($id) => (string) $id)->all();
+        CvrOrderEntry::create(['pancake_order_id' => $claimed, 'user_id' => $lhea->id]);
+        CvrOrderEntry::create(['pancake_order_id' => $given, 'user_id' => $regina->id]);
+        CvrOrderEntry::create(['pancake_order_id' => $marked, 'lead_source' => CvrOrderEntry::ASSIGNED]);
+
+        $cras = collect([$lhea, $regina]);
+        $days = app(SegmentationProductivity::class)->days($cras, Lead::today(), Lead::today());
+
+        foreach ($cras as $cra) {
+            $summary = app(CvrTracker::class)->day($cra, Lead::today())['summary'];
+            $this->assertSame([$summary['assigned_leads'], $summary['pancake_leads']], [$days[$cra->id]['2026-10-01']['alc'], $days[$cra->id]['2026-10-01']['pc']]);
+        }
+        $this->assertSame([1, 1], [$days[$lhea->id]['2026-10-01']['alc'], $days[$lhea->id]['2026-10-01']['pc']]);
+        $this->assertSame([0, 1], [$days[$regina->id]['2026-10-01']['alc'], $days[$regina->id]['2026-10-01']['pc']]);
     }
 
     public function test_rates_are_blank_without_assigned_or_answered(): void

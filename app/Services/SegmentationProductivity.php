@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
  *
  * Assigned transactions = Segmentation Tracker leads assigned to the CRA for that lead day (base 70; actual count shown).
  * Answered = tracker leads with that Contact Date + Pancake customer engagements of the CRA's Pancake account.
- * Total confirmed = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION (canceled and deleted don't count).
+ * Total confirmed = the CRA's orders that day on the CVR Tracker: Pancake orders tagged CRD - BROADCAST or CRD - SEGMENTATION, counted for the CRA picked there (canceled and deleted don't count).
  * Of those, assigned lead conversion = Assigned on the CVR Tracker (Type of Order Segmentation, or an assigned lead); Pancake conversion = everyone else. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
  * Gross sales = Conversion Breakdown's gross: the CRA's orders tagged CRD - BROADCAST + CRD - SEGMENTATION. AOV = gross ÷ confirmed.
  */
@@ -199,8 +199,8 @@ class SegmentationProductivity
     }
 
     /**
-     * Confirmed orders per CRA per day, split [assigned lead conversion, Pancake conversion]: the CRA's own
-     * orders tagged CRD - BROADCAST or CRD - SEGMENTATION, by the CVR Tracker's Assigned / Pancake column
+     * Confirmed orders per CRA per day, split [assigned lead conversion, Pancake conversion]: the orders the CVR Tracker
+     * lists for the CRA (their own tagged CRD - BROADCAST or CRD - SEGMENTATION, moved to the CRA picked there), by its Assigned / Pancake column
      * (Type of Order is Segmentation, the sheet says Assigned, or the number matches a lead assigned to any CRA).
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
@@ -212,11 +212,9 @@ class SegmentationProductivity
             return [[], []];
         }
 
-        $orders = PancakeOrder::counted()->crdProducts()
-            ->whereIn('seller_name', $accounts->keys())
-            ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
-            ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
-            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'phone_key', 'conversion_type']);
+        $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)
+            ->where(fn ($q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES))
+            ->get();
 
         if ($orders->isEmpty()) {
             return [[], []];
@@ -229,7 +227,7 @@ class SegmentationProductivity
         $pc = [];
 
         foreach ($orders as $order) {
-            $cra = $accounts[$order->seller_name];
+            $cra = ConversionBreakdown::craFor($order, $accounts);
             $day = $order->ordered_on->toDateString();
 
             if (CvrTracker::isAssignedLead($order, $entries[$order->pancake_order_id] ?? null, $assigned)) {
