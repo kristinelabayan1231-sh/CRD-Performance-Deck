@@ -50,32 +50,6 @@ class CustomerChurn
     }
 
     /**
-     * Retention per product (Product Performance): the overall list's customers due in $from–$to grouped by the product
-     * of the delivery judged, with how many came back in time, in all and per deadline day (Y-m-d). Kept as for()'s cache is.
-     *
-     * @return array<string, array{due: int, back: int, days: array<string, array{due: int, back: int}>}>
-     */
-    public function byProduct(CarbonImmutable $from, CarbonImmutable $to): array
-    {
-        return CustomerDatabase::remember(CustomerDatabase::cacheKey('churn-products', [$from->toDateString(), $to->toDateString()]), function () use ($from, $to) {
-            [$due, $outcomes] = $this->evaluate($from, $to, 'all');
-
-            $products = [];
-            foreach ($due['all'] as $phone => $d) {
-                $back = ($outcomes['all'][(string) $phone]['back'] ?? null) !== null ? 1 : 0;
-                $products[$d['product']] ??= ['due' => 0, 'back' => 0, 'days' => []];
-                $products[$d['product']]['due']++;
-                $products[$d['product']]['back'] += $back;
-                $products[$d['product']]['days'][$d['deadline']] ??= ['due' => 0, 'back' => 0];
-                $products[$d['product']]['days'][$d['deadline']]['due']++;
-                $products[$d['product']]['days'][$d['deadline']]['back'] += $back;
-            }
-
-            return $products;
-        });
-    }
-
-    /**
      * The customers behind for(): one compact row per customer of the list ('all', 'crd' or 'fsd'), soonest deadline
      * first (then by number), as [phone_key, team, product, order_id, delivered, ran_out, deadline, back order id,
      * back date, back source, last order id, last date, last source]; row() turns one into named fields. Compact because a long range has tens of thousands of customers and a page

@@ -23,13 +23,15 @@
     $points = fn (array $values) => collect($values)->map(fn (float $v, int $i) => $x($i).','.$y($v))->join(' ');
     $axis = collect([0, intdiv($count - 1, 2), $count - 1])->unique();
     $percent = fn (?float $rate) => $rate === null ? '—' : number_format($rate * 100, 1).'%';
-    $goalLabel = rtrim(rtrim(number_format($retentionGoal * 100, 1), '0'), '.').'%';
+    $overallRts = $rts['rate'];
 
-    // The graph three ways on the same plot: gross sales, place by gross sales (#1 at the top) and retention (0–100%).
-    // Each line is a list of paths, broken where a slot has no value (retention with nobody due).
+    // The graph three ways on the same plot: gross sales, place by gross sales (#1 at the top) and RTS (0 up to the
+    // highest rate, rounded up to 10%). Each line is a list of paths, broken where a slot has no value (RTS with no
+    // delivered or returned order).
     $places = max(2, $lines->count());
     $rankY = fn (int $place) => round(20 + ($place - 1) / ($places - 1) * 150, 1);
-    $retentionY = fn (float $rate) => round(170 - $rate * 150, 1);
+    $rtsTop = max(0.1, ceil(max([0, ...$products->flatMap(fn (array $product) => array_filter($product['rts_series'], fn ($rate) => $rate !== null))->all()]) * 10) / 10);
+    $rtsY = fn (float $rate) => round(170 - $rate / $rtsTop * 150, 1);
     $paths = fn (callable $point) => $products->values()->map(function (array $product) use ($point, $count) {
         $runs = [[]];
         for ($j = 0; $j < $count; $j++) {
@@ -58,14 +60,12 @@
             'paths' => $paths(fn ($product, $j) => [$x($j), $rankY($product['rank_series'][$j]), $labels[$j].': #'.$product['rank_series'][$j]]),
         ],
     ];
-    if ($unit !== 'hour') {
-        $graphs['retention'] = [
-            'label' => 'Retention', 'title' => "Retention rate per {$unitName}, by product",
-            'note' => "Customers whose time to reorder ended that {$unitName} who came back in time · dashed line = {$goalLabel} goal",
-            'grid' => [[20, '100%'], [57.5, '75%'], [95, '50%'], [132.5, '25%'], [170, '0%']],
-            'paths' => $paths(fn ($product, $j) => $product['retention_series'][$j] === null ? null : [$x($j), $retentionY($product['retention_series'][$j]), $labels[$j].': '.$percent($product['retention_series'][$j]).' came back']),
-        ];
-    }
+    $graphs['rts'] = [
+        'label' => 'RTS', 'title' => "RTS per {$unitName}, by product",
+        'note' => "Returned ÷ delivered + returned, of the orders created that {$unitName}".($overallRts === null ? '' : ' · dashed line = all products, '.$percent($overallRts)),
+        'grid' => [[20, $percent($rtsTop)], [95, $percent($rtsTop / 2)], [170, '0%']],
+        'paths' => $paths(fn ($product, $j) => $product['rts_series'][$j] === null ? null : [$x($j), $rtsY($product['rts_series'][$j]), $labels[$j].': '.$percent($product['rts_series'][$j]).' RTS']),
+    ];
 
     // Pancake's statuses in the order orders move through them, with their badge colors.
     $posStatuses = config('customers.pos_statuses');
@@ -167,9 +167,9 @@
                 @endif
             </div>
             <div class="{{ $tile }}">
-                <p class="{{ $tileLabel }}">Retention</p>
-                <p class="text-2xl font-bold">{{ $percent($retention['rate']) }}</p>
-                <p class="text-xs text-muted">{{ number_format($retention['back']) }} came back of {{ number_format($retention['due']) }} due</p>
+                <p class="{{ $tileLabel }}">RTS</p>
+                <p class="text-2xl font-bold">{{ $percent($rts['rate']) }}</p>
+                <p class="text-xs text-muted">{{ number_format($rts['rts']) }} returned of {{ number_format($rts['finished']) }} delivered or returned</p>
             </div>
         </section>
 
@@ -195,7 +195,7 @@
                                 <p class="text-sm text-muted">▲ / ▼ = places up or down since {{ $previousLabel }}</p>
                             </div>
                             <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Rank by">
-                                @foreach (['sales' => 'Gross sales', 'retention' => 'Retention'] as $by => $byLabel)
+                                @foreach (['sales' => 'Gross sales', 'rts' => 'RTS'] as $by => $byLabel)
                                     <button type="button" data-pp-rank-by="{{ $by }}" aria-pressed="{{ $by === 'sales' ? 'true' : 'false' }}"
                                             class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $byLabel }}</button>
                                 @endforeach
@@ -209,7 +209,7 @@
                                 $maxSales = max(1, $products->max('sales'));
                                 $rankings = [
                                     'sales' => $products->sortBy(fn ($p) => $p['rank'] ?? PHP_INT_MAX)->map(fn ($p) => [...$p, 'place' => $p['rank'], 'was' => $p['previous_rank']]),
-                                    'retention' => $products->sortBy(fn ($p) => $p['retention_rank'] ?? PHP_INT_MAX)->map(fn ($p) => [...$p, 'place' => $p['retention_rank'], 'was' => $p['previous_retention_rank']]),
+                                    'rts' => $products->sortBy(fn ($p) => $p['rts_rank'] ?? PHP_INT_MAX)->map(fn ($p) => [...$p, 'place' => $p['rts_rank'], 'was' => $p['previous_rts_rank']]),
                                 ];
                             @endphp
                             <div class="overflow-x-auto">
@@ -221,8 +221,7 @@
                                             <th scope="col" class="px-2.5 py-2 text-left font-semibold">Product</th>
                                             <th scope="col" class="px-2.5 py-2 text-left font-semibold">Share of gross sales</th>
                                             <th scope="col" class="px-2.5 py-2 text-right font-semibold">Gross sales</th>
-                                            <th scope="col" class="px-2.5 py-2 text-right font-semibold">Delivered</th>
-                                            <th scope="col" class="px-2.5 py-2 text-right font-semibold">Retention <span class="font-normal normal-case">(came back of due)</span></th>
+                                            <th scope="col" class="px-2.5 py-2 text-right font-semibold">RTS <span class="font-normal normal-case">(returned of delivered + returned)</span></th>
                                         </tr>
                                     </thead>
                                     @foreach ($rankings as $by => $rows)
@@ -231,7 +230,7 @@
                                                 @php
                                                     $move = $row['place'] !== null && $row['was'] !== null ? $row['was'] - $row['place'] : null;
                                                     $done = $row['delivered'] + $row['rts'];
-                                                    $rate = $row['retention']['rate'];
+                                                    $rate = $row['rts_rate'];
                                                 @endphp
                                                 <tr>
                                                     <td class="px-2.5 py-2.5">
@@ -256,16 +255,15 @@
                                                         </span>
                                                     </td>
                                                     <td class="px-2.5 py-2.5 text-right font-bold">{{ $peso($row['sales']) }}</td>
-                                                    <td class="px-2.5 py-2.5 text-right">{{ $done ? ProductPerformance::rate($row['delivered'], $done).'%' : '–' }}</td>
                                                     <td class="px-2.5 py-2.5 text-right">
                                                         @if ($rate === null)
-                                                            <span class="text-muted">No one due</span>
+                                                            <span class="text-muted">None delivered yet</span>
                                                         @else
+                                                            {{-- Green at or below all products' RTS, red above it --}}
                                                             <span @class(['rounded-full px-2 py-0.5 text-xs font-bold',
-                                                                'bg-[#dff6f1] text-[#0b6e60]' => $rate >= $retentionGoal,
-                                                                'bg-[#fff3d6] text-[#8a5f08]' => $rate < $retentionGoal && $rate >= $retentionGoal - 0.1,
-                                                                'bg-[#fde4e4] text-[#9e2f33]' => $rate < $retentionGoal - 0.1])>{{ $percent($rate) }}</span>
-                                                            <span class="mt-0.5 block text-[11px] text-muted">{{ number_format($row['retention']['back']) }} of {{ number_format($row['retention']['due']) }}</span>
+                                                                'bg-[#dff6f1] text-[#0b6e60]' => $rate <= $overallRts,
+                                                                'bg-[#fde4e4] text-[#9e2f33]' => $rate > $overallRts])>{{ $percent($rate) }}</span>
+                                                            <span class="mt-0.5 block text-[11px] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
                                                         @endif
                                                     </td>
                                                 </tr>
@@ -314,9 +312,9 @@
                                             <line x1="0" y1="{{ $gridY }}" x2="640" y2="{{ $gridY }}" stroke="#ebe6ee"/>
                                             <text x="-6" y="{{ $gridY + 4 }}" font-size="11" fill="#4f5563" text-anchor="end">{{ $gridLabel }}</text>
                                         @endforeach
-                                        @if ($mode === 'retention')
-                                            <line x1="0" y1="{{ $retentionY($retentionGoal) }}" x2="640" y2="{{ $retentionY($retentionGoal) }}" stroke="#343a40" stroke-width="1.5" stroke-dasharray="5 4"/>
-                                            <text x="640" y="{{ $retentionY($retentionGoal) - 5 }}" font-size="11" font-weight="600" fill="#343a40" text-anchor="end">Goal {{ $goalLabel }}</text>
+                                        @if ($mode === 'rts' && $overallRts !== null)
+                                            <line x1="0" y1="{{ $rtsY($overallRts) }}" x2="640" y2="{{ $rtsY($overallRts) }}" stroke="#343a40" stroke-width="1.5" stroke-dasharray="5 4"/>
+                                            <text x="640" y="{{ $rtsY($overallRts) - 5 }}" font-size="11" font-weight="600" fill="#343a40" text-anchor="end">All products {{ $percent($overallRts) }}</text>
                                         @endif
                                         @foreach ($lines as $i => $line)
                                             <g data-pp-line="{{ $i }}" @unless ($line['shown']) display="none" @endunless>
@@ -458,8 +456,7 @@
                 <div><dt class="font-semibold text-ink">Gross sales</dt><dd>The order's sale before Pancake's discount (Shecom's sale once synced), every status. An order with several products splits it by SRP × qty, else by qty (same as Order Database → Product Report).</dd></div>
                 <div><dt class="font-semibold text-ink">Delivered and RTS</dt><dd>Orders, not pesos: delivered (incl. payment collected) ÷ delivered + RTS (returning, returned, partially returned). E.g. 80/95 = 84%. Shipped orders count once they arrive or come back.</dd></div>
                 <div><dt class="font-semibold text-ink">Cancelled</dt><dd>Cancelled orders ÷ every order of the product. Below the boxes: the product's orders in every Pancake status it has at least one order in.</dd></div>
-                <div><dt class="font-semibold text-ink">Ranking</dt><dd>Each product's place by gross sales (or by retention) in these dates; ▲ / ▼ = places up or down against its place in {{ $previousLabel }}. New = no sales (or nobody due) then. The Rank graph shows the place in every {{ $unitName }}.</dd></div>
-                <div><dt class="font-semibold text-ink">Retention</dt><dd>Customers whose time to reorder ended in these dates, counted as the dashboard's churn rate does (delivered date + qty × consumption days, then {{ config('customers.churn_grace_days') }} days to order again), under the product of that delivery. Retention = came back in time ÷ due; goal {{ $goalLabel }}.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Ranking</dt><dd>Each product's place by gross sales (#1 = the most), or by lowest RTS (#1 = the fewest returns), in these dates; ▲ / ▼ = places up or down against its place in {{ $previousLabel }}. New = no sales (or no delivered or returned orders) then. The ranking's RTS is green at or below all products' RTS and red above it. The Rank graph shows the place by gross sales in every {{ $unitName }}; the RTS graph shows each product's RTS of the orders created that {{ $unitName }}.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Compared with</dt><dd>The same number of days just before ({{ $previousLabel }}). The chart shows each product's gross sales per hour for a day, per day up to two months, and per week beyond; click a product above the chart to show or hide its line.</dd></div>
             </dl>
         </details>
