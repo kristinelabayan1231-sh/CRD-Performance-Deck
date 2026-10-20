@@ -39,7 +39,7 @@ class CvrTracker
         $entries = CvrOrderEntry::whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))->get()->keyBy('pancake_order_id');
         // The sheet's order first, then the rest by time.
         $orders = $orders->sortBy(fn (PancakeOrder $order) => [$entries->get($order->pancake_order_id)?->position ?? PHP_INT_MAX, $order->ordered_at?->getTimestamp() ?? 0, $order->id]);
-        $assigned = $this->assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
+        $assigned = self::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
 
         // Canceled / deleted: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged).
@@ -54,9 +54,7 @@ class CvrTracker
         $rows = $orders->map(function (PancakeOrder $order) use ($entries, $assigned, $earlier) {
             $entry = $entries[$order->pancake_order_id] ?? null;
             $type = $entry?->order_type ?? $order->conversion_type;
-            $matched = $entry?->lead_source !== null
-                ? $entry->lead_source === CvrOrderEntry::ASSIGNED
-                : $order->phone_key !== null && isset($assigned[$order->phone_key]);
+            $matched = self::matchesAssignedLead($order, $entry, $assigned);
 
             return [
                 'id' => $order->pancake_order_id,
@@ -65,8 +63,7 @@ class CvrTracker
                 'page' => $order->page_name,
                 'customer' => $order->customer_name,
                 'amount' => $order->sales(),
-                // A Segmentation order is always an assigned lead; else the sheet's pick or a matching tracker lead.
-                'assigned' => $type === PancakeOrder::SEGMENTATION || $matched,
+                'assigned' => self::isAssignedLead($order, $entry, $assigned),
                 'matched' => $matched,
                 'seller' => $order->seller_name,
                 'upsell' => $entry?->upsell,
@@ -127,12 +124,35 @@ class CvrTracker
     }
 
     /**
+     * Whether the order is an Assigned lead (else Pancake): its Type of Order is Segmentation, or it matches an assigned lead.
+     *
+     * @param  array<string, true>  $assignedNumbers  from assignedNumbers()
+     */
+    public static function isAssignedLead(PancakeOrder $order, ?CvrOrderEntry $entry, array $assignedNumbers): bool
+    {
+        return ($entry?->order_type ?? $order->conversion_type) === PancakeOrder::SEGMENTATION
+            || self::matchesAssignedLead($order, $entry, $assignedNumbers);
+    }
+
+    /**
+     * The sheet's Assigned / Pancake pick when there is one, else whether the number matches a lead assigned to any CRA.
+     *
+     * @param  array<string, true>  $assignedNumbers  from assignedNumbers()
+     */
+    private static function matchesAssignedLead(PancakeOrder $order, ?CvrOrderEntry $entry, array $assignedNumbers): bool
+    {
+        return $entry?->lead_source !== null
+            ? $entry->lead_source === CvrOrderEntry::ASSIGNED
+            : $order->phone_key !== null && isset($assignedNumbers[$order->phone_key]);
+    }
+
+    /**
      * The numbers among $phoneKeys that belong to a lead assigned to a CRA in the Segmentation Tracker.
      *
      * @param  list<string>  $phoneKeys
      * @return array<string, true>
      */
-    private function assignedNumbers(array $phoneKeys): array
+    public static function assignedNumbers(array $phoneKeys): array
     {
         if ($phoneKeys === []) {
             return [];

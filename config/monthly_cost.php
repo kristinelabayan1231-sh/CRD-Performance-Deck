@@ -31,7 +31,7 @@ return [
         'sales_manager_share' => 33.33,
         'vp_salary' => 0,
         'vp_share' => 33.33,
-        'ceo_salary' => 126000,
+        'ceo_salary' => 132300,
         'ceo_share' => 33.33,
 
         // Government benefits per person a month.

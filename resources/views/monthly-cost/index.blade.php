@@ -141,13 +141,42 @@
                                 <td colspan="3" class="px-4 py-2 text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Shared salaries</td>
                             </tr>
                             @foreach ($shared as $part)
-                                <tr>
+                                @php($sharedKey = 'shared-'.$part['key'])
+                                @php($isEditing = $editing === $sharedKey)
+                                <tr data-cost-view="{{ $sharedKey }}" @if ($isEditing) hidden @endif>
                                     <td class="px-4 py-2.5 text-muted">
                                         {{ $part['share'] + 0 }}% of {{ $part['label'] }}
                                         <span class="block text-xs tabular-nums">₱{{ number_format($part['salary'], 2) }} × {{ $part['share'] + 0 }}%</span>
                                     </td>
                                     <td class="px-3 py-2.5 text-right font-semibold tabular-nums">{{ $plain($part['amount']) }}</td>
-                                    <td></td>
+                                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                                        <button type="button" data-cost-edit="{{ $sharedKey }}" aria-label="Edit {{ $part['label'] }}'s shared salary" class="rounded-lg p-2 text-muted hover:bg-brand-50 hover:text-brand-600">
+                                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {{-- Edit in place: saves only this salary and CRD's share --}}
+                                @php($formId = 'cost-'.$sharedKey)
+                                @php($sharedValue = fn (string $field) => $isEditing ? old($field) : $cost->setting($field) + 0)
+                                <tr data-cost-form="{{ $sharedKey }}" @unless ($isEditing) hidden @endunless class="bg-brand-50/70 align-top">
+                                    <td class="px-4 py-3">
+                                        <span class="font-semibold">{{ $part['label'] }}</span>
+                                        <label class="mt-1.5 flex items-center gap-2 text-xs text-muted">
+                                            CRD's share (%)
+                                            <input form="{{ $formId }}" name="{{ $part['key'] }}_share" type="number" min="0" max="100" step="0.01" required value="{{ $sharedValue($part['key'].'_share') }}"
+                                                   class="h-8 w-24 rounded-lg border border-line bg-white px-2.5 text-right text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                                        </label>
+                                    </td>
+                                    <td class="px-3 py-3 text-right">
+                                        <label class="sr-only" for="{{ $formId }}-salary">{{ $part['label'] }} salary</label>
+                                        <input id="{{ $formId }}-salary" form="{{ $formId }}" name="{{ $part['key'] }}_salary" type="number" min="0" step="0.01" required value="{{ $sharedValue($part['key'].'_salary') }}"
+                                               class="h-9 w-32 rounded-lg border border-line bg-white px-2.5 text-right text-sm tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                                        <span class="mt-1 block text-xs text-muted">Full salary</span>
+                                    </td>
+                                    <td class="px-3 py-3 text-right whitespace-nowrap">
+                                        <button type="submit" form="{{ $formId }}" class="h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Save</button>
+                                        <button type="button" data-cost-cancel="{{ $sharedKey }}" class="h-9 rounded-lg border border-line bg-white px-3 text-xs font-semibold">Cancel</button>
+                                    </td>
                                 </tr>
                             @endforeach
                             <tr class="border-t-2 border-ink">
@@ -163,6 +192,9 @@
                 <form id="cost-row-new" method="POST" action="{{ route('monthly-cost.store') }}">@csrf<input type="hidden" name="editing" value="new"></form>
                 @foreach ($rows as $row)
                     <form id="cost-row-{{ $row->id }}" method="POST" action="{{ route('monthly-cost.update', $row) }}">@csrf @method('PATCH')<input type="hidden" name="editing" value="{{ $row->id }}"></form>
+                @endforeach
+                @foreach ($shared as $part)
+                    <form id="cost-shared-{{ $part['key'] }}" method="POST" action="{{ route('monthly-cost.settings') }}">@csrf @method('PUT')<input type="hidden" name="editing" value="shared-{{ $part['key'] }}"></form>
                 @endforeach
             </x-panel>
 
