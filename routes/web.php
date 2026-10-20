@@ -125,6 +125,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
         Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
+        Route::post('/refresh', [CvrTrackerController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
         Route::put('/orders/{orderId}', [CvrTrackerController::class, 'updateOrder'])->name('orders.update');
         Route::put('/days', [CvrTrackerController::class, 'updateDay'])->name('days.update');
     });

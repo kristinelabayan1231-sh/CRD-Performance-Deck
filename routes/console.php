@@ -34,6 +34,13 @@ Schedule::command('pancake:sync --tags')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(10);
 
+// CVR Tracker: the orders made since the last run and today's tag changes every minute (one or two small
+// Pancake requests), so CRAs see a new order within a minute or two instead of waiting on the full sync.
+Schedule::command('pancake:sync --new')
+    ->everyMinute()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(5);
+
 Schedule::command('pancake:sync --date=yesterday')
     ->dailyAt('00:30')
     ->timezone(config('segmentation.timezone'))

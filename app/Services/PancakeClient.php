@@ -465,10 +465,11 @@ class PancakeClient
     /**
      * Every POS order created on $day (segmentation timezone), trimmed to the
      * fields Segmentation Productivity uses; full orders are large.
+     * With $since, only the ones created from then on (the CVR Tracker's quick refresh).
      *
      * @return list<array<string, mixed>>
      */
-    public function orders(CarbonImmutable $day): array
+    public function orders(CarbonImmutable $day, ?CarbonImmutable $since = null): array
     {
         $shop = config('services.pancake.shop_id');
         // A user access token works when the shop's API keys are refused; otherwise the API key.
@@ -481,6 +482,7 @@ class PancakeClient
         }
 
         $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
+        $from = $since && $since->greaterThan($start) ? $since : $start;
         $orders = [];
         $page = 1;
 
@@ -492,7 +494,7 @@ class PancakeClient
                     ...$auth,
                     'page_size' => 50,
                     'page_number' => $page,
-                    'startDateTime' => $start->getTimestamp(),
+                    'startDateTime' => $from->getTimestamp(),
                     'endDateTime' => $start->endOfDay()->getTimestamp(),
                     'updateStatus' => 'inserted_at',
                 ]).'&'.collect(self::ORDER_FIELDS)->map(fn (string $field) => 'fields[]='.$field)->join('&'));

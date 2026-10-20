@@ -17,22 +17,32 @@
         <header class="flex flex-wrap items-center justify-between gap-4">
             <h1 class="text-xl font-semibold">CVR Tracker <span class="text-sm font-normal text-muted">· Reorders each CRA converted</span></h1>
 
-            <form method="GET" action="{{ route('cvr-tracker.index') }}" class="flex h-9 items-center rounded-lg border border-line bg-white text-sm">
-                @if ($cra)
-                    <input type="hidden" name="cra" value="{{ $cra->id }}">
+            <div class="flex flex-wrap items-center gap-3">
+                @if ($day->isSameDay($today))
+                    <span class="text-xs text-muted">Orders updated {{ $refreshedAt ? $refreshedAt->timezone(config('segmentation.timezone'))->format('g:i A') : 'not yet today' }}</span>
+                    <form method="POST" action="{{ route('cvr-tracker.refresh') }}">
+                        @csrf
+                        <button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Refresh orders</button>
+                    </form>
                 @endif
-                <a href="{{ $dayLink($day->subDay()) }}" class="grid h-full w-8 place-items-center rounded-l-lg text-muted hover:text-brand-600" aria-label="Previous day">‹</a>
-                <label>
-                    <span class="sr-only">Day</span>
-                    <input type="date" name="date" value="{{ $day->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()"
-                           class="h-8 border-0 bg-transparent px-1 text-sm font-semibold focus:ring-0 focus:outline-none">
-                </label>
-                @if ($day->lessThan($today))
-                    <a href="{{ $dayLink($day->addDay()) }}" class="grid h-full w-8 place-items-center rounded-r-lg text-muted hover:text-brand-600" aria-label="Next day">›</a>
-                @else
-                    <span class="grid h-full w-8 place-items-center text-muted/40" aria-hidden="true">›</span>
-                @endif
-            </form>
+
+                <form method="GET" action="{{ route('cvr-tracker.index') }}" class="flex h-9 items-center rounded-lg border border-line bg-white text-sm">
+                    @if ($cra)
+                        <input type="hidden" name="cra" value="{{ $cra->id }}">
+                    @endif
+                    <a href="{{ $dayLink($day->subDay()) }}" class="grid h-full w-8 place-items-center rounded-l-lg text-muted hover:text-brand-600" aria-label="Previous day">‹</a>
+                    <label>
+                        <span class="sr-only">Day</span>
+                        <input type="date" name="date" value="{{ $day->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()"
+                               class="h-8 border-0 bg-transparent px-1 text-sm font-semibold focus:ring-0 focus:outline-none">
+                    </label>
+                    @if ($day->lessThan($today))
+                        <a href="{{ $dayLink($day->addDay()) }}" class="grid h-full w-8 place-items-center rounded-r-lg text-muted hover:text-brand-600" aria-label="Next day">›</a>
+                    @else
+                        <span class="grid h-full w-8 place-items-center text-muted/40" aria-hidden="true">›</span>
+                    @endif
+                </form>
+            </div>
         </header>
 
         @if ($data && $data['issues']->isNotEmpty())
