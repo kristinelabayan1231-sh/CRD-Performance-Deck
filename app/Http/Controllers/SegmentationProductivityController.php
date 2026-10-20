@@ -158,7 +158,12 @@ class SegmentationProductivityController extends Controller
             ];
         })->values();
 
+        // Backlog progress for the day or week picked.
+        $backlog = $productivity->backlog($shown, $period['from'], $period['to']);
+
         return view('productivity.index', [
+            'backlog' => $rows->map(fn (array $r) => ['cra' => $r['cra'], 'color' => $r['color'], ...$backlog[$r['cra']->id]])->all(),
+            'backlogTotal' => SegmentationProductivity::sumBacklog($backlog),
             'view' => $view,
             'metric' => $metric,
             'metrics' => self::METRICS,

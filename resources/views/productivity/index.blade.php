@@ -400,11 +400,62 @@
                     </table>
                 </div>
             </x-panel>
+
+            {{-- Older leads handed to each CRA (daily fill or transfer): how many they worked and how many reordered --}}
+            <x-panel :title="'Backlog progress · '.$period['label']" icon="clock" title-id="backlog-title" :tinted="false" body-class="">
+                <x-slot:actions>
+                    <p class="text-muted">Older leads handed to each CRA (daily fill or transfer): how many they worked and how many reordered.</p>
+                </x-slot:actions>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[860px] text-sm">
+                        <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
+                            <tr>
+                                <th class="px-4 py-2.5 text-left font-semibold">CRA</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Backlog handed out</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Catered</th>
+                                <th class="w-64 px-3 py-2.5 text-left font-semibold">Progress</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Reordered</th>
+                                <th class="px-4 py-2.5 text-right font-semibold">Reorder rate</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-line whitespace-nowrap tabular-nums">
+                            @foreach ([...$backlog, ['total' => true, ...$backlogTotal]] as $b)
+                                @php($isTotal = $b['total'] ?? false)
+                                <tr @class(['bg-ink font-semibold text-white' => $isTotal])>
+                                    <td class="px-4 py-2.5 font-medium">
+                                        @if ($isTotal)
+                                            TOTAL
+                                        @else
+                                            <span class="flex items-center gap-2"><span class="size-2.5 shrink-0 rounded-full" style="background: {{ $b['color'] }}"></span>{{ $b['cra']->displayName() }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2.5 text-right">{{ $fmt($b['handed']) }}</td>
+                                    <td class="px-3 py-2.5 text-right">{{ $fmt($b['catered']) }}</td>
+                                    <td class="px-3 py-2.5">
+                                        <span class="flex items-center gap-2.5">
+                                            <span @class(['h-2 flex-1 overflow-hidden rounded-full', 'bg-white/20' => $isTotal, 'bg-brand-100' => ! $isTotal])>
+                                                <span @class(['block h-full rounded-full', 'bg-brand-200' => $isTotal, 'bg-brand-600' => ! $isTotal]) style="width: {{ round(($b['progress'] ?? 0) * 100, 1) }}%"></span>
+                                            </span>
+                                            <span class="min-w-14 text-right font-semibold">{{ $fmt($b['progress'], 'percent') }}</span>
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2.5 text-right font-semibold">{{ $fmt($b['reordered']) }}</td>
+                                    <td class="px-4 py-2.5 text-right">{{ $fmt($b['rate'], 'percent') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-panel>
         @endif
 
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
+                <div><dt class="font-semibold text-ink">Backlog handed out</dt><dd>Leads from earlier lead days given to the CRA on the lead days paired with the dates picked (Settings → Working Date): by the daily fill (their own untouched leads or the pool) or a transfer. Counted from Oct 20, 2026, when this started being recorded.</dd></div>
+                <div><dt class="font-semibold text-ink">Backlog catered</dt><dd>Of those, leads with a status, a date of contact, or marked catered.</dd></div>
+                <div><dt class="font-semibold text-ink">Backlog progress</dt><dd>Backlog catered ÷ Backlog handed out.</dd></div>
+                <div><dt class="font-semibold text-ink">Reordered · Reorder rate</dt><dd>Of those, customers with Repeat Purchase = Yes bought on or after the day they were handed out (the same purchases the dashboard's Retained and Repeat count), and that count ÷ Backlog handed out.</dd></div>
                 <div><dt class="font-semibold text-ink">Assigned transactions</dt><dd>Segmentation Tracker leads assigned to the CRA for that lead day. The base is {{ $base }}; the actual count is used.</dd></div>
                 <div><dt class="font-semibold text-ink">Answered (calls &amp; chat)</dt><dd>Tracker leads with that Contact Date, plus the CRA's Pancake customer engagements (Chat → Analytics → Engagements) across all pages.</dd></div>
                 <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION. Canceled and deleted orders don't count.</dd></div>

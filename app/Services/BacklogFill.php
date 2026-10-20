@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BacklogHandout;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
@@ -94,6 +95,15 @@ class BacklogFill
                 LeadMove::insert(array_map(fn (Lead $lead) => [
                     'lead_id' => $lead->id, 'assigned_to' => $craId, 'listed_on' => $lead->listed_on->toDateString(),
                     'moved_to' => $day->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+                ], $chunk));
+            }
+
+            // Who got each one, for Segmentation Productivity's Backlog progress.
+            foreach (array_chunk($leads, 500) as $chunk) {
+                BacklogHandout::insert(array_map(fn (Lead $lead) => [
+                    'lead_id' => $lead->id, 'user_id' => $craId, 'handed_on' => $day->toDateString(),
+                    'source' => $lead->assigned_to !== null ? BacklogHandout::OWN : BacklogHandout::POOL,
+                    'created_at' => now(), 'updated_at' => now(),
                 ], $chunk));
             }
 
