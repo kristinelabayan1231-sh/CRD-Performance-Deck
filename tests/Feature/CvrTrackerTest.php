@@ -178,6 +178,18 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([$this->regina->id => 5, $this->julyAnn->id => 0], $response->viewData('counts')->all());
     }
 
+    public function test_orders_under_the_cras_other_pancake_account_count_as_theirs(): void
+    {
+        config(['customers.cra_account_aliases' => ['REGINA OLD' => 'Regina V']]);
+        $own = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000001');
+        $alias = $this->order($this->regina, PancakeOrder::BROADCAST, 499, '9170000002', ['seller_name' => 'REGINA OLD']);
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cvr-tracker.index', ['date' => self::DAY, 'cra' => $this->regina->id]));
+
+        $this->assertEqualsCanonicalizing([$own->pancake_order_id, $alias->pancake_order_id], array_column($response->viewData('data')['orders'], 'id'));
+        $this->assertSame([$this->regina->id => 2, $this->julyAnn->id => 0], $response->viewData('counts')->all());
+    }
+
     public function test_cra_can_edit_an_order_counted_for_them_but_its_seller_cannot(): void
     {
         $order = $this->order($this->julyAnn, PancakeOrder::SEGMENTATION, 1000, '9170000004');

@@ -233,10 +233,10 @@
                                                     $rate = $row['rts_rate'];
                                                 @endphp
                                                 <tr>
-                                                    <td class="px-2.5 py-2.5">
-                                                        <span @class(['grid size-7 place-items-center rounded-lg font-bold', 'bg-brand-600 text-white' => $row['place'] !== null && $row['place'] <= 3, 'bg-brand-50 text-brand-700' => $row['place'] === null || $row['place'] > 3])>{{ $row['place'] ?? '–' }}</span>
+                                                    <td class="px-2.5 py-1.5">
+                                                        <span @class(['grid size-6 place-items-center rounded-md text-xs font-bold', 'bg-brand-600 text-white' => $row['place'] !== null && $row['place'] <= 3, 'bg-brand-50 text-brand-700' => $row['place'] === null || $row['place'] > 3])>{{ $row['place'] ?? '–' }}</span>
                                                     </td>
-                                                    <td class="px-2.5 py-2.5 text-xs font-bold whitespace-nowrap">
+                                                    <td class="px-2.5 py-1.5 text-xs font-bold whitespace-nowrap">
                                                         @if ($move === null)
                                                             <span class="text-muted">{{ $row['place'] !== null && $row['was'] === null ? 'New' : '–' }}</span>
                                                         @elseif ($move > 0)
@@ -247,23 +247,24 @@
                                                             <span class="text-muted">=</span>
                                                         @endif
                                                     </td>
-                                                    <td class="px-2.5 py-2.5 font-semibold"><span class="flex items-center gap-2"><span class="size-2.5 shrink-0 rounded-full" style="background: {{ $colors[$row['product']] }}" aria-hidden="true"></span>{{ $row['product'] }}</span></td>
-                                                    <td class="px-2.5 py-2.5">
+                                                    <td class="px-2.5 py-1.5 font-semibold"><span class="flex items-center gap-2"><span class="size-2.5 shrink-0 rounded-full" style="background: {{ $colors[$row['product']] }}" aria-hidden="true"></span>{{ $row['product'] }}</span></td>
+                                                    <td class="px-2.5 py-1.5">
                                                         <span class="flex items-center gap-2">
                                                             <span class="h-2 min-w-20 flex-1 overflow-hidden rounded-full bg-brand-50"><span class="block h-full rounded-full" style="width: {{ $row['sales'] / $maxSales * 100 }}%; background: {{ $colors[$row['product']] }}"></span></span>
                                                             <span class="w-11 text-right">{{ ProductPerformance::rate($row['sales'], $total['sales']) ?? 0 }}%</span>
                                                         </span>
                                                     </td>
-                                                    <td class="px-2.5 py-2.5 text-right font-bold">{{ $peso($row['sales']) }}</td>
-                                                    <td class="px-2.5 py-2.5 text-right">
+                                                    <td class="px-2.5 py-1.5 text-right font-bold">{{ $peso($row['sales']) }}</td>
+                                                    <td class="px-2.5 py-1.5 text-right">
                                                         @if ($rate === null)
                                                             <span class="text-muted">None delivered yet</span>
                                                         @else
                                                             {{-- Green at or below all products' RTS, red above it --}}
+                                                            <span class="mr-1.5 text-[11px] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
                                                             <span @class(['rounded-full px-2 py-0.5 text-xs font-bold',
                                                                 'bg-[#dff6f1] text-[#0b6e60]' => $rate <= $overallRts,
                                                                 'bg-[#fde4e4] text-[#9e2f33]' => $rate > $overallRts])>{{ $percent($rate) }}</span>
-                                                            <span class="mt-0.5 block text-[11px] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
+                                                            
                                                         @endif
                                                     </td>
                                                 </tr>
@@ -276,7 +277,7 @@
                     </section>
 
                     {{-- Graph & insights --}}
-                    <div class="grid min-w-0 shrink-0 basis-full items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]" aria-roledescription="slide" aria-label="Graph and insights" data-pp-panel>
+                    <div class="grid min-w-0 shrink-0 basis-full gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]" aria-roledescription="slide" aria-label="Graph and insights" data-pp-panel>
                         <section class="min-w-0 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="pp-trend-title">
                             <div class="flex flex-wrap items-start justify-between gap-3">
                                 <div>
@@ -305,7 +306,7 @@
                                 @endforeach
                             </div>
 
-                            <svg viewBox="-34 0 682 200" class="mt-3 h-auto w-full sm:h-60" role="img" aria-label="Gross sales per {{ $unitName }} per product, {{ $label }}" data-pp-svg>
+                            <svg viewBox="-60 0 708 200" class="mt-3 h-auto w-full sm:h-60" role="img" aria-label="Gross sales per {{ $unitName }} per product, {{ $label }}" data-pp-svg>
                                 @foreach ($graphs as $mode => $graph)
                                     <g data-pp-graph-body="{{ $mode }}" @if ($mode !== 'sales') display="none" @endif>
                                         @foreach ($graph['grid'] as [$gridY, $gridLabel])
@@ -338,9 +339,11 @@
                             </svg>
                         </section>
 
-                        <aside class="rounded-xl bg-white p-5 shadow-sm" aria-labelledby="pp-insights-title">
-                            <h2 id="pp-insights-title" class="mb-3 font-semibold">Insights <span class="text-sm font-normal text-muted">· {{ count($insights) }}</span></h2>
-                            <ul class="divide-y divide-line">
+                        {{-- As tall as the graph on wide screens (the list scrolls), so the panel has no empty space under the graph --}}
+                        <aside class="relative min-h-60 rounded-xl bg-white shadow-sm" aria-labelledby="pp-insights-title">
+                            <div class="flex flex-col p-5 lg:absolute lg:inset-0">
+                            <h2 id="pp-insights-title" class="mb-3 shrink-0 font-semibold">Insights <span class="text-sm font-normal text-muted">· {{ count($insights) }}</span></h2>
+                            <ul class="min-h-0 flex-1 divide-y divide-line overflow-y-auto pr-1">
                                 @forelse ($insights as $insight)
                                     <li class="flex gap-2.5 py-3 text-sm first:pt-0 last:pb-0">
                                         <span @class(['mt-1.5 size-2 shrink-0 rounded-full', 'bg-teal-700' => $insight['tone'] === 'good', 'bg-coral-700' => $insight['tone'] === 'bad', 'bg-sky' => $insight['tone'] === 'neutral']) aria-hidden="true"></span>
@@ -353,6 +356,7 @@
                                     <li class="text-sm text-muted">No orders in these dates.</li>
                                 @endforelse
                             </ul>
+                            </div>
                         </aside>
                     </div>
                 </div>

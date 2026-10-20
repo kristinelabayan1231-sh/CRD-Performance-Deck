@@ -97,7 +97,7 @@ class ProductPerformanceTest extends TestCase
         $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
             ->assertOk()
             ->assertSeeInOrder(['RTS', '16.7%', '1 returned of 6 delivered or returned'])
-            ->assertSeeInOrder(['Ranking', '1', '▲ 1', 'Canpro', '0.0%', '0 of 1', '2', '▼ 1', 'Sinuxyl', '20.0%', '1 of 5'])
+            ->assertSeeInOrder(['Ranking', '1', '▲ 1', 'Canpro', '0 of 1', '0.0%', '2', '▼ 1', 'Sinuxyl', '1 of 5', '20.0%'])
             ->assertSee('Canpro moved up to #1')
             ->assertSee('Sinuxyl dropped to #2')
             ->assertSee('Sinuxyl has the highest RTS: 20% (1/5)')
