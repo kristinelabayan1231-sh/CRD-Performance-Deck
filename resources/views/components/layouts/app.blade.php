@@ -53,6 +53,9 @@
                 @can('daily_is.view')
                     <x-nav-link :href="route('daily-is.index')" :active="request()->routeIs('daily-is.*')" icon="statement">Daily I.S.</x-nav-link>
                 @endcan
+                @can('mni.view')
+                    <x-nav-link :href="route('mni.index')" :active="request()->routeIs('mni.*')" icon="target">Monthly MNI</x-nav-link>
+                @endcan
                 @can('order_database.view')
                     <x-nav-link :href="route('order-database.cra-performance')" :active="request()->routeIs('order-database.*')" icon="orders">Order Database</x-nav-link>
                 @endcan

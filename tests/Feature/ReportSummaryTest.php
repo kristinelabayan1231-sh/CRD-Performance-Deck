@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DutyCount;
 use App\Models\DutyLogin;
 use App\Models\PancakeOrder;
+use App\Models\PcReportEntry;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -91,6 +92,21 @@ class ReportSummaryTest extends TestCase
                 'Daily sales report · Thu, Oct 1, 2026', 'TOTAL', 'No. of Customer Retention Associates (On Duty)', '2',
                 'Average Sales per Customer Retention Associate', '₱500.00'])
             ->assertDontSeeText('₱3,333.33');
+    }
+
+    public function test_leads_engagement_and_conv_come_from_the_daily_is(): void
+    {
+        $this->sheetOrders();
+        // Lhea's PC Report counts on a Sinuxyl page; a page in no product group is left out.
+        foreach ([['2026-10-01', 'Sinuxyl Nasal Spray', 200, 100], ['2026-10-02', 'Sinuxyl Nasal Spray', 50, 40], ['2026-10-01', 'Some Other Page', 999, 999]] as [$date, $page, $inquiries, $engagements]) {
+            PcReportEntry::create(['user_id' => $this->lhea->id, 'page' => $page, 'category' => '', 'date' => $date, 'inquiries' => $inquiries, 'engagements' => $engagements]);
+        }
+        $reach = fn (array $report) => array_map(fn (string $key) => $report['rows']->firstWhere('cra.id', $this->lhea->id)['metrics'][$key], ['is_leads', 'is_engagements', 'conv']);
+
+        $this->actingAs($this->supervisor)->get(route('report-summary.index', ['month' => '2026-10', 'week' => 1, 'date' => '2026-10-01']))->assertOk()
+            // The week: Lhea's 3 orders (the canceled one left out) over 140 engagements.
+            ->assertViewHas('periodReport', fn (array $week) => $reach($week) === [250, 140, 3 / 140] && $week['total']['is_leads'] === 250)
+            ->assertViewHas('dayReport', fn (array $day) => $reach($day) === [200, 100, 0.02]);
     }
 
     public function test_the_weekly_section_flips_to_month_to_date_and_opens_on_this_week_and_today(): void

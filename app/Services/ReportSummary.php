@@ -12,12 +12,13 @@ use Illuminate\Support\Collection;
  *
  * Orders BC / SC and Gross BC / SC are Conversion Breakdown's. Total gross = Gross BC + Gross SC.
  * AOV = Total gross ÷ (Orders BC + Orders SC). Average sales per CRA = Gross BC ÷ CRAs on duty.
- * Leads, Engagement and Net income will come from the Oct 1 I.S. (not in yet), so Conv %, I.BSC %
- * and Average IBSC per CRA wait for them.
+ * Leads and Engagement are the Daily I.S. totals (PC Report Total Inquiries / Total Engagement on the product pages),
+ * added up over the days. Conv % = (Orders BC + Orders SC) ÷ Engagement. Net income will come from the I.S. once the
+ * MNI is in, so I.BSC % and Average IBSC per CRA wait for it.
  */
 class ReportSummary
 {
-    public function __construct(private ConversionBreakdown $breakdown) {}
+    public function __construct(private ConversionBreakdown $breakdown, private DailyIncomeStatement $statement) {}
 
     /**
      * @param  Collection<int, User>  $cras
@@ -26,13 +27,17 @@ class ReportSummary
     public function for(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $days = $this->breakdown->days($cras, $from, $to);
+        $reach = $this->statement->reach($cras, $from, $to);
 
         $rows = $cras->map(fn (User $cra) => [
             'cra' => $cra,
-            'metrics' => self::metrics(ConversionBreakdown::sum($days[$cra->id] ?? [])),
+            'metrics' => self::metrics(ConversionBreakdown::sum($days[$cra->id] ?? []), $reach[$cra->id]),
         ])->values();
 
-        $total = self::metrics(ConversionBreakdown::sum($rows->pluck('metrics')));
+        $total = self::metrics(ConversionBreakdown::sum($rows->pluck('metrics')), [
+            'leads' => $rows->sum('metrics.is_leads'),
+            'engagements' => $rows->sum('metrics.is_engagements'),
+        ]);
         $onDuty = OnDuty::countFor($from, $to);
 
         return [
@@ -45,10 +50,17 @@ class ReportSummary
 
     /**
      * @param  array<string, int|float|null>  $sum
+     * @param  array{leads: int, engagements: int}  $reach  Daily I.S. leads and engagements
      * @return array<string, int|float|null>
      */
-    private static function metrics(array $sum): array
+    private static function metrics(array $sum, array $reach): array
     {
-        return [...$sum, 'aov' => $sum['orders'] ? $sum['gross'] / $sum['orders'] : null];
+        return [
+            ...$sum,
+            'aov' => $sum['orders'] ? $sum['gross'] / $sum['orders'] : null,
+            'is_leads' => $reach['leads'],
+            'is_engagements' => $reach['engagements'],
+            'conv' => $reach['engagements'] ? $sum['orders'] / $reach['engagements'] : null,
+        ];
     }
 }

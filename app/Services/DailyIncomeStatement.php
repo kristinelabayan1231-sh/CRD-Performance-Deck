@@ -57,8 +57,7 @@ class DailyIncomeStatement
             }
         }
 
-        PcReportEntry::whereIn('user_id', $cras->pluck('id'))->whereIn('page', $groupOf->keys())->whereDate('date', $day)
-            ->get(['user_id', 'page', 'inquiries', 'engagements'])
+        $this->entries($cras, $groupOf->keys()->all(), $day, $day)
             ->each(function (PcReportEntry $entry) use (&$figures, $groupOf) {
                 $slug = $groupOf[$entry->page];
                 $figures[$entry->user_id][$slug]['leads'] += (int) $entry->inquiries;
@@ -90,6 +89,39 @@ class DailyIncomeStatement
             ],
             'missingPage' => $missingPage,
         ];
+    }
+
+    /**
+     * Each CRA's total leads/inquiries and engagements over $from–$to, every product added up (Report Summary).
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{leads: int, engagements: int}> cra id => totals
+     */
+    public function reach(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $pages = collect(ProductGroups::all())->pluck('pages')->flatten()->all();
+        $totals = $cras->mapWithKeys(fn (User $cra) => [$cra->id => ['leads' => 0, 'engagements' => 0]])->all();
+
+        foreach ($this->entries($cras, $pages, $from, $to) as $entry) {
+            $totals[$entry->user_id]['leads'] += (int) $entry->inquiries;
+            $totals[$entry->user_id]['engagements'] += (int) $entry->engagements;
+        }
+
+        return $totals;
+    }
+
+    /**
+     * The CRAs' PC Report Total Inquiries / Total Engagement on $pages from $from to $to.
+     *
+     * @param  Collection<int, User>  $cras
+     * @param  list<string>  $pages
+     * @return Collection<int, PcReportEntry>
+     */
+    private function entries(Collection $cras, array $pages, CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        return PcReportEntry::whereIn('user_id', $cras->pluck('id'))->whereIn('page', $pages)
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->get(['user_id', 'page', 'inquiries', 'engagements']);
     }
 
     /**

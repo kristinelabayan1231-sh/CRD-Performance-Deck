@@ -3,6 +3,7 @@ import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initCvrTracker } from './cvr-tracker';
 import { initLive } from './live';
+import { initMni } from './mni';
 import { initMonthlyCost } from './monthly-cost';
 import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initMonthlyCost();
     initPcReport();
     initCvrTracker();
+    initMni();
     initProductGroups();
     initProductPerformance();
 });
