@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-21 · Sidebar · New dark sidebar: Dashboard and Report Summary on top, then four groups that open one at a time (Segmentation · Orders & Tracking · Income & Products · Customers & Costs, each with its page count; the group of the page you're on starts open), User Access and Settings at the bottom, then your name and CRAs on duty. It stays in place while the page scrolls · shots: every screenshot with the sidebar
+
 - 2026-10-21 · Settings → Product Consumption · New "Not this product if it has" words per product (under Also matches): an item with one of them isn't that product, e.g. "Nasal Inhaler" on Sinuxyl keeps Sinuxyl Nasal Inhaler out of Sinuxyl and out of CRD (Product Report, sales, Customer Database) · shots: product-consumption
 
 - 2026-10-21 · Order Database, Daily I.S. · Product Report follows logistics: items not in Settings → Product Consumption (e.g. LUMICARE OIL, Haplunas, Ear Relief Balm) are left out, with their share of the order's sales and cost, no row and not in the TOTAL; the "Other products" filter is gone. Daily I.S. Product Cost leaves them out too · shots: product-report
