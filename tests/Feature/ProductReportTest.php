@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\ProductCatalog;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -96,6 +97,28 @@ class ProductReportTest extends TestCase
             ->assertDontSeeText('LUMICARE OIL')
             ->assertDontSeeText('Not in Product Consumption')
             ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['Sinuxyl']);
+    }
+
+    public function test_an_item_with_a_products_not_this_product_words_is_left_out(): void
+    {
+        // Sinuxyl Nasal Inhaler isn't CRD's Sinuxyl: "Nasal Inhaler" set in Settings → Product Consumption.
+        $sinuxyl = Product::firstWhere('name', 'Sinuxyl');
+        $this->actingAs($this->owner)->patch(route('settings.product-consumption.update', $sinuxyl), [
+            'name' => 'Sinuxyl', 'keywords' => '', 'exclude_keywords' => ' Nasal Inhaler, ', 'consumption_days' => '', 'srp' => 300, 'unit_cost' => 35,
+        ])->assertSessionHasNoErrors();
+        $this->assertSame('Nasal Inhaler', $sinuxyl->fresh()->exclude_keywords);
+
+        // ₱999 Sinuxyl (2 at SRP 300) + a Nasal Inhaler: only the Sinuxyl part counts.
+        $this->order('CRD JULY ANN', 3, 1499, ['Sinuxyl' => 2, 'Sinuxyl Nasal Inhaler' => 1]);
+        $this->order('CRD JULY ANN', 3, 500, ['Sinuxyl Nasal Inhaler' => 1]);
+
+        $this->actingAs($this->owner)->get(route('order-database.product-report'))
+            ->assertOk()
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['Sinuxyl'] && $rows->first()['qty'] === 2)
+            ->assertDontSeeText('Nasal Inhaler');
+        // An inhaler-only order isn't a CRD order at all (synced orders are tagged by this).
+        $this->assertTrue(app(ProductCatalog::class)->unlisted(['Sinuxyl Nasal Inhaler']));
+        $this->assertFalse(app(ProductCatalog::class)->unlisted(['Sinuxyl Nasal Inhaler', 'Sinuxyl']));
     }
 
     public function test_orders_fetched_again_count_pancakes_pieces_prices_and_costs(): void

@@ -19,6 +19,10 @@
                     <span class="mb-1 block text-sm font-medium">Also matches <span class="font-normal text-muted">(optional, comma-separated)</span></span>
                     <input type="text" name="keywords" value="{{ $errors->any() ? old('keywords') : '' }}" maxlength="1000" placeholder="e.g. Clear Sight, Clearsite" class="{{ $input }}">
                 </label>
+                <label class="flex-1">
+                    <span class="mb-1 block text-sm font-medium">Not this product if it has <span class="font-normal text-muted">(optional)</span></span>
+                    <input type="text" name="exclude_keywords" value="{{ $errors->any() ? old('exclude_keywords') : '' }}" maxlength="1000" placeholder="e.g. Nasal Inhaler" class="{{ $input }}">
+                </label>
                 <label class="md:w-44">
                     <span class="mb-1 block text-sm font-medium">Consumption days <span class="font-normal text-muted">(per unit)</span></span>
                     <input type="number" name="consumption_days" value="{{ $errors->any() ? old('consumption_days') : '' }}" min="1" max="365" placeholder="e.g. 15" class="{{ $input }}">
@@ -94,6 +98,12 @@
                                         <input form="product-{{ $product->id }}" type="text" name="keywords" maxlength="1000" placeholder="—"
                                                value="{{ $bag->any() ? old('keywords', $product->keywords) : $product->keywords }}"
                                                aria-label="Extra keywords for {{ $product->name }}" class="{{ $input }} h-10">
+                                        <label class="mt-1.5 block">
+                                            <span class="mb-0.5 block text-[11px] font-semibold text-muted">Not this product if it has</span>
+                                            <input form="product-{{ $product->id }}" type="text" name="exclude_keywords" maxlength="1000" placeholder="e.g. Nasal Inhaler"
+                                                   value="{{ $bag->any() ? old('exclude_keywords', $product->exclude_keywords) : $product->exclude_keywords }}"
+                                                   aria-label="Not {{ $product->name }} if the item has" class="{{ $input }} h-9">
+                                        </label>
                                     </td>
                                     <td class="w-40 min-w-36 px-4 py-3">
                                         <input form="product-{{ $product->id }}" type="number" name="consumption_days" min="1" max="365" placeholder="Not set"
@@ -112,7 +122,12 @@
                                     </td>
                                 @else
                                     <td class="px-4 py-4 font-medium">{{ $product->name }}</td>
-                                    <td class="px-4 py-4 text-muted">{{ $product->keywords ?: '—' }}</td>
+                                    <td class="px-4 py-4 text-muted">
+                                        {{ $product->keywords ?: '—' }}
+                                        @if ($product->exclude_keywords)
+                                            <span class="block text-xs">Not if it has: {{ $product->exclude_keywords }}</span>
+                                        @endif
+                                    </td>
                                     <td class="px-4 py-4 tabular-nums">{{ $product->consumption_days ? $product->consumption_days.' days' : '—' }}</td>
                                     @if ($canSetSrp)
                                         <td class="w-56 min-w-56 px-4 py-3">
