@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\PancakeEngagement;
 use App\Models\PcReportEntry;
 use App\Models\PcReportRow;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PageOrders;
 use App\Services\PancakeSync;
+use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -24,8 +24,9 @@ class PcReportController extends Controller
 {
     /**
      * One set per CRA for the picked product and day: every page in the product's group, a split
-     * page as its Dormant and Active rows, with the day's typed-in Total Inquiries and Total Engagement and the
-     * # of Orders the CRA's Pancake account took on that page that day (by order date, not Creation/Update Time).
+     * page as its Dormant and Active rows, with the day's typed-in Total Inquiries, Total Engagement and Amount, the
+     * # of Orders the CRA's Pancake account took on that page that day (by order date, not Creation/Update Time) and
+     * the Conversion Rate: # of Orders ÷ Total Engagement (a split page's two rows together, as they share the orders).
      */
     public function index(Request $request, PancakeSync $pancake): View
     {
@@ -60,9 +61,12 @@ class PcReportController extends Controller
             $categories = $rows->has(PcReportRow::DORMANT) ? array_keys(PcReportRow::SPLIT) : [''];
             // Orders only know their page, not when the conversation was created: a split page's Dormant and Active
             // rows share one # of Orders (shown once, across both rows).
-            $pageOrders = $cra->pancake_name ? $orders['counts']->get(PancakeEngagement::staffKey($cra->pancake_name).'|'.$page, 0) : null;
+            $pageOrders = $cra->pancake_name ? collect(PancakeAccounts::keysOf($cra))->sum(fn (string $key) => $orders['counts']->get($key.'|'.$page, 0)) : null;
 
-            return array_map(function (string $category) use ($cra, $page, $rows, $entries, $pageOrders) {
+            $pageEngagements = collect($categories)->map(fn (string $category) => $entries->get($cra->id.'|'.$page.'|'.$category)?->engagements)->filter(fn ($n) => $n !== null);
+            $conversion = $pageOrders !== null && $pageEngagements->sum() > 0 ? $pageOrders / $pageEngagements->sum() : null;
+
+            return array_map(function (string $category) use ($cra, $page, $rows, $entries, $pageOrders, $conversion) {
                 $row = $rows->get($category);
                 $entry = $entries->get($cra->id.'|'.$page.'|'.$category);
 
@@ -75,7 +79,9 @@ class PcReportController extends Controller
                     'to' => $entry?->to_month?->format('Y-m') ?? '',
                     'inquiries' => $entry?->inquiries,
                     'engagements' => $entry?->engagements,
+                    'amount' => $entry?->amount,
                     'orders' => $category === PcReportRow::ACTIVE ? null : $pageOrders,
+                    'conversion' => $category === PcReportRow::ACTIVE ? null : $conversion,
                     'orders_rows' => match ($category) {
                         PcReportRow::DORMANT => 2,
                         PcReportRow::ACTIVE => 0,
@@ -169,7 +175,7 @@ class PcReportController extends Controller
     }
 
     /**
-     * Save a row's Total Inquiries or Total Engagement for a day, typed in by the CRA or anyone who sees every CRA.
+     * Save a row's Total Inquiries, Total Engagement or Amount for a day, typed in by the CRA or anyone who sees every CRA.
      */
     public function entry(Request $request): JsonResponse
     {
@@ -179,13 +185,14 @@ class PcReportController extends Controller
             'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
             'inquiries' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
             'engagements' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
+            'amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999', 'decimal:0,2'],
         ]);
 
         $user = $request->user();
         abort_unless((int) $data['cra'] === $user->id || $user->can('pc_report.view_all'), 403);
 
         $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''];
-        $this->entryFor($key, $data['date'])->fill(Arr::only($data, ['inquiries', 'engagements']))->save();
+        $this->entryFor($key, $data['date'])->fill(Arr::only($data, ['inquiries', 'engagements', 'amount']))->save();
 
         return response()->json(['ok' => true]);
     }

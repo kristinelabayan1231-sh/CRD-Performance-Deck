@@ -35,7 +35,9 @@
             @else
                 the targets are set by the CRA Supervisor or Team Lead.
             @endif
-            Tax Allocation and Advertising Cost are the department's, split evenly across the CRAs. Operating Costs and NET INCOME show — until their formulas are in.
+            Department inputs are the whole department's and are split evenly across the CRAs.
+            Salaries and Government Benefits come from CRD - MC: each CRA's own salary plus an even share of the rest of TOTAL SALARY OF CRD.
+            The Department column adds up the CRAs. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
         </div>
 
         <x-panel title="Inputs" icon="target" :tinted="false" body-class="">
@@ -71,25 +73,27 @@
                         @empty
                             <tr><td colspan="7" class="px-4 py-8 text-center text-muted">No active CRAs yet.</td></tr>
                         @endforelse
-                        <tr class="bg-brand-50/60">
-                            <td class="px-4 py-2 font-bold whitespace-nowrap text-brand-700">Department</td>
-                            <td colspan="6" class="px-3 py-2">
-                                <div class="flex flex-wrap items-center justify-end gap-x-6 gap-y-2">
-                                    @foreach (MniDepartment::FIELDS as $field => $name)
-                                        <label class="flex items-center gap-2 font-semibold">
-                                            {{ $name }} <span class="text-xs font-normal text-muted">(whole department)</span>
-                                            @if ($canEdit)
-                                                <input type="text" inputmode="decimal" data-mni-input data-field="{{ $field }}" value="{{ $number($department->{$field}) }}" placeholder="—" class="{{ $cell }} w-32">
-                                            @else
-                                                <span>{{ $department->{$field} === null ? '—' : number_format($department->{$field}, 2) }}</span>
-                                            @endif
-                                        </label>
-                                    @endforeach
-                                </div>
-                            </td>
-                        </tr>
                     </tbody>
                 </table>
+            </div>
+        </x-panel>
+
+        {{-- The department's amounts: each is split evenly across the CRAs' cards --}}
+        <x-panel title="Department inputs" icon="users" :tinted="false" body-class="p-4">
+            <x-slot:actions>
+                <span class="text-muted">Whole department · ÷ {{ max($cras->count(), 1) }} CRAs on each card</span>
+            </x-slot:actions>
+            <div class="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-4">
+                @foreach (MniDepartment::FIELDS as $field => $name)
+                    <label class="flex items-center justify-between gap-2 text-sm font-semibold">
+                        <span class="min-w-0">{{ $name }}</span>
+                        @if ($canEdit)
+                            <input type="text" inputmode="decimal" data-mni-input data-field="{{ $field }}" value="{{ $number($department->{$field}) }}" placeholder="—" class="{{ $cell }} w-32 shrink-0">
+                        @else
+                            <span class="tabular-nums">{{ $department->{$field} === null ? '—' : number_format($department->{$field}, 2) }}</span>
+                        @endif
+                    </label>
+                @endforeach
             </div>
         </x-panel>
 

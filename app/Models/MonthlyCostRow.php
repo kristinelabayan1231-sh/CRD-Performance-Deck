@@ -10,9 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A position in CRD - MC and its monthly salary, typed in. A row without a name is a vacant position and costs nothing.
- * pay_type is always fixed now; Trainee, Probationary and Regular were daily rate × working days before.
+ * pay_type is always fixed now; Trainee, Probationary and Regular were daily rate × working days before. user_id = the
+ * CRA whose own position this is (Monthly MNI gives that CRA its salary).
  */
-#[Fillable(['position', 'name', 'pay_type', 'salary', 'sort_order', 'updated_by'])]
+#[Fillable(['position', 'name', 'user_id', 'pay_type', 'salary', 'sort_order', 'updated_by'])]
 class MonthlyCostRow extends Model
 {
     /** @use HasFactory<MonthlyCostRowFactory> */
@@ -26,6 +27,11 @@ class MonthlyCostRow extends Model
             'salary' => 'decimal:2',
             'sort_order' => 'integer',
         ];
+    }
+
+    public function cra(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function editor(): BelongsTo

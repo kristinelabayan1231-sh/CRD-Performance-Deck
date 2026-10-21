@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\PancakeEngagement;
 use App\Models\PcReportEntry;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -65,7 +65,7 @@ class DailyIncomeStatement
             });
 
         ['orders' => $orders, 'missingPage' => $missingPage] = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day);
-        $craOf = $cras->filter(fn (User $cra) => $cra->pancake_name)->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        $craOf = PancakeAccounts::craBySeller($cras)->map(fn (User $cra) => $cra->id);
         foreach ($orders as $order) {
             $slug = $groupOf[$order['page']];
             $figures[$craOf[$order['seller']]][$slug]['orders']++;

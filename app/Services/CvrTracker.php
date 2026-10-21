@@ -7,9 +7,9 @@ use App\Models\CvrDayEntry;
 use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
-use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -109,32 +109,12 @@ class CvrTracker
      */
     private function ordersQuery(User $cra, CarbonImmutable $day, bool $counted = true): Builder
     {
-        $sellers = self::sellerNames($cra);
+        $sellers = PancakeAccounts::keysOf($cra);
         $claimed = CvrOrderEntry::whereNotNull('user_id')->select('pancake_order_id');
 
         return $this->tagged($day, $counted)->where(fn (Builder $q) => $q
             ->when($sellers, fn (Builder $q) => $q->whereIn('seller_name', $sellers)->whereNotIn('pancake_order_id', (clone $claimed)->where('user_id', '!=', $cra->id)))
             ->orWhereIn('pancake_order_id', (clone $claimed)->where('user_id', $cra->id)));
-    }
-
-    /**
-     * The CRA's Pancake seller names: their own account and its other accounts (config customers.cra_account_aliases,
-     * e.g. LHEA GATDULA for CRD LHEI).
-     *
-     * @return list<string>
-     */
-    private static function sellerNames(User $cra): array
-    {
-        if (! $cra->pancake_name) {
-            return [];
-        }
-
-        $own = PancakeEngagement::staffKey($cra->pancake_name);
-
-        return collect(config('customers.cra_account_aliases', []))
-            ->filter(fn (string $account) => PancakeEngagement::staffKey($account) === $own)
-            ->keys()->map(fn (string $alias) => PancakeEngagement::staffKey($alias))
-            ->prepend($own)->unique()->values()->all();
     }
 
     private function tagged(CarbonImmutable $day, bool $counted = true): Builder

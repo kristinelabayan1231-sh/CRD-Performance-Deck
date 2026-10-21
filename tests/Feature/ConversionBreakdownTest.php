@@ -267,6 +267,20 @@ class ConversionBreakdownTest extends TestCase
             ->assertViewHas('count', 1)->assertSee('L1')->assertSee('Regina');
     }
 
+    public function test_orders_under_a_cras_other_pancake_account_count_as_theirs(): void
+    {
+        config(['customers.cra_account_aliases' => ['LHEA GATDULA' => 'CRD Lhei']]);
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        foreach (['CRD LHEI' => PancakeOrder::SEGMENTATION, 'LHEA GATDULA' => PancakeOrder::BROADCAST, 'SOMEONE ELSE' => PancakeOrder::BROADCAST] as $seller => $type) {
+            PancakeOrder::create(['pancake_order_id' => uniqid(), 'ordered_on' => '2026-10-01', 'seller_name' => $seller, 'status' => 2,
+                'total_price' => 500, 'conversion_type' => $type, 'non_crd' => false]);
+        }
+
+        $orders = app(ConversionBreakdown::class)->orders(ConversionBreakdown::accounts(collect([$lhea])), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-01'));
+
+        $this->assertSame(['bc_orders' => 1, 'sc_orders' => 1, 'bc_gross' => 500.0, 'sc_gross' => 500.0], $orders[$lhea->id]['2026-10-01']);
+    }
+
     public function test_sync_saves_the_order_tags(): void
     {
         $this->orders = [$this->order('CRD Lhei', [self::BROADCAST, 17], 1000)];

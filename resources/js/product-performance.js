@@ -41,7 +41,7 @@ function initSwitch(selector, key, show) {
 }
 
 // One panel at a time; ‹ › (or ← →, or a swipe) slide to the other, the box fitting the panel's height.
-// The panel last seen is remembered on this browser only.
+// Always opens on the Ranking.
 function initSlider() {
     const slider = document.querySelector('[data-pp-slider]');
     if (!slider) return;
@@ -62,9 +62,6 @@ function initSlider() {
         });
         note.textContent = current === 0 ? 'Slide to see graph and insights' : 'Slide back to see the ranking';
         fit();
-        try {
-            localStorage.setItem('pp-slide', String(current));
-        } catch {}
     };
 
     slider.querySelector('[data-pp-slide="prev"]').addEventListener('click', () => go(current - 1));
@@ -88,9 +85,5 @@ function initSlider() {
     const resized = new ResizeObserver(fit);
     panels.forEach((panel) => resized.observe(panel));
 
-    let saved = 0;
-    try {
-        saved = Math.min(panels.length - 1, Number(localStorage.getItem('pp-slide')) || 0);
-    } catch {}
-    go(saved);
+    go(0);
 }

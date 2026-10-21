@@ -36,9 +36,6 @@
                 <tr>
                     <td class="{{ $label }} border-y border-line bg-[#faf7fb] py-2 text-xs font-bold tracking-wide text-muted uppercase">
                         {{ $name }}
-                        @if ($name === 'Operating Costs')
-                            <span class="ml-1 rounded-full bg-[#fff6d6] px-1.5 py-px text-[10.5px] font-bold tracking-normal text-[#8a5f00] normal-case">Formulas coming</span>
-                        @endif
                     </td>
                     <td class="{{ $fixed }} border-y border-line bg-[#faf7fb]"></td>
                     @foreach ($cras as $cra)
@@ -48,7 +45,7 @@
                 @continue
             @endif
             @php($emphasis = in_array($kind, ['total', 'net'], true))
-            <tr @class(['text-muted' => in_array($kind, ['pending', 'net'], true)])>
+            <tr>
                 <td @class([$label, 'border-b border-line py-1.5', 'border-t-[1.5px] border-t-ink font-bold' => $kind === 'total', 'border-y-[3px] border-double border-ink font-bold text-ink' => $kind === 'net'])>{{ $name }}</td>
                 @foreach ($columns as $column)
                     @php($value = $key ? ($column['figures'][$key] ?? null) : null)
@@ -57,9 +54,10 @@
                         'border-b border-line py-1.5 whitespace-nowrap',
                         'border-t-[1.5px] border-t-ink font-bold' => $kind === 'total',
                         'border-y-[3px] border-double border-ink font-bold' => $kind === 'net',
+                        'text-coral-700' => $kind === 'net' && $value < 0,
                     ])>
-                        {{ in_array($kind, ['pending', 'net'], true) ? '—' : $format($value, $kind) }}
-                        @if (in_array($kind, ['money', 'total'], true) && ! in_array($key, ['aov'], true) && $column['figures']['gross'] > 0)
+                        {{ $format($value, $kind) }}
+                        @if (in_array($kind, ['money', 'total', 'net'], true) && ! in_array($key, ['aov'], true) && $column['figures']['gross'] > 0)
                             <span class="block text-[11px] font-normal text-muted">{{ number_format($value / $column['figures']['gross'] * 100, 2) }}%</span>
                         @endif
                     </td>

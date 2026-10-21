@@ -132,8 +132,8 @@ class PcReportTest extends TestCase
         $show('2026-10-14')
             ->assertViewHas('sets', fn ($sets) => collect($sets[$this->regina->id])->firstWhere('page', 'Clear Sight Hub') === [
                 'page' => 'Clear Sight Hub', 'category' => '', 'tagging' => null, 'from' => '', 'to' => '', 'inquiries' => 12, 'engagements' => 40,
-                // Regina has no Pancake account, so no orders.
-                'orders' => null, 'orders_rows' => 1,
+                // Regina has no Pancake account, so no orders and no conversion rate.
+                'amount' => null, 'orders' => null, 'conversion' => null, 'orders_rows' => 1,
             ])
             ->assertSee('data-pc-total="inquiries">17<', false)
             ->assertSee('data-pc-total="engagements">40<', false);
@@ -265,6 +265,39 @@ class PcReportTest extends TestCase
         $this->assertStringContainsString('data-pc-total="orders">2<', $html);
     }
 
+    public function test_amount_is_typed_per_row_and_conversion_rate_is_orders_over_engagement(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-01 06:00:00');
+        $this->regina->update(['pancake_name' => 'CRD Regina']);
+        // Nasal Spray split into Dormant and Active: they share its 2 orders, so its rate is over both rows' engagement.
+        foreach (PcReportRow::SPLIT as $category => [$from, $to]) {
+            PcReportRow::create(['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Spray', 'category' => $category]);
+        }
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01');
+        $save = fn (string $page, ?string $category, array $values) => $this->actingAs($this->regina)->putJson(route('pc-report.entries.update'), [
+            'cra' => $this->regina->id, 'page' => $page, 'category' => $category, 'date' => '2026-10-01', ...$values,
+        ]);
+
+        $save('Sinuxyl Nasal Spray', PcReportRow::DORMANT, ['engagements' => 30, 'amount' => 1234.5])->assertOk();
+        $save('Sinuxyl Nasal Spray', PcReportRow::ACTIVE, ['engagements' => 10])->assertOk();
+        $save('Sinuxyl Nasal Care', null, ['engagements' => 20, 'amount' => 500])->assertOk();
+        // Below zero or more than two decimals: refused.
+        $save('Sinuxyl Nasal Care', null, ['amount' => -1])->assertUnprocessable();
+        $save('Sinuxyl Nasal Care', null, ['amount' => 1.234])->assertUnprocessable();
+
+        $this->assertDatabaseHas('pc_report_entries', ['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Care', 'amount' => 500]);
+        $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))->assertOk()->getContent();
+
+        // Nasal Spray 2 ÷ (30 + 10) = 5.00%; Nasal Care 1 ÷ 20 = 5.00%; Official Page has no engagement.
+        preg_match_all('/data-pc-conversion data-page="[^"]*">(.*?)<\/td>/s', $html, $rates);
+        $this->assertSame(['5.00%', '5.00%', '—'], array_map(fn (string $cell) => trim(strip_tags($cell)), $rates[1]));
+        // TOTAL: 3 orders ÷ 60 engagements, and the amounts added up.
+        $this->assertStringContainsString('data-pc-total="conversion">5.00%<', $html);
+        $this->assertStringContainsString('data-pc-total="amount">₱1,734.50<', $html);
+    }
+
     public function test_a_cra_without_a_pancake_account_shows_no_orders(): void
     {
         $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['date' => '2026-10-01']))->assertOk()->getContent();
@@ -292,7 +325,7 @@ class PcReportTest extends TestCase
      */
     private function ordersCells(string $html): array
     {
-        preg_match_all('/data-pc-orders>(.*?)<\/td>/s', $html, $matches);
+        preg_match_all('/data-pc-orders="[^"]*" data-page="[^"]*">(.*?)<\/td>/s', $html, $matches);
 
         return array_map(fn (string $cell) => trim(strip_tags($cell)), $matches[1]);
     }

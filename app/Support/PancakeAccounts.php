@@ -93,6 +93,52 @@ class PancakeAccounts
     }
 
     /**
+     * A CRA's Pancake accounts as staff keys: their own (User Access) first, then their other accounts
+     * (config customers.cra_account_aliases, e.g. LHEA GATDULA for CRD LHEI). Empty when no account is set.
+     *
+     * @return list<string>
+     */
+    public static function keysOf(User $cra): array
+    {
+        if (! $cra->pancake_name) {
+            return [];
+        }
+
+        $own = PancakeEngagement::staffKey($cra->pancake_name);
+
+        return collect(config('customers.cra_account_aliases', []))
+            ->filter(fn (string $account) => PancakeEngagement::staffKey($account) === $own)
+            ->keys()->map(fn (string $alias) => PancakeEngagement::staffKey($alias))
+            ->prepend($own)->unique()->values()->all();
+    }
+
+    /**
+     * The account a seller key counts as: the CRA's own account when it is one of their other accounts (config
+     * customers.cra_account_aliases), else the key itself.
+     */
+    public static function ownerKey(string $sellerKey): string
+    {
+        foreach (config('customers.cra_account_aliases', []) as $alias => $account) {
+            if (PancakeEngagement::staffKey($alias) === $sellerKey) {
+                return PancakeEngagement::staffKey($account);
+            }
+        }
+
+        return $sellerKey;
+    }
+
+    /**
+     * Seller key => CRA for these CRAs: each one's own account and their other accounts (keysOf()).
+     *
+     * @param  Collection<int, User>  $cras
+     * @return Collection<string, User>
+     */
+    public static function craBySeller(Collection $cras): Collection
+    {
+        return $cras->flatMap(fn (User $cra) => collect(self::keysOf($cra))->mapWithKeys(fn (string $key) => [$key => $cra]));
+    }
+
+    /**
      * The last change of the CRD team accounts: customers delivered in the month before it and
      * checked before it are due again; null = every check still counts.
      */

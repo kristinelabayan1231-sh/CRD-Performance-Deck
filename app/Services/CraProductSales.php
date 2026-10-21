@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -24,8 +24,7 @@ class CraProductSales
      */
     public function for(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
-        $accounts = $cras->filter(fn (User $cra) => $cra->pancake_name)
-            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        $accounts = PancakeAccounts::craBySeller($cras)->map(fn (User $cra) => $cra->id);
 
         if ($accounts->isEmpty()) {
             return collect();

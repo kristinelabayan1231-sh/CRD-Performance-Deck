@@ -7,6 +7,7 @@ use App\Models\LeadMove;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -147,15 +148,15 @@ class ConversionBreakdown
     }
 
     /**
-     * Normalised Pancake account name => CRA id, for CRAs with an account set.
+     * Normalised Pancake account name => CRA id, for CRAs with an account set: their own and their other accounts
+     * (PancakeAccounts::keysOf()).
      *
      * @param  Collection<int, User>  $cras
      * @return Collection<string, int>
      */
     public static function accounts(Collection $cras): Collection
     {
-        return $cras->filter(fn (User $cra) => $cra->pancake_name)
-            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        return PancakeAccounts::craBySeller($cras)->map(fn (User $cra) => $cra->id);
     }
 
     /**

@@ -108,7 +108,7 @@
                                         @else
                                             <span class="font-semibold text-muted italic">Vacant</span>
                                         @endif
-                                        <span class="block text-xs text-muted">{{ $row->position }}</span>
+                                        <span class="block text-xs text-muted">{{ $row->position }}@if ($row->cra) · <span class="font-semibold text-teal-700">CRA: {{ $row->cra->displayName() }}</span>@endif</span>
                                     </td>
                                     <td class="px-3 py-3 text-right tabular-nums">
                                         <span class="font-semibold">{{ $plain($row->monthlySalary()) }}</span>
@@ -242,7 +242,7 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Monthly salary</dt><dd>The amount typed in each row. A row with no name is a vacant position and counts ₱0.</dd></div>
+                <div><dt class="font-semibold text-ink">Monthly salary</dt><dd>The amount typed in each row. A row with no name is a vacant position and counts ₱0. A row marked with a CRA is that CRA's own salary in the Monthly MNI; every other row and the shared salaries are split evenly across the CRAs there.</dd></div>
                 <div><dt class="font-semibold text-ink">Customer Retention (TOTAL SALARY OF CRD)</dt><dd>Every row's monthly salary plus the shared salaries: Sales Manager, VP of Internal Affairs and CEO, each salary × CRD's share.</dd></div>
                 <div><dt class="font-semibold text-ink">13th Month · SIL</dt><dd>13th Month = Customer Retention ÷ 12. SIL = Customer Retention × 12 ÷ {{ config('monthly_cost.sil_days') }}.</dd></div>
                 <div><dt class="font-semibold text-ink">Gov. Benefits</dt><dd>(PHIC + HDMF + SSS) × the people in CRD: every row with a name ({{ $totals['people'] }} now).</dd></div>

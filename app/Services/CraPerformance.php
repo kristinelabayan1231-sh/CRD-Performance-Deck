@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CvrOrderEntry;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
+use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -43,7 +44,12 @@ class CraPerformance
             ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
             ->lazyById(2000, 'id')
             ->each(function (object $order) use (&$orders, &$keys, $claimed, $sellers) {
-                $seller = $claimed[$order->pancake_order_id] ?? ($keys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name));
+                // A CRA's other account counts on their own account's row when that row is shown.
+                $seller = $claimed[$order->pancake_order_id] ?? ($keys[$order->seller_name] ??= (function (string $key) use ($sellers) {
+                    $owner = PancakeAccounts::ownerKey($key);
+
+                    return isset($sellers[$owner]) ? $owner : $key;
+                })(PancakeEngagement::staffKey($order->seller_name)));
                 if (! isset($sellers[$seller])) {
                     return;
                 }
