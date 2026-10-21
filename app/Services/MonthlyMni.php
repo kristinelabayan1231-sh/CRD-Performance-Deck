@@ -22,17 +22,42 @@ use Illuminate\Support\Collection;
  *
  * Operating costs, from CRD - MC (today's figures): Salaries = the CRA's own row + an even share of the rest of TOTAL SALARY
  * OF CRD (Manager, Supervisor, other staff and the shared salaries) ÷ number of CRAs. 13th Month = Salaries ÷ 12. SIL =
- * Salaries × 24 ÷ 313. Government Benefits = CRD - MC's Gov. Benefits ÷ number of CRAs. Communication Allowance and
- * Miscellaneous expenses and Product Research to HMO Expense = the department's (typed in) ÷ number of CRAs. Total Operating
- * Costs = Salaries to HMO Expense. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
+ * Salaries × 12 ÷ 313. Government Benefits = CRD - MC's Gov. Benefits (half of it on 2M) ÷ number of CRAs. Communication
+ * Allowance, Miscellaneous expenses and Product Research to HMO Expense = the department's (typed in) ÷ number of CRAs.
+ * Product Research is a selling cost on 2M and an operating cost on 1M, as in each plan's sheet. Total Operating Costs =
+ * Salaries to HMO Expense (less Product Research on 2M). NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
  */
 class MonthlyMni
 {
-    public const SIL_DAYS_A_YEAR = 24;
+    public const SIL_DAYS_A_YEAR = 12;
 
     public const SIL_WORKING_DAYS = 313;
 
+    /** Plans that count CRD - MC's Gov. Benefits in part: plan => share. */
+    public const GOV_BENEFITS_SHARE = ['2m' => 0.5];
+
+    /** Plans whose sheet lists Product Research under Selling And Marketing. */
+    public const PRODUCT_RESEARCH_SELLING = ['2m'];
+
     public function __construct(private MonthlyCost $cost) {}
+
+    /**
+     * The statement's lines for a plan: on 2M, Product Research sits just above Total Selling Costs.
+     *
+     * @return list<array{0: string, 1: ?string, 2: string}>
+     */
+    public static function lines(string $plan): array
+    {
+        if (! in_array($plan, self::PRODUCT_RESEARCH_SELLING, true)) {
+            return self::LINES;
+        }
+
+        $research = ['Product Research', 'product_research', 'money'];
+        $lines = array_values(array_filter(self::LINES, fn (array $line) => $line[1] !== 'product_research'));
+        array_splice($lines, array_search('selling', array_column($lines, 1), true), 0, [$research]);
+
+        return $lines;
+    }
 
     public const SHIPPING_PER_ORDER = 75;
 
@@ -100,7 +125,8 @@ class MonthlyMni
         $sharedSalary = ($costs['customer_retention'] - $own->sum()) / $craCount;
 
         $statements = $cras->mapWithKeys(fn (User $cra) => [
-            $cra->id => self::statement($inputs->get($cra->id), $department, $craCount, ($own[$cra->id] ?? 0) + $sharedSalary, $costs['gov_benefits']),
+            $cra->id => self::statement($inputs->get($cra->id), $department, $craCount, ($own[$cra->id] ?? 0) + $sharedSalary,
+                $costs['gov_benefits'] * (self::GOV_BENEFITS_SHARE[$plan] ?? 1), $plan),
         ]);
 
         $total = [];
@@ -118,7 +144,7 @@ class MonthlyMni
      *
      * @return array<string, float|int|null>
      */
-    public static function statement(?MniInput $input, MniDepartment $department, int $craCount, float $salaries = 0.0, float $govBenefits = 0.0): array
+    public static function statement(?MniInput $input, MniDepartment $department, int $craCount, float $salaries = 0.0, float $govBenefits = 0.0, string $plan = '1m'): array
     {
         $orders = (int) ($input?->orders ?? 0);
         $rate = ($input?->conversion_rate ?? 0) / 100;
@@ -135,7 +161,9 @@ class MonthlyMni
         $cod = $delivered * self::COD_RATE;
         $vatOnCod = $cod * self::VAT_ON_COD_RATE;
         $fulfillment = $orders * self::FULFILLMENT_PER_ORDER;
-        $selling = $advertising + $shipping + $cod + $vatOnCod + $fulfillment;
+        $researchIsSelling = in_array($plan, self::PRODUCT_RESEARCH_SELLING, true);
+        $research = ($department->product_research ?? 0) / $craCount;
+        $selling = $advertising + $shipping + $cod + $vatOnCod + $fulfillment + ($researchIsSelling ? $research : 0);
         $grossProfit = $delivered - $tax - $productCost;
 
         $operating = [
@@ -149,7 +177,7 @@ class MonthlyMni
         foreach (array_keys(MniDepartment::OPERATING) as $field) {
             $operating[$field] = ($department->{$field} ?? 0) / $craCount;
         }
-        $operatingTotal = array_sum($operating);
+        $operatingTotal = array_sum($operating) - ($researchIsSelling ? $research : 0);
 
         return [
             'leads' => $rate > 0 ? $orders / $rate : 0.0,

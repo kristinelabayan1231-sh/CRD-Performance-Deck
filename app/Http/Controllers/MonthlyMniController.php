@@ -38,7 +38,7 @@ class MonthlyMniController extends Controller
             'cras' => $cras,
             'data' => $mni->for($cras, $month, $plan),
             'canEdit' => $request->user()->can('mni.manage'),
-            'lines' => MonthlyMni::LINES,
+            'lines' => MonthlyMni::lines($plan),
         ]);
     }
 
