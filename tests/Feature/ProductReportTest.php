@@ -82,23 +82,20 @@ class ProductReportTest extends TestCase
             ->assertOk()->assertSeeText('₱1,200')->assertDontSeeText('₱800');
     }
 
-    public function test_items_not_on_the_list_show_under_their_own_name_with_the_rest_of_the_price(): void
+    public function test_items_not_on_the_list_are_left_out_with_their_share_of_the_price(): void
     {
-        // Sinuxyl + an oil for ₱800: Shecom's ₱300 is the Sinuxyl's, the other ₱500 the oil's.
+        // Sinuxyl + an oil for ₱800: Shecom's ₱300 is the Sinuxyl's, the other ₱500 the oil's (left out, as logistics does).
         $this->order('CRD LHEI', 3, 800, ['Sinuxyl' => 1, 'LUMICARE OIL' => 1]);
         PancakeOrder::latest('id')->first()->forceFill(['shecom_sales' => 300])->save();
-        // An order of unlisted items only: split between them by pieces.
+        // An order of unlisted items only: no row at all.
         $this->order('CRD LHEI', 3, 300, ['LUMICARE OIL' => 2, 'Turmeric Soap' => 1]);
 
-        $response = $this->actingAs($this->owner)->get(route('order-database.product-report'))
+        $this->actingAs($this->owner)->get(route('order-database.product-report'))
             ->assertOk()
-            ->assertSeeTextInOrder(['Sinuxyl', '1', '₱300', 'LUMICARE OIL', 'Not in Product Consumption', '3', '₱700', 'Turmeric Soap', '1', '₱100', 'TOTAL', '5', '₱1,100'])
-            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['Sinuxyl', 'LUMICARE OIL', 'Turmeric Soap']);
-
-        // "Other products" in the filter: every item not on the list.
-        $this->actingAs($this->owner)->get(route('order-database.product-report', ['product' => 'Other products']))
-            ->assertOk()
-            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['LUMICARE OIL', 'Turmeric Soap']);
+            ->assertSeeTextInOrder(['Sinuxyl', '1', '₱300', 'TOTAL', '1', '₱300'])
+            ->assertDontSeeText('LUMICARE OIL')
+            ->assertDontSeeText('Not in Product Consumption')
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('product')->all() === ['Sinuxyl']);
     }
 
     public function test_orders_fetched_again_count_pancakes_pieces_prices_and_costs(): void
@@ -122,7 +119,9 @@ class ProductReportTest extends TestCase
         // 10 pieces, ₱1,998, ₱300 cost (not 10 × the ₱35 in Settings); the oil 3 pieces, ₱1,000, ₱138.
         $this->actingAs($this->owner)->get(route('order-database.product-report'))
             ->assertOk()
-            ->assertSeeTextInOrder(['Sinuxyl', '10', '₱1,998', '₱300', 'LUMICARE OIL', '3', '₱1,000', '₱138', 'TOTAL', '13', '₱2,998', '₱438']);
+            // The oil isn't on Product Consumption: left out, as logistics does.
+            ->assertSeeTextInOrder(['Sinuxyl', '10', '₱1,998', '₱300', 'TOTAL', '10', '₱1,998', '₱300'])
+            ->assertDontSeeText('LUMICARE OIL');
     }
 
     public function test_a_cra_sees_only_their_own_account(): void

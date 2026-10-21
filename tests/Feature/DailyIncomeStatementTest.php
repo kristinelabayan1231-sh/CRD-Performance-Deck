@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\PcReportEntry;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\DailyIncomeStatement;
@@ -30,6 +31,7 @@ class DailyIncomeStatementTest extends TestCase
 
         Http::fake();
         $this->travelTo(CarbonImmutable::parse('2026-10-16 10:00', 'Asia/Manila'));
+        Product::create(['name' => 'Sinuxyl']);
     }
 
     private function user(string $name, string $role, ?string $pancake = null): User

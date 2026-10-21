@@ -23,7 +23,7 @@ use Illuminate\Support\Collection;
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = the
- * orders' cost as Order Database → Product Report has it. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
+ * orders' cost as Order Database → Product Report has it (items not on Product Consumption left out). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
  * Fulfillment Fee = orders × ₱25.
  * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
@@ -109,7 +109,7 @@ class DailyIncomeStatement
         $sellers = PancakeAccounts::craBySeller($cras);
         $craOf = $sellers->map(fn (User $cra) => $cra->id);
         $costs = $orders->isEmpty() ? collect() : $this->productReport->lines($sellers->map(fn (User $cra) => $cra->displayName())->all(), $day, $day)
-            ->groupBy('order')->map(fn (Collection $lines) => (float) $lines->sum(fn (array $line) => $line['cost'] ?? 0));
+            ->where('listed', true)->groupBy('order')->map(fn (Collection $lines) => (float) $lines->sum(fn (array $line) => $line['cost'] ?? 0));
         foreach ($orders as $order) {
             $product = &$figures[$craOf[$order['seller']]][$groupOf[$order['page']]];
             $product['orders'] += $order['counted'] ? 1 : 0;
