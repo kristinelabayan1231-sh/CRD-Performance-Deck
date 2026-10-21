@@ -83,6 +83,9 @@
                                         <input form="product-{{ $product->id }}" type="text" name="name" required maxlength="255"
                                                value="{{ $bag->any() ? old('name', $product->name) : $product->name }}"
                                                aria-label="Name of {{ $product->name }}" class="{{ $input }} h-10">
+                                        @if ($product->counts_from)
+                                            <p class="mt-1 text-xs text-muted" title="Orders, deliveries and leads before this day leave it out">Counts from {{ $product->counts_from->format('M j, Y') }}</p>
+                                        @endif
                                         @foreach ($bag->all() as $error)
                                             <p role="alert" class="mt-1 text-xs text-coral-700">{{ $error }}</p>
                                         @endforeach

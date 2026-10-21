@@ -1,6 +1,6 @@
 {{--
     One income statement card. $variant: 'department' (solid purple), 'cra' (light purple) or 'product' (teal), the
-    app's panel colours. $f: leads, engagements, orders, gross, conversion, aov. Lines after Gross Sales are 0 until the MNI.
+    app's panel colours. $f: the statement (DailyIncomeStatement::LINES keys, plus leads, engagements, orders, conversion, aov).
 --}}
 @php
     $headers = [
@@ -32,21 +32,20 @@
                 </tr>
             @endforeach
             <tr><td colspan="3" class="h-2"></td></tr>
-            @foreach ($lines as [$label, $kind])
+            @foreach ($lines as [$label, $kind, $key])
                 @if ($kind === 'section')
                     <tr>
-                        <td colspan="3" class="px-3 pt-3 pb-1 text-xs font-bold tracking-wide text-muted uppercase">
-                            {{ $label }} <span class="ml-1 rounded-full bg-[#fff6d6] px-1.5 py-px text-[10.5px] font-bold tracking-normal text-[#8a5f00] normal-case">0.00 until MNI</span>
-                        </td>
+                        <td colspan="3" class="px-3 pt-3 pb-1 text-xs font-bold tracking-wide text-muted uppercase">{{ $label }}</td>
                     </tr>
                     @continue
                 @endif
-                @php($amount = $kind === 'gross' ? $f['gross'] : 0.0)
+                @php($amount = (float) $f[$key])
                 <tr @class([
-                    'font-semibold text-ink' => $kind === 'gross',
-                    'text-[#7c7887]' => $kind !== 'gross',
+                    'font-semibold text-ink' => $key === 'gross',
+                    'text-[#5f5b6b]' => $kind === 'line' && $key !== 'gross',
                     'border-t-[1.5px] border-ink font-bold' => $kind === 'total',
                     'border-y-[3px] border-double border-ink font-bold' => $kind === 'net',
+                    'text-coral-700' => $kind === 'net' && $amount < 0,
                 ])>
                     <td class="py-1 pr-1.5 pl-3">{{ $label }}</td>
                     <td class="py-1 pr-1.5 text-right">{{ $money($amount) }}</td>

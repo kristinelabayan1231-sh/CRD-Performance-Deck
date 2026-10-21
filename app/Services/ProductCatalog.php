@@ -15,13 +15,16 @@ use Illuminate\Support\Collection;
  * "Pterygium Eye Drops"); extra keywords catch other spellings. Matching ignores
  * case, spaces and punctuation, so "Clearsight" also catches "Clear Sight 3.0".
  * The longest matching keyword wins.
+ *
+ * A product added later counts from its counts_from day: given the day of an order, delivery or lead ($on, Y-m-d), the
+ * list is the products there that day, so adding one leaves earlier days as they were. Without a day every product counts.
  */
 class ProductCatalog
 {
     /** @var Collection<int, array{key: string, product: Product}>|null */
     private ?Collection $keywords = null;
 
-    public function match(string $raw): ?Product
+    public function match(string $raw, ?string $on = null): ?Product
     {
         $name = self::squash($raw);
 
@@ -30,7 +33,57 @@ class ProductCatalog
         }
 
         return $this->keywords()
-            ->first(fn (array $k) => str_contains($name, $k['key']))['product'] ?? null;
+            ->first(fn (array $k) => str_contains($name, $k['key']) && self::countsOn($k['product'], $on))['product'] ?? null;
+    }
+
+    /**
+     * The first day any of $names matches a product: null = every day (a product there from the start), false = never.
+     *
+     * @param  list<?string>  $names
+     */
+    public function listedFrom(array $names): string|false|null
+    {
+        $from = false;
+        foreach ($names as $name) {
+            $squashed = self::squash((string) $name);
+            if ($squashed === '') {
+                continue;
+            }
+
+            foreach ($this->keywords() as $k) {
+                if (! str_contains($squashed, $k['key'])) {
+                    continue;
+                }
+                $day = $k['product']->counts_from?->toDateString();
+                if ($day === null) {
+                    return null;
+                }
+                $from = $from === false ? $day : min($from, $day);
+            }
+        }
+
+        return $from;
+    }
+
+    /**
+     * listedFrom() for a product text that may list several products ("CanPro, NutriLay").
+     */
+    public function listedFromText(?string $products): string|false|null
+    {
+        return $this->listedFrom(self::split($products));
+    }
+
+    private static function countsOn(Product $product, ?string $on): bool
+    {
+        return $on === null || $product->counts_from === null || $product->counts_from->toDateString() <= $on;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function split(?string $products): array
+    {
+        return preg_split('/\s*(?:,|\+|&|\/|\band\b)\s*/i', (string) $products) ?: [];
     }
 
     /**
@@ -64,24 +117,25 @@ class ProductCatalog
      *
      * @param  list<?string>  $names
      */
-    public function unlisted(array $names): bool
+    public function unlisted(array $names, ?string $on = null): bool
     {
         $names = array_values(array_filter(array_map(fn (?string $name) => trim((string) $name), $names), fn (string $name) => $name !== ''));
 
-        return $names !== [] && $this->keywords()->isNotEmpty() && collect($names)->every(fn (string $name) => $this->match($name) === null);
+        return $names !== [] && $this->keywords()->isNotEmpty() && collect($names)->every(fn (string $name) => $this->match($name, $on) === null);
     }
 
     /**
      * unlisted() for a product text that may list several products ("CanPro, NutriLay").
      */
-    public function unlistedText(?string $products): bool
+    public function unlistedText(?string $products, ?string $on = null): bool
     {
-        return $this->unlisted(preg_split('/\s*(?:,|\+|&|\/|\band\b)\s*/i', (string) $products) ?: []);
+        return $this->unlisted(self::split($products), $on);
     }
 
     /**
-     * Tag every saved order with no product from the list (and untag the rest), after the list
-     * changes. Logistics orders go by their product text, Pancake orders by their items.
+     * Tag every saved order with no product from the list on its day (and untag the rest), after the list changes.
+     * Logistics orders go by their product text and delivered date, Pancake orders by their items and order date, so a
+     * product added later doesn't bring back orders from before it counted.
      *
      * @return array{pancake: int, logistics: int} orders now tagged
      */
@@ -89,17 +143,27 @@ class ProductCatalog
     {
         $this->keywords = null;
 
-        $products = LogisticsOrder::query()->distinct()->pluck('product')
-            ->filter(fn (?string $product) => $this->unlistedText($product))->values();
-        LogisticsOrder::where('non_crd', true)->whereNotIn('product', $products)->update(['non_crd' => false]);
-        foreach ($products->chunk(500) as $chunk) {
-            LogisticsOrder::whereIn('product', $chunk->all())->update(['non_crd' => true]);
+        // Logistics: per product text, never / every day / from a day (delivered before it = tagged).
+        foreach (LogisticsOrder::query()->distinct()->pluck('product')->chunk(500) as $chunk) {
+            foreach ($chunk as $product) {
+                $from = $this->listedFromText($product);
+                $rows = fn () => $product === null ? LogisticsOrder::whereNull('product') : LogisticsOrder::where('product', $product);
+                if ($from === false) {
+                    // Blank or empty text counts (unlisted() is false for no names).
+                    $rows()->update(['non_crd' => $this->unlistedText($product)]);
+                } elseif ($from === null) {
+                    $rows()->update(['non_crd' => false]);
+                } else {
+                    $rows()->where('delivered_date', '<', $from)->update(['non_crd' => true]);
+                    $rows()->where(fn ($q) => $q->whereNull('delivered_date')->orWhere('delivered_date', '>=', $from))->update(['non_crd' => false]);
+                }
+            }
         }
 
         $flagged = [];
-        PancakeOrder::query()->select(['id', 'items'])->chunkById(5000, function ($orders) use (&$flagged) {
+        PancakeOrder::query()->select(['id', 'items', 'ordered_on'])->chunkById(5000, function ($orders) use (&$flagged) {
             foreach ($orders as $order) {
-                if ($this->unlisted(array_column($order->items ?? [], 'name'))) {
+                if ($this->unlisted(array_column($order->items ?? [], 'name'), $order->ordered_on?->toDateString())) {
                     $flagged[] = $order->id;
                 }
             }

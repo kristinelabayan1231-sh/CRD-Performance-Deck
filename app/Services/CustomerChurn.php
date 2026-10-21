@@ -141,12 +141,13 @@ class CustomerChurn
             ->where('delivered_date', '>=', $since->toDateString())->where('delivered_date', '<', $to->addDay()->toDateString())
             ->toBase()->get(['order_id', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
             ->each(function (object $order) use ($consider, $catalog) {
-                // Only products on the Product Consumption list count.
-                if ($catalog->unlistedText((string) $order->product_raw)) {
+                // Only products on the Product Consumption list (on the delivered day) count.
+                $deliveredOn = substr((string) $order->delivered_date, 0, 10);
+                if ($catalog->unlistedText((string) $order->product_raw, $deliveredOn)) {
                     return;
                 }
 
-                $product = $catalog->match((string) $order->product_raw);
+                $product = $catalog->match((string) $order->product_raw, $deliveredOn);
                 $consider(
                     'crd',
                     LeadGenerator::normalizePhone((string) $order->phone_number),

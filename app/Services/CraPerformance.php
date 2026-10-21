@@ -41,7 +41,7 @@ class CraPerformance
         PancakeOrder::where(fn ($q) => $q->whereIn('seller_name', array_keys($sellers) ?: [''])->orWhereIn('pancake_order_id', $claimedHere ?: ['']))
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', self::DELETED))
-            ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount'])
+            ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on'])
             ->lazyById(2000, 'id')
             ->each(function (object $order) use (&$orders, &$keys, $claimed, $sellers) {
                 // A CRA's other account counts on their own account's row when that row is shown.
@@ -56,7 +56,7 @@ class CraPerformance
                 $orders[] = [
                     'seller' => $seller,
                     'status' => $order->status === null ? -1 : (int) $order->status,
-                    'product' => $this->mainProduct(json_decode((string) $order->items, true) ?? []),
+                    'product' => $this->mainProduct(json_decode((string) $order->items, true) ?? [], substr((string) $order->ordered_on, 0, 10)),
                     // The order's value before Pancake's discount (PancakeOrder::salesBeforeDiscount()).
                     'sales' => (float) ($order->shecom_sales ?? $order->total_price + ($order->total_discount ?? 0)),
                     'discount' => (float) ($order->total_discount ?? 0),
@@ -103,14 +103,14 @@ class CraPerformance
     }
 
     /**
-     * The order's main product: the first item on the Product Consumption list, else "Other products".
+     * The order's main product: the first item on the Product Consumption list on $on (the order's day), else "Other products".
      *
      * @param  list<array{name?: string, qty?: int}>  $items
      */
-    private function mainProduct(array $items): string
+    private function mainProduct(array $items, ?string $on = null): string
     {
         foreach ($items as $item) {
-            if ($product = $this->catalog->match((string) ($item['name'] ?? ''))) {
+            if ($product = $this->catalog->match((string) ($item['name'] ?? ''), $on)) {
                 return $product->name;
             }
         }

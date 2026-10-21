@@ -63,6 +63,9 @@
                                     <input form="{{ $form }}" type="text" name="name" required maxlength="255"
                                            value="{{ $bag->any() ? old('name', $page->name) : $page->name }}"
                                            aria-label="Name of {{ $page->name }}" class="{{ $input }} h-10">
+                                    @if ($page->counts_from)
+                                        <p class="mt-1 text-xs text-muted" title="PC Report and Daily I.S. leave it out before this day">Counts from {{ $page->counts_from->format('M j, Y') }}</p>
+                                    @endif
                                     @foreach ($bag->all() as $error)
                                         <p role="alert" class="mt-1 text-xs text-coral-700">{{ $error }}</p>
                                     @endforeach

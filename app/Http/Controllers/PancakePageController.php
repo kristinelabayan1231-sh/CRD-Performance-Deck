@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PancakePage;
 use App\Services\PancakeClient;
 use App\Support\ProductGroups;
+use App\Support\WorkingDate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -30,7 +31,8 @@ class PancakePageController extends Controller
     {
         $data = $this->validated($request);
 
-        $page = PancakePage::create($data);
+        // Counts from today: its orders on earlier days stay out of the PC Report and the Daily I.S.
+        $page = PancakePage::create([...$data, 'counts_from' => WorkingDate::realToday()->toDateString()]);
         $this->check($page, $client);
 
         return back()->with('status', "Page \"{$page->name}\" added. ".$page->check_message);

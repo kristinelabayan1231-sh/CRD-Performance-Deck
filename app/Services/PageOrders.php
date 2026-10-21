@@ -12,8 +12,8 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
- * The CRAs' orders on a day per seller and product page (Settings → Pancake Pages), canceled and deleted left out,
- * for PC Report and the Daily I.S.
+ * The CRAs' orders on a day per seller and product page (Settings → Pancake Pages), deleted left out, for PC Report and
+ * the Daily I.S. counted = not canceled (PC Report's # of Orders counts those); status is the order's status now.
  *
  * Matched on the Pancake page ID, since an order carries the page's name as Pancake shows it, which can differ from
  * Settings (e.g. "Sinuxyl Nasal Care PH" for "Sinuxyl Nasal Care"); by name, ignoring case and spaces, only for a page
@@ -24,7 +24,7 @@ class PageOrders
     /**
      * @param  Collection<int, User>  $cras
      * @param  list<string>  $pages
-     * @return array{orders: Collection<int, array{seller: string, page: string, sales: float}>, missingPage: bool}
+     * @return array{orders: Collection<int, array{id: int, seller: string, page: string, sales: float, status: ?int, counted: bool}>, missingPage: bool}
      */
     public function forDay(Collection $cras, array $pages, CarbonImmutable $day): array
     {
@@ -39,10 +39,11 @@ class PageOrders
             ->filter(fn (PancakePage $page) => $byName->has($normalize($page->name)))
             ->mapWithKeys(fn (PancakePage $page) => [(string) $page->page_id => $byName[$normalize($page->name)]]);
 
-        $orders = PancakeOrder::crdProducts()->counted()
+        $orders = PancakeOrder::crdProducts()
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
             ->whereDate('ordered_on', $day)
             ->whereIn('seller_name', $sellers)
-            ->get(['seller_name', 'page_id', 'page_name', 'total_price', 'shecom_sales']);
+            ->get(['id', 'seller_name', 'page_id', 'page_name', 'status', 'total_price', 'shecom_sales']);
 
         return [
             'orders' => $orders
@@ -50,6 +51,9 @@ class PageOrders
                     'seller' => PancakeEngagement::staffKey($order->seller_name),
                     'page' => $byId->get((string) $order->page_id) ?? ($byId->contains($byName->get($normalize($order->page_name))) ? null : $byName->get($normalize($order->page_name))),
                     'sales' => $order->sales(),
+                    'status' => $order->status,
+                    'counted' => $order->isCounted(),
+                    'id' => $order->id,
                 ])
                 ->filter(fn (array $order) => $order['page'] !== null)
                 ->values(),

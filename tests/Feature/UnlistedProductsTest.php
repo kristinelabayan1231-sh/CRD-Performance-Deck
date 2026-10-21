@@ -78,9 +78,35 @@ class UnlistedProductsTest extends TestCase
         $this->order('6', 'Nora Only', '9171111111', [['name' => 'NutriLay', 'qty' => 1]], 1500);
         $this->assertTrue(LogisticsOrder::firstWhere('order_id', '6')->non_crd);
 
-        // Adding it back to the list brings its orders back.
+        // Adding it back to the list counts from today (Oct 10): its earlier orders stay out.
         $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['name' => 'NutriLay', 'consumption_days' => 15]);
-        $this->assertSame(0, PancakeOrder::where('non_crd', true)->count() + LogisticsOrder::where('non_crd', true)->count());
+        $this->assertSame('2026-10-10', Product::firstWhere('name', 'NutriLay')->counts_from->toDateString());
+        $this->assertSame(['1', '6'], PancakeOrder::where('non_crd', true)->orderBy('pancake_order_id')->pluck('pancake_order_id')->all());
+    }
+
+    public function test_a_product_added_today_counts_from_today_only(): void
+    {
+        $lhea = User::create(['email' => 'lhea@example.com', 'display_name' => 'Lhea', 'pancake_name' => 'CRD Lhei', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        $primeMan = fn (string $id, string $day) => PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => $day, 'seller_name' => 'CRD LHEI', 'status' => 3,
+            'total_price' => 499, 'items' => [['name' => 'Prime Man Herbal Tea', 'qty' => 1]], 'conversion_type' => PancakeOrder::SEGMENTATION,
+            'non_crd' => true]);
+        $primeMan('yesterday', '2026-10-09');
+        $primeMan('today', '2026-10-10');
+        LogisticsOrder::remember([
+            ['order_id' => 'L-yesterday', 'team' => 'crd', 'customer_name' => 'A', 'phone_number' => '9173333333', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-09'],
+            ['order_id' => 'L-today', 'team' => 'crd', 'customer_name' => 'B', 'phone_number' => '9174444444', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-10'],
+        ]);
+
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['name' => 'Prime Man', 'consumption_days' => 15]);
+
+        // Today's order and delivery count; yesterday's stay out.
+        $this->assertSame(['yesterday'], PancakeOrder::where('non_crd', true)->pluck('pancake_order_id')->all());
+        $this->assertSame(['L-yesterday'], LogisticsOrder::where('non_crd', true)->pluck('order_id')->all());
+        $orders = app(ConversionBreakdown::class)->orders(ConversionBreakdown::accounts(collect([$lhea])), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-10'));
+        $this->assertSame(['2026-10-10'], array_keys($orders[$lhea->id]));
+        // New ones are tagged by their own day as they're saved.
+        LogisticsOrder::remember([['order_id' => 'L-old', 'team' => 'crd', 'customer_name' => 'C', 'phone_number' => '9175555555', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-08']]);
+        $this->assertTrue(LogisticsOrder::firstWhere('order_id', 'L-old')->non_crd);
     }
 
     public function test_orders_with_no_listed_product_are_left_out_of_the_customer_database_and_sales(): void

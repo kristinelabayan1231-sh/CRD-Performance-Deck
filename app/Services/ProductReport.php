@@ -160,7 +160,8 @@ class ProductReport
         $products = [];
         foreach (json_decode((string) $order->items, true) ?? [] as $item) {
             $itemName = trim((string) ($item['name'] ?? ''));
-            $product = $this->catalog->match($itemName);
+            // On the list on the order's day (a product added later counts from its day).
+            $product = $this->catalog->match($itemName, isset($order->ordered_on) ? substr((string) $order->ordered_on, 0, 10) : null);
             // Not on the list: its own row under its Pancake name.
             $name = $product?->name ?? ($itemName === '' ? CraPerformance::OTHER_PRODUCTS : $itemName);
             $qty = max(1, (int) ($item['qty'] ?? 1));

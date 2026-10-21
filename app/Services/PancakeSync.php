@@ -540,7 +540,8 @@ class PancakeSync
             'total_discount' => (float) ($order['total_discount'] ?? 0),
             'items' => json_encode($order['items'] ?? []),
             // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
-            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name')),
+            // (A product added later counts from its day: ProductCatalog.)
+            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name'), $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString()),
             'page_name' => $order['page']['name'] ?? null,
             'page_id' => isset($order['page_id']) ? (string) $order['page_id'] : null,
             'conversation_id' => $order['conversation_id'] ?? null,

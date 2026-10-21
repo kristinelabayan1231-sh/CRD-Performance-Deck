@@ -38,9 +38,10 @@ class PcReportController extends Controller
             'cra' => ['nullable', 'integer'],
         ]);
 
-        $groups = ProductGroups::all();
-        $group = collect($groups)->firstWhere('slug', $filters['product'] ?? null) ?? $groups[0];
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString())->min($today);
+        // Only the products there that day: one added later doesn't show on earlier days.
+        $groups = ProductGroups::on($day) ?: ProductGroups::all();
+        $group = collect($groups)->firstWhere('slug', $filters['product'] ?? null) ?? $groups[0];
 
         $user = $request->user();
         $allCras = $user->can('pc_report.view_all') ? LeadGenerator::cras() : null;
@@ -214,7 +215,7 @@ class PcReportController extends Controller
             $pancake->syncLater($day, force: true);
         }
 
-        return ['counts' => $orders->countBy(fn (array $order) => $order['seller'].'|'.$order['page']), 'missingPage' => $missingPage];
+        return ['counts' => $orders->where('counted', true)->countBy(fn (array $order) => $order['seller'].'|'.$order['page']), 'missingPage' => $missingPage];
     }
 
     /**
