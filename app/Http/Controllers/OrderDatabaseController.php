@@ -49,7 +49,7 @@ class OrderDatabaseController extends Controller
             'rows' => $rows,
             'total' => $total,
             'statuses' => self::statuses($total['statuses']),
-            'products' => Product::orderBy('name')->pluck('name')->push(CraPerformance::OTHER_PRODUCTS),
+            'products' => Product::orderBy('name')->pluck('name'),
         ]);
     }
 

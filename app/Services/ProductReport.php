@@ -42,8 +42,9 @@ class ProductReport
     public function __construct(private ProductCatalog $catalog) {}
 
     /**
-     * One row per product sold $from–$to by $sellers (staff key => name shown), most pieces first; only $product (a
-     * product or item name, or "Other products" for every item not on the list) when given. Per-CRA figures live on CRA's Performance, not here.
+     * One row per product sold $from–$to by $sellers (staff key => name shown), most pieces first; only $product when
+     * given. Like logistics' Product Performance, items not on Settings → Product Consumption (on the order's day) are
+     * left out: no row, and not in the TOTAL. Per-CRA figures live on CRA's Performance, not here.
      *
      * @param  array<string, string>  $sellers
      * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float, listed: bool}>
@@ -51,9 +52,8 @@ class ProductReport
     public function rows(array $sellers, CarbonImmutable $from, CarbonImmutable $to, ?string $product = null): Collection
     {
         $lines = $this->lines($sellers, $from, $to)
-            ->when(filled($product), fn (Collection $lines) => $product === CraPerformance::OTHER_PRODUCTS
-                ? $lines->where('listed', false)
-                : $lines->where('product', $product));
+            ->where('listed', true)
+            ->when(filled($product), fn (Collection $lines) => $lines->where('product', $product));
 
         return $this->rowsFrom($lines);
     }

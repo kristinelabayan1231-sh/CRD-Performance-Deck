@@ -11,7 +11,7 @@
 
         <x-panel :title="$tabTitle" icon="table" title-id="product-report-title" body-class="p-0" :tinted="false">
             <x-slot:badges>
-                <span class="text-xs text-muted">Orders by status, created {{ $label }}. As Pancake's Product Performance: Total qty counts every piece (a 5-piece bundle is 5), sales each item at its Pancake price, Product cost each at its variation's cost. Items not in Settings → Product Consumption show under their own name, after the listed products.</span>
+                <span class="text-xs text-muted">Orders by status, created {{ $label }}. As Pancake's Product Performance: Total qty counts every piece (a 5-piece bundle is 5), sales each item at its Pancake price, Product cost each at its variation's cost. Items not in Settings → Product Consumption are left out.</span>
             </x-slot:badges>
 
             @if ($rows->isEmpty())
