@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\PancakePage;
 use App\Models\Setting;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -13,7 +14,8 @@ use Illuminate\Support\Str;
  *
  * A group remembers the day it was added (added_on, Manila day; null = there before days were kept), and on() leaves it
  * out of earlier days, so adding a product today doesn't change yesterday's PC Report or Daily I.S. (e.g. its per-product
- * shares of the CRA's costs). A group is known by its name: renaming one makes it new from that day.
+ * shares of the CRA's costs); the same goes for a page added later. A group is known by its name: renaming one makes it
+ * new from that day.
  */
 class ProductGroups
 {
@@ -47,13 +49,21 @@ class ProductGroups
     }
 
     /**
-     * The groups there on $day: every group added that day or before.
+     * The groups there on $day: every group added that day or before, with only its pages there that day (a page added
+     * in Settings → Pancake Pages counts from its counts_from day).
      *
      * @return list<array{slug: string, name: string, pages: list<string>, added_on: ?string}>
      */
     public static function on(CarbonImmutable $day): array
     {
-        return array_values(array_filter(self::all(), fn (array $group) => $group['added_on'] === null || $group['added_on'] <= $day->toDateString()));
+        $date = $day->toDateString();
+        $later = PancakePage::whereNotNull('counts_from')->whereDate('counts_from', '>', $date)->pluck('name')
+            ->map(fn (string $name) => Str::lower($name))->all();
+
+        return array_values(array_map(
+            fn (array $group) => [...$group, 'pages' => array_values(array_filter($group['pages'], fn (string $page) => ! in_array(Str::lower($page), $later, true)))],
+            array_filter(self::all(), fn (array $group) => $group['added_on'] === null || $group['added_on'] <= $date),
+        ));
     }
 
     /**

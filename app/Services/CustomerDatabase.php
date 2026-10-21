@@ -581,7 +581,8 @@ class CustomerDatabase
                 'prior_last_ordered_on' => $prior->max(fn (array $o) => CarbonImmutable::parse($o['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString()),
                 // For the High AOV first-reorder rule: orders with a product from the list, oldest first (upsert skips casts).
                 'prior_cra_sales' => json_encode($prior
-                    ->reject(fn (array $o) => $catalog->unlisted(array_column($o['items'] ?? [], 'name')))
+                    ->reject(fn (array $o) => $catalog->unlisted(array_column($o['items'] ?? [], 'name'),
+                        CarbonImmutable::parse($o['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString()))
                     ->map(fn (array $o) => [
                         'at' => CarbonImmutable::parse($o['inserted_at'], 'UTC')->toDateTimeString(),
                         'amount' => (float) ($o['total_price'] ?? 0),

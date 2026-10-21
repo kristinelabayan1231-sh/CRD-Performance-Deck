@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\PancakeOrder;
+use App\Models\PancakePage;
 use App\Models\PcReportEntry;
 use App\Models\Role;
 use App\Models\User;
@@ -124,6 +125,23 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta($mni['salaries'] / 24 / 3, $salaries('2026-10-16'), 0.001);
         // PC Report doesn't list it on an earlier day either.
         $this->actingAs($supervisor)->get(route('pc-report.index', ['date' => '2026-10-15']))->assertDontSee('Ginseng');
+    }
+
+    public function test_a_page_added_today_counts_from_today_only(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray', 'Sinuxyl New Page']]]);
+        PancakePage::create(['name' => 'Sinuxyl Nasal Spray', 'page_id' => '1', 'access_token' => 'token-1']);
+        PancakePage::create(['name' => 'Sinuxyl New Page', 'page_id' => '2', 'access_token' => 'token-2', 'counts_from' => '2026-10-16']);
+        foreach (['2026-10-15', '2026-10-16'] as $day) {
+            $this->order($regina, 'Sinuxyl New Page', 500, ['ordered_on' => $day, 'page_id' => '2']);
+        }
+
+        $orders = fn (string $date) => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $date]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['orders'];
+
+        $this->assertSame(0, $orders('2026-10-15'));
+        $this->assertSame(1, $orders('2026-10-16'));
     }
 
     public function test_only_supervisors_set_the_months_projected_returns(): void

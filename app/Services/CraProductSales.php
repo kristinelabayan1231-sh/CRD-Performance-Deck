@@ -35,11 +35,11 @@ class CraProductSales
         PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
-            ->get(['seller_name', 'items', 'total_price', 'shecom_sales'])
+            ->get(['seller_name', 'items', 'total_price', 'shecom_sales', 'ordered_on'])
             ->each(function (PancakeOrder $order) use ($accounts, &$totals) {
-                $items = collect($order->items ?? [])->map(function (array $item) {
+                $items = collect($order->items ?? [])->map(function (array $item) use ($order) {
                     $raw = trim((string) ($item['name'] ?? ''));
-                    $product = $raw === '' ? null : $this->catalog->match($raw);
+                    $product = $raw === '' ? null : $this->catalog->match($raw, $order->ordered_on?->toDateString());
 
                     return [
                         'name' => $product?->name ?? ($raw ?: 'Unknown'),

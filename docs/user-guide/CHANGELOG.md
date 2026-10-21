@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-21 · Settings (Product Consumption, Pancake Pages), whole deck · A product or page added in Settings counts from the day it was added ("Counts from <date>" under its name): orders, deliveries and leads before that day stay as they were everywhere (CVR Tracker, dashboard, Conversion Breakdown, Customer Database, leads, churn, Product Report, PC Report, Daily I.S.). Products and pages already there count on every day. Re-adding a deleted product also counts from that day · shots: product-consumption, pancake-pages
+
 - 2026-10-21 · Daily I.S. · Every line is worked out: Gross Sales includes canceled orders; Actual Cancelled = orders Canceled or Waiting for goods now (live, so a resolved order leaves earlier days); % Projected Returns typed once a month by a Supervisor for every card; Projected Delivered = Gross − Actual Cancelled − Projected Returns; Product Cost from Product Report; Gross Profit; Shipping ₱75 and Fulfillment ₱25 per order, COD Fee 2.24% of Projected Delivered, Advertising / Ads VAT / VAT on COD 0; Tax Allocation and Salaries to HMO Expense = the CRA's 1M MNI ÷ 24 (÷ the day's products on a product card); Total Operating Costs; NET INCOME · shots: daily-is
 - 2026-10-21 · Settings, PC Report, Daily I.S. · A product group counts from the day it was added: earlier days keep their products (and Daily I.S. per-product shares). Renaming a group makes it new from that day · shots: —
 

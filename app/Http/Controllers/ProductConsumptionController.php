@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Services\CustomerDatabase;
 use App\Services\ProductCatalog;
+use App\Support\WorkingDate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -25,7 +26,8 @@ class ProductConsumptionController extends Controller
     {
         $data = $this->validated($request);
 
-        Product::create([...$data, 'created_by' => $request->user()->id]);
+        // Counts from today: orders, deliveries and leads before it are left as they were.
+        Product::create([...$data, 'counts_from' => WorkingDate::realToday()->toDateString(), 'created_by' => $request->user()->id]);
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
         $this->applyList($catalog, removeLeads: false);

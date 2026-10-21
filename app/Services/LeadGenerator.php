@@ -441,12 +441,13 @@ class LeadGenerator
 
         $raw = trim($row['product_name'] ?? '');
 
-        // Only products on the Product Consumption list are CRD's to call.
-        if ($catalog->unlistedText($raw)) {
+        // Only products on the Product Consumption list (on the delivered day) are CRD's to call.
+        $deliveredOn = substr((string) $row['delivered_date'], 0, 10);
+        if ($catalog->unlistedText($raw, $deliveredOn)) {
             return null;
         }
 
-        $product = $catalog->match($raw);
+        $product = $catalog->match($raw, $deliveredOn);
 
         $delivered = CarbonImmutable::parse($row['delivered_date'])->startOfDay();
         $phone = self::normalizePhone($row['phone_number'] ?? '');

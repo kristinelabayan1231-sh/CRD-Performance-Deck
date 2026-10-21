@@ -105,9 +105,9 @@ class PosLeads
     {
         $items = collect($order->items ?? []);
         $names = $items->pluck('name')->filter()->values();
-        $product = $names->map(fn (string $name) => $catalog->match($name))->filter()->first();
-        $orderedAt = $order->ordered_at ?? now();
         $day = $order->ordered_on->toDateString();
+        $product = $names->map(fn (string $name) => $catalog->match($name, $day))->filter()->first();
+        $orderedAt = $order->ordered_at ?? now();
 
         Lead::create([
             'order_id' => Lead::POS_PREFIX.$order->pancake_order_id,
