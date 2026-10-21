@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\MniDepartment;
+use App\Models\PancakeOrder;
 use App\Models\PcReportEntry;
+use App\Models\Setting;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
@@ -10,48 +13,86 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Daily I.S.: each CRA's income statement per product (Settings → Pancake Pages → Product groups) for a day, laid
- * out like the CRAs' sheet.
+ * Daily I.S.: each CRA's income statement per product (Settings → Pancake Pages → Product groups there that day) for a
+ * day, laid out like the CRAs' sheet. A product card:
  *
  * Leads/inquiries and engagements = the CRA's PC Report Total Inquiries and Total Engagement on the product's pages.
- * Orders = the CRA's Pancake orders on those pages that day (the PC Report's # of Orders: canceled and deleted left
- * out). Gross Sales = those orders' sales (Shecom's amount once synced). Conversion rate = orders ÷ engagements;
- * AOV = Gross Sales ÷ orders. Every other line is 0 until the MNI is built. The department adds up every CRA.
+ * Orders = the CRA's Pancake orders on those pages that day, canceled and deleted left out (PC Report's # of Orders).
+ * Gross Sales = the sales of every one of those orders but deleted ones (Shecom's amount once synced), canceled included.
+ * Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders.
+ * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
+ * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
+ * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = the
+ * orders' cost as Order Database → Product Report has it. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
+ * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
+ * Fulfillment Fee = orders × ₱25.
+ * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
+ * day's number of products. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
+ *
+ * A CRA's card adds up their product cards (so its Tax Allocation and operating costs are their MNI ÷ 24); the department
+ * adds up every CRA.
  */
 class DailyIncomeStatement
 {
-    /** Statement lines below the KPIs, as in the sheet: [label, kind]; kind 'line' (0 for now), 'total', 'section' or 'net'. */
-    public const LINES = [
-        ['Gross Sales', 'gross'],
-        ['Actual Cancelled', 'line'], ['Projected Returns', 'line'], ['Projected Delivered', 'line'], ['Tax Allocation', 'line'],
-        ['Product Cost', 'line'], ['Gross Profit', 'total'],
-        ['Selling And Marketing', 'section'],
-        ['Advertising Cost', 'line'], ['Ads VAT', 'line'], ['Shipping Fee', 'line'], ['COD Fee', 'line'], ['VAT on COD Fee', 'line'],
-        ['Fulfillment Fee', 'line'], ['Total Selling Costs', 'total'],
-        ['Operating Costs', 'section'],
-        ['Salaries', 'line'], ['Communication Allowance', 'line'], ['13th Month Allowance', 'line'], ['SIL', 'line'],
-        ['Government Benefits', 'line'], ['Miscellaneous expenses', 'line'], ['Product Research', 'line'], ['Magic Fund', 'line'],
-        ['Company Assets', 'line'], ['Executive Benefits', 'line'], ['Office Miscellaneous', 'line'], ['Maintenance Expenses', 'line'],
-        ['Consultants', 'line'], ["Manager's Allowance", 'line'], ['Birthday Cake Allowance', 'line'], ['Water Bill', 'line'],
-        ['Internet', 'line'], ['Rent', 'line'], ['Electricity', 'line'], ['Geniusmakers Management Fee', 'line'],
-        ['Business Development Fund', 'line'], ['HMO Expense', 'line'], ['Total Operating Costs', 'total'],
-        ['NET INCOME', 'net'],
+    /** The MNI's monthly figures are spread over this many working days. */
+    public const WORKING_DAYS = 24;
+
+    public const SHIPPING_PER_ORDER = 75;
+
+    public const FULFILLMENT_PER_ORDER = 25;
+
+    public const COD_RATE = 0.0224;
+
+    /** % Projected Returns per month (Y-m => percent as typed). */
+    public const RETURNS_KEY = 'daily_is.returns_pct';
+
+    /** Operating costs, in statement order: key => label. */
+    public const OPERATING = [
+        'salaries' => 'Salaries', 'communication' => 'Communication Allowance', 'thirteenth_month' => '13th Month Allowance',
+        'sil' => 'SIL', 'gov_benefits' => 'Government Benefits', 'misc' => 'Miscellaneous expenses',
+        ...MniDepartment::OPERATING,
     ];
 
-    public function __construct(private PageOrders $pageOrders) {}
+    /** Statement lines below the KPIs, as in the sheet: [label, kind, key]; kind 'line', 'total', 'section' or 'net'. */
+    public const LINES = [
+        ['Gross Sales', 'line', 'gross'],
+        ['Actual Cancelled', 'line', 'cancelled'], ['Projected Returns', 'line', 'returns'], ['Projected Delivered', 'line', 'delivered'],
+        ['Tax Allocation', 'line', 'tax'], ['Product Cost', 'line', 'product_cost'], ['Gross Profit', 'total', 'gross_profit'],
+        ['Selling And Marketing', 'section', null],
+        ['Advertising Cost', 'line', 'advertising'], ['Ads VAT', 'line', 'ads_vat'], ['Shipping Fee', 'line', 'shipping'],
+        ['COD Fee', 'line', 'cod'], ['VAT on COD Fee', 'line', 'vat_on_cod'], ['Fulfillment Fee', 'line', 'fulfillment'],
+        ['Total Selling Costs', 'total', 'selling'],
+        ['Operating Costs', 'section', null],
+        ['Salaries', 'line', 'salaries'], ['Communication Allowance', 'line', 'communication'], ['13th Month Allowance', 'line', 'thirteenth_month'],
+        ['SIL', 'line', 'sil'], ['Government Benefits', 'line', 'gov_benefits'], ['Miscellaneous expenses', 'line', 'misc'],
+        ['Product Research', 'line', 'product_research'], ['Magic Fund', 'line', 'magic_fund'], ['Company Assets', 'line', 'company_assets'],
+        ['Executive Benefits', 'line', 'executive_benefits'], ['Office Miscellaneous', 'line', 'office_miscellaneous'],
+        ['Maintenance Expenses', 'line', 'maintenance_expenses'], ['Consultants', 'line', 'consultants'],
+        ["Manager's Allowance", 'line', 'managers_allowance'], ['Birthday Cake Allowance', 'line', 'birthday_cake_allowance'],
+        ['Water Bill', 'line', 'water_bill'], ['Internet', 'line', 'internet'], ['Rent', 'line', 'rent'], ['Electricity', 'line', 'electricity'],
+        ['Geniusmakers Management Fee', 'line', 'management_fee'], ['Business Development Fund', 'line', 'business_development_fund'],
+        ['HMO Expense', 'line', 'hmo_expense'], ['Total Operating Costs', 'total', 'operating'],
+        ['NET INCOME', 'net', 'net_income'],
+    ];
+
+    /** Figures counted from the day's PC Report entries and orders (the rest are worked out from them). */
+    private const COUNTED = ['leads', 'engagements', 'orders', 'gross', 'cancelled', 'product_cost'];
+
+    public function __construct(private PageOrders $pageOrders, private MonthlyMni $mni, private ProductReport $productReport) {}
 
     /**
      * @param  Collection<int, User>  $cras
-     * @return array{products: list<array{slug: string, name: string}>, cras: array<int, array{total: array<string, int|float>, products: array<string, array<string, int|float>>}>, department: array{total: array<string, int|float>, products: array<string, array<string, int|float>>}, missingPage: bool}
+     * @return array{products: list<array{slug: string, name: string}>, returnsPct: ?float, cras: array<int, array{total: array<string, int|float|null>, products: array<string, array<string, int|float|null>>}>, department: array{total: array<string, int|float|null>, products: array<string, array<string, int|float|null>>}, missingPage: bool}
      */
     public function day(Collection $cras, CarbonImmutable $day): array
     {
-        $groups = ProductGroups::all();
+        $groups = ProductGroups::on($day);
         $groupOf = collect($groups)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
-        $empty = fn () => ['leads' => 0, 'engagements' => 0, 'orders' => 0, 'gross' => 0.0];
+        $empty = fn () => array_fill_keys(self::COUNTED, 0);
 
         $figures = [];
         foreach ($cras as $cra) {
+            $figures[$cra->id] = [];
             foreach ($groups as $group) {
                 $figures[$cra->id][$group['slug']] = $empty();
             }
@@ -65,30 +106,111 @@ class DailyIncomeStatement
             });
 
         ['orders' => $orders, 'missingPage' => $missingPage] = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day);
-        $craOf = PancakeAccounts::craBySeller($cras)->map(fn (User $cra) => $cra->id);
+        $sellers = PancakeAccounts::craBySeller($cras);
+        $craOf = $sellers->map(fn (User $cra) => $cra->id);
+        $costs = $orders->isEmpty() ? collect() : $this->productReport->lines($sellers->map(fn (User $cra) => $cra->displayName())->all(), $day, $day)
+            ->groupBy('order')->map(fn (Collection $lines) => (float) $lines->sum(fn (array $line) => $line['cost'] ?? 0));
         foreach ($orders as $order) {
-            $slug = $groupOf[$order['page']];
-            $figures[$craOf[$order['seller']]][$slug]['orders']++;
-            $figures[$craOf[$order['seller']]][$slug]['gross'] += $order['sales'];
+            $product = &$figures[$craOf[$order['seller']]][$groupOf[$order['page']]];
+            $product['orders'] += $order['counted'] ? 1 : 0;
+            $product['gross'] += $order['sales'];
+            $product['cancelled'] += in_array($order['status'], PancakeOrder::CANCELLED_OR_WAITING_STATUSES, true) ? $order['sales'] : 0;
+            $product['product_cost'] += $costs[$order['id']] ?? 0;
+            unset($product);
         }
 
-        $statements = collect($figures)->map(fn (array $products) => [
-            'total' => self::derive(self::sum($products)),
-            'products' => array_map(self::derive(...), $products),
-        ]);
+        $returnsPct = self::returnsPct($day);
+        $shares = $this->shares($cras, $day, max(count($groups), 1));
+        $statements = collect($figures)->map(function (array $products, int $craId) use ($returnsPct, $shares) {
+            $products = array_map(fn (array $counted) => self::statement($counted, $shares[$craId], $returnsPct), $products);
+
+            return ['total' => self::sum($products), 'products' => $products];
+        });
         $departmentProducts = collect($groups)->mapWithKeys(fn (array $group) => [
             $group['slug'] => self::sum($statements->pluck('products')->pluck($group['slug'])->all()),
         ])->all();
 
         return [
             'products' => array_map(fn (array $group) => ['slug' => $group['slug'], 'name' => $group['name']], $groups),
+            'returnsPct' => $returnsPct,
             'cras' => $statements->all(),
-            'department' => [
-                'total' => self::derive(self::sum($departmentProducts)),
-                'products' => array_map(self::derive(...), $departmentProducts),
-            ],
+            'department' => ['total' => self::sum($departmentProducts), 'products' => $departmentProducts],
             'missingPage' => $missingPage,
         ];
+    }
+
+    /**
+     * The month's % Projected Returns (5 = 5%), or null when nobody set it (counted as 0).
+     */
+    public static function returnsPct(CarbonImmutable $day): ?float
+    {
+        $value = (json_decode((string) Setting::value(self::RETURNS_KEY), true) ?? [])[$day->format('Y-m')] ?? null;
+
+        return $value === null ? null : (float) $value;
+    }
+
+    /**
+     * Set (or, with null, clear) a month's % Projected Returns.
+     */
+    public static function saveReturnsPct(CarbonImmutable $month, ?float $percent, User $by): void
+    {
+        $all = json_decode((string) Setting::value(self::RETURNS_KEY), true) ?? [];
+        $all[$month->format('Y-m')] = $percent;
+
+        Setting::put(self::RETURNS_KEY, json_encode(array_filter($all, fn ($value) => $value !== null)), $by);
+    }
+
+    /**
+     * Each CRA's Tax Allocation and operating costs for one product card: their 1M Monthly MNI figure for the day's month
+     * ÷ 24 working days ÷ $products. The MNI is worked out for every active CRA, as on its own page.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array<string, float>> cra id => key => amount
+     */
+    private function shares(Collection $cras, CarbonImmutable $day, int $products): array
+    {
+        $mni = $this->mni->for(LeadGenerator::cras(), $day->startOfMonth(), '1m')['cras'];
+
+        return $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect(['tax', ...array_keys(self::OPERATING)])
+            ->mapWithKeys(fn (string $key) => [$key => (float) ($mni[$cra->id][$key] ?? 0) / self::WORKING_DAYS / $products])
+            ->all()])->all();
+    }
+
+    /**
+     * One product card from its counted figures, the CRA's per-product shares and the month's % Projected Returns.
+     *
+     * @param  array<string, int|float>  $counted
+     * @param  array<string, float>  $shares
+     * @return array<string, int|float|null>
+     */
+    private static function statement(array $counted, array $shares, ?float $returnsPct): array
+    {
+        $returns = $counted['gross'] * ($returnsPct ?? 0) / 100;
+        $delivered = $counted['gross'] - $counted['cancelled'] - $returns;
+        $grossProfit = $delivered - $shares['tax'] - $counted['product_cost'];
+
+        $selling = [
+            'advertising' => 0.0,
+            'ads_vat' => 0.0,
+            'shipping' => $counted['orders'] * self::SHIPPING_PER_ORDER,
+            'cod' => $delivered * self::COD_RATE,
+            'vat_on_cod' => 0.0,
+            'fulfillment' => $counted['orders'] * self::FULFILLMENT_PER_ORDER,
+        ];
+        $operating = collect(self::OPERATING)->map(fn (string $label, string $key) => $shares[$key])->all();
+
+        return self::derive([
+            ...$counted,
+            'returns' => $returns,
+            'delivered' => $delivered,
+            'tax' => $shares['tax'],
+            'gross_profit' => $grossProfit,
+            ...$selling,
+            'selling' => array_sum($selling),
+            ...$operating,
+            'operating' => array_sum($operating),
+            'net_income' => $grossProfit - array_sum($selling) - array_sum($operating),
+        ]);
     }
 
     /**
@@ -125,19 +247,22 @@ class DailyIncomeStatement
     }
 
     /**
-     * @param  iterable<array<string, int|float>>  $rows
-     * @return array<string, int|float>
+     * Add up statements (a CRA's products, or the CRAs) and work the rates out again from the totals.
+     *
+     * @param  iterable<array<string, int|float|null>>  $statements
+     * @return array<string, int|float|null>
      */
-    private static function sum(iterable $rows): array
+    private static function sum(iterable $statements): array
     {
-        $total = ['leads' => 0, 'engagements' => 0, 'orders' => 0, 'gross' => 0.0];
-        foreach ($rows as $row) {
+        $keys = [...self::COUNTED, ...array_values(array_filter(array_column(self::LINES, 2)))];
+        $total = array_fill_keys(array_unique($keys), 0);
+        foreach ($statements as $statement) {
             foreach (array_keys($total) as $key) {
-                $total[$key] += $row[$key];
+                $total[$key] += $statement[$key];
             }
         }
 
-        return $total;
+        return self::derive($total);
     }
 
     /**

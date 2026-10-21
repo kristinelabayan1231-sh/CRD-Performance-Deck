@@ -119,8 +119,8 @@ class PancakePagesTest extends TestCase
             ->assertSessionHas('status');
 
         $this->assertSame([
-            ['slug' => 'pterygium', 'name' => 'Pterygium', 'pages' => ['Pterygium Eye Repair', 'Pterylief Eye Drops Ph']],
-            ['slug' => 'eye-care', 'name' => 'Eye Care', 'pages' => []],
+            ['slug' => 'pterygium', 'name' => 'Pterygium', 'pages' => ['Pterygium Eye Repair', 'Pterylief Eye Drops Ph'], 'added_on' => null],
+            ['slug' => 'eye-care', 'name' => 'Eye Care', 'pages' => [], 'added_on' => null],
         ], ProductGroups::all());
         $this->actingAs($this->owner)->get(route('settings.pancake-pages.index'))
             ->assertDontSee('Sample groups')

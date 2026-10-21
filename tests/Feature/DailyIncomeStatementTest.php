@@ -6,6 +6,10 @@ use App\Models\PancakeOrder;
 use App\Models\PcReportEntry;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\DailyIncomeStatement;
+use App\Services\LeadGenerator;
+use App\Services\MonthlyMni;
+use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -54,27 +58,82 @@ class DailyIncomeStatementTest extends TestCase
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
         $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
-        // Regina's Sinuxyl: two pages of PC Report counts, two orders; a canceled one and another day's are left out.
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one with a ₱100 cost) and a canceled one
+        // (in Gross Sales and Actual Cancelled, not in orders); another day's is left out.
         $this->entry($regina, 'Sinuxyl Nasal Spray', 100, 50);
         $this->entry($regina, 'Sinuxyl Nasal Care', 20, 10);
-        $this->order($regina, 'Sinuxyl Nasal Spray', 999);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'name' => 'Sinuxyl', 'cost' => 100]]]);
         $this->order($regina, 'Sinuxyl Nasal Care', 500);
-        $this->order($regina, 'Sinuxyl Nasal Spray', 700, ['status' => PancakeOrder::CANCELED]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 700, ['status' => PancakeOrder::CANCELED, 'pancake_order_id' => 'canceled-1']);
         $this->order($regina, 'Sinuxyl Nasal Spray', 800, ['ordered_on' => '2026-10-02']);
         // July Ann's ClearSight.
         $this->entry($julyAnn, 'Clear Sight Hub', 40, 20);
         $this->order($julyAnn, 'Clear Sight Hub', 800);
+        // October's % Projected Returns: 10%, for every product card.
+        $this->actingAs($supervisor)->put(route('daily-is.returns.update'), ['month' => '2026-10', 'returns_pct' => 10])->assertRedirect();
 
-        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))
-            ->assertOk()
-            ->assertSee('Customer Retention Department')
-            ->assertSee('NET INCOME')
-            ->viewData('data');
+        $show = fn () => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => self::DAY]))
+            ->assertOk()->assertSee('Customer Retention Department')->assertSee('NET INCOME')->viewData('data');
+        $data = $show();
 
-        $this->assertEquals(['leads' => 120, 'engagements' => 60, 'orders' => 2, 'gross' => 1499.0, 'conversion' => 2 / 60, 'aov' => 749.5], $data['cras'][$regina->id]['products']['sinuxyl']);
-        $this->assertEquals(['leads' => 0, 'engagements' => 0, 'orders' => 0, 'gross' => 0.0, 'conversion' => null, 'aov' => null], $data['cras'][$regina->id]['products']['clearsight']);
-        $this->assertEquals(['leads' => 160, 'engagements' => 80, 'orders' => 3, 'gross' => 2299.0, 'conversion' => 3 / 80, 'aov' => 2299 / 3], $data['department']['total']);
-        $this->assertEquals(['leads' => 40, 'engagements' => 20, 'orders' => 1, 'gross' => 800.0, 'conversion' => 0.05, 'aov' => 800.0], $data['department']['products']['clearsight']);
+        // Tax Allocation and operating costs: Regina's 1M MNI for October ÷ 24 ÷ the 2 products.
+        $mni = app(MonthlyMni::class)->for(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-01'), '1m')['cras'][$regina->id];
+        $share = fn (string $key) => $mni[$key] / 24 / 2;
+        $sinuxyl = $data['cras'][$regina->id]['products']['sinuxyl'];
+        $delivered = 2199 - 700 - 219.9;
+        $operating = array_sum(array_map($share, array_keys(DailyIncomeStatement::OPERATING)));
+        $selling = 2 * 75 + $delivered * 0.0224 + 2 * 25;
+        $expected = [
+            'leads' => 120, 'engagements' => 60, 'orders' => 2, 'gross' => 2199.0, 'cancelled' => 700.0, 'returns' => 219.9,
+            'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 100.0, 'gross_profit' => $delivered - $share('tax') - 100,
+            'advertising' => 0.0, 'ads_vat' => 0.0, 'shipping' => 150, 'cod' => $delivered * 0.0224, 'vat_on_cod' => 0.0, 'fulfillment' => 50,
+            'selling' => $selling, 'salaries' => $share('salaries'), 'hmo_expense' => $share('hmo_expense'), 'operating' => $operating,
+            'net_income' => $delivered - $share('tax') - 100 - $selling - $operating,
+        ];
+        foreach ($expected as $key => $value) {
+            $this->assertEqualsWithDelta($value, $sinuxyl[$key], 0.001, $key);
+        }
+        $this->assertGreaterThan(0, $share('salaries'));
+        // Regina's card adds up her products: her operating costs are her MNI ÷ 24.
+        $this->assertEqualsWithDelta($mni['salaries'] / 24, $data['cras'][$regina->id]['total']['salaries'], 0.001);
+        $this->assertEqualsWithDelta(2199 + 800, $data['department']['total']['gross'], 0.001);
+        $this->assertSame(3, $data['department']['total']['orders']);
+
+        // The canceled order is resolved: Oct 1's Actual Cancelled drops to 0.
+        PancakeOrder::where('pancake_order_id', 'canceled-1')->update(['status' => 3]);
+        $this->assertEqualsWithDelta(0, $show()['cras'][$regina->id]['products']['sinuxyl']['cancelled'], 0.001);
+    }
+
+    public function test_a_product_group_added_today_counts_from_today_only(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        // Saved before (the first save keeps them as there from the start), then a third added on Oct 16.
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']], ['name' => 'ClearSight', 'pages' => ['Clear Sight Hub']]]);
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']], ['name' => 'clearsight', 'pages' => ['Clear Sight Hub']], ['name' => 'Ginseng', 'pages' => ['Ginseng Page']]]);
+
+        $products = fn (string $date) => array_column($this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $date]))->viewData('data')['products'], 'slug');
+        $mni = app(MonthlyMni::class)->for(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-01'), '1m')['cras'][$regina->id];
+
+        $this->assertSame(['sinuxyl', 'clearsight'], $products('2026-10-15'));
+        $this->assertSame(['sinuxyl', 'clearsight', 'ginseng'], $products('2026-10-16'));
+        // Yesterday's per-product share stays ÷ 2; today's is ÷ 3.
+        $salaries = fn (string $date) => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $date]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['salaries'];
+        $this->assertEqualsWithDelta($mni['salaries'] / 24 / 2, $salaries('2026-10-15'), 0.001);
+        $this->assertEqualsWithDelta($mni['salaries'] / 24 / 3, $salaries('2026-10-16'), 0.001);
+        // PC Report doesn't list it on an earlier day either.
+        $this->actingAs($supervisor)->get(route('pc-report.index', ['date' => '2026-10-15']))->assertDontSee('Ginseng');
+    }
+
+    public function test_only_supervisors_set_the_months_projected_returns(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+
+        $this->actingAs($regina)->put(route('daily-is.returns.update'), ['month' => '2026-10', 'returns_pct' => 10])->assertForbidden();
+        $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->put(route('daily-is.returns.update'), ['month' => '2026-10', 'returns_pct' => 101])
+            ->assertSessionHasErrors('returns_pct');
+        $this->assertNull(DailyIncomeStatement::returnsPct(CarbonImmutable::parse('2026-10-01')));
     }
 
     public function test_supervisor_can_narrow_to_one_cra(): void

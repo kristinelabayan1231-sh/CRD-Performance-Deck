@@ -40,8 +40,42 @@
         </header>
 
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
-            <span class="font-semibold">How it fills in:</span> leads and engagements are the PC Report's Total Inquiries and Total Engagement on each product's pages; orders and Gross Sales are the CRA's Pancake orders on those pages that day (canceled and deleted left out). Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders. The other lines are 0.00 until the MNI is built.
+            <span class="font-semibold">How it fills in:</span> leads and engagements are the PC Report's Total Inquiries and Total Engagement on each product's pages; orders are the CRA's Pancake orders on those pages that day (canceled and deleted left out), and Gross Sales those orders' sales with the canceled ones too.
+            Actual Cancelled = the orders that are Canceled or Waiting for goods now, so it changes when an order is resolved.
+            Projected Returns = Gross Sales × the month's % Projected Returns; Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns.
+            Product Cost is from Order Database → Product Report. Shipping Fee = orders × ₱75, COD Fee = Projected Delivered × 2.24%, Fulfillment Fee = orders × ₱25; Advertising Cost, Ads VAT and VAT on COD Fee are 0.
+            Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI ÷ 24, then ÷ the day's {{ count($data['products']) }} {{ Str::plural('product', count($data['products'])) }} on a product card.
         </div>
+
+        {{-- % Projected Returns: one figure for the month, every product card --}}
+        <section class="flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm shadow-sm" aria-labelledby="returns-title">
+            <h2 id="returns-title" class="font-semibold">% Projected Returns · {{ $day->format('F Y') }}</h2>
+            @if ($canSetReturns)
+                <form method="POST" action="{{ route('daily-is.returns.update') }}" class="flex items-center gap-2">
+                    @csrf
+                    @method('PUT')
+                    <input type="hidden" name="month" value="{{ $day->format('Y-m') }}">
+                    <input type="hidden" name="date" value="{{ $day->toDateString() }}">
+                    @if ($craId)
+                        <input type="hidden" name="cra" value="{{ $craId }}">
+                    @endif
+                    <label class="flex items-center gap-1.5">
+                        <span class="sr-only">% Projected Returns for {{ $day->format('F Y') }}</span>
+                        <input type="number" id="returns_pct" name="returns_pct" min="0" max="100" step="0.01" inputmode="decimal" value="{{ $data['returnsPct'] }}" placeholder="0"
+                               class="h-9 w-24 rounded-lg border border-line bg-white px-2.5 text-right tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        <span class="text-muted">%</span>
+                    </label>
+                    <button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Save</button>
+                </form>
+                @error('returns_pct')
+                    <p class="text-xs text-coral-700">{{ $message }}</p>
+                @enderror
+                <p class="text-xs text-muted">Applies to every product card this month.</p>
+            @else
+                <span class="font-bold tabular-nums">{{ $data['returnsPct'] === null ? 'Not set (0%)' : rtrim(rtrim(number_format($data['returnsPct'], 2), '0'), '.').'%' }}</span>
+                <span class="text-xs text-muted">Set by your CRA Supervisor.</span>
+            @endif
+        </section>
 
         @if ($data['missingPage'])
             <div role="status" class="rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-brand-700">

@@ -121,7 +121,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::put('/', [MonthlyMniController::class, 'update'])->middleware('can:mni.manage')->name('update');
     });
 
-    Route::get('/daily-is', DailyIncomeStatementController::class)->middleware('can:daily_is.view')->name('daily-is.index');
+    Route::get('/daily-is', [DailyIncomeStatementController::class, 'index'])->middleware('can:daily_is.view')->name('daily-is.index');
+    Route::put('/daily-is/returns', [DailyIncomeStatementController::class, 'updateReturns'])->middleware('can:daily_is.view_all')->name('daily-is.returns.update');
 
     Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
         Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
