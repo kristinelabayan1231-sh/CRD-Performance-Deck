@@ -11,9 +11,11 @@ import { initProductPerformance } from './product-performance';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initTabs } from './tabs';
+import { initTheme } from './theme';
 import { initTooltips } from './tooltip';
 
 document.addEventListener('DOMContentLoaded', () => {
+    initTheme();
     initTabs();
     initTooltips();
     initSegmentation();

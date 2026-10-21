@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import tailwindcss from '@tailwindcss/vite';
+import darkTheme from './vite.dark-theme.js';
 
 export default defineConfig({
     plugins: [
@@ -15,6 +16,7 @@ export default defineConfig({
             ],
         }),
         tailwindcss(),
+        darkTheme(),
     ],
     server: {
         watch: {

@@ -12,7 +12,12 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} · CRD Performance Deck</title>
     <x-favicons />
+    {{-- Light / Dark (top bar switch): set before the page paints, remembered on this browser --}}
+    <script>try { document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'; } catch (e) { document.documentElement.dataset.theme = 'light'; }</script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @if (is_file(public_path('build/assets/theme-dark.css')))
+        <link rel="stylesheet" href="{{ asset('build/assets/theme-dark.css') }}?v={{ filemtime(public_path('build/assets/theme-dark.css')) }}">
+    @endif
 </head>
 <body class="min-h-screen bg-canvas font-sans text-ink antialiased">
     {{-- fit: on large screens the page fills the window and only its own sections scroll. --}}
@@ -119,6 +124,14 @@
                 </div>
 
                 <div class="flex items-center gap-3">
+                    <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Theme" data-theme-switch>
+                        @foreach (['light' => ['Light', 'M12 3v1.5M12 19.5V21M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M3 12h1.5M19.5 12H21M4.6 19.4l1.1-1.1M18.3 5.7l1.1-1.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'], 'dark' => ['Dark', 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z']] as $theme => [$themeLabel, $path])
+                            <button type="button" data-theme-set="{{ $theme }}" aria-pressed="false" title="{{ $themeLabel }} theme" aria-label="{{ $themeLabel }} theme"
+                                    class="grid size-8 place-items-center rounded-md text-muted transition hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">
+                                <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $path }}"/></svg>
+                            </button>
+                        @endforeach
+                    </div>
                     <x-avatar :user="$user" class="size-8" />
                     <span class="hidden text-sm font-medium sm:inline">{{ $user->displayName() }}</span>
                     <form method="POST" action="{{ route('logout') }}">
