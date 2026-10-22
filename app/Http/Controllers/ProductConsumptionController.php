@@ -40,7 +40,7 @@ class ProductConsumptionController extends Controller
         $product->update($this->validated($request, $product));
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
-        $removed = $product->wasChanged(['name', 'keywords']) ? $this->applyList($catalog) : 0;
+        $removed = $product->wasChanged(['name', 'keywords', 'exclude_keywords']) ? $this->applyList($catalog) : 0;
 
         return back()->with('status', "Product \"{$product->name}\" updated.".$this->removedNote($removed));
     }
@@ -101,10 +101,11 @@ class ProductConsumptionController extends Controller
      */
     private function validated(Request $request, ?Product $product = null): array
     {
-        $keywords = collect(explode(',', (string) $request->input('keywords')))->map(fn ($k) => trim($k))->filter()->unique()->join(', ');
+        $list = fn (string $field) => collect(explode(',', (string) $request->input($field)))->map(fn ($k) => trim($k))->filter()->unique()->join(', ') ?: null;
         $request->merge([
             'name' => trim((string) $request->input('name')),
-            'keywords' => $keywords ?: null,
+            'keywords' => $list('keywords'),
+            'exclude_keywords' => $list('exclude_keywords'),
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
             'unit_cost' => filled($request->input('unit_cost')) ? $request->input('unit_cost') : null,
@@ -116,6 +117,7 @@ class ProductConsumptionController extends Controller
         return $request->validateWithBag($bag, [
             'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product)],
             'keywords' => ['nullable', 'string', 'max:1000'],
+            'exclude_keywords' => ['nullable', 'string', 'max:1000'],
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'unit_cost' => ['nullable', 'numeric', 'min:0', 'max:1000000'],

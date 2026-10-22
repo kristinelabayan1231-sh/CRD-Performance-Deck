@@ -1,6 +1,8 @@
 @props(['title' => 'Dashboard', 'fit' => false])
 
-@php($user = auth()->user())
+@php
+    $user = auth()->user();
+@endphp
 
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -10,74 +12,101 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ $title }} · CRD Performance Deck</title>
     <x-favicons />
+    {{-- Light / Dark (top bar switch): set before the page paints, remembered on this browser --}}
+    <script>try { document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'; } catch (e) { document.documentElement.dataset.theme = 'light'; }</script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @if (is_file(public_path('build/assets/theme-dark.css')))
+        <link rel="stylesheet" href="{{ asset('build/assets/theme-dark.css') }}?v={{ filemtime(public_path('build/assets/theme-dark.css')) }}">
+    @endif
 </head>
 <body class="min-h-screen bg-canvas font-sans text-ink antialiased">
     {{-- fit: on large screens the page fills the window and only its own sections scroll. --}}
     <div @class(['flex min-h-screen', 'lg:h-dvh lg:overflow-hidden' => $fit])>
         {{-- Sidebar --}}
-        <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col border-r border-line bg-white transition-transform lg:static lg:translate-x-0">
-            <a href="{{ route('dashboard') }}" class="flex h-16 items-center gap-3 px-6">
+        {{-- Sidebar: Dashboard and Report Summary, then the modules in four groups that open one at a time (the group
+             holding this page starts open), then User Access and Settings. --}}
+        @php
+            $navGroups = collect([
+                ['name' => 'Segmentation', 'icon' => 'chart', 'items' => [
+                    ['Segmentation Tracker', auth()->user()->segmentationHome(), request()->routeIs('segmentation.*'), $user->can('segmentation.view')],
+                    ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
+                    ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
+                ]],
+                ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
+                    ['CVR Tracker', route('cvr-tracker.index'), request()->routeIs('cvr-tracker.*'), $user->can('cvr_tracker.view')],
+                    ['Order Database', route('order-database.cra-performance'), request()->routeIs('order-database.*'), $user->can('order_database.view')],
+                    ['PC Report', route('pc-report.index'), request()->routeIs('pc-report.*'), $user->can('pc_report.view')],
+                ]],
+                ['name' => 'Income & Products', 'icon' => 'statement', 'items' => [
+                    ['Monthly MNI', route('mni.index'), request()->routeIs('mni.*'), $user->can('mni.view')],
+                    ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view')],
+                    ['Product Performance', route('product-performance.index'), request()->routeIs('product-performance.*'), $user->can('product_performance.view')],
+                ]],
+                ['name' => 'Customers & Costs', 'icon' => 'database', 'items' => [
+                    ['Customer Database', route($user->can('customers.view') ? 'customers.index' : 'customers.high-value'), request()->routeIs('customers.*'), $user->canAny(['customers.view', 'customers.high_value.view'])],
+                    ['CRD - MC', route('monthly-cost.index'), request()->routeIs('monthly-cost.*'), $user->can('monthly_cost.manage')],
+                ]],
+            ])->map(fn (array $group) => [...$group, 'items' => array_values(array_filter($group['items'], fn (array $item) => $item[3]))])
+              ->filter(fn (array $group) => $group['items'] !== [])
+              ->map(fn (array $group) => [...$group, 'holdsPage' => collect($group['items'])->contains(fn (array $item) => $item[2])]);
+        @endphp
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-[#1b1530] text-[#e9e4f5] transition-transform lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:translate-x-0">
+            <a href="{{ route('dashboard') }}" class="flex h-16 shrink-0 items-center gap-3 px-5">
                 <x-crd-logo class="size-9" />
-                <span class="bg-gradient-to-r from-brand-500 to-sky bg-clip-text text-lg font-bold text-transparent">CRD Deck</span>
+                <span class="text-lg font-bold text-white">CRD Deck</span>
             </a>
 
-            <div class="flex items-center gap-3 px-6 py-5">
-                <x-avatar :user="$user" class="size-11" />
-                <div class="min-w-0">
-                    <p class="truncate font-semibold">{{ $user->displayName() }}</p>
-                    <p class="text-xs text-muted">{{ $user->roleLabel() }}</p>
-                </div>
-            </div>
-
-            <nav class="px-3 pb-6 text-sm">
+            <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 text-sm" aria-label="Main">
                 <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" icon="home">Dashboard</x-nav-link>
-                @can('segmentation.view')
-                    <x-nav-link :href="auth()->user()->segmentationHome()" :active="request()->routeIs('segmentation.*')" icon="chart">Segmentation Tracker</x-nav-link>
-                @endcan
-                @can('productivity.view')
-                    <x-nav-link :href="route('productivity.index')" :active="request()->routeIs('productivity.*')" icon="trend">Segmentation Productivity</x-nav-link>
-                @endcan
-                @can('conversion.view')
-                    <x-nav-link :href="route('conversion.index')" :active="request()->routeIs('conversion.*')" icon="funnel">Conversion Breakdown</x-nav-link>
-                @endcan
                 @can('report_summary.view')
                     <x-nav-link :href="route('report-summary.index')" :active="request()->routeIs('report-summary.*')" icon="report">Report Summary</x-nav-link>
                 @endcan
-                @can('pc_report.view')
-                    <x-nav-link :href="route('pc-report.index')" :active="request()->routeIs('pc-report.*')" icon="pc">PC Report</x-nav-link>
-                @endcan
-                @can('cvr_tracker.view')
-                    <x-nav-link :href="route('cvr-tracker.index')" :active="request()->routeIs('cvr-tracker.*')" icon="cvr">CVR Tracker</x-nav-link>
-                @endcan
-                @can('daily_is.view')
-                    <x-nav-link :href="route('daily-is.index')" :active="request()->routeIs('daily-is.*')" icon="statement">Daily I.S.</x-nav-link>
-                @endcan
-                @can('mni.view')
-                    <x-nav-link :href="route('mni.index')" :active="request()->routeIs('mni.*')" icon="target">Monthly MNI</x-nav-link>
-                @endcan
-                @can('order_database.view')
-                    <x-nav-link :href="route('order-database.cra-performance')" :active="request()->routeIs('order-database.*')" icon="orders">Order Database</x-nav-link>
-                @endcan
-                @can('product_performance.view')
-                    <x-nav-link :href="route('product-performance.index')" :active="request()->routeIs('product-performance.*')" icon="products">Product Performance</x-nav-link>
-                @endcan
-                @canany(['customers.view', 'customers.high_value.view'])
-                    <x-nav-link :href="route($user->can('customers.view') ? 'customers.index' : 'customers.high-value')" :active="request()->routeIs('customers.*')" icon="database">Customer Database</x-nav-link>
-                @endcanany
-                @can('monthly_cost.manage')
-                    <x-nav-link :href="route('monthly-cost.index')" :active="request()->routeIs('monthly-cost.*')" icon="wallet">CRD - MC</x-nav-link>
-                @endcan
-                @can('user_access.view')
-                    <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
-                @endcan
-                @canany(['product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check'])
-                    <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
+
+                @if ($navGroups->isNotEmpty())
+                    <div class="mx-1 my-2 h-px bg-white/10" aria-hidden="true"></div>
+                @endif
+
+                @foreach ($navGroups as $group)
+                    {{-- name="nav-groups": opening one closes the others --}}
+                    <details name="nav-groups" @if ($group['holdsPage']) open @endif @class(['group rounded-xl open:bg-white/[0.06]', 'bg-white/[0.06]' => $group['holdsPage']])>
+                        <summary class="flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-xl px-3 font-semibold text-white hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+                            <x-nav-icon :name="$group['icon']" class="size-5 shrink-0 text-[#b9a8e8]" />
+                            <span class="flex-1">{{ $group['name'] }}</span>
+                            <span class="text-xs font-semibold text-[#a89cc8] tabular-nums">{{ count($group['items']) }}</span>
+                            <svg class="size-4 shrink-0 text-[#a89cc8] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
+                        </summary>
+                        <div class="flex flex-col gap-0.5 pt-0.5 pr-1.5 pb-2 pl-5">
+                            @foreach ($group['items'] as [$label, $href, $active])
+                                <x-nav-link :href="$href" :active="$active" sub>{{ $label }}</x-nav-link>
+                            @endforeach
+                        </div>
+                    </details>
+                @endforeach
+
+                @canany(['user_access.view', 'product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check'])
+                    <div class="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
+                        @can('user_access.view')
+                            <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
+                        @endcan
+                        @canany(['product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check'])
+                            <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
+                        @endcanany
+                    </div>
                 @endcanany
             </nav>
 
+            <div class="shrink-0 px-3 pb-1">
+                <div class="flex items-center gap-3 rounded-xl bg-white/[0.06] px-3 py-2.5">
+                    <x-avatar :user="$user" class="size-9" />
+                    <div class="min-w-0">
+                        <p class="truncate text-sm font-semibold text-white">{{ $user->displayName() }}</p>
+                        <p class="text-xs text-[#b3a8d1]">{{ $user->roleLabel() }}</p>
+                    </div>
+                </div>
+            </div>
+
             {{-- CRAs on duty today; the list opens for supervisors --}}
-            <x-on-duty class="sticky bottom-0 mt-auto" />
+            <x-on-duty class="shrink-0" />
         </aside>
 
         <div @class(['flex min-w-0 flex-1 flex-col', 'lg:min-h-0' => $fit])>
@@ -95,6 +124,14 @@
                 </div>
 
                 <div class="flex items-center gap-3">
+                    <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Theme" data-theme-switch>
+                        @foreach (['light' => ['Light', 'M12 3v1.5M12 19.5V21M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M3 12h1.5M19.5 12H21M4.6 19.4l1.1-1.1M18.3 5.7l1.1-1.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'], 'dark' => ['Dark', 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z']] as $theme => [$themeLabel, $path])
+                            <button type="button" data-theme-set="{{ $theme }}" aria-pressed="false" title="{{ $themeLabel }} theme" aria-label="{{ $themeLabel }} theme"
+                                    class="grid size-8 place-items-center rounded-md text-muted transition hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">
+                                <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="{{ $path }}"/></svg>
+                            </button>
+                        @endforeach
+                    </div>
                     <x-avatar :user="$user" class="size-8" />
                     <span class="hidden text-sm font-medium sm:inline">{{ $user->displayName() }}</span>
                     <form method="POST" action="{{ route('logout') }}">

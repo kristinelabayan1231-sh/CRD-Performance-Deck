@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'keywords', 'consumption_days', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
+#[Fillable(['name', 'keywords', 'exclude_keywords', 'consumption_days', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
 class Product extends Model
 {
     protected function casts(): array
@@ -35,6 +35,16 @@ class Product extends Model
     public function keywordList(): array
     {
         return array_values(array_filter(array_map('trim', explode(',', (string) $this->keywords))));
+    }
+
+    /**
+     * Words that make an item not this product even though it matches (e.g. "Nasal Inhaler" for Sinuxyl).
+     *
+     * @return list<string>
+     */
+    public function excludeList(): array
+    {
+        return array_values(array_filter(array_map('trim', explode(',', (string) $this->exclude_keywords))));
     }
 
     public function creator(): BelongsTo

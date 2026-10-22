@@ -7,6 +7,12 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-22 · Every page · Light / Dark switch in the top bar (sun / moon, beside your name), remembered on each browser. Dark keeps the light theme's look on a purple-slate base: cards a step lighter than the page, tints stay coloured, the coloured tiles and purple buttons unchanged, yellow note and input boxes become slate · shots: — (could add one dark screenshot)
+
+- 2026-10-21 · Sidebar · New dark sidebar: Dashboard and Report Summary on top, then four groups that open one at a time (Segmentation · Orders & Tracking · Income & Products · Customers & Costs, each with its page count; the group of the page you're on starts open), User Access and Settings at the bottom, then your name and CRAs on duty. It stays in place while the page scrolls · shots: every screenshot with the sidebar
+
+- 2026-10-21 · Settings → Product Consumption · New "Not this product if it has" words per product (under Also matches): an item with one of them isn't that product, e.g. "Nasal Inhaler" on Sinuxyl keeps Sinuxyl Nasal Inhaler out of Sinuxyl and out of CRD (Product Report, sales, Customer Database) · shots: product-consumption
+
 - 2026-10-21 · Order Database, Daily I.S. · Product Report follows logistics: items not in Settings → Product Consumption (e.g. LUMICARE OIL, Haplunas, Ear Relief Balm) are left out, with their share of the order's sales and cost, no row and not in the TOTAL; the "Other products" filter is gone. Daily I.S. Product Cost leaves them out too · shots: product-report
 
 - 2026-10-21 · Settings (Product Consumption, Pancake Pages), whole deck · A product or page added in Settings counts from the day it was added ("Counts from <date>" under its name): orders, deliveries and leads before that day stay as they were everywhere (CVR Tracker, dashboard, Conversion Breakdown, Customer Database, leads, churn, Product Report, PC Report, Daily I.S.). Products and pages already there count on every day. Re-adding a deleted product also counts from that day · shots: product-consumption, pancake-pages

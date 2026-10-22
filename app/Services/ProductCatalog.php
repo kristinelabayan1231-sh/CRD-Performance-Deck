@@ -14,7 +14,8 @@ use Illuminate\Support\Collection;
  * A product's name is its keyword ("Pterygium" catches "Pterygium Drops" and
  * "Pterygium Eye Drops"); extra keywords catch other spellings. Matching ignores
  * case, spaces and punctuation, so "Clearsight" also catches "Clear Sight 3.0".
- * The longest matching keyword wins.
+ * The longest matching keyword wins. A product's "not this product" words (exclude_keywords) stop a match: with
+ * "Nasal Inhaler" on Sinuxyl, "Sinuxyl Nasal Inhaler" isn't Sinuxyl (nor on the list, unless another product matches it).
  *
  * A product added later counts from its counts_from day: given the day of an order, delivery or lead ($on, Y-m-d), the
  * list is the products there that day, so adding one leaves earlier days as they were. Without a day every product counts.
@@ -33,7 +34,7 @@ class ProductCatalog
         }
 
         return $this->keywords()
-            ->first(fn (array $k) => str_contains($name, $k['key']) && self::countsOn($k['product'], $on))['product'] ?? null;
+            ->first(fn (array $k) => str_contains($name, $k['key']) && ! $this->excluded($name, $k['product']) && self::countsOn($k['product'], $on))['product'] ?? null;
     }
 
     /**
@@ -51,7 +52,7 @@ class ProductCatalog
             }
 
             foreach ($this->keywords() as $k) {
-                if (! str_contains($squashed, $k['key'])) {
+                if (! str_contains($squashed, $k['key']) || $this->excluded($squashed, $k['product'])) {
                     continue;
                 }
                 $day = $k['product']->counts_from?->toDateString();
@@ -71,6 +72,21 @@ class ProductCatalog
     public function listedFromText(?string $products): string|false|null
     {
         return $this->listedFrom(self::split($products));
+    }
+
+    /**
+     * Whether $squashed has one of the product's "not this product" words.
+     */
+    private function excluded(string $squashed, Product $product): bool
+    {
+        foreach ($product->excludeList() as $word) {
+            $word = self::squash($word);
+            if ($word !== '' && str_contains($squashed, $word)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function countsOn(Product $product, ?string $on): bool
