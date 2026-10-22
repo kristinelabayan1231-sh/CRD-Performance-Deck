@@ -33,6 +33,9 @@ $modules = [
     'Settings · Segmentation Tracker' => [
         'segmentation_options.manage' => 'Edit the Segmentation Tracker dropdown choices (status, repeat purchase, customer tagging, feedback)',
     ],
+    'Settings · Daily I.S.' => [
+        'daily_is_products.manage' => 'Deactivate Daily I.S. products (a deactivated product shows only on a day it has sales, labelled Deactivated)',
+    ],
     'Settings · Connections' => [
         'connections.check' => 'Run the connection check (database, Shecom, Pancake) from the server',
     ],
@@ -52,6 +55,9 @@ $modules = [
     ],
     'Report Summary' => [
         'report_summary.view' => 'View the Report Summary: every CRA\'s weekly, month-to-date and daily orders, sales and per-CRA averages',
+    ],
+    'Running Sales' => [
+        'running_sales.view' => 'View every CRA\'s running sales (overall and per product) against their daily goal, and refresh them',
     ],
     'On Duty' => [
         'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',

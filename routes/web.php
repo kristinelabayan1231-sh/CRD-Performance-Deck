@@ -9,6 +9,7 @@ use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\CvrTrackerController;
 use App\Http\Controllers\DailyIncomeStatementController;
+use App\Http\Controllers\DailyIsSettingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\HighValueCustomerController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\RepeatPurchaseController;
 use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\RunningSalesController;
 use App\Http\Controllers\SalesGoalController;
 use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationOptionController;
@@ -106,6 +108,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
+    Route::prefix('running-sales')->name('running-sales.')->middleware('can:running_sales.view')->group(function () {
+        Route::get('/', [RunningSalesController::class, 'index'])->name('index');
+        Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
+    });
     Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
 
     Route::prefix('pc-report')->name('pc-report.')->middleware('can:pc_report.view')->group(function () {
@@ -164,6 +170,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('pancake_accounts.manage') => 'settings.pancake-accounts.index',
                 request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
                 request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
+                request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
@@ -195,6 +202,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('segmentation-tracker')->name('segmentation-options.')->middleware('can:segmentation_options.manage')->group(function () {
             Route::get('/', [SegmentationOptionController::class, 'index'])->name('index');
             Route::put('/{list}', [SegmentationOptionController::class, 'update'])->where('list', '[a-z_]+')->name('update');
+        });
+
+        Route::prefix('daily-is')->name('daily-is.')->middleware('can:daily_is_products.manage')->group(function () {
+            Route::get('/', [DailyIsSettingController::class, 'index'])->name('index');
+            Route::put('/', [DailyIsSettingController::class, 'update'])->name('update');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

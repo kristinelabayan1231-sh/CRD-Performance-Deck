@@ -72,12 +72,12 @@
         @endif
 
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
-            <span class="font-semibold">How it fills in:</span> type each row's Total Inquiries, Total Engagement and Amount for the day picked; they save when you leave the box. # of Orders is the CRA's Pancake orders on that page for the day picked (canceled and deleted left out); a split page's Dormant and Active rows share one. Conversion Rate = # of Orders ÷ Total Engagement (a split page's two rows together).
+            <span class="font-semibold">How it fills in:</span> type each row's Total Inquiries and Total Engagement for the day picked; they save when you leave the box. # of Orders and Amount come from the CRA's CVR Tracker for the day picked: their tagged orders on that page (canceled and deleted left out); a split page's Dormant and Active rows share them. Conversion Rate = # of Orders ÷ Total Engagement (a split page's two rows together).
         </div>
 
         @if ($ordersMissingPage)
             <div role="status" class="rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-brand-700">
-                Some of this day's orders were saved before their Pancake page was, so # of Orders may be short. Fetching them again from Pancake now; reload in a few minutes.
+                Some of this day's orders were saved before their Pancake page was, so # of Orders and Amount may be short. Fetching them again from Pancake now; reload in a few minutes.
             </div>
         @endif
 
@@ -140,11 +140,9 @@
                                         <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle" data-pc-orders="{{ $line['orders'] }}" data-page="{{ $line['page'] }}">{!! $line['orders'] === null ? $dash : number_format($line['orders']) !!}</td>
                                         {{-- # of Orders ÷ Total Engagement; a split page's two rows together --}}
                                         <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle font-semibold" data-pc-conversion data-page="{{ $line['page'] }}">{!! $line['conversion'] === null ? $dash : number_format($line['conversion'] * 100, 2).'%' !!}</td>
+                                        {{-- From the CVR Tracker, like # of Orders --}}
+                                        <td @if ($line['orders_rows'] > 1) rowspan="{{ $line['orders_rows'] }}" @endif class="px-4 py-2.5 text-right align-middle" data-pc-amount data-page="{{ $line['page'] }}">{!! $line['amount'] === null ? $dash : '₱'.number_format($line['amount'], 2) !!}</td>
                                     @endif
-                                    <td class="px-4 py-2 text-right">
-                                        <input type="number" min="0" step="0.01" inputmode="decimal" data-pc-count="amount" data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}"
-                                               value="{{ $line['amount'] }}" placeholder="—" aria-label="Amount for {{ $cra->displayName() }}, {{ $name }}" class="{{ $countInput }} w-28">
-                                    </td>
                                     <td class="px-4 py-2"><input type="text" data-pc-tagging data-cra="{{ $cra->id }}" data-page="{{ $line['page'] }}" data-category="{{ $line['category'] }}" value="{{ $line['tagging'] }}" maxlength="50" placeholder="e.g. SW1, SJJ" autocomplete="off" spellcheck="false" aria-label="Tagging for {{ $cra->displayName() }}, {{ $name }}" class="h-8 w-32 rounded-lg border border-line bg-white px-2 text-xs font-semibold uppercase placeholder:font-normal placeholder:normal-case focus:border-brand-400 focus:ring-2 focus:ring-brand-200 focus:outline-none"></td>
                                     <td class="px-4 py-2.5">
                                         @php($rangeLabel = $range($line['from'], $line['to']))

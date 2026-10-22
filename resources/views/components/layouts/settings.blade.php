@@ -17,6 +17,7 @@
     ],
     'Modules' => [
         'settings.segmentation-options.index' => ['Segmentation Tracker', 'segmentation_options.manage'],
+        'settings.daily-is.index' => ['Daily I.S.', 'daily_is_products.manage'],
     ],
     'System' => [
         'settings.connections.index' => ['Connections', 'connections.check'],

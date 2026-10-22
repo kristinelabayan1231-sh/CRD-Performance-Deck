@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\PcReportEntry;
@@ -193,15 +194,18 @@ class PcReportTest extends TestCase
 
     private int $orderSeq = 0;
 
-    private function pageOrder(string $seller, ?string $page, string $day, int $status = 3, bool $nonCrd = false, ?string $pageId = null): void
+    private function pageOrder(string $seller, ?string $page, string $day, int $status = 3, bool $nonCrd = false, ?string $pageId = null, ?string $type = PancakeOrder::SEGMENTATION, float $total = 500): string
     {
+        $id = (string) (5000 + ++$this->orderSeq);
         PancakeOrder::create([
-            'pancake_order_id' => (string) (5000 + ++$this->orderSeq), 'ordered_on' => $day, 'seller_name' => $seller,
-            'status' => $status, 'total_price' => 500, 'page_name' => $page, 'page_id' => $pageId, 'non_crd' => $nonCrd,
+            'pancake_order_id' => $id, 'ordered_on' => $day, 'seller_name' => $seller,
+            'status' => $status, 'total_price' => $total, 'page_name' => $page, 'page_id' => $pageId, 'non_crd' => $nonCrd, 'conversion_type' => $type,
         ]);
+
+        return $id;
     }
 
-    public function test_number_of_orders_counts_the_cras_orders_on_each_page_for_the_day_picked(): void
+    public function test_number_of_orders_counts_the_cras_cvr_tracker_orders_on_each_page_for_the_day_picked(): void
     {
         $this->regina->update(['pancake_name' => 'CRD Regina']);
         $this->julyAnn->update(['pancake_name' => 'CRD July Ann']);
@@ -209,11 +213,12 @@ class PcReportTest extends TestCase
         // Regina, Oct 1: two on Nasal Spray (page name in other case/spacing), one on Nasal Care.
         $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
         $this->pageOrder('CRD REGINA', 'sinuxyl  nasal spray', '2026-10-01');
-        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01');
-        // Not counted: canceled, deleted, no tracked product, another day, another CRA, another product's page.
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01', type: PancakeOrder::BROADCAST);
+        // Not counted: canceled, deleted, no tracked product, untagged (not in the CVR Tracker), another day, another CRA, another product's page.
         $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', status: 6);
         $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', status: 7);
         $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', nonCrd: true);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', type: null);
         $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-02');
         $this->pageOrder('CRD JULY ANN', 'Sinuxyl Nasal Spray', '2026-10-01');
         $this->pageOrder('CRD REGINA', 'Clear Sight Hub', '2026-10-01');
@@ -265,37 +270,45 @@ class PcReportTest extends TestCase
         $this->assertStringContainsString('data-pc-total="orders">2<', $html);
     }
 
-    public function test_amount_is_typed_per_row_and_conversion_rate_is_orders_over_engagement(): void
+    public function test_amount_is_the_cvr_tracker_orders_amount_and_conversion_rate_is_orders_over_engagement(): void
     {
         CarbonImmutable::setTestNow('2026-10-01 06:00:00');
         $this->regina->update(['pancake_name' => 'CRD Regina']);
-        // Nasal Spray split into Dormant and Active: they share its 2 orders, so its rate is over both rows' engagement.
+        $this->julyAnn->update(['pancake_name' => 'CRD July Ann']);
+        // Nasal Spray split into Dormant and Active: they share its 2 orders and amount, so its rate is over both rows' engagement.
         foreach (PcReportRow::SPLIT as $category => [$from, $to]) {
             PcReportRow::create(['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Spray', 'category' => $category]);
         }
-        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
-        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01');
-        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01');
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', total: 1200);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Spray', '2026-10-01', total: 34.5);
+        $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01', total: 500);
+        // Counted for July Ann in the CVR Tracker: hers, not Regina's.
+        CvrOrderEntry::create(['pancake_order_id' => $this->pageOrder('CRD REGINA', 'Sinuxyl Nasal Care', '2026-10-01', total: 900), 'user_id' => $this->julyAnn->id]);
         $save = fn (string $page, ?string $category, array $values) => $this->actingAs($this->regina)->putJson(route('pc-report.entries.update'), [
             'cra' => $this->regina->id, 'page' => $page, 'category' => $category, 'date' => '2026-10-01', ...$values,
         ]);
 
-        $save('Sinuxyl Nasal Spray', PcReportRow::DORMANT, ['engagements' => 30, 'amount' => 1234.5])->assertOk();
+        $save('Sinuxyl Nasal Spray', PcReportRow::DORMANT, ['engagements' => 30])->assertOk();
         $save('Sinuxyl Nasal Spray', PcReportRow::ACTIVE, ['engagements' => 10])->assertOk();
-        $save('Sinuxyl Nasal Care', null, ['engagements' => 20, 'amount' => 500])->assertOk();
-        // Below zero or more than two decimals: refused.
-        $save('Sinuxyl Nasal Care', null, ['amount' => -1])->assertUnprocessable();
-        $save('Sinuxyl Nasal Care', null, ['amount' => 1.234])->assertUnprocessable();
+        // Amount can't be typed any more: ignored.
+        $save('Sinuxyl Nasal Care', null, ['engagements' => 20, 'amount' => 99999])->assertOk();
 
-        $this->assertDatabaseHas('pc_report_entries', ['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Care', 'amount' => 500]);
+        $this->assertDatabaseHas('pc_report_entries', ['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Care', 'engagements' => 20, 'amount' => null]);
         $html = $this->actingAs($this->regina)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))->assertOk()->getContent();
 
+        $this->assertSame(['2', '1', '0'], $this->ordersCells($html));
+        preg_match_all('/data-pc-amount data-page="[^"]*">(.*?)<\/td>/s', $html, $amounts);
+        $this->assertSame(['₱1,234.50', '₱500.00', '₱0.00'], array_map(fn (string $cell) => trim(strip_tags($cell)), $amounts[1]));
         // Nasal Spray 2 ÷ (30 + 10) = 5.00%; Nasal Care 1 ÷ 20 = 5.00%; Official Page has no engagement.
         preg_match_all('/data-pc-conversion data-page="[^"]*">(.*?)<\/td>/s', $html, $rates);
         $this->assertSame(['5.00%', '5.00%', '—'], array_map(fn (string $cell) => trim(strip_tags($cell)), $rates[1]));
         // TOTAL: 3 orders ÷ 60 engagements, and the amounts added up.
         $this->assertStringContainsString('data-pc-total="conversion">5.00%<', $html);
         $this->assertStringContainsString('data-pc-total="amount">₱1,734.50<', $html);
+
+        $html = $this->actingAs($this->julyAnn)->get(route('pc-report.index', ['product' => 'sinuxyl', 'date' => '2026-10-01']))->assertOk()->getContent();
+        $this->assertSame(['0', '1', '0'], $this->ordersCells($html));
+        $this->assertStringContainsString('data-pc-total="amount">₱900.00<', $html);
     }
 
     public function test_a_cra_without_a_pancake_account_shows_no_orders(): void

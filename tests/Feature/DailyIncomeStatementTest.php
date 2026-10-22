@@ -119,14 +119,65 @@ class DailyIncomeStatementTest extends TestCase
         $products = fn (string $date) => array_column($this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $date]))->viewData('data')['products'], 'slug');
         $mni = app(MonthlyMni::class)->for(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-01'), '1m')['cras'][$regina->id];
 
-        $this->assertSame(['sinuxyl', 'clearsight'], $products('2026-10-15'));
-        $this->assertSame(['sinuxyl', 'clearsight', 'ginseng'], $products('2026-10-16'));
+        $this->assertSame(['clearsight', 'sinuxyl'], $products('2026-10-15'));
+        $this->assertSame(['clearsight', 'sinuxyl', 'ginseng'], $products('2026-10-16'));
         // Yesterday's per-product share stays ÷ 2; today's is ÷ 3.
         $salaries = fn (string $date) => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $date]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['salaries'];
         $this->assertEqualsWithDelta($mni['salaries'] / 24 / 2, $salaries('2026-10-15'), 0.001);
         $this->assertEqualsWithDelta($mni['salaries'] / 24 / 3, $salaries('2026-10-16'), 0.001);
         // PC Report doesn't list it on an earlier day either.
         $this->actingAs($supervisor)->get(route('pc-report.index', ['date' => '2026-10-15']))->assertDontSee('Ginseng');
+    }
+
+    public function test_product_cards_follow_the_set_order_with_full_names_whatever_order_settings_saved_them_in(): void
+    {
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        // As saved in Settings live; "Other Thing" isn't in the order, so it comes last.
+        $names = ['Sinuxyl', 'Other Thing', 'ClearSight', 'Canpro', 'Audi', 'Ginseng', 'Pterygium', 'ScarCream', 'Nutrilay', 'Medallion', 'Rose Soap', 'Cystora', 'Prime Man Herbal Tea', 'Gallvex'];
+        ProductGroups::save(array_map(fn (string $name) => ['name' => $name, 'pages' => [$name.' Page']], $names));
+
+        $products = $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => '2026-10-15']))->viewData('data')['products'];
+
+        // Each card shows the product's full name; one not in the list keeps its group name.
+        $this->assertSame(['CLEAR SIGHT EYEDROPS', 'PTERYGIUM EYE DROPS', 'SINUXYL NASAL SPRAY', 'CANPRO HERBAL DRINK', 'AUDICURE', 'GINSENG', 'SCAR CREAM',
+            'NUTRILAY', 'GALLVEX HERBAL DROPS', 'PRIME MAN HERBAL TEA', 'CYSTORA', 'ROSE SOAP', 'MEDALLION', 'Other Thing'], array_column($products, 'name'));
+    }
+
+    public function test_a_deactivated_product_shows_only_on_a_day_it_has_sales_with_a_label(): void
+    {
+        $admin = $this->user('Admin', Role::SUPER_ADMIN);
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $lhea = $this->user('Lhea', Role::CRA, 'CRD Lhei');
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']], ['name' => 'ClearSight', 'pages' => ['Clear Sight Hub']], ['name' => 'Ginseng', 'pages' => ['Ginseng Page']]]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1500);
+
+        $this->actingAs($admin)->put(route('settings.daily-is.update'), ['deactivated' => ['Sinuxyl', 'ClearSight']])
+            ->assertRedirect()->assertSessionHas('status', 'Daily I.S. products saved.');
+        $products = fn (array $query) => $this->actingAs($supervisor)->get(route('daily-is.index', $query))->viewData('data')['products'];
+
+        // Oct 1: Sinuxyl sold, so it shows, labelled; ClearSight didn't, so it's gone; Ginseng is active and shows as usual.
+        $expected = [
+            ['slug' => 'sinuxyl', 'name' => 'SINUXYL NASAL SPRAY', 'deactivated' => true],
+            ['slug' => 'ginseng', 'name' => 'GINSENG', 'deactivated' => false],
+        ];
+        $this->assertSame($expected, $products(['date' => self::DAY]));
+        $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => self::DAY]))->assertSeeTextInOrder(['SINUXYL NASAL SPRAY', 'Deactivated']);
+        // Any CRA's sales count, also when looking at a CRA who sold none.
+        $this->assertSame($expected, $products(['date' => self::DAY, 'cra' => $lhea->id]));
+        // Oct 2: no sales, so only Ginseng.
+        $this->assertSame(['ginseng'], array_column($products(['date' => '2026-10-02']), 'slug'));
+    }
+
+    public function test_only_users_with_the_daily_is_products_permission_can_deactivate_products(): void
+    {
+        $admin = $this->user('Admin', Role::SUPER_ADMIN);
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']]]);
+
+        $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->put(route('settings.daily-is.update'), ['deactivated' => ['Sinuxyl']])->assertForbidden();
+        $this->actingAs($admin)->put(route('settings.daily-is.update'), ['deactivated' => ['Not A Group']])->assertSessionHasErrors('deactivated.0');
+        $this->actingAs($admin)->get(route('settings.daily-is.index'))->assertOk()->assertSeeText('SINUXYL NASAL SPRAY');
+        $this->assertSame([], DailyIncomeStatement::deactivated());
     }
 
     public function test_a_page_added_today_counts_from_today_only(): void

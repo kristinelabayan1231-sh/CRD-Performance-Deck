@@ -7,6 +7,14 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-22 · Settings → Daily I.S. (new) · Tick a product as deactivated: on a day it has no sales it doesn't show in the Daily I.S.; on a day any CRA sold it, it shows with a red "Deactivated" label. New permission "Settings · Daily I.S." · shots: settings-daily-is (new), daily-is
+
+- 2026-10-22 · Daily I.S. · Product cards in a set order with full names: CLEAR SIGHT EYEDROPS, PTERYGIUM EYE DROPS, SINUXYL NASAL SPRAY, CANPRO HERBAL DRINK, AUDICURE, GINSENG, SCAR CREAM, NUTRILAY, GALLVEX HERBAL DROPS, PRIME MAN HERBAL TEA, CYSTORA, ROSE SOAP, MEDALLION; any other product group after them under its Settings name · shots: daily-is
+
+- 2026-10-22 · PC Report · # of Orders and Amount now fill in from each CRA's CVR Tracker for the day picked, per page: their CRD - BROADCAST / SEGMENTATION orders (canceled and deleted left out, an order counted for another CRA in the CVR Tracker goes to that CRA; untagged orders no longer count). Amount is no longer typed; a split page's Dormant and Active rows share one # of Orders and Amount. Inquiries and Engagement are still typed · shots: pc-report
+
+- 2026-10-22 · Running Sales (new, Orders & Tracking) · CRA Supervisors and Team Leads only: Today / This week / This month tiles (running sales vs team goal, orders, AOV, top product), a card per CRA ranked by sales with their daily goal (× days so far), % reached and Left to reach goal (or Goal reached, + over), and a CRA × product table (Sales ₱ / Qty, Others for items not in Product Consumption). Fetches every 2 hours on the even hour; Refresh now pulls today's new Pancake orders and updates it · shots: running-sales (new)
+
 - 2026-10-22 · Every page · Light / Dark switch in the top bar (sun / moon, beside your name), remembered on each browser. Dark keeps the light theme's look on a purple-slate base: cards a step lighter than the page, tints stay coloured, the coloured tiles and purple buttons unchanged, yellow note and input boxes become slate · shots: — (could add one dark screenshot)
 
 - 2026-10-21 · Sidebar · New dark sidebar: Dashboard and Report Summary on top, then four groups that open one at a time (Segmentation · Orders & Tracking · Income & Products · Customers & Costs, each with its page count; the group of the page you're on starts open), User Access and Settings at the bottom, then your name and CRAs on duty. It stays in place while the page scrolls · shots: every screenshot with the sidebar

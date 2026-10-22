@@ -11,6 +11,7 @@ use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 /**
  * Daily I.S.: each CRA's income statement per product (Settings → Pancake Pages → Product groups there that day) for a
@@ -75,6 +76,31 @@ class DailyIncomeStatement
         ['NET INCOME', 'net', 'net_income'],
     ];
 
+    /** Settings → Daily I.S.: the product groups deactivated (shown only on a day they have sales). */
+    public const DEACTIVATED_KEY = 'daily_is.deactivated_products';
+
+    /**
+     * The product cards in order, each with the full name shown on its card: start of the group's name (lower case, no
+     * spaces or symbols) => card name.
+     *
+     * @var array<string, string>
+     */
+    private const PRODUCT_ORDER = [
+        'clearsight' => 'CLEAR SIGHT EYEDROPS',
+        'pterygium' => 'PTERYGIUM EYE DROPS',
+        'sinuxyl' => 'SINUXYL NASAL SPRAY',
+        'canpro' => 'CANPRO HERBAL DRINK',
+        'audi' => 'AUDICURE',
+        'ginseng' => 'GINSENG',
+        'scarcream' => 'SCAR CREAM',
+        'nutrilay' => 'NUTRILAY',
+        'gallvex' => 'GALLVEX HERBAL DROPS',
+        'primeman' => 'PRIME MAN HERBAL TEA',
+        'cystora' => 'CYSTORA',
+        'rosesoap' => 'ROSE SOAP',
+        'medallion' => 'MEDALLION',
+    ];
+
     /** Figures counted from the day's PC Report entries and orders (the rest are worked out from them). */
     private const COUNTED = ['leads', 'engagements', 'orders', 'gross', 'cancelled', 'product_cost'];
 
@@ -86,7 +112,10 @@ class DailyIncomeStatement
      */
     public function day(Collection $cras, CarbonImmutable $day): array
     {
-        $groups = ProductGroups::on($day);
+        // A deactivated product (Settings → Daily I.S.) shows only on a day it has sales.
+        $groups = self::inProductOrder(ProductGroups::on($day));
+        $deactivated = $this->deactivatedSales($groups, $day);
+        $groups = array_values(array_filter($groups, fn (array $group) => $deactivated[$group['slug']] ?? true));
         $groupOf = collect($groups)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
         $empty = fn () => array_fill_keys(self::COUNTED, 0);
 
@@ -131,12 +160,89 @@ class DailyIncomeStatement
         ])->all();
 
         return [
-            'products' => array_map(fn (array $group) => ['slug' => $group['slug'], 'name' => $group['name']], $groups),
+            'products' => array_map(fn (array $group) => [
+                'slug' => $group['slug'], 'name' => self::cardName($group['name']), 'deactivated' => isset($deactivated[$group['slug']]),
+            ], $groups),
             'returnsPct' => $returnsPct,
             'cras' => $statements->all(),
             'department' => ['total' => self::sum($departmentProducts), 'products' => $departmentProducts],
             'missingPage' => $missingPage,
         ];
+    }
+
+    /**
+     * The product groups in PRODUCT_ORDER (a group goes where the start of its name, ignoring case, spaces and symbols,
+     * matches: "Audi" is AudiCure); groups not in it come after, in the order saved in Settings.
+     *
+     * @param  list<array{slug: string, name: string, pages: list<string>, added_on: ?string}>  $groups
+     * @return list<array{slug: string, name: string, pages: list<string>, added_on: ?string}>
+     */
+    public static function inProductOrder(array $groups): array
+    {
+        $keys = array_keys(self::PRODUCT_ORDER);
+        $position = fn (string $name) => ($key = self::productKey($name)) === null ? count($keys) : array_search($key, $keys, true);
+
+        return collect($groups)->values()
+            ->sortBy(fn (array $group, int $saved) => [$position($group['name']), $saved])
+            ->values()->all();
+    }
+
+    /**
+     * The product groups deactivated in Settings → Daily I.S., by name in lower case.
+     *
+     * @return list<string>
+     */
+    public static function deactivated(): array
+    {
+        return array_values(json_decode((string) Setting::value(self::DEACTIVATED_KEY), true) ?? []);
+    }
+
+    /**
+     * @param  list<string>  $groups  product group names
+     */
+    public static function saveDeactivated(array $groups, User $by): void
+    {
+        Setting::put(self::DEACTIVATED_KEY, json_encode(array_values(array_unique(array_map(fn (string $name) => Str::lower($name), $groups)))), $by);
+    }
+
+    /**
+     * The deactivated groups among $groups => whether they have sales on $day: any CRA's order on their pages (deleted
+     * left out), whichever CRAs are on screen.
+     *
+     * @param  list<array{slug: string, name: string, pages: list<string>, added_on: ?string}>  $groups
+     * @return array<string, bool>
+     */
+    private function deactivatedSales(array $groups, CarbonImmutable $day): array
+    {
+        $names = self::deactivated();
+        $off = array_values(array_filter($groups, fn (array $group) => in_array(Str::lower($group['name']), $names, true)));
+        if ($off === []) {
+            return [];
+        }
+
+        $groupOf = collect($off)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
+        $sold = $this->pageOrders->forDay(LeadGenerator::cras(), $groupOf->keys()->all(), $day)['orders']
+            ->filter(fn (array $order) => $order['sales'] > 0)
+            ->map(fn (array $order) => $groupOf[$order['page']])->unique()->all();
+
+        return collect($off)->mapWithKeys(fn (array $group) => [$group['slug'] => in_array($group['slug'], $sold, true)])->all();
+    }
+
+    /**
+     * The full name on a group's card (PRODUCT_ORDER), or the group's own name when it isn't listed there.
+     */
+    public static function cardName(string $group): string
+    {
+        $key = self::productKey($group);
+
+        return $key === null ? $group : self::PRODUCT_ORDER[$key];
+    }
+
+    private static function productKey(string $group): ?string
+    {
+        $squashed = preg_replace('/[^a-z0-9]/', '', strtolower($group));
+
+        return collect(array_keys(self::PRODUCT_ORDER))->first(fn (string $key) => str_starts_with($squashed, $key));
     }
 
     /**
