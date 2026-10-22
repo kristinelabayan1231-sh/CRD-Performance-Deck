@@ -5,10 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\PcReportEntry;
 use App\Models\PcReportRow;
 use App\Models\User;
+use App\Services\CvrTracker;
 use App\Services\LeadGenerator;
-use App\Services\PageOrders;
 use App\Services\PancakeSync;
-use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -24,11 +23,11 @@ class PcReportController extends Controller
 {
     /**
      * One set per CRA for the picked product and day: every page in the product's group, a split
-     * page as its Dormant and Active rows, with the day's typed-in Total Inquiries, Total Engagement and Amount, the
-     * # of Orders the CRA's Pancake account took on that page that day (by order date, not Creation/Update Time) and
-     * the Conversion Rate: # of Orders ÷ Total Engagement (a split page's two rows together, as they share the orders).
+     * page as its Dormant and Active rows, with the day's typed-in Total Inquiries and Total Engagement, the # of Orders
+     * and Amount from the CRA's CVR Tracker for that day on that page (by order date, not Creation/Update Time) and the
+     * Conversion Rate: # of Orders ÷ Total Engagement (a split page's two rows together, as they share the orders).
      */
-    public function index(Request $request, PancakeSync $pancake): View
+    public function index(Request $request, PancakeSync $pancake, CvrTracker $cvr): View
     {
         $today = WorkingDate::realToday();
 
@@ -55,19 +54,23 @@ class PcReportController extends Controller
         $entries = PcReportEntry::whereIn('user_id', $cras->pluck('id'))->whereIn('page', $group['pages'])->whereDate('date', $day)->get()
             ->keyBy(fn (PcReportEntry $entry) => $entry->user_id.'|'.$entry->page.'|'.$entry->category);
 
-        $orders = $this->orderCounts($cras, $group['pages'], $day, $pancake);
+        $orders = $this->cvrOrders($cras, $group['pages'], $day, $pancake, $cvr);
 
         $sets = $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect($group['pages'])->flatMap(function (string $page) use ($cra, $saved, $entries, $orders) {
             $rows = $saved->get($cra->id.'|'.$page, collect())->keyBy('category');
             $categories = $rows->has(PcReportRow::DORMANT) ? array_keys(PcReportRow::SPLIT) : [''];
             // Orders only know their page, not when the conversation was created: a split page's Dormant and Active
-            // rows share one # of Orders (shown once, across both rows).
-            $pageOrders = $cra->pancake_name ? collect(PancakeAccounts::keysOf($cra))->sum(fn (string $key) => $orders['counts']->get($key.'|'.$page, 0)) : null;
+            // rows share one # of Orders and Amount (shown once, across both rows). No Pancake account and no orders
+            // counted for them in the CVR Tracker: nothing to show.
+            $sold = $orders['totals'][$cra->id][$page] ?? null;
+            $hasOrders = $cra->pancake_name || $orders['totals'][$cra->id] !== [];
+            $pageOrders = $hasOrders ? ($sold['orders'] ?? 0) : null;
+            $pageAmount = $hasOrders ? ($sold['amount'] ?? 0.0) : null;
 
             $pageEngagements = collect($categories)->map(fn (string $category) => $entries->get($cra->id.'|'.$page.'|'.$category)?->engagements)->filter(fn ($n) => $n !== null);
             $conversion = $pageOrders !== null && $pageEngagements->sum() > 0 ? $pageOrders / $pageEngagements->sum() : null;
 
-            return array_map(function (string $category) use ($cra, $page, $rows, $entries, $pageOrders, $conversion) {
+            return array_map(function (string $category) use ($cra, $page, $rows, $entries, $pageOrders, $pageAmount, $conversion) {
                 $row = $rows->get($category);
                 $entry = $entries->get($cra->id.'|'.$page.'|'.$category);
 
@@ -80,7 +83,7 @@ class PcReportController extends Controller
                     'to' => $entry?->to_month?->format('Y-m') ?? '',
                     'inquiries' => $entry?->inquiries,
                     'engagements' => $entry?->engagements,
-                    'amount' => $entry?->amount,
+                    'amount' => $category === PcReportRow::ACTIVE ? null : $pageAmount,
                     'orders' => $category === PcReportRow::ACTIVE ? null : $pageOrders,
                     'conversion' => $category === PcReportRow::ACTIVE ? null : $conversion,
                     'orders_rows' => match ($category) {
@@ -176,7 +179,7 @@ class PcReportController extends Controller
     }
 
     /**
-     * Save a row's Total Inquiries, Total Engagement or Amount for a day, typed in by the CRA or anyone who sees every CRA.
+     * Save a row's Total Inquiries or Total Engagement for a day, typed in by the CRA or anyone who sees every CRA.
      */
     public function entry(Request $request): JsonResponse
     {
@@ -186,36 +189,35 @@ class PcReportController extends Controller
             'date' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.WorkingDate::realToday()->toDateString()],
             'inquiries' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
             'engagements' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000'],
-            'amount' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:9999999999', 'decimal:0,2'],
         ]);
 
         $user = $request->user();
         abort_unless((int) $data['cra'] === $user->id || $user->can('pc_report.view_all'), 403);
 
         $key = ['user_id' => $data['cra'], 'page' => $data['page'], 'category' => $data['category'] ?? ''];
-        $this->entryFor($key, $data['date'])->fill(Arr::only($data, ['inquiries', 'engagements', 'amount']))->save();
+        $this->entryFor($key, $data['date'])->fill(Arr::only($data, ['inquiries', 'engagements']))->save();
 
         return response()->json(['ok' => true]);
     }
 
     /**
-     * The CRAs' orders on $day per seller and group page, keyed "SELLER|page", and whether some of them have no page
-     * yet: orders synced before pages were saved (Oct 14). Such a day is fetched from Pancake again once, after the
-     * page is sent, so a reload fills them in.
+     * Each CRA's CVR Tracker orders on $day per group page (CvrTracker::pageTotals()). When some have no page yet (orders
+     * synced before pages were saved, Oct 14), the day is fetched from Pancake again once, after the page is sent, so a
+     * reload fills them in.
      *
      * @param  Collection<int, User>  $cras
      * @param  list<string>  $pages
-     * @return array{counts: Collection<string, int>, missingPage: bool}
+     * @return array{totals: array<int, array<string, array{orders: int, amount: float}>>, missingPage: bool}
      */
-    private function orderCounts(Collection $cras, array $pages, CarbonImmutable $day, PancakeSync $pancake): array
+    private function cvrOrders(Collection $cras, array $pages, CarbonImmutable $day, PancakeSync $pancake, CvrTracker $cvr): array
     {
-        ['orders' => $orders, 'missingPage' => $missingPage] = app(PageOrders::class)->forDay($cras, $pages, $day);
+        $orders = $cvr->pageTotals($cras, $pages, $day);
 
-        if ($missingPage && Cache::add('pc-report.page-refetch.'.$day->toDateString(), true, now()->addHour())) {
+        if ($orders['missingPage'] && Cache::add('pc-report.page-refetch.'.$day->toDateString(), true, now()->addHour())) {
             $pancake->syncLater($day, force: true);
         }
 
-        return ['counts' => $orders->where('counted', true)->countBy(fn (array $order) => $order['seller'].'|'.$order['page']), 'missingPage' => $missingPage];
+        return $orders;
     }
 
     /**

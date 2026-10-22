@@ -37,24 +37,44 @@ class CraProductSales
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->get(['seller_name', 'items', 'total_price', 'shecom_sales', 'ordered_on'])
             ->each(function (PancakeOrder $order) use ($accounts, &$totals) {
-                $items = collect($order->items ?? [])->map(function (array $item) use ($order) {
-                    $raw = trim((string) ($item['name'] ?? ''));
-                    $product = $raw === '' ? null : $this->catalog->match($raw, $order->ordered_on?->toDateString());
-
-                    return [
-                        'name' => $product?->name ?? ($raw ?: 'Unknown'),
-                        'weight' => max(1, (int) ($item['qty'] ?? 1)) * ((float) $product?->srp ?: 1),
-                    ];
-                });
-                $items = $items->isEmpty() ? collect([['name' => 'Unknown', 'weight' => 1]]) : $items;
-                $weight = $items->sum('weight');
                 $craId = $accounts[$order->seller_name];
 
-                foreach ($items as $item) {
-                    $totals[$craId][$item['name']] = ($totals[$craId][$item['name']] ?? 0) + $order->sales() * $item['weight'] / $weight;
+                foreach ($this->split($order) as $item) {
+                    $totals[$craId][$item['name']] = ($totals[$craId][$item['name']] ?? 0) + $item['sales'];
                 }
             });
 
         return collect($totals)->map(fn (array $products) => collect($products)->sortDesc());
+    }
+
+    /**
+     * The order's sales split over its items: each item under the Product Consumption product it matches (listed) or
+     * its own name, by qty × SRP (by qty when a product has no SRP). An order without items is one Unknown item.
+     *
+     * @return Collection<int, array{name: string, listed: bool, qty: int, sales: float}>
+     */
+    public function split(PancakeOrder $order): Collection
+    {
+        $items = collect($order->items ?? [])->map(function (array $item) use ($order) {
+            $raw = trim((string) ($item['name'] ?? ''));
+            $product = $raw === '' ? null : $this->catalog->match($raw, $order->ordered_on?->toDateString());
+            $qty = max(1, (int) ($item['qty'] ?? 1));
+
+            return [
+                'name' => $product?->name ?? ($raw ?: 'Unknown'),
+                'listed' => $product !== null,
+                'qty' => $qty,
+                'weight' => $qty * ((float) $product?->srp ?: 1),
+            ];
+        });
+        $items = $items->isEmpty() ? collect([['name' => 'Unknown', 'listed' => false, 'qty' => 1, 'weight' => 1]]) : $items;
+        $weight = $items->sum('weight');
+
+        return $items->map(fn (array $item) => [
+            'name' => $item['name'],
+            'listed' => $item['listed'],
+            'qty' => $item['qty'],
+            'sales' => $order->sales() * $item['weight'] / $weight,
+        ])->values();
     }
 }

@@ -25,8 +25,8 @@ async function send(url, method, body) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 }
 
-// Total Inquiries, Total Engagement and Amount, typed per row for the day picked: saved when the box changes (empty
-// clears it), and the set's TOTAL adds up what's in its boxes. Conversion Rate = # of Orders ÷ Total Engagement, per page
+// Total Inquiries and Total Engagement, typed per row for the day picked: saved when the box changes (empty clears it),
+// and the set's TOTAL adds up what's in its boxes (# of Orders and Amount come from the CVR Tracker). Conversion Rate = # of Orders ÷ Total Engagement, per page
 // (a split page's two rows together) and in all, worked out again as engagement is typed.
 function initPcCounts(root) {
     const dash = '—';
@@ -36,10 +36,7 @@ function initPcCounts(root) {
 
     const total = (table, field) => {
         const values = filled(table.querySelectorAll(`[data-pc-count="${field}"]`));
-        const text = field === 'amount'
-            ? `₱${sum(values).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            : sum(values).toLocaleString('en-US');
-        table.querySelector(`[data-pc-totals] [data-pc-total="${field}"]`).textContent = values.length ? text : dash;
+        table.querySelector(`[data-pc-totals] [data-pc-total="${field}"]`).textContent = values.length ? sum(values).toLocaleString('en-US') : dash;
     };
 
     const conversion = (table) => {
@@ -64,7 +61,7 @@ function initPcCounts(root) {
         if (!input) return;
         const { cra, page, category, pcCount: field } = input.dataset;
         const number = Math.max(0, Number(input.value));
-        const value = input.value === '' ? null : field === 'amount' ? Math.round(number * 100) / 100 : Math.floor(number);
+        const value = input.value === '' ? null : Math.floor(number);
         if (value !== null) input.value = value;
         const table = input.closest('table');
         total(table, field);

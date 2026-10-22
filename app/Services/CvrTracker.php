@@ -95,6 +95,35 @@ class CvrTracker
     }
 
     /**
+     * PC Report: each CRA's CVR Tracker orders on $day per page of $pages (PageOrders::pageMatcher()): how many and their
+     * amount, and whether some of them have no page yet (saved before pages were).
+     *
+     * @param  Collection<int, User>  $cras
+     * @param  list<string>  $pages
+     * @return array{totals: array<int, array<string, array{orders: int, amount: float}>>, missingPage: bool}
+     */
+    public function pageTotals(Collection $cras, array $pages, CarbonImmutable $day): array
+    {
+        $pageOf = PageOrders::pageMatcher($pages);
+        $totals = [];
+        $missingPage = false;
+
+        foreach ($cras as $cra) {
+            $totals[$cra->id] = [];
+            foreach ($this->ordersQuery($cra, $day)->get(['page_id', 'page_name', 'total_price', 'shecom_sales']) as $order) {
+                $missingPage = $missingPage || ($order->page_id === null && $order->page_name === null);
+                $page = $pageOf($order);
+                if ($page !== null) {
+                    $totals[$cra->id][$page]['orders'] = ($totals[$cra->id][$page]['orders'] ?? 0) + 1;
+                    $totals[$cra->id][$page]['amount'] = ($totals[$cra->id][$page]['amount'] ?? 0) + $order->sales();
+                }
+            }
+        }
+
+        return ['totals' => $totals, 'missingPage' => $missingPage];
+    }
+
+    /**
      * @return Collection<int, PancakeOrder>
      */
     private function orders(User $cra, CarbonImmutable $day): Collection

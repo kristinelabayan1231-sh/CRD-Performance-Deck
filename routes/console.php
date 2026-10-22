@@ -41,6 +41,12 @@ Schedule::command('pancake:sync --new')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(5);
 
+// Running Sales: every CRA's sales so far (today, this week, this month) every two hours, on the even hour.
+Schedule::command('running-sales:refresh')
+    ->everyTwoHours()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30);
+
 Schedule::command('pancake:sync --date=yesterday')
     ->dailyAt('00:30')
     ->timezone(config('segmentation.timezone'))

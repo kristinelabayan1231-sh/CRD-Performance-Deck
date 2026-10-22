@@ -8,6 +8,7 @@ use App\Models\PancakePage;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -33,11 +34,7 @@ class PageOrders
             return ['orders' => collect(), 'missingPage' => false];
         }
 
-        $normalize = fn (?string $name) => Str::lower(Str::squish((string) $name));
-        $byName = collect($pages)->keyBy($normalize);
-        $byId = PancakePage::whereNotNull('page_id')->get(['name', 'page_id'])
-            ->filter(fn (PancakePage $page) => $byName->has($normalize($page->name)))
-            ->mapWithKeys(fn (PancakePage $page) => [(string) $page->page_id => $byName[$normalize($page->name)]]);
+        $pageOf = self::pageMatcher($pages);
 
         $orders = PancakeOrder::crdProducts()
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
@@ -49,7 +46,7 @@ class PageOrders
             'orders' => $orders
                 ->map(fn (PancakeOrder $order) => [
                     'seller' => PancakeEngagement::staffKey($order->seller_name),
-                    'page' => $byId->get((string) $order->page_id) ?? ($byId->contains($byName->get($normalize($order->page_name))) ? null : $byName->get($normalize($order->page_name))),
+                    'page' => $pageOf($order),
                     'sales' => $order->sales(),
                     'status' => $order->status,
                     'counted' => $order->isCounted(),
@@ -59,5 +56,23 @@ class PageOrders
                 ->values(),
             'missingPage' => $orders->contains(fn (PancakeOrder $order) => $order->page_id === null && $order->page_name === null),
         ];
+    }
+
+    /**
+     * Which of $pages an order is on: by its Pancake page ID, else by name for a page Settings has no ID for; null when none.
+     *
+     * @param  list<string>  $pages
+     * @return Closure(PancakeOrder): ?string
+     */
+    public static function pageMatcher(array $pages): Closure
+    {
+        $normalize = fn (?string $name) => Str::lower(Str::squish((string) $name));
+        $byName = collect($pages)->keyBy($normalize);
+        $byId = PancakePage::whereNotNull('page_id')->get(['name', 'page_id'])
+            ->filter(fn (PancakePage $page) => $byName->has($normalize($page->name)))
+            ->mapWithKeys(fn (PancakePage $page) => [(string) $page->page_id => $byName[$normalize($page->name)]]);
+
+        return fn (PancakeOrder $order) => $byId->get((string) $order->page_id)
+            ?? ($byId->contains($byName->get($normalize($order->page_name))) ? null : $byName->get($normalize($order->page_name)));
     }
 }

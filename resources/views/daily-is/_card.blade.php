@@ -18,6 +18,9 @@
         <span class="flex min-w-0 items-center gap-2">
             <span aria-hidden="true" class="size-3 shrink-0 rounded {{ $chips[$variant] }}"></span>
             <span class="truncate uppercase" title="{{ $title }}">{{ $title }}</span>
+            @if ($deactivated ?? false)
+                <span class="shrink-0 rounded-full bg-coral/15 px-2 py-0.5 text-[10px] font-semibold text-coral-700">Deactivated</span>
+            @endif
         </span>
         <span @class(['shrink-0 text-xs font-medium', 'text-white/80' => $variant === 'department', 'text-muted' => $variant !== 'department'])>{{ $sub }}</span>
     </header>

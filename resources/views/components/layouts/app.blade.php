@@ -34,6 +34,7 @@
                 ]],
                 ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
                     ['CVR Tracker', route('cvr-tracker.index'), request()->routeIs('cvr-tracker.*'), $user->can('cvr_tracker.view')],
+                    ['Running Sales', route('running-sales.index'), request()->routeIs('running-sales.*'), $user->can('running_sales.view')],
                     ['Order Database', route('order-database.cra-performance'), request()->routeIs('order-database.*'), $user->can('order_database.view')],
                     ['PC Report', route('pc-report.index'), request()->routeIs('pc-report.*'), $user->can('pc_report.view')],
                 ]],
