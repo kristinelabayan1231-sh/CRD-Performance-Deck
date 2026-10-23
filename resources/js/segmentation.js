@@ -516,6 +516,29 @@ async function copyText(text) {
     }
 }
 
+// The copy icon by a list's Contact # header: every contact number in that list, space-separated ("9938742536 9507297299").
+function initCopyPhones() {
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-copy-phones]');
+        if (!button) return;
+
+        const phones = [...button.closest('table').querySelectorAll('tbody td[data-col="contact_number"]')]
+            .map((cell) => cell.textContent.trim())
+            .filter(Boolean);
+        if (!phones.length) return;
+
+        await copyText(phones.join(' '));
+        button.title = `Copied ${phones.length} number${phones.length === 1 ? '' : 's'}`;
+        button.querySelector('[data-copy-icon]').classList.add('hidden');
+        button.querySelector('[data-copied-icon]').classList.remove('hidden');
+        setTimeout(() => {
+            button.title = 'Copy all contact numbers';
+            button.querySelector('[data-copy-icon]').classList.remove('hidden');
+            button.querySelector('[data-copied-icon]').classList.add('hidden');
+        }, 1500);
+    });
+}
+
 // Right-click a lead row: Copy name / Copy mobile number, and Mark as catered (Pending) or Unmark catered (Catered).
 function initRowMenu() {
     const menu = document.createElement('div');
@@ -744,3 +767,4 @@ export function initSegmentation() {
     initAutosave();
     initNotes();
 }
+    if (document.querySelector('[data-lead-section]')) initCopyPhones();

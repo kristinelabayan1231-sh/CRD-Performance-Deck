@@ -118,6 +118,7 @@ class SegmentationController extends Controller
             'workload' => $canTransfer ? LeadGenerator::workload($today) : [],
             'tiles' => $this->tiles($scope, $filters, $from, $to, $cras, $canViewAll),
             'singleDay' => $from->equalTo($to),
+            'period' => self::periodLabel($from, $to),
             'filters' => $filters,
             'cras' => $cras,
             'canViewAll' => $canViewAll,
@@ -155,6 +156,9 @@ class SegmentationController extends Controller
         $filters = $request->validate([
             'month' => ['nullable', 'date_format:Y-m'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            // A date range (both ends, any order): the lead days from–to.
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
             'product' => ['nullable', 'string', 'max:255'],
@@ -167,8 +171,14 @@ class SegmentationController extends Controller
         $filters['show'] ??= 'all';
         $filters['q'] = trim((string) ($filters['q'] ?? '')) ?: null;
 
-        // A specific date wins; otherwise a whole month; default is today.
-        if (! empty($filters['date'])) {
+        // A date range wins (one day when both ends match), then a specific date, then a whole month; default is today.
+        if (! empty($filters['from']) && ! empty($filters['to'])) {
+            [$from, $to] = collect([CarbonImmutable::parse($filters['from']), CarbonImmutable::parse($filters['to'])])->sort()->values()->all();
+            $filters['from'] = $from->toDateString();
+            $filters['to'] = $to->toDateString();
+            $filters['date'] = $from->equalTo($to) ? $from->toDateString() : null;
+            $filters['month'] = $from->format('Y-m');
+        } elseif (! empty($filters['date'])) {
             $from = $to = CarbonImmutable::parse($filters['date']);
             $filters['month'] = $from->format('Y-m');
         } elseif (! empty($filters['month'])) {
@@ -304,7 +314,7 @@ class SegmentationController extends Controller
                 'note' => $note,
                 // Shown in the Per CRA pop-up; always covers every CRA for the date/month, type and product filters.
                 'breakdown' => $breakdown,
-                'period' => ($from->equalTo($to) ? $from->format('M j, Y') : $from->format('F Y'))
+                'period' => self::periodLabel($from, $to)
                     .(! empty($filters['type']) ? ' · '.Lead::TYPES[$filters['type']].'s' : '')
                 .(! empty($filters['product']) ? ' · '.$filters['product'] : ''),
             ];
@@ -479,6 +489,18 @@ class SegmentationController extends Controller
             ->values();
 
         return response()->json(['orders' => $orders]);
+    }
+
+    /**
+     * The lead days picked, for labels: "Oct 5, 2026", "October 2026" (a whole month) or "Oct 5 – Oct 12, 2026".
+     */
+    public static function periodLabel(CarbonImmutable $from, CarbonImmutable $to): string
+    {
+        return match (true) {
+            $from->equalTo($to) => $from->format('M j, Y'),
+            $from->isSameDay($from->startOfMonth()) && $to->isSameDay($from->endOfMonth()) => $from->format('F Y'),
+            default => $from->format($from->isSameYear($to) ? 'M j' : 'M j, Y').' – '.$to->format('M j, Y'),
+        };
     }
 
     public static function notesMeta(Lead $lead): ?string

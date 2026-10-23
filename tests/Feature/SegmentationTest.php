@@ -561,6 +561,30 @@ class SegmentationTest extends TestCase
         // Tiles count the search results.
         $this->actingAs($alice)->getJson(route('segmentation.summary', ['q' => 'marcelina']))->assertJsonPath('total.value', '1');
     }
+    public function test_a_cra_filters_their_leads_by_a_date_range(): void
+    {
+        Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
+        $alice = $this->cra('alice@gmail.com');
+        foreach (['2026-10-02' => 'Before Bea', '2026-10-03' => 'First Fe', '2026-10-05' => 'Last Lu', '2026-10-06' => 'After Al'] as $day => $name) {
+            Lead::create([
+                'order_id' => $name, 'customer_name' => $name, 'phone_number' => '917'.random_int(1000000, 9999999), 'product_name' => 'Sinuxyl', 'qty' => 1,
+                'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => $day,
+                'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id,
+            ]);
+        }
+
+        // Oct 3–5, picked in either order: those lead days only, with a label for the range.
+        foreach ([['2026-10-03', '2026-10-05'], ['2026-10-05', '2026-10-03']] as [$from, $to]) {
+            $this->actingAs($alice)->get("/segmentation?from={$from}&to={$to}")->assertOk()
+                ->assertSee('First Fe')->assertSee('Last Lu')->assertDontSee('Before Bea')->assertDontSee('After Al')
+                ->assertSee('Oct 3 – Oct 5, 2026');
+        }
+        $this->actingAs($alice)->getJson('/segmentation/summary?from=2026-10-03&to=2026-10-05')->assertJsonPath('total.value', '2');
+        // A range wins over the date; a bad date is refused.
+        $this->actingAs($alice)->getJson('/segmentation/summary?date=2026-10-02&from=2026-10-02&to=2026-10-06')->assertJsonPath('total.value', '4');
+        $this->actingAs($alice)->get('/segmentation?from=Oct+3&to=2026-10-05')->assertSessionHasErrors('from');
+    }
+
 
     public function test_a_cra_marks_a_lead_processed_and_back_without_a_status_or_contact_date(): void
     {
