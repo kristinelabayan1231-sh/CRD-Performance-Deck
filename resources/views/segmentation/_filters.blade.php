@@ -21,18 +21,17 @@
         @endif
     </label>
 
-    @if ($canViewAll)
-        <label class="relative shrink-0" title="CRA">
-            <span class="sr-only">CRA</span>
-            <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 21a8 8 0 0 1 16 0"/></svg>
-            <select name="cra" class="{{ $field }} w-32 truncate pr-7 pl-8" onchange="this.form.submit()">
-                <option value="all" @selected($filters['cra'] === 'all')>All</option>
-                @foreach ($cras as $cra)
-                    <option value="{{ $cra->id }}" @selected($filters['cra'] === (string) $cra->id)>{{ $cra->displayName() }}</option>
-                @endforeach
-            </select>
-        </label>
-    @endif
+    {{-- Everyone picks a CRA; a CRA's own tracker is marked (you) and is where they start. --}}
+    <label class="relative shrink-0" title="CRA">
+        <span class="sr-only">CRA</span>
+        <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 21a8 8 0 0 1 16 0"/></svg>
+        <select name="cra" class="{{ $field }} w-32 truncate pr-7 pl-8" onchange="this.form.submit()">
+            <option value="all" @selected($filters['cra'] === 'all')>All</option>
+            @foreach ($cras as $cra)
+                <option value="{{ $cra->id }}" @selected($filters['cra'] === (string) $cra->id)>{{ $cra->displayName() }}{{ ! $canViewAll && $cra->id === auth()->id() ? ' (you)' : '' }}</option>
+            @endforeach
+        </select>
+    </label>
 
     <select name="type" aria-label="Type" class="{{ $field }} w-32 shrink-0 truncate pr-7 pl-3" onchange="this.form.submit()">
         <option value="">All types</option>

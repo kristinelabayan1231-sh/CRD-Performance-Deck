@@ -59,6 +59,13 @@ $modules = [
     'Running Sales' => [
         'running_sales.view' => 'View every CRA\'s running sales (overall and per product) against their daily goal, and refresh them',
     ],
+    'Call Recordings' => [
+        'call_recordings.view' => 'View and play own call recordings and AHT (average call length)',
+        'call_recordings.view_all' => 'View and play every CRA\'s call recordings and compare their AHT',
+    ],
+    'Settings · Call Recordings' => [
+        'call_recordings.manage' => 'Connect the Google Drive that keeps the recordings and create each CRA phone\'s upload token',
+    ],
     'On Duty' => [
         'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',
     ],

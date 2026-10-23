@@ -9,11 +9,13 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 #[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'recording_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -29,6 +31,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'recording_token_created_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'show_product_qty' => 'boolean',
@@ -48,6 +51,11 @@ class User extends Authenticatable
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function callRecordings(): HasMany
+    {
+        return $this->hasMany(CallRecording::class);
     }
 
     /**
@@ -119,6 +127,23 @@ class User extends Authenticatable
     public function craSortKey(): array
     {
         return [$this->cra_order ?? PHP_INT_MAX, $this->id];
+    }
+
+    /**
+     * A new call recording upload token for this CRA's phone, replacing any earlier one. Only its hash is kept,
+     * so the token is shown once.
+     */
+    public function issueRecordingToken(): string
+    {
+        $token = Str::random(48);
+        $this->forceFill(['recording_token' => hash('sha256', $token), 'recording_token_created_at' => now()])->save();
+
+        return $token;
+    }
+
+    public static function findByRecordingToken(?string $token): ?self
+    {
+        return $token ? static::where('recording_token', hash('sha256', $token))->where('is_active', true)->first() : null;
     }
 
     public function initials(): string

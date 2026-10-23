@@ -26,8 +26,8 @@ class ProductConsumptionController extends Controller
     {
         $data = $this->validated($request);
 
-        // Counts from today: orders, deliveries and leads before it are left as they were.
-        Product::create([...$data, 'counts_from' => WorkingDate::realToday()->toDateString(), 'created_by' => $request->user()->id]);
+        // Counts from its starting date (today when none is given): orders, deliveries and leads before it are left as they were.
+        Product::create([...$data, 'counts_from' => $data['counts_from'] ?? WorkingDate::realToday()->toDateString(), 'created_by' => $request->user()->id]);
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
         $this->applyList($catalog, removeLeads: false);
@@ -40,7 +40,7 @@ class ProductConsumptionController extends Controller
         $product->update($this->validated($request, $product));
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
-        $removed = $product->wasChanged(['name', 'keywords', 'exclude_keywords']) ? $this->applyList($catalog) : 0;
+        $removed = $product->wasChanged(['name', 'keywords', 'exclude_keywords', 'counts_from']) ? $this->applyList($catalog) : 0;
 
         return back()->with('status', "Product \"{$product->name}\" updated.".$this->removedNote($removed));
     }
@@ -97,7 +97,7 @@ class ProductConsumptionController extends Controller
     }
 
     /**
-     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string, unit_cost: ?string}
+     * @return array{name: string, keywords: ?string, consumption_days: ?int, srp: ?string, unit_cost: ?string, counts_from?: ?string}
      */
     private function validated(Request $request, ?Product $product = null): array
     {
@@ -109,6 +109,8 @@ class ProductConsumptionController extends Controller
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
             'unit_cost' => filled($request->input('unit_cost')) ? $request->input('unit_cost') : null,
+            // Blank = from the start; left out of the form = unchanged.
+            ...($request->has('counts_from') ? ['counts_from' => filled($request->input('counts_from')) ? $request->input('counts_from') : null] : []),
         ]);
 
         // Edits are validated in their own error bag so they don't show on the add form.
@@ -121,6 +123,7 @@ class ProductConsumptionController extends Controller
             'consumption_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'unit_cost' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'counts_from' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);

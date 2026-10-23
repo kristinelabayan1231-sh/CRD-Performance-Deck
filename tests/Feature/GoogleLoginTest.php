@@ -35,6 +35,13 @@ class GoogleLoginTest extends TestCase
         $this->get('/login')->assertOk()->assertSee('Sign in with Google')->assertSee('CRD logo', false);
     }
 
+    public function test_privacy_policy_and_terms_are_public_and_linked_from_the_login_page(): void
+    {
+        $this->get('/login')->assertSee(route('privacy'))->assertSee(route('terms'));
+        $this->get('/privacy')->assertOk()->assertSee('drive.file');
+        $this->get('/terms')->assertOk()->assertSee('Terms of Service');
+    }
+
     public function test_guests_are_redirected_to_login(): void
     {
         $this->get('/dashboard')->assertRedirect('/login');

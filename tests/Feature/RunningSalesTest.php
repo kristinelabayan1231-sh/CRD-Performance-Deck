@@ -65,6 +65,9 @@ class RunningSalesTest extends TestCase
         $this->order('CRD REJ VERGARA', 2000, [['name' => 'Haplunas', 'qty' => 1]], status: PancakeOrder::CANCELED);
         $this->order('CRD LHEI', 6000, [['name' => 'Sinuxyl', 'qty' => 3]]);
         $this->order('CRD LHEI', 9000, [['name' => 'CanPro', 'qty' => 1]], day: '2026-10-08');
+        // Unsold still gets a column; a product added after today doesn't.
+        Product::create(['name' => 'Rose Soap', 'srp' => 300]);
+        Product::create(['name' => 'Cystora', 'srp' => 800, 'counts_from' => '2026-10-10']);
 
         $this->actingAs($this->supervisor)->get(route('running-sales.index'))->assertOk()
             ->assertViewHas('snapshot', function (array $snapshot) {
@@ -73,15 +76,15 @@ class RunningSalesTest extends TestCase
                 return [$regina['name'], $regina['sales'], $regina['orders'], $regina['goal']] === ['Regina', 12000.0, 1, 20000.0]
                     && $regina['products'] === ['CanPro' => ['sales' => 5000.0, 'qty' => 1], 'Sinuxyl' => ['sales' => 5000.0, 'qty' => 2], 'Others' => ['sales' => 2000.0, 'qty' => 1]]
                     && [$lhea['name'], $lhea['sales'], $lhea['orders'], $lhea['goal']] === ['Lhea', 6000.0, 1, 5000.0]
-                    // Best seller first, Others last.
-                    && array_keys($snapshot['products']) === ['Sinuxyl', 'CanPro', 'Others']
+                    // Best seller first, unsold after, Others last.
+                    && array_keys($snapshot['products']) === ['Sinuxyl', 'CanPro', 'Rose Soap', 'Others']
                     && $snapshot['team'] === ['sales' => 18000.0, 'orders' => 2, 'goal' => 25000.0];
             })
             ->assertSeeTextInOrder(['Updated 10:30 AM', 'next at 12:00 PM', 'Regina', '₱12,000', 'Daily goal', '₱20,000', 'Left to reach goal', '₱8,000',
                 'Lhea', '₱6,000', 'Goal reached', '+₱1,000 over']);
 
         $this->actingAs($this->supervisor)->get(route('running-sales.index', ['show' => 'qty']))->assertOk()
-            ->assertSeeTextInOrder(['Sinuxyl', 'CanPro', 'Others', 'Regina', '2', '1', '1', '4', 'Lhea', '3', '—', '—', '3', 'Team', '5', '1', '1', '7']);
+            ->assertSeeTextInOrder(['Sinuxyl', 'CanPro', 'Rose Soap', 'Others', 'Regina', '2', '1', '—', '1', '4', 'Lhea', '3', '—', '—', '—', '3', 'Team', '5', '1', '—', '1', '7']);
     }
 
     public function test_the_week_and_the_month_count_the_days_so_far_against_the_daily_goal(): void

@@ -239,6 +239,7 @@ export function initProductGroups() {
 
         const group = template.content.firstElementChild.cloneNode(true);
         group.querySelector('[data-group-title]').textContent = name;
+        group.querySelector('[data-group-start]').value = root.querySelector('[data-group-start-new]').value;
         list.append(group);
         input.value = '';
         changed();
@@ -266,6 +267,8 @@ export function initProductGroups() {
     });
 
     root.addEventListener('change', (event) => {
+        if (event.target.closest('[data-group-list] [data-group-start]')) return changed();
+
         const select = event.target.closest('[data-group-page]');
         if (!select?.value) return;
 
@@ -276,11 +279,12 @@ export function initProductGroups() {
         refresh();
     });
 
-    // The groups on screen, as the server saves them: a name and its pages each.
+    // The groups on screen, as the server saves them: a name, its starting date (blank = from the start) and its pages each.
     save?.addEventListener('submit', () => {
         save.querySelector('[data-group-json]').value = JSON.stringify(
             [...list.querySelectorAll('[data-group]')].map((group) => ({
                 name: group.querySelector('[data-group-title]').textContent.trim(),
+                starts_on: group.querySelector('[data-group-start]').value || null,
                 pages: [...group.querySelectorAll('[data-group-pages] [data-page]')].map((page) => page.dataset.page),
             })),
         );

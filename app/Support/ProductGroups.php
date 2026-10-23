@@ -75,10 +75,11 @@ class ProductGroups
     }
 
     /**
-     * Save the groups. One already there (same name, any case) keeps its added day; a new one is added today. The first
-     * save over the sample groups keeps them as there from the start.
+     * Save the groups. A group's starting date (added_on; null = from the start) is the one given; without one, a group
+     * already there (same name, any case) keeps its day and a new one starts today. The first save over the sample
+     * groups keeps them as there from the start.
      *
-     * @param  list<array{name: string, pages: list<string>}>  $groups
+     * @param  list<array{name: string, pages: list<string>, added_on?: ?string}>  $groups
      */
     public static function save(array $groups, ?User $by = null): void
     {
@@ -90,7 +91,9 @@ class ProductGroups
         $groups = array_map(fn (array $group) => [
             'name' => $group['name'],
             'pages' => array_values($group['pages']),
-            'added_on' => $known === null ? null : ($known->has(Str::lower($group['name'])) ? $known[Str::lower($group['name'])] : $today),
+            'added_on' => array_key_exists('added_on', $group)
+                ? $group['added_on']
+                : ($known === null ? null : ($known->has(Str::lower($group['name'])) ? $known[Str::lower($group['name'])] : $today)),
         ], array_values($groups));
 
         Setting::put(self::KEY, json_encode($groups), $by);
