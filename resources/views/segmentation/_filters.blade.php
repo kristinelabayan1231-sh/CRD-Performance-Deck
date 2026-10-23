@@ -60,14 +60,46 @@
         <span class="sr-only">Month</span>
         <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4"/></svg>
         <input type="month" name="month" value="{{ $filters['month'] }}" class="{{ $field }} w-40 pr-1 pl-8"
-               onchange="this.form.date.value=''; this.form.submit()">
+               onchange="this.form.date.value=''; this.form.from.value=''; this.form.to.value=''; this.form.submit()">
     </label>
 
     <label class="relative shrink-0" title="Date">
         <span class="sr-only">Date</span>
         <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.5" fill="currentColor"/></svg>
-        <input type="date" name="date" value="{{ $filters['date'] ?? '' }}" class="{{ $field }} w-36 pr-1 pl-8" onchange="this.form.submit()">
+        <input type="date" name="date" value="{{ empty($filters['from']) ? ($filters['date'] ?? '') : '' }}" class="{{ $field }} w-36 pr-1 pl-8"
+               onchange="this.form.from.value=''; this.form.to.value=''; this.form.submit()">
     </label>
+
+    {{-- Date range: the lead days from–to (overrides the date and month above) --}}
+    @php($ranged = ! empty($filters['from']))
+    <details class="relative shrink-0" @if ($errors->has('from') || $errors->has('to')) open @endif>
+        <summary title="Date range" aria-label="Date range"
+                 @class(['flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border bg-white px-2.5 text-sm [&::-webkit-details-marker]:hidden',
+                         'border-brand-500 font-semibold text-brand-700 ring-2 ring-brand-200' => $ranged,
+                         'border-line text-muted hover:border-brand-400 hover:text-brand-600' => ! $ranged])>
+            <svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4M7 15h4m2 0h4"/></svg>
+            <span class="whitespace-nowrap">{{ $ranged ? \App\Http\Controllers\SegmentationController::periodLabel(\Carbon\CarbonImmutable::parse($filters['from']), \Carbon\CarbonImmutable::parse($filters['to'])) : 'Range' }}</span>
+        </summary>
+        <div class="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-line bg-white p-3 shadow-lg">
+            <p class="pb-2 text-xs text-muted">Leads from every lead day in this range.</p>
+            <label class="mb-2 block">
+                <span class="mb-1 block text-xs font-semibold text-muted">From</span>
+                <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="{{ $field }} w-full px-2.5">
+            </label>
+            <label class="mb-3 block">
+                <span class="mb-1 block text-xs font-semibold text-muted">To</span>
+                <input type="date" name="to" value="{{ $filters['to'] ?? '' }}" class="{{ $field }} w-full px-2.5">
+            </label>
+            <div class="flex gap-2">
+                <button type="submit" class="h-9 flex-1 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white hover:bg-brand-700"
+                        onclick="if (!this.form.from.value || !this.form.to.value) { alert('Pick both a From and a To date.'); return false; } this.form.date.value='';">Apply</button>
+                @if ($ranged)
+                    <a href="{{ request()->fullUrlWithQuery(['from' => null, 'to' => null, 'page' => null, 'processed_page' => null]) }}"
+                       class="grid h-9 flex-1 place-items-center rounded-lg border border-line text-sm font-medium hover:border-brand-400 hover:text-brand-600">Clear</a>
+                @endif
+            </div>
+        </div>
+    </details>
 
     <details class="relative shrink-0" data-column-picker>
         <summary title="Columns" aria-label="Columns"

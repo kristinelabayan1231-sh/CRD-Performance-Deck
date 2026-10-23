@@ -28,7 +28,17 @@
                         <th data-col="customer_name" class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
                         <th data-col="qty" class="px-4 py-3 text-right font-semibold">Qty</th>
                         <th data-col="product" class="px-4 py-3 font-semibold">Product</th>
-                        <th data-col="contact_number" class="px-4 py-3 font-semibold">Contact #</th>
+                        <th data-col="contact_number" class="px-4 py-3 font-semibold">
+                            <span class="inline-flex items-center gap-1.5">
+                                Contact #
+                                {{-- Copies every contact # in this list, space-separated (segmentation.js) --}}
+                                <button type="button" data-copy-phones title="Copy all contact numbers" aria-label="Copy all contact numbers in {{ $title }}"
+                                        class="grid size-6 place-items-center rounded-md text-muted normal-case hover:bg-white hover:text-brand-600">
+                                    <svg data-copy-icon class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                                    <svg data-copied-icon class="hidden size-3.5 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
+                                </button>
+                            </span>
+                        </th>
                         <th data-col="delivered_date" class="px-4 py-3 font-semibold">Delivered Date</th>
                         <th data-col="days_since_delivered" class="bg-[#fff4d6] px-4 py-3 text-center font-semibold text-[#7a5a00]">Days since Delivered</th>
                         <th data-col="est_out_of_stock" class="px-4 py-3 font-semibold">Est. Out of Stock</th>

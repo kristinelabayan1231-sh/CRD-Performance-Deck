@@ -91,7 +91,7 @@
 
         @if (($filters['repeat'] ?? null) && ! $filters['q'])
             <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
-                Repeat Purchase = <strong>Yes</strong> bought {{ $singleDay ? 'on '.\Carbon\CarbonImmutable::parse($filters['date'])->format('M j, Y') : 'in '.\Carbon\CarbonImmutable::parse($filters['month'].'-01')->format('F Y') }}, whatever their lead day{{ ! empty($filters['type']) ? ' · '.\App\Models\Lead::TYPES[$filters['type']].'s ('.($filters['type'] === \App\Models\Lead::TYPE_FSD ? 'Retained' : 'Repeat Customers').')' : '' }}.
+                Repeat Purchase = <strong>Yes</strong> bought {{ ($singleDay ? 'on ' : (! empty($filters['from']) ? 'from ' : 'in ')).$period }}, whatever their lead day{{ ! empty($filters['type']) ? ' · '.\App\Models\Lead::TYPES[$filters['type']].'s ('.($filters['type'] === \App\Models\Lead::TYPE_FSD ? 'Retained' : 'Repeat Customers').')' : '' }}.
                 <a href="{{ request()->fullUrlWithQuery(['repeat' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Show all leads</a>
             </p>
         @endif
