@@ -41,6 +41,10 @@ use App\Http\Controllers\WorkingDateController;
 use App\Http\Middleware\EnsureUserIsActive;
 use Illuminate\Support\Facades\Route;
 
+// Public: linked from the Google sign-in (consent) screen.
+Route::view('/privacy', 'legal.privacy')->name('privacy');
+Route::view('/terms', 'legal.terms')->name('terms');
+
 Route::middleware('guest')->group(function () {
     Route::get('/login', [GoogleController::class, 'showLogin'])->name('login');
     Route::get('/auth/google/redirect', [GoogleController::class, 'redirect'])->name('auth.google.redirect');

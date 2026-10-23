@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-23 · Sign in · Privacy Policy and Terms of Service links under the sign-in button (public pages /privacy and /terms, for Google's sign-in screen) · shots: 01-login
 - 2026-10-23 · Call Recordings (new, Segmentation) + Settings → Call Recordings (new) · Calls uploaded from each CRA's phone (MacroDroid) are kept in Google Drive and play on the page; tiles for Calls, AHT (average call length), Talk time and No matching lead, an AHT per CRA table (supervisors and team leads), and every call with its customer (matched by contact number), Incoming/Outgoing, duration and a player. From–to dates, CRA and Matched/No match filters; a CRA sees their own. Settings: Connect Google Drive and a one-time upload token per CRA phone. New permissions "Call Recordings" and "Settings · Call Recordings" · shots: call-recordings (new), settings-call-recordings (new)
 - 2026-10-23 · Sidebar · Daily I.S. shows as "Pending" and can't be clicked for now, except by super admins · shots: sidebar
 - 2026-10-23 · Settings → Pancake Pages / Product Consumption · New "Starting date" when adding a product group or a product (defaults to today), editable on each group/product row (blank = from the start): PC Report, the Daily I.S. and product cost count it from that day · shots: settings-pancake-pages, settings-product-consumption

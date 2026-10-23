@@ -51,6 +51,10 @@
                     <p class="mt-8 text-center text-sm text-muted">
                         Access is by invitation only. Ask a super admin to add your Google account.
                     </p>
+                    <p class="mt-3 text-center text-xs text-muted">
+                        <a href="{{ route('privacy') }}" class="hover:text-brand-600 hover:underline">Privacy Policy</a>
+                        · <a href="{{ route('terms') }}" class="hover:text-brand-600 hover:underline">Terms of Service</a>
+                    </p>
                 </div>
             </div>
         </div>
