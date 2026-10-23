@@ -180,7 +180,13 @@ class SegmentationController extends Controller
             $filters['month'] = $today->format('Y-m');
         }
 
-        $filters['cra'] = $user->can('segmentation.view_all') ? ($filters['cra'] ?? 'all') : (string) $user->id;
+        // Everyone can look at all CRAs or one CRA's leads; without view_all it opens on their own, and Unassigned is managers' only.
+        $cra = $filters['cra'] ?? null;
+        $filters['cra'] = match (true) {
+            $user->can('segmentation.view_all') => $cra ?? 'all',
+            $cra === 'all', ctype_digit((string) $cra) && LeadGenerator::cras()->contains('id', (int) $cra) => $cra,
+            default => (string) $user->id,
+        };
 
         return [$filters, $from, $to];
     }
@@ -459,14 +465,10 @@ class SegmentationController extends Controller
 
     /**
      * The order icon's hover pop-up: the customer's orders (all their merged numbers), latest first, as
-     * order date and products only. Canceled and returned orders are left out.
+     * order date and products only. Canceled and returned orders are left out. Anyone who can see the tracker can see any lead's.
      */
-    public function orders(Request $request, Lead $lead, ChurnCustomerList $churn): JsonResponse
+    public function orders(Lead $lead, ChurnCustomerList $churn): JsonResponse
     {
-        $user = $request->user();
-
-        abort_unless($user->can('segmentation.view_all') || $lead->assigned_to === $user->id, 403);
-
         $returned = collect(config('customers.pos_statuses'))->only([4, 5, 6])->pluck(0)->all();
         $orders = collect($churn->history(LeadGenerator::normalizePhone((string) $lead->phone_number))['orders'] ?? [])
             ->reject(fn (array $order) => in_array($order['status_label'], $returned, true))

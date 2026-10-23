@@ -130,6 +130,27 @@ class ProductConsumptionTest extends TestCase
             ->assertSessionHasErrors('name');
     }
 
+    public function test_a_product_counts_from_its_starting_date(): void
+    {
+        $this->actingAs($this->owner)
+            ->post('/settings/product-consumption', ['name' => 'Rose Soap', 'counts_from' => '2026-10-21'])
+            ->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'Rose Soap');
+        $this->assertSame('2026-10-21', $product->counts_from->toDateString());
+
+        // Changed on its row; blank = from the start; an edit without the field keeps it.
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => '2026-10-01']);
+        $this->assertSame('2026-10-01', $product->fresh()->counts_from->toDateString());
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap']);
+        $this->assertSame('2026-10-01', $product->fresh()->counts_from->toDateString());
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => '']);
+        $this->assertNull($product->fresh()->counts_from);
+
+        $this->actingAs($this->owner)
+            ->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => 'Oct 21'])
+            ->assertSessionHasErrorsIn("product{$product->id}", 'counts_from');
+    }
+
     public function test_product_can_be_updated_and_deleted(): void
     {
         $product = Product::create(['name' => 'Pterylief']);

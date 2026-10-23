@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\PancakeOrder;
+use App\Models\Product;
 use App\Models\User;
 use App\Support\MonthWeeks;
 use App\Support\SalesGoals;
@@ -108,8 +109,11 @@ class RunningSales
             'products' => $tally[$cra->id]['products'] ?? [],
         ])->sortByDesc('sales')->values()->all();
 
-        // The team's products, best seller first, Others last.
-        $products = [];
+        // Every Product Consumption product there by today, sold or not; best seller first, then by name, Others last.
+        $products = Product::orderBy('name')->get()
+            ->filter(fn (Product $product) => $product->counts_from === null || $product->counts_from->lessThanOrEqualTo($today))
+            ->mapWithKeys(fn (Product $product) => [$product->name => ['sales' => 0.0, 'qty' => 0]])
+            ->all();
         foreach ($rows as $row) {
             foreach ($row['products'] as $name => $sold) {
                 $products[$name]['sales'] = ($products[$name]['sales'] ?? 0) + $sold['sales'];

@@ -180,7 +180,7 @@
                             <tr class="border-t-2 border-brand-200 bg-brand-50/60 font-bold text-ink">
                                 <th scope="row" class="px-4 py-3 text-left">Team</th>
                                 @foreach ($products as $sold)
-                                    <td class="px-3 py-3 text-right">{{ $cell($sold) }}</td>
+                                    <td class="px-3 py-3 text-right">{{ $sold[$show] > 0 ? $cell($sold) : '—' }}</td>
                                 @endforeach
                                 <td class="px-4 py-3 text-right">{{ $show === 'qty' ? number_format(collect($products)->sum('qty')) : $peso($team['sales']) }}</td>
                             </tr>

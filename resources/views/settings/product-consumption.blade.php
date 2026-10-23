@@ -8,7 +8,7 @@
     @if ($canManage)
         <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
             <h2 class="text-base font-semibold">Add product</h2>
-            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down. SRP sets the product's CLTV (SRP × {{ config('customers.cltv_units') }}) in the Customer Database. Product cost (₱ per unit) sets the Product cost (product cost × qty) in Order Database → Product Report.</p>
+            <p class="text-sm text-muted">Orders whose product name contains this name (or an extra keyword) are grouped under it. Consumption days (how long one unit lasts) estimate when a customer runs out if the retention API is down. SRP sets the product's CLTV (SRP × {{ config('customers.cltv_units') }}) in the Customer Database. Product cost (₱ per unit) sets the Product cost (product cost × qty) in the Daily I.S. and Order Database → Product Report. The starting date is the first day it counts: orders, deliveries and leads before it leave it out.</p>
             <form method="POST" action="{{ route('settings.product-consumption.store') }}" class="mt-4 flex flex-col gap-4 md:flex-row md:items-end">
                 @csrf
                 <label class="flex-1">
@@ -34,6 +34,10 @@
                 <label class="md:w-36">
                     <span class="mb-1 block text-sm font-medium">Product cost <span class="font-normal text-muted">(₱ per unit)</span></span>
                     <input type="number" name="unit_cost" value="{{ $errors->any() ? old('unit_cost') : '' }}" min="0" step="0.01" placeholder="e.g. 35" class="{{ $input }}">
+                </label>
+                <label class="md:w-40">
+                    <span class="mb-1 block text-sm font-medium">Starting date</span>
+                    <input type="date" name="counts_from" required value="{{ $errors->any() ? old('counts_from') : \App\Support\WorkingDate::realToday()->toDateString() }}" class="{{ $input }}">
                 </label>
                 <button type="submit" class="h-11 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">
                     Add product
@@ -87,9 +91,12 @@
                                         <input form="product-{{ $product->id }}" type="text" name="name" required maxlength="255"
                                                value="{{ $bag->any() ? old('name', $product->name) : $product->name }}"
                                                aria-label="Name of {{ $product->name }}" class="{{ $input }} h-10">
-                                        @if ($product->counts_from)
-                                            <p class="mt-1 text-xs text-muted" title="Orders, deliveries and leads before this day leave it out">Counts from {{ $product->counts_from->format('M j, Y') }}</p>
-                                        @endif
+                                        <label class="mt-1.5 block" title="Orders, deliveries and leads before this day leave it out; blank = from the start">
+                                            <span class="mb-0.5 block text-[11px] font-semibold text-muted">Starting date</span>
+                                            <input form="product-{{ $product->id }}" type="date" name="counts_from"
+                                                   value="{{ $bag->any() ? old('counts_from', $product->counts_from?->toDateString()) : $product->counts_from?->toDateString() }}"
+                                                   aria-label="Starting date of {{ $product->name }}" class="{{ $input }} h-9">
+                                        </label>
                                         @foreach ($bag->all() as $error)
                                             <p role="alert" class="mt-1 text-xs text-coral-700">{{ $error }}</p>
                                         @endforeach

@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-23 · Settings → Pancake Pages / Product Consumption · New "Starting date" when adding a product group or a product (defaults to today), editable on each group/product row (blank = from the start): PC Report, the Daily I.S. and product cost count it from that day · shots: settings-pancake-pages, settings-product-consumption
+- 2026-10-23 · Daily I.S. / Order Database → Product Report · Product Cost is now pieces × the product's unit cost in Settings → Product Consumption (as the CRAs' sheet), no longer Pancake's per-item cost (which was off or ₱0 on some variations) · shots: daily-is, product-report
+- 2026-10-23 · Segmentation Tracker · CRAs get the CRA picker too: it opens on their own tracker (marked "(you)"), and they can switch to another CRA or All to view (and hover order history); they can still only edit their own leads · shots: 04-daily-table
+- 2026-10-23 · Running Sales · Per product breakdown shows every Settings → Product Consumption product (14), unsold ones too with "—"; best sellers first, unsold after, Others last · shots: running-sales
 - 2026-10-22 · Settings → Daily I.S. (new) · Tick a product as deactivated: on a day it has no sales it doesn't show in the Daily I.S.; on a day any CRA sold it, it shows with a red "Deactivated" label. New permission "Settings · Daily I.S." · shots: settings-daily-is (new), daily-is
 
 - 2026-10-22 · Daily I.S. · Product cards in a set order with full names: CLEAR SIGHT EYEDROPS, PTERYGIUM EYE DROPS, SINUXYL NASAL SPRAY, CANPRO HERBAL DRINK, AUDICURE, GINSENG, SCAR CREAM, NUTRILAY, GALLVEX HERBAL DROPS, PRIME MAN HERBAL TEA, CYSTORA, ROSE SOAP, MEDALLION; any other product group after them under its Settings name · shots: daily-is

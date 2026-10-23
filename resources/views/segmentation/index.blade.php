@@ -84,7 +84,7 @@
 
         @if ($filters['q'])
             <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
-                Search results for <strong>“{{ $filters['q'] }}”</strong> across all lead days{{ $canViewAll ? '' : ' in your leads' }}.
+                Search results for <strong>“{{ $filters['q'] }}”</strong> across all lead days{{ match (true) { $filters['cra'] === (string) auth()->id() => ' in your leads', ctype_digit($filters['cra']) => ' in '.($cras->firstWhere('id', (int) $filters['cra'])?->displayName() ?? 'this CRA')."'s leads", default => '' } }}.
                 <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Clear search</a>
             </p>
         @endif

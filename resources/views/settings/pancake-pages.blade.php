@@ -130,7 +130,7 @@
         <div class="flex flex-wrap items-start justify-between gap-2 border-b border-line px-4 py-4">
             <div>
                 <h2 class="text-base font-semibold">Product groups</h2>
-                <p class="text-sm text-muted">Group the pages that sell the same product. Each group is one set per CRA in PC Report, with a row for every page.</p>
+                <p class="text-sm text-muted">Group the pages that sell the same product. Each group is one set per CRA in PC Report, with a row for every page. Its starting date is the first day PC Report and the Daily I.S. count it.</p>
             </div>
             @unless ($groupsSaved)
                 <span class="rounded-full bg-[#fff6d6] px-2.5 py-0.5 text-xs font-semibold text-[#7a5c00]">Sample groups · save to keep yours</span>
@@ -146,12 +146,16 @@
                 <span class="sr-only">Product name</span>
                 <input type="text" data-group-name required maxlength="60" placeholder="Product name, e.g. Sinuxyl" class="{{ $input }} h-10">
             </label>
+            <label class="flex items-center gap-2" title="PC Report and the Daily I.S. count the product from this day">
+                <span class="text-sm font-medium whitespace-nowrap">Starting date</span>
+                <input type="date" data-group-start-new required value="{{ \App\Support\WorkingDate::realToday()->toDateString() }}" class="{{ $input }} h-10 w-40">
+            </label>
             <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700">Add product</button>
         </form>
 
         <div class="divide-y divide-line" data-group-list>
             @foreach ($productGroups as $group)
-                @include('settings._product-group', ['name' => $group['name'], 'pages' => $group['pages']])
+                @include('settings._product-group', ['name' => $group['name'], 'pages' => $group['pages'], 'startsOn' => $group['added_on']])
             @endforeach
         </div>
         <p data-group-empty @class(['px-4 py-8 text-center text-sm text-muted', 'hidden' => $productGroups !== []])>No product groups yet. Add your first one above.</p>

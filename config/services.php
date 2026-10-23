@@ -34,6 +34,11 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
     ],
 
+    // Call recordings: the Drive is connected in Settings → Call Recordings with the Google client above.
+    'google_drive' => [
+        'folder_name' => env('GOOGLE_DRIVE_FOLDER_NAME', 'CRD Call Recordings'),
+    ],
+
     'shecom' => [
         'url' => env('SHECOM_API_URL', 'https://gm-shecom.up.railway.app/api'),
         'key' => env('SHECOM_API_KEY'),

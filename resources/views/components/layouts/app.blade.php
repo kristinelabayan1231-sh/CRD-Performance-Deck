@@ -31,6 +31,7 @@
                     ['Segmentation Tracker', auth()->user()->segmentationHome(), request()->routeIs('segmentation.*'), $user->can('segmentation.view')],
                     ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
                     ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
+                    ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view')],
                 ]],
                 ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
                     ['CVR Tracker', route('cvr-tracker.index'), request()->routeIs('cvr-tracker.*'), $user->can('cvr_tracker.view')],

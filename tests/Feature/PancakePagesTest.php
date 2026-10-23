@@ -6,6 +6,8 @@ use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\ProductGroups;
+use App\Support\WorkingDate;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -129,6 +131,26 @@ class PancakePagesTest extends TestCase
             ->assertOk()
             ->assertSeeInOrder(['Pterygium · 2 pages', 'Eye Care · 0 pages'])
             ->assertDontSee('Sinuxyl · 3 pages');
+    }
+
+    public function test_a_product_groups_starting_date_is_the_one_given(): void
+    {
+        $this->pages('Daily Lucky', 'Shop Express PH');
+        $this->saveGroups([['name' => 'Medallion', 'pages' => ['Daily Lucky']]]);
+
+        // Given: that day; blank: from the start; none sent: a new group starts today, a saved one keeps its day.
+        $this->saveGroups([
+            ['name' => 'Medallion', 'starts_on' => '2026-10-21', 'pages' => ['Daily Lucky']],
+            ['name' => 'Rose Soap', 'starts_on' => null, 'pages' => ['Shop Express PH']],
+        ])->assertSessionHasNoErrors();
+        $this->assertSame(['2026-10-21', null], array_column(ProductGroups::all(), 'added_on'));
+
+        $this->saveGroups([['name' => 'Medallion', 'pages' => ['Daily Lucky']], ['name' => 'Cystora', 'pages' => []]]);
+        $this->assertSame(['2026-10-21', WorkingDate::realToday()->toDateString()], array_column(ProductGroups::all(), 'added_on'));
+        $this->assertSame(['Medallion'], array_column(ProductGroups::on(CarbonImmutable::parse('2026-10-21')), 'name'));
+
+        $this->actingAs($this->owner)->get(route('settings.pancake-pages.index'))->assertSee('value="2026-10-21"', false);
+        $this->saveGroups([['name' => 'Medallion', 'starts_on' => '21/10/2026', 'pages' => []]])->assertSessionHasErrorsIn('groups');
     }
 
     public function test_product_groups_need_known_pages_each_in_one_group_and_different_names(): void

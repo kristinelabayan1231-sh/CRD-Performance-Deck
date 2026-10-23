@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
+use App\Http\Controllers\CallRecordingController;
+use App\Http\Controllers\CallRecordingSettingController;
 use App\Http\Controllers\CancelledOrderController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
@@ -91,6 +93,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/sync', [SegmentationProductivityController::class, 'sync'])->middleware('can:productivity.view_all')->name('sync');
     });
 
+    Route::prefix('call-recordings')->name('call-recordings.')->middleware('can:call_recordings.view')->group(function () {
+        Route::get('/', [CallRecordingController::class, 'index'])->name('index');
+        Route::get('/{callRecording}/audio', [CallRecordingController::class, 'audio'])->name('audio');
+    });
+
     Route::prefix('conversion-breakdown')->name('conversion.')->middleware('can:conversion.view')->group(function () {
         Route::get('/', [ConversionBreakdownController::class, 'index'])->name('index');
         Route::get('/orders', [ConversionBreakdownController::class, 'orders'])->name('orders');
@@ -171,6 +178,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
                 request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
                 request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
+                request()->user()->can('call_recordings.manage') => 'settings.call-recordings.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
@@ -207,6 +215,13 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('daily-is')->name('daily-is.')->middleware('can:daily_is_products.manage')->group(function () {
             Route::get('/', [DailyIsSettingController::class, 'index'])->name('index');
             Route::put('/', [DailyIsSettingController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('call-recordings')->name('call-recordings.')->middleware('can:call_recordings.manage')->group(function () {
+            Route::get('/', [CallRecordingSettingController::class, 'index'])->name('index');
+            Route::get('/drive/connect', [CallRecordingSettingController::class, 'connect'])->name('drive-connect');
+            Route::get('/drive/callback', [CallRecordingSettingController::class, 'callback'])->name('drive-callback');
+            Route::post('/tokens/{user}', [CallRecordingSettingController::class, 'issueToken'])->name('token');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

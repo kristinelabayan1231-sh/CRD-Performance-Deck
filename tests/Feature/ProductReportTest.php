@@ -139,11 +139,11 @@ class ProductReportTest extends TestCase
             [['name' => 'Sinuxyl', 'qty' => 2, 'pieces' => 5, 'price' => 999.0, 'cost' => 150.0], ['name' => 'LUMICARE OIL', 'qty' => 1, 'pieces' => 3, 'price' => 1000.0, 'cost' => 138.0]],
             PancakeOrder::sole()->items,
         );
-        // 10 pieces, ₱1,998, ₱300 cost (not 10 × the ₱35 in Settings); the oil 3 pieces, ₱1,000, ₱138.
+        // 10 pieces, ₱1,998, ₱350 cost: 10 × the ₱35 in Settings, not Pancake's ₱150 a bundle.
         $this->actingAs($this->owner)->get(route('order-database.product-report'))
             ->assertOk()
             // The oil isn't on Product Consumption: left out, as logistics does.
-            ->assertSeeTextInOrder(['Sinuxyl', '10', '₱1,998', '₱300', 'TOTAL', '10', '₱1,998', '₱300'])
+            ->assertSeeTextInOrder(['Sinuxyl', '10', '₱1,998', '₱350', 'TOTAL', '10', '₱1,998', '₱350'])
             ->assertDontSeeText('LUMICARE OIL');
     }
 

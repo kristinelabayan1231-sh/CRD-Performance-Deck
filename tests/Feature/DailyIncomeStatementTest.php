@@ -31,7 +31,7 @@ class DailyIncomeStatementTest extends TestCase
 
         Http::fake();
         $this->travelTo(CarbonImmutable::parse('2026-10-16 10:00', 'Asia/Manila'));
-        Product::create(['name' => 'Sinuxyl']);
+        Product::create(['name' => 'Sinuxyl', 'unit_cost' => 35]);
     }
 
     private function user(string $name, string $role, ?string $pancake = null): User
@@ -62,11 +62,12 @@ class DailyIncomeStatementTest extends TestCase
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
         $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
-        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one with a ₱100 cost) and a canceled one
+        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one of 3 pieces: 3 × the ₱35 unit cost in
+        // Settings, not Pancake's ₱100) and a canceled one
         // (in Gross Sales and Actual Cancelled, not in orders); another day's is left out.
         $this->entry($regina, 'Sinuxyl Nasal Spray', 100, 50);
         $this->entry($regina, 'Sinuxyl Nasal Care', 20, 10);
-        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'name' => 'Sinuxyl', 'cost' => 100]]]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'pieces' => 3, 'name' => 'Sinuxyl', 'cost' => 100]]]);
         $this->order($regina, 'Sinuxyl Nasal Care', 500);
         $this->order($regina, 'Sinuxyl Nasal Spray', 700, ['status' => PancakeOrder::CANCELED, 'pancake_order_id' => 'canceled-1']);
         $this->order($regina, 'Sinuxyl Nasal Spray', 800, ['ordered_on' => '2026-10-02']);
@@ -89,10 +90,10 @@ class DailyIncomeStatementTest extends TestCase
         $selling = 2 * 75 + $delivered * 0.0224 + 2 * 25;
         $expected = [
             'leads' => 120, 'engagements' => 60, 'orders' => 2, 'gross' => 2199.0, 'cancelled' => 700.0, 'returns' => 219.9,
-            'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 100.0, 'gross_profit' => $delivered - $share('tax') - 100,
+            'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 105.0, 'gross_profit' => $delivered - $share('tax') - 105,
             'advertising' => 0.0, 'ads_vat' => 0.0, 'shipping' => 150, 'cod' => $delivered * 0.0224, 'vat_on_cod' => 0.0, 'fulfillment' => 50,
             'selling' => $selling, 'salaries' => $share('salaries'), 'hmo_expense' => $share('hmo_expense'), 'operating' => $operating,
-            'net_income' => $delivered - $share('tax') - 100 - $selling - $operating,
+            'net_income' => $delivered - $share('tax') - 105 - $selling - $operating,
         ];
         foreach ($expected as $key => $value) {
             $this->assertEqualsWithDelta($value, $sinuxyl[$key], 0.001, $key);

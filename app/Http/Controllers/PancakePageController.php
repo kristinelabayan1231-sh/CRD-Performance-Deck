@@ -66,6 +66,7 @@ class PancakePageController extends Controller
         $data = $request->validateWithBag('groups', [
             'groups' => ['required', 'array', 'min:1'],
             'groups.*.name' => ['required', 'string', 'max:60', 'distinct:ignore_case'],
+            'groups.*.starts_on' => ['nullable', 'date_format:Y-m-d'],
             'groups.*.pages' => ['present', 'array'],
             'groups.*.pages.*' => ['string', Rule::in(PancakePage::pluck('name')->all()), 'distinct'],
         ], [
@@ -74,9 +75,14 @@ class PancakePageController extends Controller
             'groups.*.name.distinct' => 'Two product groups have the same name.',
             'groups.*.pages.*.in' => 'A page in the groups is no longer in the list above; reload and try again.',
             'groups.*.pages.*.distinct' => 'A page can be in one product group only.',
+            'groups.*.starts_on.date_format' => 'A product group\'s starting date is not a valid date.',
         ]);
 
-        $groups = collect($data['groups'])->map(fn (array $group) => ['name' => trim($group['name']), 'pages' => array_values($group['pages'])]);
+        $groups = collect($data['groups'])->map(fn (array $group) => [
+            'name' => trim($group['name']),
+            'pages' => array_values($group['pages']),
+            ...(array_key_exists('starts_on', $group) ? ['added_on' => $group['starts_on']] : []),
+        ]);
 
         // Each group is picked by its name in PC Report's link, so names must stay apart there too ("Clear Sight" vs "ClearSight" is fine).
         if ($groups->map(fn (array $group) => Str::slug($group['name']))->duplicates()->isNotEmpty()) {

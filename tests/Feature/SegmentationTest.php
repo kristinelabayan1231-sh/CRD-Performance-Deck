@@ -255,7 +255,7 @@ class SegmentationTest extends TestCase
         $this->actingAs($this->owner)->get('/segmentation?cra=unassigned&date=2026-10-05')->assertOk()->assertDontSee('Customer 1');
     }
 
-    public function test_cra_sees_only_own_leads_and_can_set_status(): void
+    public function test_cra_opens_on_own_leads_can_view_other_cras_and_edits_only_their_own(): void
     {
         $alice = $this->cra('alice@gmail.com');
         $bob = $this->cra('bob@gmail.com');
@@ -265,8 +265,17 @@ class SegmentationTest extends TestCase
         $mine = Lead::where('assigned_to', $alice->id)->first();
         $theirs = Lead::where('assigned_to', $bob->id)->first();
 
-        $this->actingAs($alice)->get('/segmentation?cra=all')
-            ->assertOk()->assertSee($mine->customer_name)->assertDontSee($theirs->customer_name)->assertDontSee('Sync leads');
+        $this->actingAs($alice)->get('/segmentation')
+            ->assertOk()->assertSee($mine->customer_name)->assertDontSee($theirs->customer_name)->assertDontSee('Sync leads')
+            ->assertSee($alice->displayName().' (you)');
+        // Another CRA's tracker, or all of them: visible, but only her own rows can be edited.
+        $this->actingAs($alice)->get("/segmentation?cra={$bob->id}")
+            ->assertOk()->assertSee($theirs->customer_name)->assertDontSee($mine->customer_name)
+            ->assertDontSee('data-update-url="'.route('segmentation.update', $theirs).'"', false);
+        $this->actingAs($alice)->get('/segmentation?cra=all')->assertOk()->assertSee($mine->customer_name)->assertSee($theirs->customer_name);
+        $this->actingAs($alice)->getJson(route('segmentation.orders', $theirs))->assertOk();
+        // Unassigned stays managers' only: back to her own.
+        $this->actingAs($alice)->getJson('/segmentation/summary?cra=unassigned')->assertJsonPath('total.value', '1');
 
         $this->actingAs($alice)->patch("/segmentation/leads/{$mine->id}", ['status' => 'reminders_ffup'])->assertSessionHasNoErrors();
         $this->assertSame('reminders_ffup', $mine->fresh()->status);
@@ -524,7 +533,8 @@ class SegmentationTest extends TestCase
                 ['date' => 'Sep 1, 2026', 'product' => 'CanPro'],
                 ['date' => 'Aug 2, 2026', 'product' => 'Sinuxyl'],
             ]]);
-        $this->actingAs($bob)->getJson(route('segmentation.orders', $lead))->assertForbidden();
+        // Other CRAs can look at their tracker too.
+        $this->actingAs($bob)->getJson(route('segmentation.orders', $lead))->assertOk();
     }
 
     public function test_a_cra_searches_their_leads_across_every_lead_day(): void
@@ -719,9 +729,10 @@ class SegmentationTest extends TestCase
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
         app(LeadGenerator::class)->generate($this->day);
 
-        $this->actingAs($alice)->getJson('/segmentation/summary?cra=all')->assertOk()
+        $this->actingAs($alice)->getJson('/segmentation/summary')->assertOk()
             ->assertJsonPath('total.value', '1')
             ->assertJsonMissingPath('per_cra');
+        $this->actingAs($alice)->getJson('/segmentation/summary?cra=all')->assertJsonPath('total.value', '2');
         $this->actingAs($alice)->get('/segmentation')->assertDontSee('Per CRA');
     }
 

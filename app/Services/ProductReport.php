@@ -17,8 +17,8 @@ use Illuminate\Support\Collection;
  * name, after the listed ones ("Other products" in the filter shows them all). Deleted orders (status 7) are left out.
  *
  * As Pancake's own Product Performance: Total qty is the pieces sold (a "5 Pterygium Drops" bundle is 5; 3 + 5 bottles
- * in two orders = 8), sales are each item at its Pancake price and Product cost each item at its variation's cost
- * (else pieces × the product's unit cost). Orders saved before item prices were kept split their sale (before
+ * in two orders = 8), sales are each item at its Pancake price and Product cost the pieces × the product's unit cost
+ * (Settings → Product Consumption). Orders saved before item prices were kept split their sale (before
  * Pancake's discount) by SRP × qty, or by qty when a product has no SRP; Shecom's sales cover only the listed
  * products, so with both kinds in an order the items not on the list get the rest of the price.
  *
@@ -193,8 +193,11 @@ class ProductReport
                 'product' => (string) $name,
                 'qty' => $product['qty'],
                 'sales' => $salesOf[$name],
-                // Pancake's variation cost, else the pieces × the product's unit cost (Settings → Product Consumption).
-                'cost' => $product['cost'] ?? (isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null),
+                // A listed product: its pieces × its unit cost in Settings → Product Consumption (as the CRAs' sheet; Pancake's
+                // variation costs can be off or 0). Not on the list: Pancake's variation cost.
+                'cost' => $product['listed']
+                    ? (isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null)
+                    : $product['cost'],
                 'day' => substr((string) $order->ordered_on, 0, 10),
                 'hour' => $hour,
                 'listed' => $product['listed'],
