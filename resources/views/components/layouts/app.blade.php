@@ -41,7 +41,8 @@
                 ]],
                 ['name' => 'Income & Products', 'icon' => 'statement', 'items' => [
                     ['Monthly MNI', route('mni.index'), request()->routeIs('mni.*'), $user->can('mni.view')],
-                    ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view')],
+                    // Pending: shown but not clickable for now, except for super admins.
+                    ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view'), ! $user->isSuperAdmin()],
                     ['Product Performance', route('product-performance.index'), request()->routeIs('product-performance.*'), $user->can('product_performance.view')],
                 ]],
                 ['name' => 'Customers & Costs', 'icon' => 'database', 'items' => [
@@ -78,8 +79,16 @@
                             <svg class="size-4 shrink-0 text-[#a89cc8] transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
                         </summary>
                         <div class="flex flex-col gap-0.5 pt-0.5 pr-1.5 pb-2 pl-5">
-                            @foreach ($group['items'] as [$label, $href, $active])
-                                <x-nav-link :href="$href" :active="$active" sub>{{ $label }}</x-nav-link>
+                            @foreach ($group['items'] as $item)
+                                @if ($item[4] ?? false)
+                                    <span class="flex min-h-9 cursor-not-allowed items-center gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-[#8f84ad]" aria-disabled="true" title="Pending — not available yet">
+                                        <span class="size-1.5 shrink-0 rounded-full bg-[#6d628f]" aria-hidden="true"></span>
+                                        <span class="flex-1">{{ $item[0] }}</span>
+                                        <span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#c9bfe6] uppercase">Pending</span>
+                                    </span>
+                                @else
+                                    <x-nav-link :href="$item[1]" :active="$item[2]" sub>{{ $item[0] }}</x-nav-link>
+                                @endif
                             @endforeach
                         </div>
                     </details>

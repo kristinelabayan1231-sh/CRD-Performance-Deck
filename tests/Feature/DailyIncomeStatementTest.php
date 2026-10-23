@@ -57,6 +57,17 @@ class DailyIncomeStatementTest extends TestCase
         PcReportEntry::create(['user_id' => $cra->id, 'page' => $page, 'category' => '', 'date' => self::DAY, 'inquiries' => $inquiries, 'engagements' => $engagements]);
     }
 
+    public function test_the_sidebar_shows_daily_is_as_pending_except_to_super_admins(): void
+    {
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $owner = User::create(['email' => 'owner@example.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+        $link = 'href="'.route('daily-is.index').'"';
+
+        $this->actingAs($supervisor)->get(route('dashboard'))->assertOk()
+            ->assertSeeInOrder(['Daily I.S.', 'Pending'])->assertDontSee($link, false);
+        $this->actingAs($owner)->get(route('dashboard'))->assertOk()->assertSee($link, false);
+    }
+
     public function test_supervisor_sees_each_cras_statement_per_product_and_the_department_adding_them_up(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
