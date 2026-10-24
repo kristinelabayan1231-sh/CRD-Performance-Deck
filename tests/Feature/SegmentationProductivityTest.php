@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CvrOrderEntry;
 use App\Models\DeliveredOrder;
+use App\Models\DutyLogin;
 use App\Models\Lead;
 use App\Models\PancakePage;
 use App\Models\Product;
@@ -342,6 +343,17 @@ class SegmentationProductivityTest extends TestCase
 
         $this->actingAs($ana)->get('/segmentation-productivity')->assertOk()
             ->assertSee('Backlog progress')->assertSeeInOrder(['Ana', '3', '2', '66.67%', '1', '33.33%']);
+    }
+
+    public function test_a_cra_not_on_duty_while_others_were_is_labeled_absent(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+        DutyLogin::factory()->create(['user_id' => $lhea->id]);
+
+        $this->actingAs($this->owner)->get(route('productivity.index'))
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('absent_days', 'cra.display_name')->all() === ['Lhea' => 0, 'Regina' => 1])
+            ->assertSeeTextInOrder(['Regina', 'Absent / Leave', 'Confirmed orders']);
     }
 
     public function test_cra_sees_only_their_own_numbers(): void

@@ -1,4 +1,4 @@
-{{-- Tracker filters, shown under the Daily / Weekly tabs. Icons only, except Type, Product and Status. --}}
+{{-- Tracker filters, shown under the Daily / Weekly tabs. Icons only, except Type and Product. --}}
 @php($field = 'h-9 rounded-lg border border-line bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 @php($icon = 'pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted')
 
@@ -44,14 +44,6 @@
         <option value="">All products</option>
         @foreach ($products as $product)
             <option value="{{ $product }}" @selected(($filters['product'] ?? '') === $product)>{{ $product }}</option>
-        @endforeach
-    </select>
-
-    <select name="status" aria-label="Status" class="{{ $field }} w-36 shrink-0 truncate pr-7 pl-3" onchange="this.form.submit()">
-        <option value="">All statuses</option>
-        <option value="none" @selected(($filters['status'] ?? '') === 'none')>No status yet</option>
-        @foreach ($statuses as $value => [$label])
-            <option value="{{ $value }}" @selected(($filters['status'] ?? '') === $value)>{{ $label }}</option>
         @endforeach
     </select>
 

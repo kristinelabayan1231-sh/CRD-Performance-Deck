@@ -10,7 +10,7 @@
 @endphp
 
 {{--
-    Per CRA for the dashboard's month (to date) or range: sales against their goal (daily goal × days)
+    Per CRA for the dashboard's month (to date) or range: sales against their goal (daily goal × days, following who was on duty: DutyGoals)
     and Conv % as Conversion Breakdown: (Broadcast + Segmentation orders) ÷ (engagements + leads). Goal bars brand purple (teal once hit);
     conversion bars sky, scaled to the highest rate.
 --}}
@@ -46,7 +46,14 @@
                     @php($left = max(0, $row['goal'] - $row['sales']))
                     @php($t = $row['totals'])
                     <tr class="border-t border-line/60">
-                        <td class="max-w-32 truncate py-2 pr-3 font-medium" title="{{ $row['cra']->displayName() }}">{{ $row['cra']->displayName() }}</td>
+                        <td class="max-w-40 py-2 pr-3 font-medium" title="{{ $row['cra']->displayName() }}">
+                            <span class="block truncate">{{ $row['cra']->displayName() }}</span>
+                            {{-- Days off: no goal those days; on duty: a share of the goals of CRAs off (DutyGoals) --}}
+                            <x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="$range->days() > 1" class="mt-0.5" />
+                            @if ($row['shared'] > 0)
+                                <span class="block text-[11px] font-normal whitespace-nowrap text-muted">+{{ $short($row['shared']) }} from CRAs off</span>
+                            @endif
+                        </td>
                         <td class="w-full min-w-24 py-2 pr-2">
                             <span class="relative block h-2 rounded-full bg-canvas" role="progressbar" aria-label="{{ $row['cra']->displayName() }} goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round(min(1, $row['progress'] ?? 0) * 100) }}">
                                 <span @class(['absolute inset-y-0 left-0 rounded-full', 'bg-teal-700' => $hit, 'bg-brand-600' => ! $hit]) style="width: {{ min(100, ($row['progress'] ?? 0) * 100) }}%"></span>
@@ -82,6 +89,7 @@
         <p class="mt-2 text-[11px] text-muted">
             Conv % = (Broadcast + Segmentation orders) ÷ (engagements + leads), as in Conversion Breakdown. Top product sales = the product with the most of their gross sales.
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
+            @if ($results['cras']->contains(fn ($row) => $row['absent_days'] > 0)) Rest Day / Absent / Leave = a day off set in My schedule, or not logged in on duty while others were: no goal that day; their daily goal is split equally among the CRAs on duty. @endif
         </p>
     </div>
 </x-panel>

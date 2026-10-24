@@ -44,14 +44,16 @@
     <section class="overflow-hidden rounded-xl bg-white shadow-sm">
         <div class="border-b border-line px-4 py-4">
             <h2 class="text-base font-semibold">CRA phones</h2>
-            <p class="text-sm text-muted">Each phone uploads to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $uploadUrl }}</code> with its own token as <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer …</code>, so each call goes to the right CRA.</p>
+            <p class="text-sm text-muted">The <span class="font-semibold text-ink">phone link</span> is the link of the phone's MacroDroid Webhook trigger: with it, the Call button in the Segmentation Tracker dials from that CRA's phone.</p>
+            <p class="mt-1 text-sm text-muted">Each phone uploads to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $uploadUrl }}</code> with its own token as <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer …</code>, so each call goes to the right CRA.</p>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[640px] text-left text-sm">
+            <table class="w-full min-w-[960px] text-left text-sm">
                 <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-4 py-3 font-semibold">CRA</th>
                         <th class="px-4 py-3 font-semibold">Token</th>
+                        <th class="px-4 py-3 font-semibold">Phone link</th>
                         <th class="px-4 py-3 font-semibold">Last upload</th>
                         <th class="px-4 py-3"><span class="sr-only">Actions</span></th>
                     </tr>
@@ -64,6 +66,16 @@
                             </td>
                             <td class="px-4 py-3 text-muted">
                                 {{ $cra->recording_token_created_at ? 'Created '.$cra->recording_token_created_at->timezone($tz)->format('M j, Y') : 'None yet' }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <form method="POST" action="{{ route('settings.call-recordings.phone', $cra) }}" class="flex items-center gap-2">
+                                    @csrf
+                                    @method('PUT')
+                                    <input type="url" name="call_webhook_url" value="{{ $cra->call_webhook_url }}" placeholder="https://trigger.macrodroid.com/…"
+                                           aria-label="{{ $cra->displayName() }}'s phone link"
+                                           class="h-9 w-64 rounded-lg border border-line bg-white px-2.5 text-xs focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                                    <button type="submit" class="h-9 rounded-lg border border-line px-3 text-xs font-semibold text-brand-700 transition hover:border-brand-400">Save</button>
+                                </form>
                             </td>
                             <td class="px-4 py-3 text-muted">
                                 {{ $cra->call_recordings_max_created_at ? \Carbon\CarbonImmutable::parse($cra->call_recordings_max_created_at)->timezone($tz)->format('M j, g:i A') : '—' }}

@@ -224,6 +224,88 @@ class CallRecordingsTest extends TestCase
         $this->actingAs($this->lhea)->get(route('call-recordings.audio', $recording))->assertForbidden();
     }
 
+    public function test_the_trackers_last_column_plays_the_leads_calls_for_their_cra_only(): void
+    {
+        $this->withoutDefer();
+        $lead = $this->lead('09171234567', $this->regina, 'Ana Cruz', '2026-10-23');
+        $older = $this->recording($this->regina, $lead, 65, '2026-10-22 09:00');
+        $latest = $this->recording($this->regina, $lead, 185, '2026-10-23 10:00');
+
+        $this->actingAs($this->regina)->get(route('segmentation.index'))->assertOk()
+            ->assertSeeInOrder(['Call Recording', 'Oct 23, 10:00 AM · 3:05', route('call-recordings.audio', $latest), '+ 1 more', route('call-recordings.audio', $older)]);
+
+        // Lhea may open Regina's tracker, but not hear her calls.
+        $this->actingAs($this->lhea)->get(route('segmentation.index', ['cra' => $this->regina->id]))->assertOk()
+            ->assertSee('Oct 23, 10:00 AM · 3:05')->assertDontSee(route('call-recordings.audio', $latest));
+    }
+
+    public function test_the_call_button_sends_the_leads_number_to_the_cras_own_phone(): void
+    {
+        $webhook = 'https://trigger.macrodroid.com/regina-phone/call';
+        $this->regina->forceFill(['call_webhook_url' => $webhook])->save();
+        $mine = $this->lead('09171234567', $this->regina, 'Ana Cruz');
+        $theirs = $this->lead('09181234567', $this->lhea, 'Ben Reyes');
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->actingAs($this->regina)->postJson(route('segmentation.call', $mine))->assertOk();
+        $this->actingAs($this->regina)->postJson(route('segmentation.call', $theirs))->assertForbidden();
+        // Lhea has no phone link.
+        $this->actingAs($this->lhea)->postJson(route('segmentation.call', $theirs))->assertUnprocessable();
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request) => $request->url() === "{$webhook}?number=09171234567&lead={$mine->id}");
+    }
+
+    public function test_the_call_button_says_so_when_the_phone_does_not_answer(): void
+    {
+        $this->regina->forceFill(['call_webhook_url' => 'https://trigger.macrodroid.com/regina-phone/call'])->save();
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('offline', 500)]);
+
+        $this->actingAs($this->regina)->postJson(route('segmentation.call', $this->lead('09171234567', $this->regina, 'Ana Cruz')))->assertStatus(502);
+    }
+
+    public function test_the_call_button_shows_only_once_the_cras_phone_is_linked(): void
+    {
+        $this->withoutDefer();
+        $lead = $this->lead('09171234567', $this->regina, 'Ana Cruz', '2026-10-23');
+
+        $this->actingAs($this->regina)->get(route('segmentation.index'))->assertDontSee(route('segmentation.call', $lead));
+
+        $this->regina->forceFill(['call_webhook_url' => 'https://trigger.macrodroid.com/regina-phone/call'])->save();
+        $this->actingAs($this->regina)->get(route('segmentation.index'))->assertSee(route('segmentation.call', $lead));
+    }
+
+    public function test_an_upload_goes_to_the_lead_the_call_button_dialled_when_the_number_is_its_own(): void
+    {
+        $this->fakeDrive();
+        $token = $this->regina->issueRecordingToken();
+        // Two leads with the number: the newer would win a number match, the dialled one is used instead.
+        $dialled = $this->lead('09171234567', $this->regina, 'Ana Cruz', '2026-10-01');
+        $newer = $this->lead('09171234567', $this->regina, 'Ana Cruz', '2026-10-20');
+        $other = $this->lead('09181234567', $this->regina, 'Ben Reyes');
+
+        $this->upload($token, ['number' => '09171234567', 'lead' => $dialled->id, 'filename' => 'a.wav'], $this->wav(1))->assertCreated();
+        // A leftover lead from an earlier call (another number): matched by number instead.
+        $this->upload($token, ['number' => '09171234567', 'lead' => $other->id, 'filename' => 'b.wav'], $this->wav(1))->assertCreated();
+
+        $this->assertSame([$dialled->id, $newer->id], CallRecording::orderBy('id')->pluck('lead_id')->all());
+    }
+
+    public function test_a_phone_link_must_be_a_macrodroid_webhook(): void
+    {
+        $admin = User::create(['email' => 'admin@example.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+
+        $this->actingAs($admin)->put(route('settings.call-recordings.phone', $this->regina), ['call_webhook_url' => 'https://evil.example.com/hook'])
+            ->assertSessionHasErrors('call_webhook_url');
+        $this->actingAs($admin)->put(route('settings.call-recordings.phone', $this->regina), ['call_webhook_url' => 'https://trigger.macrodroid.com/abc/call'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('https://trigger.macrodroid.com/abc/call', $this->regina->fresh()->call_webhook_url);
+
+        $this->actingAs($this->regina)->put(route('settings.call-recordings.phone', $this->regina), ['call_webhook_url' => ''])->assertForbidden();
+    }
+
     public function test_only_super_admins_make_upload_tokens_and_a_new_one_is_shown_once(): void
     {
         $admin = User::create(['email' => 'admin@example.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);

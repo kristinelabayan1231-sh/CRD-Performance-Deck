@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\DutyLogin;
+use App\Models\DutySchedule;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
@@ -98,6 +100,41 @@ class RunningSalesTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('running-sales.index', ['period' => 'month']))->assertOk()
             ->assertViewHas('snapshot', fn (array $month) => $month['days'] === 9 && $month['cras'][0]['sales'] === 13000.0 && $month['cras'][0]['goal'] === 45000.0);
+    }
+
+    public function test_a_cra_not_on_duty_today_has_no_goal_and_their_goal_is_split_with_those_on_duty(): void
+    {
+        DutyLogin::factory()->create(['user_id' => $this->regina->id]);
+        $this->order('CRD REJ VERGARA', 10000, [['name' => 'CanPro', 'qty' => 1]]);
+
+        $this->actingAs($this->supervisor)->get(route('running-sales.index'))
+            ->assertViewHas('snapshot', function (array $snapshot) {
+                [$regina, $lhea] = $snapshot['cras'];
+
+                return [$regina['goal'], $regina['shared'], $regina['absent_days']] === [25000.0, 5000.0, 0]
+                    && [$lhea['goal'], $lhea['shared'], $lhea['absent_days']] === [0.0, 0.0, 1]
+                    && $snapshot['team']['goal'] === 25000.0;
+            })
+            ->assertSeeTextInOrder(['1 off', 'Regina', 'Daily goal', '₱25,000', '₱20,000 + ₱5,000 from Lhea (Absent)',
+                'Lhea', 'Absent / Leave', 'Daily goal', '₱0', 'Goal shared', 'Split with the 1 CRA on duty']);
+    }
+
+    public function test_a_rest_day_set_ahead_counts_before_anyone_logs_in(): void
+    {
+        DutySchedule::factory()->rest()->create(['user_id' => $this->lhea->id]);
+
+        $this->actingAs($this->supervisor)->get(route('running-sales.index'))
+            ->assertViewHas('snapshot', fn (array $snapshot) => collect($snapshot['cras'])->pluck('goal', 'name')->all() === ['Regina' => 25000.0, 'Lhea' => 0.0])
+            ->assertSeeTextInOrder(['from Lhea (Rest Day)', 'Lhea', 'Rest Day']);
+    }
+
+    public function test_a_cra_logging_in_after_the_snapshot_gets_their_share_at_once(): void
+    {
+        $this->actingAs($this->supervisor)->get(route('running-sales.index'));
+        DutyLogin::factory()->create(['user_id' => $this->lhea->id]);
+
+        $this->actingAs($this->supervisor)->get(route('running-sales.index'))
+            ->assertViewHas('snapshot', fn (array $snapshot) => collect($snapshot['cras'])->pluck('goal', 'name')->all() === ['Regina' => 0.0, 'Lhea' => 25000.0]);
     }
 
     public function test_the_snapshot_is_kept_for_two_hours_unless_refreshed(): void

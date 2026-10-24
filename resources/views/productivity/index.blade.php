@@ -138,7 +138,8 @@
                 @php($d = $delta($now['confirmed'], $row['before']['confirmed']))
                 @php($max = max(1, $now['assigned'], $now['answered']))
                 @php($focusUrl = $canViewAll ? $query(['cras' => [$row['cra']->id]]) : null)
-                <article class="relative flex min-w-0 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm">
+                {{-- Off the whole period: everything below the name is faded --}}
+                <article @class(['relative flex min-w-0 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm', '[&>*:not(:first-child)]:opacity-50' => $row['absent_all']])>
                     <div class="flex items-start justify-between gap-2">
                         {{-- The dot is the CRA's colour in the charts --}}
                         <h2 class="flex items-center gap-2 font-semibold">
@@ -149,7 +150,10 @@
                                 {{ $row['cra']->displayName() }}
                             @endif
                         </h2>
-                        @if ($now['assigned'] === 0 && $now['answered'] === 0)
+                        @if ($row['absent_days'] > 0)
+                            {{-- Days off: Rest Day or Absent / Leave (DutyGoals) --}}
+                            <span class="flex flex-col items-end gap-1"><x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="! $row['absent_all']" /></span>
+                        @elseif ($now['assigned'] === 0 && $now['answered'] === 0)
                             <span class="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-muted">No activity</span>
                         @endif
                     </div>

@@ -15,7 +15,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 
 #[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
-#[Hidden(['password', 'remember_token', 'recording_token'])]
+#[Hidden(['password', 'remember_token', 'recording_token', 'call_webhook_url'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -32,6 +32,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'recording_token_created_at' => 'datetime',
+            'call_webhook_url' => 'encrypted',
             'password' => 'hashed',
             'is_active' => 'boolean',
             'show_product_qty' => 'boolean',
@@ -56,6 +57,14 @@ class User extends Authenticatable
     public function callRecordings(): HasMany
     {
         return $this->hasMany(CallRecording::class);
+    }
+
+    /**
+     * Their own spiels (Settings → My Spiels), in their order.
+     */
+    public function spiels(): HasMany
+    {
+        return $this->hasMany(Spiel::class)->orderBy('position')->orderBy('id');
     }
 
     /**

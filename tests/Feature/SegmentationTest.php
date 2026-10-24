@@ -368,7 +368,7 @@ class SegmentationTest extends TestCase
         $this->assertNull($mine->fresh()->notes_updated_by);
     }
 
-    public function test_optional_columns_render_and_coming_soon_column_is_listed_only(): void
+    public function test_optional_columns_render_with_call_recording_last(): void
     {
         $this->cra('alice@gmail.com');
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
@@ -376,9 +376,8 @@ class SegmentationTest extends TestCase
 
         $response = $this->actingAs($this->owner)->get('/segmentation')->assertOk();
 
-        $response->assertSeeInOrder(['Status', 'Repeat Purchase?', 'Customer Tagging', 'Date of Contact', 'Time of Contact', 'Customer&#039;s Feedback', 'Callback Date'], false);
-        $response->assertSee('data-column-toggle="call_recording_url"', false)->assertSee('Coming soon');
-        $response->assertDontSee('data-col="call_recording_url"', false);
+        $response->assertSeeInOrder(['Status', 'Repeat Purchase?', 'Customer Tagging', 'Date of Contact', 'Time of Contact', 'Customer&#039;s Feedback', 'Callback Date', 'Call Recording'], false);
+        $response->assertSee('data-column-toggle="call_recording_url"', false)->assertSee('data-col="call_recording_url"', false)->assertDontSee('Coming soon');
         // Customer Name to Assigned to can be hidden too; Status always shows.
         foreach (array_keys(config('segmentation.lead_columns')) as $key) {
             $response->assertSee('data-column-toggle="'.$key.'"', false)->assertSee('data-col="'.$key.'"', false);
@@ -561,6 +560,7 @@ class SegmentationTest extends TestCase
         // Tiles count the search results.
         $this->actingAs($alice)->getJson(route('segmentation.summary', ['q' => 'marcelina']))->assertJsonPath('total.value', '1');
     }
+
     public function test_a_cra_filters_their_leads_by_a_date_range(): void
     {
         Http::fake(['*/management/retention-stockout' => Http::response(['stock_outs' => []])]);
@@ -584,7 +584,6 @@ class SegmentationTest extends TestCase
         $this->actingAs($alice)->getJson('/segmentation/summary?date=2026-10-02&from=2026-10-02&to=2026-10-06')->assertJsonPath('total.value', '4');
         $this->actingAs($alice)->get('/segmentation?from=Oct+3&to=2026-10-05')->assertSessionHasErrors('from');
     }
-
 
     public function test_a_cra_marks_a_lead_processed_and_back_without_a_status_or_contact_date(): void
     {

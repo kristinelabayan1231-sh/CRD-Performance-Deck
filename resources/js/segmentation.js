@@ -747,6 +747,38 @@ function initFlip() {
     });
 }
 
+// Call buttons: the server sends the number to the CRA's phone, which dials it; the label says how it went.
+function initCallButtons() {
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-call-url]');
+        if (!button || button.disabled) return;
+
+        const label = button.querySelector('[data-call-label]');
+        const data = new FormData();
+        data.append('_token', document.querySelector('meta[name=csrf-token]')?.content || '');
+        button.disabled = true;
+        label.textContent = 'Calling…';
+
+        try {
+            const body = await send(button.dataset.callUrl, data);
+            label.textContent = 'Phone dialling';
+            button.title = body.message || '';
+            flash(button, true, body.message);
+        } catch (error) {
+            label.textContent = 'Call';
+            button.disabled = false;
+            flash(button, false, error.message);
+            alert(error.message);
+        } finally {
+            // Re-enabled after a pause so a double click doesn't dial twice.
+            setTimeout(() => {
+                button.disabled = false;
+                label.textContent = 'Call';
+            }, 8000);
+        }
+    });
+}
+
 export function initSegmentation() {
     initExpand();
     initFlip();
@@ -758,7 +790,9 @@ export function initSegmentation() {
         new ResizeObserver(() => fitVisibleRows()).observe(document.body);
     }
     if (document.querySelector('[data-lead-section]')) initRowMenu();
+    if (document.querySelector('[data-lead-section]')) initCopyPhones();
     if (document.querySelector('[data-lead-section]')) initOrderHistory();
+    if (document.querySelector('[data-call-url]')) initCallButtons();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();
@@ -767,4 +801,3 @@ export function initSegmentation() {
     initAutosave();
     initNotes();
 }
-    if (document.querySelector('[data-lead-section]')) initCopyPhones();

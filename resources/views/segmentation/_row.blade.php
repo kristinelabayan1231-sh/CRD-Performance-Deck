@@ -1,8 +1,11 @@
 {{-- One lead row. Expects $lead plus the parent's $canManage, $cras, $visibleOptional, $canTransfer; pass backlogRow => true for carried-over leads. --}}
 @php($canEdit = $canManage || $lead->assigned_to === auth()->id())
 @php($transferable = ($backlogRow ?? false) && $canTransfer && $lead->carriesOver() && $lead->assigned_to)
-{{-- Right-click opens Copy name / Copy mobile number and Mark as catered / Unmark catered (segmentation.js) for leads this user can edit. --}}
-<tr class="align-middle hover:bg-canvas/30"
+{{-- Right-click opens Copy name / Copy mobile number and Mark as catered / Unmark catered (segmentation.js) for leads this user can edit.
+     Clicking the row opens the customer's Pancake chat and the Spiels panel (spiels.js). --}}
+<tr class="cursor-pointer align-middle hover:bg-canvas/30" data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
+    data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
+    data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}"
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
     <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
@@ -48,7 +51,17 @@
     <td data-col="qty" class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
     <td data-col="product" class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
     <td data-col="contact_number" class="px-4 py-3 tabular-nums">
-        <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
+        <span class="flex items-center gap-2 whitespace-nowrap">
+            <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
+            @if ($canEdit && ($canDial ?? false))
+                {{-- Dials on the CRA's own phone (MacroDroid), so the call and its recording come back to this lead --}}
+                <button type="button" data-call-url="{{ route('segmentation.call', $lead) }}" aria-label="Call {{ $lead->customer_name }} from your phone"
+                        class="flex h-7 items-center gap-1 rounded-full bg-teal/15 px-2.5 text-xs font-semibold text-teal-700 transition hover:bg-teal/25 disabled:opacity-60">
+                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+                    <span data-call-label>Call</span>
+                </button>
+            @endif
+        </span>
     </td>
     <td data-col="delivered_date" class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
     <td data-col="days_since_delivered" class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
@@ -112,6 +125,9 @@
                     @break
                 @case('callback_date')
                     <x-lead-date :lead="$lead" field="callback_date" :editable="$canEdit" aria-label="Callback date for {{ $lead->customer_name }}" />
+                    @break
+                @case('call_recording_url')
+                    @include('segmentation._recordings', ['lead' => $lead])
                     @break
             @endswitch
         </td>

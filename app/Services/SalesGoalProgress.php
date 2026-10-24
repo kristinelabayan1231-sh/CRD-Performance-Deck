@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Support\DashboardRange;
+use App\Support\DutyGoals;
 use App\Support\SalesGoals;
 use Illuminate\Support\Collection;
 
@@ -13,7 +14,8 @@ use Illuminate\Support\Collection;
  * Sales = Conversion Breakdown gross sales (CRD - BROADCAST + CRD - SEGMENTATION orders).
  * Monthly goal: every CRA's sales ÷ the CRD monthly goal (for a custom range that isn't a whole
  * month, the goal is prorated to its days); pace = days gone ÷ days in the month.
- * Per CRA: sales ÷ their daily goal (own, else the general CRA daily goal) × the days in the range,
+ * Per CRA: sales ÷ their goal for the range (DutyGoals: their daily goal, own else the general one, on each day; none on
+ * a day off (Rest Day, Absent / Leave), plus a share of the goals of CRAs off on the days they were on duty),
  * Total conv % = (BC + SC orders) ÷ (engagements + leads), and their best-selling product (CraProductSales).
  * Team: confirmed orders, conversion rate and AOV (gross ÷ orders) of the CRAs shown; daily: the same per day, for the graphs.
  */
@@ -39,9 +41,13 @@ class SalesGoalProgress
 
         $products = $this->productSales->for($shown, $range->from, $range->to);
 
-        $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily, $products) {
+        // Split among every active CRA; a CRA shown who isn't one (deactivated) keeps their daily goal on every day.
+        $dutyGoals = DutyGoals::for($allCras, $range->from, $range->to);
+
+        $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily, $products, $dutyGoals) {
             $totals = $total($cra);
-            $goal = SalesGoals::dailyFor($cra, $generalDaily) * $range->days();
+            $duty = $dutyGoals[$cra->id] ?? ['goal' => SalesGoals::dailyFor($cra, $generalDaily) * $range->days(), 'shared' => 0.0, 'absent_days' => 0, 'rest_days' => 0, 'leave_days' => 0];
+            $goal = $duty['goal'];
             $sold = $products[$cra->id] ?? collect();
 
             return [
@@ -49,6 +55,11 @@ class SalesGoalProgress
                 'sales' => (float) $totals['gross'],
                 'goal' => $goal,
                 'own_goal' => $cra->daily_sales_goal !== null,
+                // Taken over from CRAs off, and this CRA's days off (Rest Day, Absent / Leave).
+                'shared' => $duty['shared'],
+                'absent_days' => $duty['absent_days'],
+                'rest_days' => $duty['rest_days'],
+                'leave_days' => $duty['leave_days'],
                 'progress' => SalesGoals::progress((float) $totals['gross'], $goal),
                 'totals' => $totals,
                 // Best-selling product in these sales: ['name' => …, 'amount' => …] or null.

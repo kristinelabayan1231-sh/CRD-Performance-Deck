@@ -32,6 +32,7 @@
                     ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
                     ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
                     ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view')],
+                    ['CRA Schedule', route('cra-schedule.index'), request()->routeIs('cra-schedule.*'), $user->can('on_duty.view')],
                 ]],
                 ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
                     ['CVR Tracker', route('cvr-tracker.index'), request()->routeIs('cvr-tracker.*'), $user->can('cvr_tracker.view')],
@@ -94,12 +95,12 @@
                     </details>
                 @endforeach
 
-                @canany(['user_access.view', 'product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check'])
+                @canany(['user_access.view', 'product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check', 'segmentation.view'])
                     <div class="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
                         @can('user_access.view')
                             <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                         @endcan
-                        @canany(['product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check'])
+                        @canany(['product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'connections.check', 'segmentation.view'])
                             <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
                         @endcanany
                     </div>
@@ -177,9 +178,9 @@
         </div>
     </div>
 
-    {{-- The Segmentation Tracker asks a CRA to log in for today (on duty) --}}
-    @if (request()->routeIs('segmentation.*') && \App\Support\OnDuty::needsLogin($user))
-        <x-on-duty-prompt />
+    {{-- A CRA's on-duty pop-up (log in for today + My schedule): opens by itself until they log in, and after saving the schedule --}}
+    @if (request()->routeIs('segmentation.*') && $user->role?->slug === \App\Models\Role::CRA)
+        <x-on-duty-prompt :open="\App\Support\OnDuty::needsLogin($user) || session('schedule_open') || $errors->has('dates') || $errors->has('dates.*')" />
     @endif
 </body>
 </html>

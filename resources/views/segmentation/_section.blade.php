@@ -1,6 +1,8 @@
 {{-- One list of leads (Pending or Catered), 30 per page with 10 in view and the rest by scrolling (headers stay put). Pending has a coral header, Catered a teal one. --}}
 @php($visibleOptional = collect($optionalColumns)->reject(fn ($c) => $c['coming_soon'] ?? false))
 @php($pending = $id === 'unprocessed')
+{{-- A Call button on the rows this user may edit, when their phone is linked (Settings → Call Recordings) --}}
+@php($canDial = filled(auth()->user()->call_webhook_url))
 
 <x-panel :title="$title" :accent="$accent ?? ($pending ? 'coral' : 'teal')" :icon="$icon ?? ($pending ? 'clock' : 'check')" :title-id="$id.'-title'"
          :tinted="false" body-class="" data-lead-section="{{ $id }}" class="flex flex-col">
