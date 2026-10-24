@@ -70,19 +70,7 @@ class PancakeSync
         $now = now();
 
         DB::transaction(function () use ($day, $engagements, $orders, $now) {
-            PancakeEngagement::upsert(
-                collect($engagements)->map(fn (array $row, string $id) => [
-                    'date' => $day->toDateString(),
-                    'pancake_user_id' => $id,
-                    'staff_name' => PancakeEngagement::staffKey($row['name']),
-                    'engagements' => $row['engagements'],
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ])->values()->all(),
-                ['date', 'pancake_user_id'],
-                ['staff_name', 'engagements', 'updated_at'],
-            );
-
+            $this->saveEngagements($day, $engagements, $now);
             $this->saveOrders($orders, $now);
         });
 
@@ -102,6 +90,43 @@ class PancakeSync
         Cache::put(self::syncKey($day), now()->toIso8601String(), now()->addDays(40));
 
         return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered, 'sales' => $sales, 'engagement_error' => $engagementError];
+    }
+
+    /**
+     * Only one day's chat engagements, for backfilling past days without fetching their orders again. When $save is
+     * false nothing is written (a check of what Pancake returns). Throws when every page fails.
+     *
+     * @return array{staff: array<string, array{name: string, engagements: int}>, skipped: list<string>}
+     */
+    public function syncEngagements(CarbonImmutable $day, bool $save = true): array
+    {
+        $day = $day->startOfDay();
+        $engagements = $this->client->engagements($day);
+
+        if ($save) {
+            $this->saveEngagements($day, $engagements, now());
+        }
+
+        return ['staff' => $engagements, 'skipped' => $this->client->lastEngagementFailures];
+    }
+
+    /**
+     * @param  array<string, array{name: string, engagements: int}>  $engagements  by Pancake user id
+     */
+    private function saveEngagements(CarbonImmutable $day, array $engagements, CarbonInterface $now): void
+    {
+        PancakeEngagement::upsert(
+            collect($engagements)->map(fn (array $row, string $id) => [
+                'date' => $day->toDateString(),
+                'pancake_user_id' => $id,
+                'staff_name' => PancakeEngagement::staffKey($row['name']),
+                'engagements' => $row['engagements'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->values()->all(),
+            ['date', 'pancake_user_id'],
+            ['staff_name', 'engagements', 'updated_at'],
+        );
     }
 
     /**
