@@ -312,6 +312,19 @@ class SegmentationProductivityTest extends TestCase
         Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm'));
     }
 
+    public function test_engagements_backfill_leaves_out_skipped_staff(): void
+    {
+        $this->engagements = [
+            ['user_id' => 'u-lhea', 'name' => 'CRD Lhei', 'total_engagement' => 12],
+            ['user_id' => 'u-gatdula', 'name' => 'Lhea  Gatdula', 'total_engagement' => 8498],
+        ];
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--skip' => ['Lhea Gatdula'], '--date' => '2026-07-15'])->assertSuccessful();
+
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-15', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseMissing('pancake_engagements', ['staff_name' => 'LHEA GATDULA']);
+    }
+
     public function test_orders_use_the_access_token_when_set_and_ask_only_for_needed_fields(): void
     {
         config(['services.pancake.access_token' => 'user-token']);

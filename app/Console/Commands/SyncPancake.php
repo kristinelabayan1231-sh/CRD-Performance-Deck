@@ -20,7 +20,8 @@ class SyncPancake extends Command
         {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
         {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}
         {--engagements : Only fetch the chat engagements (for backfilling past days without saving their orders again)}
-        {--dry-run : With --engagements, show what Pancake returns per staff without saving}';
+        {--dry-run : With --engagements, show what Pancake returns per staff without saving}
+        {--skip=* : With --engagements, a Pancake staff name to leave out (repeat for more)}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
@@ -52,7 +53,7 @@ class SyncPancake extends Command
 
             for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
                 try {
-                    $result = $sync->syncEngagements($day, $save);
+                    $result = $sync->syncEngagements($day, $save, $this->option('skip'));
                 } catch (Throwable $e) {
                     $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
                     $failed = true;
