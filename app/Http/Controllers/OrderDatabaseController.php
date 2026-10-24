@@ -34,7 +34,7 @@ class OrderDatabaseController extends Controller
             'rows' => $rows,
             'total' => $total,
             'statuses' => self::statuses($total['statuses']),
-            'open' => ! $scope['canViewAll'] || filled($scope['filters']['seller'] ?? null),
+            'open' => ! $scope['canViewAll'] || count($scope['sellers']) === 1,
         ]);
     }
 
@@ -55,10 +55,10 @@ class OrderDatabaseController extends Controller
 
     /**
      * The dates and seller accounts both tabs show: a day, a week (Monday–Sunday), a month or a From–To range, and
-     * every CRD account, the CRA filtered on, or a CRA's own account.
+     * every CRD account, the CRAs filtered on (any number of them), or a CRA's own account.
      *
      * @param  array<string, list<string>>  $rules  the tab's own filters
-     * @return array{shown: array<string, string>, period: string, from: CarbonImmutable, to: CarbonImmutable, label: string, today: CarbonImmutable, filters: array<string, string>, accounts: Collection<string, string>, canViewAll: bool}
+     * @return array{shown: array<string, string>, period: string, from: CarbonImmutable, to: CarbonImmutable, label: string, today: CarbonImmutable, filters: array<string, mixed>, sellers: list<string>, accounts: Collection<string, string>, canViewAll: bool}
      */
     private function scope(Request $request, array $rules = []): array
     {
@@ -70,6 +70,9 @@ class OrderDatabaseController extends Controller
             'month' => ['nullable', 'date_format:Y-m', 'before_or_equal:'.$today->format('Y-m')],
             'from' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today->toDateString()],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'sellers' => ['nullable', 'array'],
+            'sellers.*' => ['string', 'max:255'],
+            // A single CRA, as older links have it.
             'seller' => ['nullable', 'string', 'max:255'],
             ...$rules,
         ]);
@@ -85,12 +88,14 @@ class OrderDatabaseController extends Controller
             ->sortBy(fn (string $name, string $key) => $craRank->get($key, PHP_INT_MAX), SORT_NUMERIC);
         $canViewAll = $user->can('order_database.view_all');
         $ownKey = $user->pancake_name ? PancakeEngagement::staffKey($user->pancake_name) : null;
-        $seller = $canViewAll ? ($filters['seller'] ?? null) : null;
+        $sellers = $canViewAll
+            ? collect($filters['sellers'] ?? [])->push($filters['seller'] ?? null)->filter()->unique()->intersect($accounts->keys())->values()->all()
+            : [];
 
         return [
             'shown' => match (true) {
                 ! $canViewAll => $ownKey ? collect(PancakeAccounts::keysOf($user))->mapWithKeys(fn (string $key) => [$key => $accounts[$key] ?? ($key === $ownKey ? $user->pancake_name : $key)])->all() : [],
-                filled($seller) => $accounts->only([$seller])->all(),
+                $sellers !== [] => $accounts->only($sellers)->all(),
                 default => $accounts->all(),
             },
             'period' => $period,
@@ -99,6 +104,7 @@ class OrderDatabaseController extends Controller
             'label' => OrderPeriod::label($from, $to),
             'today' => $today,
             'filters' => $filters,
+            'sellers' => $sellers,
             'accounts' => $accounts,
             'canViewAll' => $canViewAll,
         ];

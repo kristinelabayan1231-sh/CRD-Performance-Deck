@@ -219,6 +219,7 @@ class Lead extends Model
 
     /**
      * Reactivation: a follow-up status (any but segmentation.reactivation_skip_statuses) from an earlier lead day than $leadDay,
+     * not on Repeat Purchase = Reserve (it has its own tab),
      * no purchase, not contacted yet on $today (the real date) and no callback date still to come or due.
      */
     public function scopeReactivation(Builder $query, CarbonImmutable $leadDay, CarbonImmutable $today): Builder
@@ -226,9 +227,32 @@ class Lead extends Model
         return $query->whereNotNull('assigned_to')
             ->whereDate('listed_on', '<', $leadDay)
             ->whereNotNull('status')->whereNotIn('status', config('segmentation.reactivation_skip_statuses'))
+            ->where(fn (Builder $q) => $q->whereNull('repeat_purchase')->orWhereNotIn('repeat_purchase', self::reserveRepeatPurchases()))
             ->notConverted()
             ->where(fn (Builder $q) => $q->whereNull('contact_date')->orWhereDate('contact_date', '<', $today))
             ->where(fn (Builder $q) => $q->whereNull('callback_date')->orWhereColumn('contact_date', '>=', 'callback_date'));
+    }
+
+    /**
+     * Reserved: Repeat Purchase = Reserve (Lead::reserveRepeatPurchases()) from any lead day. Listed in its own tab of the Pending full view.
+     */
+    public function scopeReserved(Builder $query): Builder
+    {
+        return $query->whereNotNull('assigned_to')->whereIn('repeat_purchase', self::reserveRepeatPurchases());
+    }
+
+    /**
+     * Repeat Purchase keys that mean Reserve: the "reserve" / "reserved" key or a choice labelled Reserve / Reserved,
+     * so a renamed one in Settings → Segmentation Tracker still counts.
+     *
+     * @return list<string>
+     */
+    public static function reserveRepeatPurchases(): array
+    {
+        return collect(config('segmentation.repeat_purchase'))
+            ->filter(fn (array|string $option, int|string $key) => in_array(strtolower((string) $key), ['reserve', 'reserved'], true)
+                || preg_match('/^\s*reserved?\s*$/i', is_array($option) ? $option[0] : $option))
+            ->keys()->map(fn (int|string $key) => (string) $key)->values()->all();
     }
 
     public function carriesOver(): bool

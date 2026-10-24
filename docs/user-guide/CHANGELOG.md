@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-24 · Segmentation Tracker · Picking (or changing) a Customer Tagging fills Date of contact and Time of contact with now (Manila time) in the same row; outside 6 AM–10 PM only the date is set. Clearing the tag leaves them · shots: 04-daily-table
+- 2026-10-24 · Segmentation Tracker · Pending full view: new "Reserved" tab beside Reactivation, listing the CRA's customers whose Repeat Purchase is Reserve (any lead day). Those customers no longer show under Reactivation · shots: pending full view
+- 2026-10-24 · Order Database · CRA filter is now multi-choice: CRA chips (pick any number), "All CRAs" clears them; both tabs keep the picked CRAs · shots: order-database-cra-performance, order-database-product-report
+
 - 2026-10-24 · Segmentation Tracker · Click a lead's row (not its fields or buttons): the customer's Pancake chat for that order opens in its own window on the left of the screen, and a Spiels panel slides in on the right with the customer, product and out-of-stock date, Open Pancake chat / Edit spiels, a search box and your spiels with {name} (first name) and {product} filled in. Copy puts the spiel on the clipboard with its formatting (and plain text with • bullets for boxes that take only text). No chat for the order: "No Pancake chat found" with Copy number · shots: spiels-panel (new), 04-daily-table
 - 2026-10-24 · Settings → My Spiels (new, everyone with the Segmentation Tracker; CRAs now see Settings with just this tab) · Add a spiel: Spiel Title and rich-text Spiel Content (bold, italic, underline, strikethrough, bulleted and numbered lists), Insert {name} / {product}; each saved spiel can be edited in place, deleted, or dragged into the order the panel shows. Only you see your spiels · shots: settings-spiels (new)
 

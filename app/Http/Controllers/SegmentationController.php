@@ -218,9 +218,9 @@ class SegmentationController extends Controller
 
     /**
      * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day): callbacks due
-     * today and Reactivation. They're catered leads, so they're never in Pending itself.
+     * today, Reactivation and Reserved. They're catered leads, so they're never in Pending itself.
      *
-     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator}
+     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator}
      */
     private function followUps(array $filters, CarbonImmutable $today): array
     {
@@ -232,12 +232,15 @@ class SegmentationController extends Controller
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings']);
 
-        // The two never overlap: Reactivation leaves out leads with a callback date still to be followed.
+        // Callbacks and Reactivation never overlap: Reactivation leaves out leads with a callback date still to be followed, and Reserved ones.
         return [
             'callbacks' => (clone $base)->callbackDue($realToday)->orderBy('callback_date')->orderBy('customer_name')->paginate(self::FULL_PER_PAGE, ['*'], 'callback_page')->withQueryString(),
             'reactivation' => (clone $base)->reactivation($today, $realToday)
                 ->orderBy('listed_on')->orderBy('customer_name')
                 ->paginate(self::FULL_PER_PAGE, ['*'], 'reactivation_page')->withQueryString(),
+            'reserved' => (clone $base)->reserved()
+                ->orderBy('listed_on')->orderBy('customer_name')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'reserved_page')->withQueryString(),
         ];
     }
 
@@ -409,6 +412,20 @@ class SegmentationController extends Controller
             'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
         ])));
 
+        // Tagging a customer means they were just contacted: Date and Time of contact follow (now, Manila time),
+        // unless they were sent too. An hour outside the Time of contact choices leaves the time as it is.
+        if (! empty($data['customer_tag']) && $lead->isDirty('customer_tag')) {
+            $now = CarbonImmutable::now(config('segmentation.timezone'));
+            $hour = $now->format('H');
+
+            if (! array_key_exists('contact_date', $data)) {
+                $lead->contact_date = $now->toDateString();
+            }
+            if (! array_key_exists('contact_time', $data) && array_key_exists($hour, config('segmentation.contact_times'))) {
+                $lead->contact_time = $hour;
+            }
+        }
+
         if (array_key_exists('notes', $data)) {
             $notes = trim((string) $data['notes']);
             $lead->forceFill([
@@ -465,6 +482,9 @@ class SegmentationController extends Controller
                 'saved' => true,
                 // The page mirrors it into the row's Customer's Feedback cell (it can follow the status).
                 'feedback' => $lead->feedback,
+                // And into Date / Time of contact (a customer tag sets them).
+                'contact_date' => $lead->contact_date?->toDateString(),
+                'contact_time' => $lead->contact_time,
                 'notes' => $lead->notes,
                 'notes_meta' => $this->notesMeta($lead),
             ]);

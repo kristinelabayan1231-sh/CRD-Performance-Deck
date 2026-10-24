@@ -95,6 +95,10 @@ class CraPerformanceTest extends TestCase
 
         $this->actingAs($this->owner)->get(route('order-database.cra-performance', ['seller' => 'CRD LHEI']))
             ->assertOk()->assertSeeText('₱700')->assertDontSeeText('₱3,800');
+        $this->actingAs($this->owner)->get(route('order-database.cra-performance', ['sellers' => ['CRD LHEI']]))
+            ->assertOk()->assertViewHas('rows', fn ($rows) => $rows->pluck('seller')->all() === ['CRD LHEI']);
+        $this->actingAs($this->owner)->get(route('order-database.cra-performance', ['sellers' => ['CRD LHEI', 'CRD JULY ANN']]))
+            ->assertOk()->assertViewHas('rows', fn ($rows) => $rows->pluck('seller')->sort()->values()->all() === ['CRD JULY ANN', 'CRD LHEI']);
     }
 
     public function test_a_cra_sees_only_their_own_account(): void

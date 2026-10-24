@@ -3,11 +3,11 @@
     @php($canTransfer = false)
 
     @if ($show === 'unprocessed')
-        {{-- Pending and the follow-up lists (callbacks due, Reactivation) one at a time; follow-ups are catered leads, so never in Pending --}}
-        @php($list = in_array(request('list'), ['callback', 'reactivation'], true) ? request('list') : 'pending')
+        {{-- Pending and the follow-up lists (callbacks due, Reactivation, Reserved) one at a time; follow-ups are catered leads, so never in Pending --}}
+        @php($list = in_array(request('list'), ['callback', 'reactivation', 'reserved'], true) ? request('list') : 'pending')
         <nav class="mb-3 flex gap-1 overflow-x-auto border-b border-line" aria-label="Pending lists">
-            @foreach (['pending' => ['Pending', $leads], 'callback' => ['Call back for today', $callbacks], 'reactivation' => ['Reactivation', $reactivation]] as $key => [$label, $tabLeads])
-                <a href="{{ request()->fullUrlWithQuery(['list' => $key === 'pending' ? null : $key, 'page' => null, 'callback_page' => null, 'reactivation_page' => null]) }}"
+            @foreach (['pending' => ['Pending', $leads], 'callback' => ['Call back for today', $callbacks], 'reactivation' => ['Reactivation', $reactivation], 'reserved' => ['Reserved', $reserved]] as $key => [$label, $tabLeads])
+                <a href="{{ request()->fullUrlWithQuery(['list' => $key === 'pending' ? null : $key, 'page' => null, 'callback_page' => null, 'reactivation_page' => null, 'reserved_page' => null]) }}"
                    @if ($list === $key) aria-current="page" @endif
                    @class([
                        '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition',
@@ -23,6 +23,9 @@
         @elseif ($list === 'reactivation')
             @include('segmentation._section', ['leads' => $reactivation, 'id' => 'reactivation', 'title' => 'Reactivation', 'accent' => 'sky', 'icon' => 'users', 'backlogRows' => true,
                 'hint' => 'Earlier days still on a follow-up status (anything but Active or Blocked): follow up. A reorder counts today.', 'empty' => 'No follow-ups waiting.'])
+        @elseif ($list === 'reserved')
+            @include('segmentation._section', ['leads' => $reserved, 'id' => 'reserved', 'title' => 'Reserved', 'accent' => 'brand', 'icon' => 'box', 'backlogRows' => true,
+                'hint' => 'Repeat Purchase is Reserve, from any lead day.', 'empty' => 'No reserved customers.'])
         @else
             @include('segmentation._section', ['id' => 'unprocessed', 'title' => 'Pending', 'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.', 'empty' => 'Nothing pending for this filter.'])
         @endif
