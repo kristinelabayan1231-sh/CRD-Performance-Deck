@@ -67,7 +67,8 @@ $modules = [
         'call_recordings.manage' => 'Connect the Google Drive that keeps the recordings and create each CRA phone\'s upload token',
     ],
     'On Duty' => [
-        'on_duty.view' => 'See who is on duty today (the list behind the sidebar\'s "CRA on duty")',
+        'on_duty.view' => 'See who is on duty and off today (the list behind the sidebar\'s "CRA on duty") and every CRA\'s schedule (CRA Schedule)',
+        'on_duty.manage' => 'Change any CRA\'s day in the CRA Schedule (Absent / Leave, Rest Day or on duty), past days included',
     ],
     'PC Report' => [
         'pc_report.view' => 'View own PC Report sets (each product\'s pages, per day)',

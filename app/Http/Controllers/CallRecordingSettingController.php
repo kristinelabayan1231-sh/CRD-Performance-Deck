@@ -72,6 +72,23 @@ class CallRecordingSettingController extends Controller
     }
 
     /**
+     * The CRA phone's MacroDroid webhook link, for the tracker's Call button; blank removes it.
+     */
+    public function updatePhone(Request $request, User $user): RedirectResponse
+    {
+        abort_unless(LeadGenerator::cras()->contains('id', $user->id), 404);
+
+        $validated = $request->validate([
+            'call_webhook_url' => ['nullable', 'url:https', 'starts_with:'.LeadCallController::WEBHOOK_HOST, 'max:500'],
+        ], ['call_webhook_url.starts_with' => 'Paste the link from MacroDroid\'s Webhook trigger (it starts with '.LeadCallController::WEBHOOK_HOST.').']);
+
+        $user->forceFill(['call_webhook_url' => $validated['call_webhook_url'] ?? null])->save();
+
+        return redirect()->route('settings.call-recordings.index')
+            ->with('status', $user->call_webhook_url ? "{$user->displayName()}'s phone link saved: Call buttons now dial from their phone." : "{$user->displayName()}'s phone link removed.");
+    }
+
+    /**
      * A new upload token for the CRA's phone; the old one stops working. Shown once.
      */
     public function issueToken(User $user): RedirectResponse

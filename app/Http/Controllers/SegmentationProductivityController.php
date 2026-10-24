@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
+use App\Support\DutyGoals;
 use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -94,12 +95,20 @@ class SegmentationProductivityController extends Controller
                 'from' => $w['start'], 'to' => $w['end'], 'label' => 'Wk '.$w['number'],
             ])->values();
 
-        $rows = $shown->map(function (User $cra) use ($monthDays, $compareDays, $period, $compare, $points, $slice, $colors, $metric) {
+        // Each CRA's days off in the period so far: Rest Day or Absent / Leave (DutyGoals).
+        $duty = DutyGoals::for($allCras, $period['from'], $period['to']->min($today)->max($period['from']));
+        $periodDays = (int) $period['from']->diffInDays($period['to']->min($today)->max($period['from'])) + 1;
+
+        $rows = $shown->map(function (User $cra) use ($monthDays, $compareDays, $period, $compare, $points, $slice, $colors, $metric, $duty, $periodDays) {
             $days = $monthDays[$cra->id] ?? [];
 
             return [
                 'cra' => $cra,
                 'color' => $colors[$cra->id],
+                'absent_days' => $duty[$cra->id]['absent_days'] ?? 0,
+                'rest_days' => $duty[$cra->id]['rest_days'] ?? 0,
+                'leave_days' => $duty[$cra->id]['leave_days'] ?? 0,
+                'absent_all' => ($duty[$cra->id]['absent_days'] ?? 0) === $periodDays,
                 'now' => SegmentationProductivity::sum($slice($days, $period)),
                 'before' => SegmentationProductivity::sum($slice($compareDays[$cra->id] ?? [], $compare)),
                 'spark' => $points->map(fn (array $p) => [

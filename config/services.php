@@ -51,6 +51,8 @@ return [
     'pancake' => [
         'pos_url' => env('PANCAKE_API_BASE_URL_ONE', 'https://pos.pages.fm/api/v1'),
         'chat_url' => env('PANCAKE_CHAT_API_URL', 'https://pages.fm/api/public_api/v1'),
+        // Pancake's inbox, where a lead's chat opens: {inbox_url}/{page_id}?c_id={conversation_id}.
+        'inbox_url' => env('PANCAKE_INBOX_URL', 'https://pancake.ph'),
         'key' => env('PANCAKE_API_KEY'),
         // A POS user access token; used instead of the API key when set.
         'access_token' => env('PANCAKE_ACCESS_TOKEN'),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CallRecording;
+use App\Models\Lead;
 use App\Models\User;
 use App\Services\GoogleDrive;
 use App\Support\AudioDuration;
@@ -37,6 +38,8 @@ class CallRecordingUploadController extends Controller
             'duration' => ['nullable', 'integer', 'min:0', 'max:86400'],
             'called_at' => ['nullable', 'date'],
             'filename' => ['nullable', 'string', 'max:255'],
+            // The lead the tracker's Call button dialled, sent back by the phone.
+            'lead' => ['nullable', 'integer'],
         ]);
 
         $filename = isset($details['filename']) ? basename($details['filename']) : null;
@@ -67,7 +70,7 @@ class CallRecordingUploadController extends Controller
 
         $recording = CallRecording::create([
             'user_id' => $cra->id,
-            'lead_id' => CallRecording::matchLead($phoneKey, $cra)?->id,
+            'lead_id' => $this->lead($details['lead'] ?? null, $phoneKey, $cra)?->id,
             'phone_number' => $details['number'],
             'phone_key' => $phoneKey,
             'direction' => $details['direction'] ?? null,
@@ -82,6 +85,19 @@ class CallRecordingUploadController extends Controller
         ]);
 
         return response()->json(['message' => 'Saved.', 'id' => $recording->id, 'matched' => $recording->lead_id !== null], 201);
+    }
+
+    /**
+     * The lead the Call button dialled when the phone sends it back and its number is this call's (a leftover from an
+     * earlier call isn't trusted), else the lead matched by number.
+     */
+    private function lead(?int $leadId, string $phoneKey, User $cra): ?Lead
+    {
+        $dialled = $leadId ? Lead::find($leadId) : null;
+
+        return $dialled && CallRecording::phoneKey($dialled->phone_number) === $phoneKey
+            ? $dialled
+            : CallRecording::matchLead($phoneKey, $cra);
     }
 
     /**

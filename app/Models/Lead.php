@@ -236,6 +236,14 @@ class Lead extends Model
         return $this->status === null || in_array($this->status, config('segmentation.carry_over_statuses'), true);
     }
 
+    /**
+     * Calls uploaded from the CRAs' phones that matched this lead's contact number, latest first.
+     */
+    public function callRecordings(): HasMany
+    {
+        return $this->hasMany(CallRecording::class)->latest('called_at');
+    }
+
     public function transfers(): HasMany
     {
         return $this->hasMany(LeadTransfer::class)->latest('id');

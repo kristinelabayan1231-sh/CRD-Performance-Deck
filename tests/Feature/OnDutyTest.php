@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DutyCount;
 use App\Models\DutyLogin;
+use App\Models\DutySchedule;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\OnDuty;
@@ -58,6 +59,48 @@ class OnDutyTest extends TestCase
         $this->assertSame(1, DutyLogin::where('user_id', $this->lhea->id)->count());
         $this->assertSame('2026-10-09 10:00:00', DutyLogin::firstWhere('user_id', $this->lhea->id)->logged_in_at->utc()->toDateTimeString());
         $this->actingAs($this->lhea)->get(route('segmentation.index'))->assertOk()->assertDontSeeText('Log in for today?');
+    }
+
+    public function test_a_cra_sets_days_ahead_as_rest_days_and_clears_them(): void
+    {
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-11', '2026-10-09'], 'type' => DutySchedule::REST])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'My schedule saved: Oct 9 and Oct 11 set as Rest Day.')
+            ->assertSessionHas('schedule_open', true);
+        $this->assertSame(['2026-10-09' => 'rest', '2026-10-11' => 'rest'], DutySchedule::where('user_id', $this->lhea->id)->orderBy('date')->get()
+            ->mapWithKeys(fn (DutySchedule $day) => [$day->date->toDateString() => $day->type])->all());
+
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-11'], 'type' => 'clear'])
+            ->assertSessionHas('status', 'My schedule saved: Oct 11 set back to on duty.');
+        $this->assertSame(['2026-10-09'], DutySchedule::where('user_id', $this->lhea->id)->get()->map(fn (DutySchedule $day) => $day->date->toDateString())->all());
+    }
+
+    public function test_past_days_and_days_after_the_month_after_next_cannot_be_set(): void
+    {
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-08'], 'type' => DutySchedule::LEAVE])
+            ->assertSessionHasErrors(['dates.0' => 'Past days are locked: ask your supervisor to change one.']);
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2027-01-01'], 'type' => DutySchedule::LEAVE])
+            ->assertSessionHasErrors(['dates.0' => 'You can plan up to December 2026.']);
+
+        $this->assertSame(0, DutySchedule::count());
+    }
+
+    public function test_only_cras_set_a_schedule(): void
+    {
+        $this->actingAs($this->supervisor)->put(route('segmentation.schedule'), ['dates' => ['2026-10-10'], 'type' => DutySchedule::REST])->assertForbidden();
+
+        $this->assertSame(0, DutySchedule::count());
+    }
+
+    public function test_the_pop_up_does_not_open_by_itself_on_a_day_off(): void
+    {
+        Http::fake(['*' => Http::response(['count' => 0, 'stock_outs' => []])]);
+        DutySchedule::factory()->rest()->create(['user_id' => $this->lhea->id]);
+
+        $this->actingAs($this->lhea)->get(route('segmentation.index'))
+            ->assertSeeText('Today is your Rest Day')
+            ->assertSeeText('Log in anyway')
+            ->assertDontSee('data-auto-open', false);
     }
 
     public function test_only_cras_can_log_in_for_duty(): void

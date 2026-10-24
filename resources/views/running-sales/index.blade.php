@@ -10,6 +10,9 @@
     $cellMax = max(1, collect($snapshot['cras'])->flatMap(fn (array $row) => collect($row['products'])->pluck($show))->max() ?? 0);
     $tile = 'flex flex-col gap-1 rounded-2xl border border-line bg-white p-4 shadow-sm';
     $tileLabel = 'text-[11px] font-semibold tracking-wide text-muted uppercase';
+    // Off (Rest Day or Absent / Leave) on every day so far; their goal is split among the CRAs on duty (DutyGoals).
+    $absent = collect($snapshot['cras'])->filter(fn (array $row) => $row['absent_days'] === $days);
+    $onDutyCount = count($snapshot['cras']) - $absent->count();
 @endphp
 
 <x-layouts.app title="Running Sales">
@@ -88,7 +91,10 @@
         <x-panel title="CRA running sales" icon="users" title-id="cras-title" :tinted="false" body-class="">
             <x-slot:actions>
                 <span class="text-muted">
-                    Daily goal per CRA{{ $days > 1 ? ' × '.$days.' days' : '' }}
+                    @if ($absent->isNotEmpty())
+                        <span class="mr-1 rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink">{{ $absent->count() }} off</span>
+                    @endif
+                    Daily goal per CRA{{ $days > 1 ? ' × '.$days.' days' : '' }}{{ collect($snapshot['cras'])->contains(fn (array $row) => $row['absent_days'] > 0) ? ' · goals of CRAs off split with those on duty' : '' }}
                     @can('sales_goals.manage')
                         · <a href="{{ route('settings.sales-goals.index') }}" class="font-semibold text-brand-600 hover:underline">Set goals</a>
                     @endcan
@@ -100,6 +106,7 @@
                     @php
                         $progress = $row['goal'] > 0 ? $row['sales'] / $row['goal'] : null;
                         $left = $row['goal'] - $row['sales'];
+                        $isAbsent = $absent->has($rank);
                     @endphp
                     <li class="flex flex-col gap-2.5 border-b border-line p-4 lg:border-b-0">
                         <div class="flex items-center gap-2.5">
@@ -108,7 +115,10 @@
                             @endif
                             <div class="min-w-0">
                                 <p class="truncate font-semibold text-ink">{{ $row['name'] }}</p>
-                                <p class="text-xs text-muted">#{{ $rank + 1 }} · {{ $row['orders'] }} {{ Str::plural('order', $row['orders']) }}</p>
+                                @if (! $isAbsent)
+                                    <p class="text-xs text-muted">#{{ $rank + 1 }} · {{ $row['orders'] }} {{ Str::plural('order', $row['orders']) }}</p>
+                                @endif
+                                <x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="! $isAbsent" class="mt-0.5" />
                             </div>
                         </div>
                         <p class="text-xl font-bold text-ink tabular-nums">{{ $peso($row['sales']) }}</p>
@@ -119,7 +129,18 @@
                             <span>{{ $days > 1 ? 'Goal' : 'Daily goal' }} <strong class="text-ink">{{ $peso($row['goal']) }}</strong></span>
                             <span @class(['font-semibold', 'text-teal-700' => $progress >= 0.75, 'text-coral-700' => $progress !== null && $progress < 0.6])>{{ $progress === null ? '—' : round($progress * 100).'%' }}</span>
                         </div>
-                        @if ($left > 0)
+                        @if ($row['shared'] > 0)
+                            <p class="-mt-1 text-[11px] text-muted">
+                                {{ $peso($row['goal'] - $row['shared']) }} + <span class="font-semibold text-ink">{{ $peso($row['shared']) }}</span>
+                                from {{ $days === 1 ? $absent->map(fn (array $r) => $r['name'].' ('.($r['rest_days'] ? 'Rest Day' : 'Absent').')')->join(', ', ' and ') : 'CRAs off' }}
+                            </p>
+                        @endif
+                        @if ($isAbsent)
+                            <div class="rounded-lg bg-canvas px-3 py-2">
+                                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Goal shared</p>
+                                <p class="text-sm font-semibold text-ink">Split with the {{ $onDutyCount }} {{ Str::plural('CRA', $onDutyCount) }} on duty</p>
+                            </div>
+                        @elseif ($left > 0)
                             <div class="rounded-lg bg-brand-50 px-3 py-2">
                                 <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Left to reach goal</p>
                                 <p class="text-base font-bold text-brand-700 tabular-nums">{{ $peso($left) }}</p>

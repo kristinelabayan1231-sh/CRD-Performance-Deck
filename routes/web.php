@@ -7,6 +7,7 @@ use App\Http\Controllers\CallRecordingSettingController;
 use App\Http\Controllers\CancelledOrderController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
+use App\Http\Controllers\CraScheduleController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\CvrTrackerController;
@@ -14,7 +15,10 @@ use App\Http\Controllers\DailyIncomeStatementController;
 use App\Http\Controllers\DailyIsSettingController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
+use App\Http\Controllers\DutyScheduleController;
 use App\Http\Controllers\HighValueCustomerController;
+use App\Http\Controllers\LeadCallController;
+use App\Http\Controllers\LeadChatController;
 use App\Http\Controllers\MonthlyCostController;
 use App\Http\Controllers\MonthlyMniController;
 use App\Http\Controllers\OnDutyController;
@@ -35,6 +39,7 @@ use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationOptionController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\SegmentationSummaryController;
+use App\Http\Controllers\SpielController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
 use App\Http\Controllers\WorkingDateController;
@@ -88,13 +93,21 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
+        Route::get('/leads/{lead}/chat', LeadChatController::class)->middleware('throttle:30,1')->name('chat');
+        Route::post('/leads/{lead}/call', LeadCallController::class)->middleware('throttle:20,1')->name('call');
         Route::post('/sync', [SegmentationController::class, 'sync'])->middleware('can:segmentation.manage')->name('sync');
         Route::post('/on-duty', [OnDutyController::class, 'store'])->name('on-duty');
+        Route::put('/schedule', DutyScheduleController::class)->name('schedule');
     });
 
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
         Route::get('/', [SegmentationProductivityController::class, 'index'])->name('index');
         Route::post('/sync', [SegmentationProductivityController::class, 'sync'])->middleware('can:productivity.view_all')->name('sync');
+    });
+
+    Route::prefix('cra-schedule')->name('cra-schedule.')->middleware('can:on_duty.view')->group(function () {
+        Route::get('/', [CraScheduleController::class, 'index'])->name('index');
+        Route::put('/', [CraScheduleController::class, 'update'])->middleware('can:on_duty.manage')->name('update');
     });
 
     Route::prefix('call-recordings')->name('call-recordings.')->middleware('can:call_recordings.view')->group(function () {
@@ -183,9 +196,19 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
                 request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
                 request()->user()->can('call_recordings.manage') => 'settings.call-recordings.index',
+                request()->user()->can('segmentation.view') => 'settings.spiels.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
+
+        // Everyone with the Segmentation Tracker: their own spiels for its Spiels panel.
+        Route::prefix('spiels')->name('spiels.')->middleware('can:segmentation.view')->group(function () {
+            Route::get('/', [SpielController::class, 'index'])->name('index');
+            Route::post('/', [SpielController::class, 'store'])->name('store');
+            Route::put('/order', [SpielController::class, 'reorder'])->name('reorder');
+            Route::put('/{spiel}', [SpielController::class, 'update'])->name('update');
+            Route::delete('/{spiel}', [SpielController::class, 'destroy'])->name('destroy');
+        });
 
         Route::prefix('pancake-pages')->name('pancake-pages.')->middleware('can:pancake_pages.manage')->group(function () {
             Route::get('/', [PancakePageController::class, 'index'])->name('index');
@@ -226,6 +249,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::get('/drive/connect', [CallRecordingSettingController::class, 'connect'])->name('drive-connect');
             Route::get('/drive/callback', [CallRecordingSettingController::class, 'callback'])->name('drive-callback');
             Route::post('/tokens/{user}', [CallRecordingSettingController::class, 'issueToken'])->name('token');
+            Route::put('/phones/{user}', [CallRecordingSettingController::class, 'updatePhone'])->name('phone');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

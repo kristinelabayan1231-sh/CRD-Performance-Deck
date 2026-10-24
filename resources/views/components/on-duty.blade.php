@@ -2,6 +2,10 @@
     $logins = \App\Support\OnDuty::today();
     $label = $logins->count().' CRA on duty';
     $canList = auth()->user()->can('on_duty.view');
+    // Off today: a day off set in My schedule, or not logged in while others have (DutyGoals).
+    $today = \App\Support\WorkingDate::realToday();
+    $cras = $canList ? \App\Services\LeadGenerator::cras()->keyBy('id') : collect();
+    $offToday = $canList ? \App\Support\DutyGoals::offDays($cras, $today, $today)[$today->toDateString()] : [];
 @endphp
 
 {{-- Sidebar footer (dark panel): today's CRAs on duty; supervisors click it for who logged in and when. --}}
@@ -23,6 +27,17 @@
                 @empty
                     <p class="text-sm text-muted">No CRA has logged in yet today.</p>
                 @endforelse
+                @if ($offToday)
+                    <p class="mt-2 mb-1 flex justify-between border-t border-line pt-2 text-xs font-semibold"><span>Off today</span><span class="text-muted">{{ count($offToday) }}</span></p>
+                    @foreach ($offToday as $craId => $type)
+                        <div class="flex items-center gap-2 py-1 text-sm">
+                            <x-avatar :user="$cras[$craId]" class="size-6" />
+                            <span class="min-w-0 flex-1 truncate">{{ $cras[$craId]->displayName() }}</span>
+                            <x-day-off-label :rest="$type === \App\Models\DutySchedule::REST ? 1 : 0" :leave="$type === \App\Models\DutySchedule::LEAVE ? 1 : 0" :counts="false" />
+                        </div>
+                    @endforeach
+                @endif
+                <a href="{{ route('cra-schedule.index') }}" class="mt-2 block border-t border-line pt-2 text-xs font-semibold text-brand-600 hover:underline">CRA Schedule &rarr;</a>
             </div>
         </details>
     @else

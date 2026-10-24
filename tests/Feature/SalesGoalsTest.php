@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\DeliveredOrder;
+use App\Models\DutyLogin;
+use App\Models\DutySchedule;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeEngagement;
@@ -202,6 +204,51 @@ class SalesGoalsTest extends TestCase
         $byName = $day['cras']->keyBy(fn ($row) => $row['cra']->display_name);
         $this->assertEqualsWithDelta(1.0, $byName['Lhea']['progress'], 1e-9);
         $this->assertEqualsWithDelta(0.5, $byName['Regina']['progress'], 1e-9);
+    }
+
+    public function test_an_absent_cras_daily_goal_is_split_equally_among_the_cras_on_duty_that_day(): void
+    {
+        $ana = $this->cra('Ana', 'CRD ANA', goal: 20000);
+        $ben = $this->cra('Ben', 'CRD BEN');
+        $cy = $this->cra('Cy', 'CRD CY');
+        // Oct 9: Ben and Cy on duty, Ana absent. Oct 10: nobody logged in, so everyone keeps their goal.
+        DutyLogin::factory()->on('2026-10-09')->create(['user_id' => $ben->id]);
+        DutyLogin::factory()->on('2026-10-09')->create(['user_id' => $cy->id]);
+
+        $goals = app(SalesGoalProgress::class)->for(collect([$ana, $ben, $cy]), DashboardRange::fromFilters(['from' => '2026-10-09', 'to' => '2026-10-10'], CarbonImmutable::parse('2026-10-10')));
+
+        $byName = $goals['cras']->keyBy(fn ($row) => $row['cra']->display_name)->map(fn ($row) => [$row['goal'], $row['shared'], $row['absent_days']]);
+        $this->assertSame([20000.0, 0.0, 1], $byName['Ana']);
+        $this->assertSame([164000.0, 10000.0, 0], $byName['Ben']);
+        $this->assertSame([164000.0, 10000.0, 0], $byName['Cy']);
+    }
+
+    public function test_a_day_off_set_ahead_counts_with_nobody_logged_in_and_logging_in_overrides_it(): void
+    {
+        $ana = $this->cra('Ana', 'CRD ANA');
+        $ben = $this->cra('Ben', 'CRD BEN');
+        // Oct 9: Ana set a rest day but logged in anyway, Ben didn't log in. Oct 10: Ana on leave, nobody logged in yet.
+        DutySchedule::factory()->rest()->on('2026-10-09')->create(['user_id' => $ana->id]);
+        DutyLogin::factory()->on('2026-10-09')->create(['user_id' => $ana->id]);
+        DutySchedule::factory()->on('2026-10-10')->create(['user_id' => $ana->id]);
+
+        $goals = app(SalesGoalProgress::class)->for(collect([$ana, $ben]), DashboardRange::fromFilters(['from' => '2026-10-09', 'to' => '2026-10-10'], CarbonImmutable::parse('2026-10-10')));
+
+        $byName = $goals['cras']->keyBy(fn ($row) => $row['cra']->display_name)->map(fn ($row) => [$row['goal'], $row['rest_days'], $row['leave_days']]);
+        $this->assertSame([154000.0, 0, 1], $byName['Ana']);
+        $this->assertSame([154000.0, 0, 1], $byName['Ben']);
+    }
+
+    public function test_dashboard_labels_an_absent_cra_and_shows_the_share_the_others_took_over(): void
+    {
+        $ana = $this->cra('Ana', 'CRD ANA');
+        $ben = $this->cra('Ben', 'CRD BEN');
+        DutyLogin::factory()->on('2026-10-09')->create(['user_id' => $ben->id]);
+        $this->sale('CRD BEN', '2026-10-09', 1000);
+
+        $this->actingAs($this->owner)->get(route('dashboard', ['from' => '2026-10-09', 'to' => '2026-10-10']))
+            ->assertSeeTextInOrder(['Ben', '+₱77k from CRAs off', 'Ana', 'Absent / Leave · 1 day'])
+            ->assertSeeText('Rest Day / Absent / Leave = a day off set in My schedule');
     }
 
     public function test_dashboard_has_the_crd_board_with_today_and_the_two_days_before(): void

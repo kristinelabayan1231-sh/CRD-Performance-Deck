@@ -6,6 +6,13 @@
             <h1 class="text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
 
             <div class="flex items-center gap-3 text-sm text-muted">
+                @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
+                    {{-- Opens the on-duty pop-up's calendar to set days off ahead --}}
+                    <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
+                        My schedule
+                    </button>
+                @endif
                 <span class="flex items-center gap-1.5">
                     <span aria-hidden="true" class="size-2 rounded-full {{ $syncError ? 'bg-coral' : 'bg-teal' }}"></span>
                     @if ($lastSync)
@@ -155,6 +162,8 @@
             </div>
         </dialog>
     @endisset
+
+    @include('segmentation._spiels-panel')
 
     {{-- Full view of one list (opened from a section's expand arrows) --}}
     <dialog id="expand-dialog" aria-labelledby="expand-title" class="m-auto h-[90dvh] w-[min(96rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">

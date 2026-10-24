@@ -47,7 +47,7 @@ class SegmentationController extends Controller
         $show = $filters['show'];
         $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
-            ->with(['assignee', 'notesAuthor'])
+            ->with(['assignee', 'notesAuthor', 'callRecordings'])
             ->orderBy('listed_on')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name');
@@ -230,7 +230,7 @@ class SegmentationController extends Controller
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
-            ->with(['assignee', 'notesAuthor', 'transfers.fromUser']);
+            ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings']);
 
         // The two never overlap: Reactivation leaves out leads with a callback date still to be followed.
         return [

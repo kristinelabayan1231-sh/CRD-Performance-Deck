@@ -3,6 +3,9 @@
 {{-- Settings pages: sub tabs in a vertical nav on the left, the page on the right. --}}
 {{-- Add more Settings sub tabs here: group => [route name => [label, permission]]. --}}
 @php($groups = [
+    'Personal' => [
+        'settings.spiels.index' => ['My Spiels', 'segmentation.view'],
+    ],
     'Products' => [
         'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
         'settings.product-qty.index' => ['Product Qty', 'product_qty.manage'],

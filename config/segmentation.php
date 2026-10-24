@@ -224,7 +224,8 @@ return [
         'contact_time' => ['label' => 'Time of Contact'],
         'feedback' => ['label' => "Customer's Feedback"],
         'callback_date' => ['label' => 'Callback Date'],
-        'call_recording_url' => ['label' => 'Call Recording Link', 'coming_soon' => true],
+        // The lead's calls from the CRAs' phones (Call Recordings), plus a link typed in the sheet before.
+        'call_recording_url' => ['label' => 'Call Recording'],
     ],
 
 ];
