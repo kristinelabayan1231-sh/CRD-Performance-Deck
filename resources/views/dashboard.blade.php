@@ -126,6 +126,7 @@
                             Customers lost ÷ customers due × 100, for CRD, FSD and overall. A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $grace }} days to order again.
                             CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; overall counts a customer on both lists once, by their latest delivery.
                             Due = customers whose {{ $grace }} days ended in the dates picked. Lost = no Pancake order (not canceled) and no new delivery in that time.
+                            Cold leads the CRAs are still retrying in the Segmentation Tracker (attempts left, no Active status) are left out until all {{ config('segmentation.cold_attempts') }} attempts are made.
                             Example: 6,000 due and 50 lost = 50 ÷ 6,000 × 100 = 0.83%. Lower is better.
                         </dd></div>
                         @if ($customers)

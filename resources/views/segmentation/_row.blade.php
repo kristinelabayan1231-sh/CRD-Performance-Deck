@@ -103,7 +103,10 @@
         @endif
     </td>
     <td class="px-4 py-3">
-        <x-lead-select :lead="$lead" field="status" list="statuses" :editable="$canEdit" placeholder="— Set status —" aria-label="Status for {{ $lead->customer_name }}" />
+        <span class="flex items-center gap-2">
+            <x-lead-select :lead="$lead" field="status" list="statuses" :editable="$canEdit" placeholder="— Set status —" aria-label="Status for {{ $lead->customer_name }}" />
+            @include('segmentation._attempt', ['lead' => $lead])
+        </span>
     </td>
     @foreach ($visibleOptional as $key => $column)
         <td data-col="{{ $key }}" class="px-4 py-3">

@@ -1,6 +1,6 @@
-@props(['lead', 'field', 'list', 'editable', 'placeholder' => '—', 'emptyNote' => null])
+@props(['lead', 'field', 'list', 'editable', 'placeholder' => '—', 'emptyNote' => null, 'action' => null])
 
-{{-- An auto-saving dropdown cell. Options come from config('segmentation.<list>'): key => [label, classes] or key => label. --}}
+{{-- An auto-saving dropdown cell (saved to $action, else the lead's update route). Options come from config('segmentation.<list>'): key => [label, classes] or key => label. --}}
 @php
     $options = collect(config("segmentation.{$list}"))->map(fn ($o) => is_array($o) ? $o : [$o, 'bg-[#e6e6e6] text-[#3d3d3d]']);
     $value = $lead->{$field};
@@ -8,7 +8,7 @@
 @endphp
 
 @if ($editable)
-    <form method="POST" action="{{ route('segmentation.update', $lead) }}" data-autosave>
+    <form method="POST" action="{{ $action ?? route('segmentation.update', $lead) }}" data-autosave>
         @csrf @method('PATCH')
         <select name="{{ $field }}" aria-label="{{ $attributes->get('aria-label') }}"
                 data-colors='@json($options->map(fn ($o) => $o[1]))' data-empty-classes="bg-canvas text-muted"

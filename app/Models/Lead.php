@@ -219,7 +219,7 @@ class Lead extends Model
 
     /**
      * Reactivation: a follow-up status (any but segmentation.reactivation_skip_statuses) from an earlier lead day than $leadDay,
-     * not on Repeat Purchase = Reserve (it has its own tab),
+     * not on Repeat Purchase = Reserve (it has its own tab), not a cold lead whose attempts are used up,
      * no purchase, not contacted yet on $today (the real date) and no callback date still to come or due.
      */
     public function scopeReactivation(Builder $query, CarbonImmutable $leadDay, CarbonImmutable $today): Builder
@@ -228,6 +228,7 @@ class Lead extends Model
             ->whereDate('listed_on', '<', $leadDay)
             ->whereNotNull('status')->whereNotIn('status', config('segmentation.reactivation_skip_statuses'))
             ->where(fn (Builder $q) => $q->whereNull('repeat_purchase')->orWhereNotIn('repeat_purchase', self::reserveRepeatPurchases()))
+            ->whereNot(fn (Builder $q) => $q->coldAttemptsUsed())
             ->notConverted()
             ->where(fn (Builder $q) => $q->whereNull('contact_date')->orWhereDate('contact_date', '<', $today))
             ->where(fn (Builder $q) => $q->whereNull('callback_date')->orWhereColumn('contact_date', '>=', 'callback_date'));
@@ -255,6 +256,38 @@ class Lead extends Model
             ->keys()->map(fn (int|string $key) => (string) $key)->values()->all();
     }
 
+    /**
+     * Cold leads (segmentation.cold_tags) whose segmentation.cold_attempts are all logged.
+     */
+    public function scopeColdAttemptsUsed(Builder $query): Builder
+    {
+        return $query->whereIn('customer_tag', config('segmentation.cold_tags'))
+            ->has('attempts', '>=', (int) config('segmentation.cold_attempts'));
+    }
+
+    /**
+     * Cold leads still being retried: attempts left and no Active status yet. Left out of the churn rate.
+     */
+    public function scopeColdRetrying(Builder $query): Builder
+    {
+        return $query->whereIn('customer_tag', config('segmentation.cold_tags'))
+            ->where(fn (Builder $q) => $q->whereNull('status')->orWhere('status', '!=', 'active'))
+            ->has('attempts', '<', (int) config('segmentation.cold_attempts'));
+    }
+
+    public function isCold(): bool
+    {
+        return in_array($this->customer_tag, config('segmentation.cold_tags'), true);
+    }
+
+    /**
+     * Contact attempts still to make on a cold lead (never below 0). Uses the loaded attempts when there are.
+     */
+    public function attemptsLeft(): int
+    {
+        return max(0, (int) config('segmentation.cold_attempts') - $this->attempts->count());
+    }
+
     public function carriesOver(): bool
     {
         return $this->status === null || in_array($this->status, config('segmentation.carry_over_statuses'), true);
@@ -266,6 +299,14 @@ class Lead extends Model
     public function callRecordings(): HasMany
     {
         return $this->hasMany(CallRecording::class)->latest('called_at');
+    }
+
+    /**
+     * Cold lead contact attempts, oldest first.
+     */
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(LeadAttempt::class)->orderBy('attempted_on');
     }
 
     public function transfers(): HasMany

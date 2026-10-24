@@ -4,6 +4,29 @@
     <p class="mb-4 text-sm text-muted">The choices CRAs pick from in the Segmentation Tracker. Rename or recolour any choice; leads keep it. A choice can be removed only while no lead uses it, and choices marked <span class="font-semibold text-ink">Used by rules</span> (conversions, carry-over, hot/warm/cold) can only be renamed.</p>
 
     <div class="space-y-4">
+        {{-- Cold leads' contact attempts (the tracker's Attempt button) --}}
+        <section class="rounded-xl bg-white p-4 shadow-sm" aria-labelledby="cold-attempts-title">
+            <form method="POST" action="{{ route('settings.segmentation-options.cold-attempts') }}" class="flex flex-wrap items-end justify-between gap-3">
+                @csrf
+                @method('PUT')
+                <div class="min-w-0">
+                    <h2 id="cold-attempts-title" class="text-base font-semibold">Cold lead attempts</h2>
+                    <p class="text-sm text-muted">Contact attempts a Cold / CanPro Cold lead gets. Once they're all made without an Active status, the lead leaves Reactivation and counts in the churn rate; until then it's left out of the churn rate.</p>
+                </div>
+                <div class="flex items-end gap-2">
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Attempts
+                        <input type="number" name="cold_attempts" min="1" max="10" required value="{{ $errors->cold_attempts->any() ? old('cold_attempts') : $coldAttempts }}"
+                               class="h-10 w-24 rounded-lg border border-line bg-white px-3 text-sm text-ink tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                    </label>
+                    <button type="submit" class="h-10 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700">Save attempts</button>
+                </div>
+            </form>
+            @if ($errors->cold_attempts->any())
+                <div role="alert" class="mt-3 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->cold_attempts->first() }}</div>
+            @endif
+        </section>
+
         @foreach ($lists as $name => $list)
             @php($bag = $errors->getBag("options_{$name}"))
             @php($rows = [...collect($list['options'])->map(fn ($option, $key) => ['key' => (string) $key, 'label' => $option[0], 'classes' => $option[1]])->values(), ...array_fill(0, 3, ['key' => null, 'label' => '', 'classes' => null])])

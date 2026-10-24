@@ -791,6 +791,71 @@ function initCallButtons() {
     });
 }
 
+// Cold leads' Attempt button: logs today's attempt, or takes it back when already logged today.
+function initAttempts() {
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-attempt]');
+        if (!button || button.disabled) return;
+
+        const undo = button.getAttribute('aria-pressed') === 'true';
+        const data = new FormData();
+        data.append('_token', document.querySelector('meta[name=csrf-token]')?.content || '');
+        if (undo) data.append('_method', 'DELETE');
+        button.disabled = true;
+
+        try {
+            renderAttempt(button, await send(undo ? button.dataset.undoUrl : button.dataset.storeUrl, data));
+            flash(button, true, button.title);
+        } catch (error) {
+            button.disabled = false;
+            flash(button, false, error.message);
+            alert(error.message);
+        }
+    });
+
+    // Tagging a lead cold (or not) shows or hides its button straight away.
+    document.addEventListener('change', (event) => {
+        if (event.target.name !== 'customer_tag') return;
+        const button = event.target.closest('tr')?.querySelector('[data-attempt]');
+        if (button) button.hidden = !JSON.parse(button.dataset.coldTags).includes(event.target.value);
+    });
+}
+
+// Reserved - Pancake's add form: Find shows what the contact number fills in (their last order) and the name.
+function initReservationForm() {
+    const form = document.querySelector('[data-reservation-form]');
+    const phone = form.querySelector('[data-reservation-phone]');
+    const name = form.querySelector('[data-reservation-name]');
+    const found = form.querySelector('[data-reservation-found]');
+    const button = form.querySelector('[data-reservation-find]');
+
+    button.addEventListener('click', async () => {
+        if (!phone.value.trim()) return phone.focus();
+        button.disabled = true;
+        try {
+            const url = `${form.dataset.lookupUrl}?${new URLSearchParams({ phone: phone.value })}`;
+            const response = await fetch(url, { headers: { Accept: 'application/json' } });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(body.message || `Couldn't look the number up (HTTP ${response.status}).`);
+            if (body.customer?.customer_name && !name.value.trim()) name.value = body.customer.customer_name;
+            found.textContent = body.summary;
+        } catch (error) {
+            found.textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    });
+}
+
+function renderAttempt(button, { left, today, history }) {
+    button.dataset.left = left;
+    button.setAttribute('aria-pressed', today ? 'true' : 'false');
+    button.disabled = !today && left === 0;
+    button.title = (history ? `Attempts: ${history}` : 'No attempts yet') + (today ? " · click to take back today's" : '');
+    button.querySelector('[data-attempt-label]').textContent = today ? '✓ Tried today' : left ? 'Log attempt' : 'No attempts left';
+    button.querySelector('[data-attempt-left]').textContent = left ? `· ${left} left` : '';
+}
+
 export function initSegmentation() {
     initExpand();
     initFlip();
@@ -805,6 +870,8 @@ export function initSegmentation() {
     if (document.querySelector('[data-lead-section]')) initCopyPhones();
     if (document.querySelector('[data-lead-section]')) initOrderHistory();
     if (document.querySelector('[data-call-url]')) initCallButtons();
+    if (document.querySelector('[data-attempt]')) initAttempts();
+    if (document.querySelector('[data-reservation-form]')) initReservationForm();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;
     initColumns();
     initLiveSummary();
