@@ -294,6 +294,24 @@ class SegmentationProductivityTest extends TestCase
         $this->assertNotNull(PancakeSync::lastSync(Lead::today()));
     }
 
+    public function test_engagements_backfill_saves_only_engagements_and_dry_run_saves_nothing(): void
+    {
+        $this->orders = [$this->order('09998887777', 'CRD Lhei')];
+        $this->engagements = [['user_id' => 'u-lhea', 'name' => 'CRD Lhei', 'total_engagement' => 12]];
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--dry-run' => true, '--from' => '2026-07-01', '--to' => '2026-07-02'])
+            ->expectsOutputToContain('1 staff, 12 engagements (not saved)')
+            ->assertSuccessful();
+        $this->assertDatabaseCount('pancake_engagements', 0);
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--from' => '2026-07-01', '--to' => '2026-07-02'])->assertSuccessful();
+
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-01', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-02', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseMissing('pancake_orders', ['phone_key' => '9998887777']);
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm'));
+    }
+
     public function test_orders_use_the_access_token_when_set_and_ask_only_for_needed_fields(): void
     {
         config(['services.pancake.access_token' => 'user-token']);

@@ -18,7 +18,9 @@ class SyncPancake extends Command
         {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
         {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
         {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
-        {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}';
+        {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}
+        {--engagements : Only fetch the chat engagements (for backfilling past days without saving their orders again)}
+        {--dry-run : With --engagements, show what Pancake returns per staff without saving}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
@@ -42,6 +44,35 @@ class SyncPancake extends Command
             $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
 
             return self::SUCCESS;
+        }
+
+        if ($this->option('engagements')) {
+            $save = ! $this->option('dry-run');
+            $failed = false;
+
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                try {
+                    $result = $sync->syncEngagements($day, $save);
+                } catch (Throwable $e) {
+                    $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
+                    $failed = true;
+
+                    continue;
+                }
+
+                $total = array_sum(array_column($result['staff'], 'engagements'));
+                $this->info("Pancake {$day->toDateString()}: ".count($result['staff'])." staff, {$total} engagements".($save ? ' saved.' : ' (not saved).'));
+
+                if (! $save) {
+                    $this->table(['Staff', 'Engagements'], collect($result['staff'])->sortByDesc('engagements')->map(fn (array $row) => [$row['name'], $row['engagements']])->values()->all());
+                }
+
+                if ($result['skipped']) {
+                    $this->warn('Skipped pages: '.implode('; ', $result['skipped']));
+                }
+            }
+
+            return $failed ? self::FAILURE : self::SUCCESS;
         }
 
         if ($this->option('new')) {
