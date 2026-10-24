@@ -345,6 +345,27 @@ class SegmentationTest extends TestCase
         $this->assertSame('NO BUDGET', Lead::optionLabel('feedback', $lead->fresh()->feedback));
     }
 
+    public function test_tagging_a_customer_sets_the_date_and_time_of_contact_to_now(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $lead = Lead::first();
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-06 14:20', 'Asia/Manila'));
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['customer_tag' => 'hot'])
+            ->assertOk()->assertJson(['contact_date' => '2026-10-06', 'contact_time' => '14']);
+        $this->assertSame(['2026-10-06', '14'], [$lead->fresh()->contact_date->toDateString(), $lead->fresh()->contact_time]);
+
+        // Clearing the tag or saving the same one again leaves them; outside the Time of contact hours only the date follows.
+        $this->travelTo(CarbonImmutable::parse('2026-10-07 22:30', 'Asia/Manila'));
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['customer_tag' => 'hot'])->assertOk();
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['customer_tag' => null])->assertOk();
+        $this->assertSame(['2026-10-06', '14'], [$lead->fresh()->contact_date->toDateString(), $lead->fresh()->contact_time]);
+        $this->actingAs($alice)->patchJson("/segmentation/leads/{$lead->id}", ['customer_tag' => 'warm'])->assertOk();
+        $this->assertSame(['2026-10-07', '14'], [$lead->fresh()->contact_date->toDateString(), $lead->fresh()->contact_time]);
+    }
+
     public function test_notes_can_be_added_edited_and_deleted(): void
     {
         $alice = $this->cra('alice@gmail.com');
@@ -869,6 +890,29 @@ class SegmentationTest extends TestCase
             ->assertSee('Callback Due')->assertDontSee('Pending Today')->assertDontSee('Called Back')->assertDontSee('Callback Later');
         $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=reactivation')->assertOk()
             ->assertSee('Follow Up')->assertDontSee('Callback Due')->assertDontSee('Bought Already')->assertDontSee('Still Active');
+    }
+
+    public function test_pending_full_view_lists_the_cras_repeat_purchase_reserve_customers_from_any_lead_day(): void
+    {
+        $alice = $this->cra('alice@example.com');
+        $bob = $this->cra('bob@example.com');
+        $lead = fn (string $name, string $day, User $cra, array $extra = []) => Lead::create([
+            'order_id' => $name, 'customer_name' => $name, 'phone_number' => '0917'.crc32($name), 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-08-01', 'consumption_days' => 15, 'est_out_of_stock_date' => $day, 'lead_type' => 'fsd', 'assigned_to' => $cra->id, ...$extra,
+        ]);
+        $lead('Reserved Today', '2026-10-05', $alice, ['repeat_purchase' => 'reserve']);
+        $lead('Reserved Before', '2026-09-20', $alice, ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21', 'repeat_purchase' => 'reserve']);
+        $lead('Follow Up', '2026-09-20', $alice, ['status' => 'pjr_drop_call', 'contact_date' => '2026-09-21']);
+        $lead('Not Reserved', '2026-09-20', $alice, ['status' => 'active', 'repeat_purchase' => 'no']);
+        $lead('Bob Reserved', '2026-09-20', $bob, ['repeat_purchase' => 'reserve']);
+
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1')->assertOk()
+            ->assertSeeInOrder(['Reactivation', '1', 'Reserved', '2']);
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=reserved')->assertOk()
+            ->assertSee('Reserved Before')->assertSee('Reserved Today')->assertDontSee('Follow Up')->assertDontSee('Not Reserved')->assertDontSee('Bob Reserved');
+        // Reserved customers aren't in Reactivation too.
+        $this->actingAs($alice)->get('/segmentation?show=unprocessed&full=1&list=reactivation')->assertOk()
+            ->assertSee('Follow Up')->assertDontSee('Reserved Before');
     }
 
     public function test_users_without_permission_are_blocked(): void

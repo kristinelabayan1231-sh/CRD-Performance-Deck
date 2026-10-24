@@ -7,7 +7,7 @@
 
 <nav class="flex gap-1 border-b-2 border-line" aria-label="Order Database">
     @foreach (['order-database.cra-performance' => "CRA's Performance", 'order-database.product-report' => 'Product Report'] as $route => $name)
-        <a href="{{ route($route, array_filter(['period' => $period, 'from' => $from->toDateString(), 'to' => $to->toDateString(), 'seller' => $filters['seller'] ?? null])) }}" @if ($tab === $route) aria-current="page" @endif
+        <a href="{{ route($route, array_filter(['period' => $period, 'from' => $from->toDateString(), 'to' => $to->toDateString(), 'sellers' => $sellers])) }}" @if ($tab === $route) aria-current="page" @endif
            @class(['-mb-0.5 rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold', 'border-brand-600 bg-white text-brand-600' => $tab === $route, 'border-transparent text-muted hover:text-brand-600' => $tab !== $route])>{{ $name }}</a>
     @endforeach
 </nav>
@@ -65,15 +65,20 @@
     @endswitch
 
     @if ($canViewAll)
-        <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-            CRA
-            <select name="seller" onchange="{{ $submit }}" class="{{ $control }} text-ink normal-case">
-                <option value="">All CRAs</option>
+        {{-- Any number of CRAs; none picked = all of them --}}
+        <fieldset class="min-w-0">
+            <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">CRA</legend>
+            <div class="flex flex-wrap gap-1.5">
                 @foreach ($accounts as $key => $name)
-                    <option value="{{ $key }}" @selected(($filters['seller'] ?? null) === $key)>{{ $name }}</option>
+                    <label class="cursor-pointer">
+                        <input type="checkbox" name="sellers[]" value="{{ $key }}" class="peer sr-only" onchange="{{ $submit }}" @checked(in_array($key, $sellers, true))>
+                        <span class="block rounded-full border border-line bg-white px-3 py-1.5 text-sm text-muted transition peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $name }}</span>
+                    </label>
                 @endforeach
-            </select>
-        </label>
+                <a href="{{ route($tab, array_filter(['period' => $period, 'from' => $from->toDateString(), 'to' => $to->toDateString(), 'product' => $filters['product'] ?? null])) }}"
+                   @class(['rounded-full border px-3 py-1.5 text-sm', 'border-brand-600 bg-brand-600 text-white' => $sellers === [], 'border-dashed border-line bg-white text-muted hover:text-brand-600' => $sellers !== []])>All CRAs</a>
+            </div>
+        </fieldset>
     @endif
 
     @isset($products)

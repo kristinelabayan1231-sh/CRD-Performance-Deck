@@ -122,6 +122,18 @@ function initAutosave() {
                 recolor(feedback);
                 flash(feedback, true);
             }
+            // A customer tag sets the Date and Time of contact: show them in the same row.
+            if (field.name === 'customer_tag') {
+                const row = field.closest('tr');
+                [['input[name=contact_date]', result.contact_date], ['select[name=contact_time]', result.contact_time]].forEach(([selector, value]) => {
+                    const cell = row?.querySelector(selector);
+                    if (!cell || value === undefined || cell.value === (value ?? '')) return;
+                    cell.value = value ?? '';
+                    cell.dataset.saved = cell.value;
+                    recolor(cell);
+                    flash(cell, true);
+                });
+            }
             // Optionally mirror a returned value elsewhere on the page (e.g. a renamed user).
             if (form.dataset.updateText && result.display_name !== undefined) {
                 document.querySelectorAll(form.dataset.updateText).forEach((el) => (el.textContent = result.display_name));
