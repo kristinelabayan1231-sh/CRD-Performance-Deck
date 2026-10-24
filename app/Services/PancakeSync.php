@@ -94,14 +94,17 @@ class PancakeSync
 
     /**
      * Only one day's chat engagements, for backfilling past days without fetching their orders again. When $save is
-     * false nothing is written (a check of what Pancake returns). Throws when every page fails.
+     * false nothing is written (a check of what Pancake returns). Staff named in $skipStaff are left out. Throws when
+     * every page fails.
      *
+     * @param  list<string>  $skipStaff  Pancake staff names
      * @return array{staff: array<string, array{name: string, engagements: int}>, skipped: list<string>}
      */
-    public function syncEngagements(CarbonImmutable $day, bool $save = true): array
+    public function syncEngagements(CarbonImmutable $day, bool $save = true, array $skipStaff = []): array
     {
         $day = $day->startOfDay();
-        $engagements = $this->client->engagements($day);
+        $skip = array_map(PancakeEngagement::staffKey(...), $skipStaff);
+        $engagements = array_filter($this->client->engagements($day), fn (array $row) => ! in_array(PancakeEngagement::staffKey($row['name']), $skip, true));
 
         if ($save) {
             $this->saveEngagements($day, $engagements, now());
