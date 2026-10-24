@@ -78,6 +78,13 @@ return [
     // day has passed (so statuses added or renamed in Segmentation Options are included).
     'reactivation_skip_statuses' => ['active', 'blocked'],
 
+    // Cold leads (these Customer Tagging keys) get cold_attempts contact attempts, logged by the CRA with the row's
+    // Attempt button (one per day, kept when the lead moves to another CRA). Once used up without an Active status
+    // the lead leaves Reactivation and counts in the churn rate; until then it's left out of the churn rate.
+    // cold_attempts is the default until it's set in Settings → Segmentation Tracker.
+    'cold_tags' => ['cold', 'canpro_cold'],
+    'cold_attempts' => 3,
+
     /*
     |--------------------------------------------------------------------------
     | Tracking dropdowns

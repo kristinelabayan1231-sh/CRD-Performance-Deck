@@ -17,6 +17,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
 use App\Http\Controllers\HighValueCustomerController;
+use App\Http\Controllers\LeadAttemptController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadChatController;
 use App\Http\Controllers\MonthlyCostController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
 use App\Http\Controllers\PancakeAccountController;
 use App\Http\Controllers\PancakePageController;
+use App\Http\Controllers\PancakeReservationController;
 use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
@@ -95,6 +97,12 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
         Route::get('/leads/{lead}/chat', LeadChatController::class)->middleware('throttle:30,1')->name('chat');
         Route::post('/leads/{lead}/call', LeadCallController::class)->middleware('throttle:20,1')->name('call');
+        Route::post('/leads/{lead}/attempts', [LeadAttemptController::class, 'store'])->name('attempts.store');
+        Route::delete('/leads/{lead}/attempts/today', [LeadAttemptController::class, 'destroy'])->name('attempts.destroy');
+        Route::get('/pancake-reservations/lookup', [PancakeReservationController::class, 'lookup'])->middleware('throttle:60,1')->name('reservations.lookup');
+        Route::post('/pancake-reservations', [PancakeReservationController::class, 'store'])->name('reservations.store');
+        Route::patch('/pancake-reservations/{reservation}', [PancakeReservationController::class, 'update'])->name('reservations.update');
+        Route::delete('/pancake-reservations/{reservation}', [PancakeReservationController::class, 'destroy'])->name('reservations.destroy');
         Route::post('/sync', [SegmentationController::class, 'sync'])->middleware('can:segmentation.manage')->name('sync');
         Route::post('/on-duty', [OnDutyController::class, 'store'])->name('on-duty');
         Route::put('/schedule', DutyScheduleController::class)->name('schedule');
@@ -236,6 +244,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
         Route::prefix('segmentation-tracker')->name('segmentation-options.')->middleware('can:segmentation_options.manage')->group(function () {
             Route::get('/', [SegmentationOptionController::class, 'index'])->name('index');
+            Route::put('/cold-attempts', [SegmentationOptionController::class, 'updateColdAttempts'])->name('cold-attempts');
             Route::put('/{list}', [SegmentationOptionController::class, 'update'])->where('list', '[a-z_]+')->name('update');
         });
 

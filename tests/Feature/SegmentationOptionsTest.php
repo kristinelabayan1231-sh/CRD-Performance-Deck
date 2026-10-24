@@ -85,11 +85,27 @@ class SegmentationOptionsTest extends TestCase
         $this->assertArrayHasKey('no_budget', config('segmentation.feedback'));
     }
 
+    public function test_supervisor_sets_how_many_attempts_a_cold_lead_gets(): void
+    {
+        $this->actingAs($this->supervisor)->get(route('settings.segmentation-options.index'))
+            ->assertOk()->assertSee('Cold lead attempts')->assertSee('value="3"', false);
+
+        $this->put(route('settings.segmentation-options.cold-attempts'), ['cold_attempts' => 5])->assertSessionHasNoErrors();
+        $this->put(route('settings.segmentation-options.cold-attempts'), ['cold_attempts' => 0])->assertSessionHasErrorsIn('cold_attempts', 'cold_attempts');
+
+        // Saved attempts come back on the next boot, and a cold lead gets that many.
+        config(['segmentation.cold_attempts' => 3]);
+        SegmentationOptions::apply();
+        $this->assertSame(5, config('segmentation.cold_attempts'));
+        $this->assertSame(5, $this->lead(['customer_tag' => 'cold'])->attemptsLeft());
+    }
+
     public function test_cras_cannot_edit_choices(): void
     {
         $cra = User::create(['email' => 'cra@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
 
         $this->actingAs($cra)->get(route('settings.segmentation-options.index'))->assertForbidden();
         $this->actingAs($cra)->put(route('settings.segmentation-options.update', 'feedback'), ['options' => $this->feedbackRows()])->assertForbidden();
+        $this->actingAs($cra)->put(route('settings.segmentation-options.cold-attempts'), ['cold_attempts' => 5])->assertForbidden();
     }
 }

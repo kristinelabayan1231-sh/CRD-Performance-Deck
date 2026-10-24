@@ -183,7 +183,7 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Due to reorder</dt><dd>A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $graceDays }} days to order again. Due = customers whose {{ $graceDays }} days ended in the dates picked, by their latest such delivery.</dd></div>
+                <div><dt class="font-semibold text-ink">Due to reorder</dt><dd>A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $graceDays }} days to order again. Due = customers whose {{ $graceDays }} days ended in the dates picked, by their latest such delivery. Cold leads still being retried in the Segmentation Tracker (attempts left, no Active status) are left out until all {{ config('segmentation.cold_attempts') }} attempts are made.</dd></div>
                 <div><dt class="font-semibold text-ink">Came back in time / Lost</dt><dd>Came back = a Pancake order (not canceled) or a new delivery after that delivery and by the deadline; the first one is shown. Lost = neither.</dd></div>
                 <div><dt class="font-semibold text-ink">CRD / FSD / Overall</dt><dd>CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; Overall counts a customer on both lists once, by their latest delivery.</dd></div>
                 <div><dt class="font-semibold text-ink">Last ordered</dt><dd>The customer's latest order or delivery since: the delivery judged if nothing came after, or a later one placed after the deadline.</dd></div>

@@ -23,8 +23,24 @@ class SegmentationOptionController extends Controller
         return view('settings.segmentation-options', [
             'lists' => $lists,
             'colors' => config('segmentation.option_colors'),
-            'lastChange' => Setting::where('key', 'like', SegmentationOptions::KEY_PREFIX.'%')->with('editor')->latest('updated_at')->first(),
+            'lastChange' => Setting::where('key', 'like', SegmentationOptions::KEY_PREFIX.'%')->orWhere('key', SegmentationOptions::COLD_ATTEMPTS_KEY)
+                ->with('editor')->latest('updated_at')->first(),
+            'coldAttempts' => (int) config('segmentation.cold_attempts'),
         ]);
+    }
+
+    /**
+     * How many contact attempts a cold lead gets before it leaves Reactivation and counts in the churn rate.
+     */
+    public function updateColdAttempts(Request $request): RedirectResponse
+    {
+        $data = $request->validateWithBag('cold_attempts', [
+            'cold_attempts' => ['required', 'integer', 'min:1', 'max:10'],
+        ], [], ['cold_attempts' => 'cold lead attempts']);
+
+        SegmentationOptions::saveColdAttempts((int) $data['cold_attempts'], $request->user());
+
+        return back()->with('status', "Cold leads now get {$data['cold_attempts']} ".str('attempt')->plural((int) $data['cold_attempts']).'.');
     }
 
     /**

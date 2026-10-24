@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DeliveredOrder;
+use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Support\WorkingDate;
@@ -19,7 +20,8 @@ use Carbon\CarbonImmutable;
  * (up to today). Lost = no Pancake POS order (not canceled or deleted) and no new delivery between
  * that delivery and the end of the grace. A customer counts once per list, by their latest delivery
  * whose grace ended in the range, so a past range's churn doesn't change later; overall takes each
- * customer's latest delivery across both lists. delivered_months counts the customers by the month
+ * customer's latest delivery across both lists. Customers with a cold lead still being retried in the Segmentation Tracker (attempts
+ * left, no Active status) are left out until its attempts are used up. delivered_months counts the customers by the month
  * they were delivered (Y-m), usually months before the range. customers() lists them one by one.
  */
 class CustomerChurn
@@ -192,7 +194,37 @@ class CustomerChurn
             }
         }
 
+        // Cold leads still being retried (attempts left, no Active status) aren't judged yet: leave their customers out.
+        $retrying = $this->coldRetrying();
+        foreach ($due as $list => $customers) {
+            foreach ($customers as $phone => $d) {
+                if (isset($retrying[$phone]) && $retrying[$phone] >= $d['delivered']) {
+                    unset($due[$list][$phone]);
+                }
+            }
+        }
+
         return [$due, $this->outcomes($due, $detailsFor)];
+    }
+
+    /**
+     * Customers with a cold lead still being retried (Lead::scopeColdRetrying()): phone => that lead's latest delivered
+     * date, so only a lead from the delivery judged or later keeps the customer out.
+     *
+     * @return array<string, string>
+     */
+    private function coldRetrying(): array
+    {
+        $retrying = [];
+
+        Lead::query()->coldRetrying()->toBase()->get(['phone_number', 'delivered_date'])
+            ->each(function (object $lead) use (&$retrying) {
+                $phone = LeadGenerator::normalizePhone((string) $lead->phone_number);
+                $delivered = substr((string) $lead->delivered_date, 0, 10);
+                $retrying[$phone] = max($retrying[$phone] ?? '', $delivered);
+            });
+
+        return $retrying;
     }
 
     /**

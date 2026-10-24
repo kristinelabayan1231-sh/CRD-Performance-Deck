@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Lead;
 use App\Models\LeadMove;
+use App\Models\PancakeReservation;
 use App\Models\Product;
 use App\Models\Role;
 use App\Services\ChurnCustomerList;
@@ -47,7 +48,7 @@ class SegmentationController extends Controller
         $show = $filters['show'];
         $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
-            ->with(['assignee', 'notesAuthor', 'callRecordings'])
+            ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderBy('listed_on')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name');
@@ -220,7 +221,7 @@ class SegmentationController extends Controller
      * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day): callbacks due
      * today, Reactivation and Reserved. They're catered leads, so they're never in Pending itself.
      *
-     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator}
+     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator, pancakeReserved: LengthAwarePaginator}
      */
     private function followUps(array $filters, CarbonImmutable $today): array
     {
@@ -230,7 +231,7 @@ class SegmentationController extends Controller
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
-            ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings']);
+            ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings', 'attempts.user']);
 
         // Callbacks and Reactivation never overlap: Reactivation leaves out leads with a callback date still to be followed, and Reserved ones.
         return [
@@ -241,6 +242,15 @@ class SegmentationController extends Controller
             'reserved' => (clone $base)->reserved()
                 ->orderBy('listed_on')->orderBy('customer_name')
                 ->paginate(self::FULL_PER_PAGE, ['*'], 'reserved_page')->withQueryString(),
+            // Reserved in a Pancake conversation, added by the CRAs; latest first.
+            'pancakeReserved' => PancakeReservation::query()
+                ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
+                ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+                ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+                ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
+                ->with(['assignee', 'notesAuthor'])
+                ->latest('id')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'pancake_reserved_page')->withQueryString(),
         ];
     }
 

@@ -16,8 +16,11 @@ class SegmentationOptions
 {
     public const KEY_PREFIX = 'segmentation_options.';
 
+    /** Contact attempts a cold lead gets (Settings → Segmentation Tracker), replacing config('segmentation.cold_attempts'). */
+    public const COLD_ATTEMPTS_KEY = 'segmentation_cold_attempts';
+
     /**
-     * Put every saved list into config. Called on boot; skipped quietly before the settings table exists.
+     * Put every saved list, and the cold lead attempts, into config. Called on boot; skipped quietly before the settings table exists.
      */
     public static function apply(): void
     {
@@ -30,6 +33,19 @@ class SegmentationOptions
                     config(["segmentation.{$list}" => $options]);
                 }
             });
+
+        if ($attempts = (int) Setting::value(self::COLD_ATTEMPTS_KEY)) {
+            config(['segmentation.cold_attempts' => $attempts]);
+        }
+    }
+
+    /**
+     * Save how many contact attempts a cold lead gets and use it right away.
+     */
+    public static function saveColdAttempts(int $attempts, User $by): void
+    {
+        Setting::put(self::COLD_ATTEMPTS_KEY, (string) $attempts, $by);
+        config(['segmentation.cold_attempts' => $attempts]);
     }
 
     /**
