@@ -146,7 +146,8 @@ class ConversionBreakdownTest extends TestCase
             $this->order('CRD Lhei', [self::BROADCAST, self::SEGMENTATION], 500),
             // Canceled: in gross sales (every status), not in the order counts.
             $this->order('CRD Lhei', [self::SEGMENTATION], 819, status: 6),
-            // Not counted at all: untagged, and another CRA's tagged order.
+            // Not counted at all: deleted, untagged, and another CRA's tagged order.
+            $this->order('CRD Lhei', [self::SEGMENTATION], 999, status: 7),
             $this->order('CRD Lhei', [17], 999),
             $this->order('CRD Rej Vergara', [self::BROADCAST], 2000),
         ];

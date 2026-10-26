@@ -84,7 +84,7 @@ class PancakeOrder extends Model
     }
 
     /**
-     * Whether this order counts as a confirmed order (not canceled or deleted). Gross sales counts every status.
+     * Whether this order counts as a confirmed order (not canceled or deleted). Gross sales counts every status but deleted.
      */
     public function isCounted(): bool
     {

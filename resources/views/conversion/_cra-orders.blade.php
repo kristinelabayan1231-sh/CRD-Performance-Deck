@@ -72,6 +72,6 @@
                 </tfoot>
             </table>
         </div>
-        <p class="text-xs text-muted">Oldest first, by when the order was created in Pancake. Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Every status counts, canceled included.</p>
+        <p class="text-xs text-muted">Oldest first, by when the order was created in Pancake. Amounts are Shecom's sales per order (without the child TSD row) once synced, else Pancake's total, as in Gross sales. Every status counts, canceled included; deleted orders are left out.</p>
     @endif
 </div>

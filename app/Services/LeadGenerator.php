@@ -326,10 +326,11 @@ class LeadGenerator
     }
 
     /**
-     * Hand out the day's unassigned leads, CRD Leads first, always to the CRA
-     * with the fewest leads that day, except a High AOV / VIP customer's lead,
-     * which goes to their CRA (Customer Database → High AOV CVR & VIP). Everyone fills toward the daily quota
-     * together, and any excess beyond the quota is spread evenly the same way.
+     * Hand out the day's unassigned leads. First each customer's own CRA gets their leads: a High AOV / VIP
+     * customer's CRA (Customer Database → High AOV CVR & VIP), else the CRA who has handled two of their orders
+     * (CustomerOwners), whether or not they are on duty. The rest go one at a time, CRD Leads first, to the CRA with
+     * the fewest leads that day, so everyone fills toward the daily quota together and any excess is spread evenly.
+     * Today's own leads still untouched with another CRA (and not transferred) are moved to their customer's CRA.
      */
     public function assign(CarbonImmutable $date): int
     {
@@ -339,6 +340,8 @@ class LeadGenerator
         if ($cras->isEmpty()) {
             return 0;
         }
+
+        $this->reclaimForOwners($date, $cras->pluck('id')->all());
 
         // Leads added from a CRA's own POS sale don't use up their daily quota, nor does backlog the fill moved here (BacklogFill).
         $load = Lead::whereDate('est_out_of_stock_date', $date)
@@ -357,17 +360,19 @@ class LeadGenerator
             ->orderBy('id')
             ->get();
 
-        // High AOV / VIP customers with a CRA go to that CRA (while active); a new one is kept with whoever gets their lead.
         $highValue = app(HighValueCustomers::class);
         $phones = $pending->mapWithKeys(fn (Lead $lead) => [$lead->id => self::normalizePhone((string) $lead->phone_number)]);
-        $owners = rescue(fn () => $highValue->crasFor($phones->unique()->values()->all()), []);
+        $owners = $this->ownersFor($phones->unique()->values()->all(), $highValue);
+        $ownerOf = fn (Lead $lead) => isset($owners[$phones[$lead->id]]) && array_key_exists($owners[$phones[$lead->id]], $load) ? $owners[$phones[$lead->id]] : null;
+        // Customers' own CRAs first, then the even split.
+        [$owned, $rest] = $pending->partition(fn (Lead $lead) => $ownerOf($lead) !== null);
         $handedOut = [];
         $assigned = 0;
 
-        foreach ($pending as $lead) {
-            $owner = $owners[$phones[$lead->id]] ?? null;
+        foreach ($owned->concat($rest) as $lead) {
+            $owner = $ownerOf($lead);
             // Else the least-loaded CRA; ties go to the earliest CRA so the split is stable.
-            $craId = $owner !== null && array_key_exists($owner, $load) ? $owner : array_search(min($load), $load, true);
+            $craId = $owner ?? array_search(min($load), $load, true);
 
             $lead->update(['assigned_to' => $craId, 'assigned_at' => now()]);
             $load[$craId]++;
@@ -378,9 +383,45 @@ class LeadGenerator
             }
         }
 
+        // A new High AOV / VIP customer is kept with whoever got their lead.
         rescue(fn () => $highValue->claimForLeads($handedOut));
 
         return $assigned;
+    }
+
+    /**
+     * Each number's own CRA: their High AOV / VIP CRA, else the CRA who has handled two of their orders (CustomerOwners).
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, int> phone key => CRA id
+     */
+    public function ownersFor(array $phoneKeys, ?HighValueCustomers $highValue = null): array
+    {
+        $highValue ??= app(HighValueCustomers::class);
+
+        return rescue(fn () => $highValue->crasFor($phoneKeys), []) + rescue(fn () => app(CustomerOwners::class)->for($phoneKeys), []);
+    }
+
+    /**
+     * Move $date's own leads (out of stock that day, not backlog moved in) that nobody has touched or transferred to
+     * their customer's CRA when another CRA has them.
+     *
+     * @param  list<int>  $craIds  the active CRAs
+     */
+    private function reclaimForOwners(CarbonImmutable $date, array $craIds): void
+    {
+        $leads = Lead::whereDate('listed_on', $date)->whereDate('est_out_of_stock_date', $date)
+            ->whereNotNull('assigned_to')->untouched()->withoutPosSales()->doesntHave('transfers')
+            ->get(['id', 'phone_number', 'assigned_to']);
+        $owners = $this->ownersFor($leads->map(fn (Lead $lead) => self::normalizePhone((string) $lead->phone_number))->unique()->values()->all());
+
+        foreach ($leads as $lead) {
+            $owner = $owners[self::normalizePhone((string) $lead->phone_number)] ?? null;
+
+            if ($owner !== null && $owner !== $lead->assigned_to && in_array($owner, $craIds, true)) {
+                $lead->update(['assigned_to' => $owner, 'assigned_at' => now()]);
+            }
+        }
     }
 
     /**

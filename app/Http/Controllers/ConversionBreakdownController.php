@@ -134,7 +134,7 @@ class ConversionBreakdownController extends Controller
         // As the dashboard counts them, with the CVR Tracker's corrections (type, and orders counted for another CRA).
         $query = ConversionBreakdown::taggedOrders($accounts, $range->from, $range->to);
 
-        // The list and count are confirmed orders; gross sales counts every status, as on the dashboard.
+        // The list and count are confirmed orders; gross sales counts every status but deleted, as on the dashboard.
         $all = (clone $query)->get();
         $gross = $all->sum(fn (PancakeOrder $order) => $order->sales());
         $all = $all->filter(fn (PancakeOrder $order) => $order->isCounted());
@@ -156,7 +156,7 @@ class ConversionBreakdownController extends Controller
 
     /**
      * The orders behind one CRA's gross sales for $from–$to (the per-CRA pop-up): their own Pancake orders
-     * tagged CRD - BROADCAST or CRD - SEGMENTATION, every status, with the same amounts, so they add up
+     * tagged CRD - BROADCAST or CRD - SEGMENTATION, every status but deleted, with the same amounts, so they add up
      * to the Gross BC, Gross SC and Gross sales shown.
      */
     public function craOrders(Request $request, User $cra): View

@@ -18,7 +18,8 @@ use Illuminate\Support\Collection;
  *
  * Orders BC / SC = the CRA's Pancake POS orders that day tagged "CRD - BROADCAST" / "CRD - SEGMENTATION"
  * (canceled and deleted orders don't count), with the CRAs' corrections in the CVR Tracker: a changed Type of Order,
- * and an order counted for another CRA (e.g. made under another account). Gross BC / SC = those orders' totals.
+ * and an order counted for another CRA (e.g. made under another account). Gross BC / SC = those orders' totals,
+ * canceled included, deleted left out.
  * Engagements = the CRA's Pancake customer engagements (Chat → Analytics → Engagements).
  * Leads = Segmentation Tracker leads assigned to the CRA for the lead day worked that day (base 70; actual
  * count shown), leads added from their POS sales included as in the Segmentation Tracker. With a working date set,
@@ -89,7 +90,7 @@ class ConversionBreakdown
 
     /**
      * Tagged orders per CRA per day: counts (confirmed orders, not canceled or deleted) and gross sales
-     * (every status) for broadcast and segmentation, with the CVR Tracker's corrections (taggedOrders()).
+     * (every status but deleted) for broadcast and segmentation, with the CVR Tracker's corrections (taggedOrders()).
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
      * @return array<int, array<string, array{bc_orders: int, sc_orders: int, bc_gross: float, sc_gross: float}>>
@@ -118,7 +119,7 @@ class ConversionBreakdown
 
     /**
      * The CRAs' (by $accounts) Pancake orders created $from–$to tagged CRD - BROADCAST or CRD - SEGMENTATION, every
-     * status, as the CVR Tracker counts them: an order counted for another CRA there goes to that CRA (also when made
+     * status but deleted, as the CVR Tracker counts them: an order counted for another CRA there goes to that CRA (also when made
      * under an account not in $accounts), and its Type of Order there wins over the tag. Each order carries
      * counted_type (broadcast / segmentation) and counted_for (the CVR Tracker's CRA id, or null: its seller's CRA).
      *
@@ -129,6 +130,7 @@ class ConversionBreakdown
         return PancakeOrder::crdProducts()
             ->leftJoin('cvr_order_entries as cvr', 'cvr.pancake_order_id', '=', 'pancake_orders.pancake_order_id')
             ->whereIn('pancake_orders.conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+            ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhere('pancake_orders.status', '!=', CraPerformance::DELETED))
             ->where('pancake_orders.ordered_on', '>=', $from->toDateString())->where('pancake_orders.ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn (Builder $q) => $q
                 ->where(fn (Builder $q) => $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()))

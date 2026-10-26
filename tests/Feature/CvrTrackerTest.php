@@ -119,17 +119,20 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([1, 0], [$summary['bc_orders'], $summary['sc_orders']]);
     }
 
-    public function test_canceled_orders_count_in_gross_sales_but_are_not_listed(): void
+    public function test_canceled_orders_count_in_gross_sales_but_are_not_listed_and_deleted_ones_are_left_out(): void
     {
         $this->order($this->regina, PancakeOrder::SEGMENTATION, 1000, '9170000001');
         $this->order($this->regina, PancakeOrder::BROADCAST, 500, '9170000002');
         // Canceled: in gross and Segmentation sales (as on the dashboard), not an order and not listed.
         $canceled = $this->order($this->regina, PancakeOrder::SEGMENTATION, 800, '9170000003', ['status' => 6]);
+        // Deleted: not listed and not in any sales.
+        $deleted = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000004', ['status' => 7]);
 
         $response = $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => self::DAY]));
         $data = $response->viewData('data');
 
         $this->assertNotContains($canceled->pancake_order_id, array_column($data['orders'], 'id'));
+        $this->assertNotContains($deleted->pancake_order_id, array_column($data['orders'], 'id'));
         $s = $data['summary'];
         $this->assertSame([2300.0, 1800.0, 500.0, 2], [$s['gross'], $s['sc_amount'], $s['bc_amount'], $s['orders']]);
         $this->assertEqualsWithDelta(1150.0, $s['aov'], 0.001);
