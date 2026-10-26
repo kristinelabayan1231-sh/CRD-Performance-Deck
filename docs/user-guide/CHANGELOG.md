@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-26 · CVR Tracker · Deleted Pancake orders are no longer added to Total gross sales, Broadcast / Segmentation sales or AOV. Only canceled orders are still included ("incl. ₱… canceled") · shots: —
+- 2026-10-26 · Dashboard, Conversion Breakdown, Segmentation Productivity, Sales goals · Deleted Pancake orders are no longer in Gross sales / Gross BC / Gross SC, AOV, the per-CRA gross sales pop-up or the sales goals; canceled orders still count. Definitions updated to say "except deleted" · shots: —
 - 2026-10-24 · Settings → Segmentation Tracker · New "Cold lead attempts" box at the top (default 3, 1–10) with Save attempts: how many attempts a cold lead gets · shots: settings-segmentation-options
 - 2026-10-24 · Segmentation Tracker · Cold leads (Cold Leads / CanPro Cold tag) get 3 contact attempts: a "Log attempt · 3 left" button beside Status logs today's attempt (one per day; "✓ Tried today" — click again to take it back); hover shows who tried and when. Attempts stay with the lead when it moves to another CRA. Once all 3 are made without an Active status the lead leaves Reactivation · shots: 04-daily-table, pending full view
 - 2026-10-24 · Customer Database → Churn and Dashboard churn rate · Customers with a cold lead still being retried (attempts left, no Active status) are left out of the churn rate until all 3 attempts are made; then they count again (Lost if no reorder) · shots: —

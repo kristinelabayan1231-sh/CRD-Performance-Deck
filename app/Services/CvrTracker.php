@@ -20,7 +20,8 @@ use Illuminate\Support\Collection;
  *
  * Orders = the CRA's own Pancake orders that day tagged CRD - BROADCAST or CRD - SEGMENTATION, not canceled or deleted,
  * by when they were created. Untagged ones are left out (they're in the order issues). Gross sales (and Broadcast /
- * Segmentation sales, AOV) also count the canceled and deleted ones, as the dashboard does; they aren't listed.
+ * Segmentation sales, AOV) also count the canceled ones, as the dashboard does; they aren't listed. Deleted ones are left
+ * out entirely.
  * Assigned = Type of Order is Segmentation, or the order's number matches a lead assigned to any CRA in the Segmentation
  * Tracker (leads added from POS sales left out, since they come from the order itself); otherwise Pancake.
  * Total # of Orders = the customer's delivered orders before that day (Customer Database, merged numbers too) + this one.
@@ -42,8 +43,8 @@ class CvrTracker
         $assigned = self::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
 
-        // Canceled / deleted: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged).
-        $notCounted = $this->ordersQuery($cra, $day, counted: false)->whereIn('status', PancakeOrder::NOT_COUNTED_STATUSES)
+        // Canceled: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged). Deleted: left out.
+        $notCounted = $this->ordersQuery($cra, $day, counted: false)->where('status', PancakeOrder::CANCELED)
             ->get(['pancake_order_id', 'conversion_type', 'total_price', 'shecom_sales']);
         $types = CvrOrderEntry::whereIn('pancake_order_id', $notCounted->pluck('pancake_order_id'))->whereNotNull('order_type')->pluck('order_type', 'pancake_order_id');
         $canceled = $notCounted->map(fn (PancakeOrder $order) => [
@@ -225,7 +226,7 @@ class CvrTracker
      * @return array<string, int|float|null>
      */
     /**
-     * @param  Collection<int, array{type: ?string, amount: float}>  $canceled  canceled / deleted orders, in gross sales only
+     * @param  Collection<int, array{type: ?string, amount: float}>  $canceled  canceled orders, in gross sales only
      */
     private function summary(User $cra, CarbonImmutable $day, Collection $rows, Collection $canceled): array
     {
