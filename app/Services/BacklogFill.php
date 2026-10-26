@@ -13,9 +13,11 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * Tops each on-duty CRA's day up to the daily maximum (segmentation.max_leads_per_cra) once their own leads
- * for the day are in, with a mix across months: each pick takes the next out-of-stock month in turn, the CRA's own
- * untouched backlog of that month first, then the unassigned pool (the June–Aug backfill rows with no CRA kept),
- * so old months are worked little by little next to the current one. A moved lead is listed on $day
+ * for the day are in, with a mix across months: each pick takes the next out-of-stock month in turn. First the
+ * waiting leads of the CRA's own customers (CustomerOwners: two orders handled; High AOV / VIP CRA), wherever they
+ * are (the pool, their backlog or another CRA's untouched backlog); then their own untouched backlog of that month,
+ * then the unassigned pool (the June–Aug backfill rows with no CRA kept), split evenly. A customer's lead waits for
+ * their CRA, never going to another one. Old months are worked little by little next to the current one. A moved lead is listed on $day
  * (listed_on) in the tracker and every report; its out-of-stock date never changes. One still untouched
  * on a later day is that CRA's backlog again and can move again. Moves off a CRA's day are kept (LeadMove)
  * so that day's total never changes.
@@ -56,28 +58,49 @@ class BacklogFill
             return $moved;
         }
 
-        // Each CRA's own untouched backlog and the unassigned pool, grouped by out-of-stock month; within a month,
-        // the longest-waiting first (an untouched lead moved yesterday goes to the back of its month).
-        // Only leads the CRA never touched (no status, date, note or any other field): worked ones stay on their day.
-        $own = Lead::whereIn('assigned_to', array_keys($room))->whereDate('listed_on', '<', $day)
-            ->untouched()->withoutPosSales()
-            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'listed_on', 'est_out_of_stock_date'])
-            ->groupBy(['assigned_to', fn (Lead $lead) => $lead->est_out_of_stock_date->format('Y-m')])
-            ->map(fn (Collection $months) => $months->map(fn (Collection $leads) => $leads->all())->all())->all();
-        $pool = Lead::whereNull('assigned_to')->whereDate('listed_on', '<', $day)->withoutPosSales()
-            ->orderBy('listed_on')->orderBy('id')->get(['id', 'listed_on', 'est_out_of_stock_date'])
-            ->groupBy(fn (Lead $lead) => $lead->est_out_of_stock_date->format('Y-m'))
-            ->map(fn (Collection $leads) => $leads->all())->all();
-        $months = collect(array_keys($pool))->merge(collect($own)->flatMap(fn (array $byMonth) => array_keys($byMonth)))
-            ->unique()->sort()->values()->all();
+        // Every lead waiting before $day: untouched backlog (any CRA's) and the unassigned pool, the longest-waiting first
+        // (an untouched lead moved yesterday goes to the back). Only leads nobody touched (no status, date, note or any
+        // other field) move: worked ones stay on their day.
+        $waiting = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
+            ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
+            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'listed_on', 'est_out_of_stock_date']);
+        $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
+        $owners = app(LeadGenerator::class)->ownersFor($waiting->map($phoneOf)->unique()->values()->all());
+        $active = LeadGenerator::cras()->pluck('id')->flip();
+
+        // Three lists, each by out-of-stock month: a filled CRA's own customers (whoever has the lead now: their CRA
+        // takes it back), then their backlog of customers no CRA owns, then the unowned pool. A lead whose CRA isn't
+        // being filled now stays for them.
+        $owned = [];
+        $own = [];
+        $pool = [];
+        foreach ($waiting as $lead) {
+            $owner = $owners[$phoneOf($lead)] ?? null;
+            $month = $lead->est_out_of_stock_date->format('Y-m');
+
+            if ($owner !== null && isset($active[$owner])) {
+                if (isset($room[$owner])) {
+                    $owned[$owner][$month][] = $lead;
+                }
+            } elseif ($lead->assigned_to === null) {
+                $pool[$month][] = $lead;
+            } elseif (isset($room[$lead->assigned_to])) {
+                $own[$lead->assigned_to][$month][] = $lead;
+            }
+        }
+
+        $months = $waiting->map(fn (Lead $lead) => $lead->est_out_of_stock_date->format('Y-m'))->unique()->sort()->values()->all();
         $turn = array_fill_keys(array_keys($room), 0);
         $taken = [];
+        $none = [];
 
-        // One lead at a time per CRA, each pick from the next month in turn (own leads of that month before pool ones),
-        // so every month moves a little each day and the pool splits evenly.
+        // One lead at a time per CRA, each pick from the next month in turn: their own customers' leads while any are
+        // left, then their backlog of that month before pool ones, so every month moves a little each day and the
+        // pool splits evenly.
         while ($room !== []) {
             foreach (array_keys($room) as $craId) {
-                $lead = $this->nextLead($months, $turn[$craId], $own[$craId], $pool);
+                $lead = $this->nextLead($months, $turn[$craId], $owned[$craId], $none)
+                    ?? $this->nextLead($months, $turn[$craId], $own[$craId], $pool);
 
                 if ($lead === null || --$room[$craId] === 0) {
                     unset($room[$craId]);
@@ -92,8 +115,9 @@ class BacklogFill
         foreach ($taken as $craId => $leads) {
             // The day each own lead leaves keeps counting it (LeadMove).
             foreach (array_chunk(array_filter($leads, fn (Lead $lead) => $lead->assigned_to !== null), 500) as $chunk) {
+                // The CRA who had it: their own, or another CRA's when it goes back to its customer's CRA.
                 LeadMove::insert(array_map(fn (Lead $lead) => [
-                    'lead_id' => $lead->id, 'assigned_to' => $craId, 'listed_on' => $lead->listed_on->toDateString(),
+                    'lead_id' => $lead->id, 'assigned_to' => $lead->assigned_to, 'listed_on' => $lead->listed_on->toDateString(),
                     'moved_to' => $day->toDateString(), 'created_at' => now(), 'updated_at' => now(),
                 ], $chunk));
             }
