@@ -21,6 +21,9 @@ $modules = [
         'product_consumption.manage' => 'Add, edit and delete products',
         'product_consumption.srp' => 'Set each product\'s SRP (sets its CLTV in the Customer Database)',
     ],
+    'Settings · Testing Products' => [
+        'product_stage.manage' => 'Mark each product as Testing or Existing',
+    ],
     'Settings · Pancake Pages' => [
         'pancake_pages.manage' => 'View, add and edit the Pancake pages and their access tokens',
     ],
@@ -32,6 +35,9 @@ $modules = [
     ],
     'Settings · Segmentation Tracker' => [
         'segmentation_options.manage' => 'Edit the Segmentation Tracker dropdown choices (status, repeat purchase, customer tagging, feedback)',
+    ],
+    'Settings · Niche' => [
+        'niches.manage' => 'Create niches (a set of products) and assign CRAs to them: a CRA in a niche gets only its products\' leads',
     ],
     'Settings · Daily I.S.' => [
         'daily_is_products.manage' => 'Deactivate Daily I.S. products (a deactivated product shows only on a day it has sales, labelled Deactivated)',

@@ -6,13 +6,16 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'keywords', 'exclude_keywords', 'consumption_days', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
+#[Fillable(['name', 'is_testing', 'keywords', 'exclude_keywords', 'consumption_days', 'age_min', 'age_max', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
 class Product extends Model
 {
     protected function casts(): array
     {
         return [
+            'is_testing' => 'boolean',
             'consumption_days' => 'integer',
+            'age_min' => 'integer',
+            'age_max' => 'integer',
             'counts_from' => 'immutable_date',
             'srp' => 'decimal:2',
             'unit_cost' => 'decimal:2',

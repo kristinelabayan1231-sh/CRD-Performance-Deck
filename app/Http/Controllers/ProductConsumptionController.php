@@ -25,6 +25,8 @@ class ProductConsumptionController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
+        // Testing or existing: decided when the product is added (Settings → Testing Products changes it later).
+        $data += $request->validate(['is_testing' => ['required', 'boolean']], ['is_testing.required' => 'Choose whether the product is Testing or Existing.']);
 
         // Counts from its starting date (today when none is given): orders, deliveries and leads before it are left as they were.
         Product::create([...$data, 'counts_from' => $data['counts_from'] ?? WorkingDate::realToday()->toDateString(), 'created_by' => $request->user()->id]);
