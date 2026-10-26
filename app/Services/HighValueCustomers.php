@@ -10,6 +10,7 @@ use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\User;
+use App\Support\PancakeAccounts;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -343,7 +344,7 @@ class HighValueCustomers
         }
 
         $minAov = (float) config('customers.high_aov_min');
-        $aliases = collect(config('customers.cra_account_aliases', []))
+        $aliases = collect(PancakeAccounts::aliases())
             ->mapWithKeys(fn (string $account, string $alias) => [PancakeEngagement::staffKey($alias) => PancakeEngagement::staffKey($account)]);
         $cras = LeadGenerator::cras()->whereNotNull('pancake_name')
             ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);

@@ -230,6 +230,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('pancake-accounts')->name('pancake-accounts.')->middleware('can:pancake_accounts.manage')->group(function () {
             Route::get('/', [PancakeAccountController::class, 'index'])->name('index');
             Route::put('/', [PancakeAccountController::class, 'update'])->name('update');
+            Route::put('/aliases', [PancakeAccountController::class, 'updateAliases'])->name('aliases');
         });
 
         Route::prefix('sales-goals')->name('sales-goals.')->middleware('can:sales_goals.manage')->group(function () {

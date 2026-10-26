@@ -68,6 +68,46 @@ class PancakeAccountsTest extends TestCase
         $this->assertSame(['all' => 3, 'crd' => 1, 'retained' => 1, 'repeat' => 0], app(CustomerDatabase::class)->counts([]));
     }
 
+    public function test_other_accounts_are_shown_and_saved_per_cra(): void
+    {
+        $lhea = User::firstWhere('pancake_name', 'CRD Lhei');
+        $july = User::create(['email' => 'july@example.com', 'display_name' => 'July Ann', 'pancake_name' => 'CRD JULY ANN', 'role_id' => Role::where('slug', Role::CRA)->value('id'), 'is_active' => true]);
+        config(['customers.cra_account_aliases' => ['LHEA GATDULA' => 'CRD LHEI', 'OLD AGENT' => 'CRD GONE']]);
+
+        $this->actingAs($this->owner)->get(route('settings.pancake-accounts.index'))
+            ->assertOk()->assertSeeInOrder(['Lhea', 'LHEA GATDULA', 'Save CRA accounts']);
+
+        // Lhea's own account and blanks dropped; another CRA's account left alone.
+        $this->actingAs($this->owner)->put(route('settings.pancake-accounts.aliases'), ['aliases' => [
+            $lhea->id => ['Lhea  Gatdula', 'crd lhei', ''],
+            $july->id => ['CRD July De Los Santos'],
+        ]])->assertRedirect()->assertSessionHas('status');
+
+        $this->assertSame(['OLD AGENT' => 'CRD GONE', 'Lhea Gatdula' => 'CRD Lhei', 'CRD July De Los Santos' => 'CRD JULY ANN'], PancakeAccounts::aliases());
+        $this->assertSame(['CRD JULY ANN', 'CRD JULY DE LOS SANTOS'], PancakeAccounts::keysOf($july));
+
+        $this->actingAs($this->owner)->put(route('settings.pancake-accounts.aliases'), ['aliases' => [$lhea->id => ['CRD JULY ANN']]])
+            ->assertSessionHasErrors('aliases');
+        $this->actingAs($this->owner)->put(route('settings.pancake-accounts.aliases'), ['aliases' => [$lhea->id => ['Shared'], $july->id => ['shared']]])
+            ->assertSessionHasErrors('aliases');
+        $this->assertArrayHasKey('Lhea Gatdula', PancakeAccounts::aliases());
+    }
+
+    public function test_switching_a_cras_account_keeps_the_previous_one_as_theirs(): void
+    {
+        $rej = User::create(['email' => 'rej@example.com', 'display_name' => 'Regina', 'pancake_name' => 'CRD Rej Vergara', 'role_id' => Role::where('slug', Role::CRA)->value('id'), 'is_active' => true]);
+        config(['customers.cra_account_aliases' => ['REJ OLD' => 'CRD REJ VERGARA', 'LHEA GATDULA' => 'CRD LHEI']]);
+
+        $this->actingAs($this->owner)->patch(route('user-access.pancake-account', $rej), ['pancake_name' => 'CRD REJ'])->assertRedirect();
+
+        $this->assertSame(['CRD REJ', 'REJ OLD', 'CRD REJ VERGARA'], PancakeAccounts::keysOf($rej->fresh()));
+        $this->assertSame('CRD LHEI', PancakeAccounts::aliases()['LHEA GATDULA']);
+
+        // Switching back makes the old account her own again, not one of her other accounts.
+        $this->actingAs($this->owner)->patch(route('user-access.pancake-account', $rej), ['pancake_name' => 'CRD Rej Vergara']);
+        $this->assertSame(['CRD REJ VERGARA', 'REJ OLD', 'CRD REJ'], PancakeAccounts::keysOf($rej->fresh()));
+    }
+
     public function test_a_change_rechecks_only_customers_delivered_in_the_month_before(): void
     {
         $this->delivery('R1', '9171111111', '2026-09-20', LogisticsOrder::TEAM_CRD, null);
