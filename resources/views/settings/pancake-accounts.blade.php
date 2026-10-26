@@ -93,36 +93,60 @@
                     @endforeach
                 </div>
                 <ul class="list-disc space-y-1 pl-5 text-xs text-muted">
-                    <li>Each CRA's sales, confirmed orders, engagements and conversion are the orders and chats of <span class="font-semibold text-ink">their own account</span>. Orders sold by other accounts aren't credited to anyone.</li>
+                    <li>Each CRA's sales, confirmed orders, engagements and conversion are the orders and chats of <span class="font-semibold text-ink">their own account and their other accounts</span>. Orders sold by any other account aren't credited to anyone.</li>
                     <li>The Customer Database counts these accounts as handled by a CRA too, with the CRD team accounts.</li>
-                    <li>Set one account per CRA in User Access.</li>
+                    <li>Set each CRA's own account in User Access; add their older or second accounts here. Switching a CRA's account in User Access keeps the previous one here.</li>
                 </ul>
             </div>
 
-            <div class="overflow-hidden rounded-xl bg-white shadow-sm">
-                <table class="w-full text-left text-sm">
-                    <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
-                        <tr>
-                            <th class="px-4 py-2.5 font-semibold">Pancake account</th>
-                            <th class="px-4 py-2.5 font-semibold">CRA</th>
-                            <th class="px-4 py-2.5 font-semibold">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-line">
-                        @forelse ($craUsers as $cra)
-                            <tr>
-                                <td class="px-4 py-2.5 font-medium">{{ $cra->pancake_name }}</td>
-                                <td class="px-4 py-2.5">{{ $cra->displayName() }}</td>
-                                <td class="px-4 py-2.5">
+            @if ($craUsers->isEmpty())
+                <p class="rounded-xl bg-white px-4 py-6 text-center text-sm text-muted shadow-sm">No CRA has a Pancake account yet. Set it in User Access.</p>
+            @else
+                <form method="POST" action="{{ route('settings.pancake-accounts.aliases') }}" class="overflow-hidden rounded-xl bg-white shadow-sm">
+                    @csrf
+                    @method('PUT')
+                    <ul class="divide-y divide-line">
+                        @foreach ($craUsers as $cra)
+                            <li data-account-list class="space-y-2 p-3">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-sm"><span class="font-semibold">{{ $cra->displayName() }}</span> <span class="text-muted">· {{ $cra->pancake_name }}</span></p>
                                     <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold', 'bg-teal/15 text-teal-700' => $cra->is_active, 'bg-canvas text-muted' => ! $cra->is_active])>{{ $cra->is_active ? 'Active' : 'Disabled' }}</span>
-                                </td>
-                            </tr>
-                        @empty
-                            <tr><td colspan="3" class="px-4 py-6 text-center text-muted">No CRA has a Pancake account yet. Set it in User Access.</td></tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                                </div>
+                                <ul data-account-rows class="space-y-2">
+                                    @foreach (old("aliases.{$cra->id}", $aliases[$cra->id] ?? []) as $name)
+                                        <li data-account-item class="flex items-center gap-2">
+                                            <input type="text" name="aliases[{{ $cra->id }}][]" value="{{ $name }}" maxlength="100" aria-label="{{ $cra->displayName() }}'s other account" class="{{ $input }}">
+                                            <button type="button" data-account-remove aria-label="Remove {{ $name }}" title="Remove"
+                                                    class="grid size-10 shrink-0 place-items-center rounded-lg text-muted hover:bg-coral/10 hover:text-coral-700">
+                                                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                                            </button>
+                                        </li>
+                                    @endforeach
+                                </ul>
+                                <template data-account-row>
+                                    <li data-account-item class="flex items-center gap-2">
+                                        <input type="text" name="aliases[{{ $cra->id }}][]" maxlength="100" placeholder="Other account, as named in Pancake" aria-label="{{ $cra->displayName() }}'s other account" class="{{ $input }}">
+                                        <button type="button" data-account-remove aria-label="Remove" title="Remove"
+                                                class="grid size-10 shrink-0 place-items-center rounded-lg text-muted hover:bg-coral/10 hover:text-coral-700">
+                                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                                        </button>
+                                    </li>
+                                </template>
+                                <button type="button" data-account-add class="h-9 rounded-lg border border-dashed border-line px-3 text-xs font-semibold text-brand-600 hover:border-brand-400">+ Add other account</button>
+                            </li>
+                        @endforeach
+                    </ul>
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line p-3">
+                        <p class="text-xs text-muted">
+                            Capitals and extra spaces don't matter.
+                            @if ($aliasesChange?->editor)
+                                Last changed by {{ $aliasesChange->editor->displayName() }} on {{ $aliasesChange->updated_at->timezone(config('segmentation.timezone'))->format('M j, Y g:i A') }}.
+                            @endif
+                        </p>
+                        <button type="submit" class="h-10 rounded-lg bg-teal-700 px-4 text-sm font-semibold text-white shadow-sm hover:bg-[#0b6b5d]">Save CRA accounts</button>
+                    </div>
+                </form>
+            @endif
         </x-panel>
     </div>
 </x-layouts.settings>

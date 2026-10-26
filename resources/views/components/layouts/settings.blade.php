@@ -8,7 +8,9 @@
     ],
     'Products' => [
         'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
+        'settings.product-stage.index' => ['Testing Products', 'product_consumption.view'],
         'settings.product-qty.index' => ['Product Qty', 'product_qty.manage'],
+        'settings.age-bracket.index' => ['Age Bracket', 'product_consumption.view'],
     ],
     'Pancake' => [
         'settings.pancake-pages.index' => ['Pancake Pages', 'pancake_pages.manage'],
@@ -20,6 +22,7 @@
     ],
     'Modules' => [
         'settings.segmentation-options.index' => ['Segmentation Tracker', 'segmentation_options.manage'],
+        'settings.niches.index' => ['Niche', 'niches.manage'],
         'settings.daily-is.index' => ['Daily I.S.', 'daily_is_products.manage'],
         'settings.call-recordings.index' => ['Call Recordings', 'call_recordings.manage'],
     ],

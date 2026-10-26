@@ -35,6 +35,14 @@
                     <span class="mb-1 block text-sm font-medium">Product cost <span class="font-normal text-muted">(₱ per unit)</span></span>
                     <input type="number" name="unit_cost" value="{{ $errors->any() ? old('unit_cost') : '' }}" min="0" step="0.01" placeholder="e.g. 35" class="{{ $input }}">
                 </label>
+                <label class="md:w-36">
+                    <span class="mb-1 block text-sm font-medium">Type</span>
+                    <select name="is_testing" required class="{{ $input }}">
+                        <option value="" disabled @selected(! $errors->any() || old('is_testing') === null)>Choose</option>
+                        <option value="1" @selected($errors->any() && old('is_testing') === '1')>Testing</option>
+                        <option value="0" @selected($errors->any() && old('is_testing') === '0')>Existing</option>
+                    </select>
+                </label>
                 <label class="md:w-40">
                     <span class="mb-1 block text-sm font-medium">Starting date</span>
                     <input type="date" name="counts_from" required value="{{ $errors->any() ? old('counts_from') : \App\Support\WorkingDate::realToday()->toDateString() }}" class="{{ $input }}">

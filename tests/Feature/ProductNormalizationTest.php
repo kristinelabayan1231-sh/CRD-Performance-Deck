@@ -43,7 +43,7 @@ class ProductNormalizationTest extends TestCase
             'est_out_of_stock_date' => '2026-09-15', 'lead_type' => Lead::TYPE_FSD,
         ]);
 
-        $this->actingAs($owner)->post('/settings/product-consumption', ['name' => 'Pterygium'])->assertSessionHasNoErrors();
+        $this->actingAs($owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Pterygium'])->assertSessionHasNoErrors();
         $this->assertSame(['Pterygium', 'Pterygium Eye Drops'], [$lead->fresh()->product_name, $lead->fresh()->product_raw]);
 
         // Deleting the product puts the original name back.
@@ -55,7 +55,7 @@ class ProductNormalizationTest extends TestCase
     {
         $owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
 
-        $this->actingAs($owner)->post('/settings/product-consumption', ['name' => 'Clearsight', 'keywords' => ' Clear Sight , ,Clearsite,Clear Sight']);
+        $this->actingAs($owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Clearsight', 'keywords' => ' Clear Sight , ,Clearsite,Clear Sight']);
 
         $this->assertSame('Clear Sight, Clearsite', Product::first()->keywords);
     }

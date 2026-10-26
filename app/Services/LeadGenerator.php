@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\NicheRules;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
@@ -328,9 +330,11 @@ class LeadGenerator
     /**
      * Hand out the day's unassigned leads. First each customer's own CRA gets their leads: a High AOV / VIP
      * customer's CRA (Customer Database → High AOV CVR & VIP), else the CRA who has handled two of their orders
-     * (CustomerOwners), whether or not they are on duty. The rest go one at a time, CRD Leads first, to the CRA with
-     * the fewest leads that day, so everyone fills toward the daily quota together and any excess is spread evenly.
-     * Today's own leads still untouched with another CRA (and not transferred) are moved to their customer's CRA.
+     * (CustomerOwners) when the product is in their niche, whether or not they are on duty. The rest go one at a time,
+     * CRD Leads first, to the CRA with the fewest leads that day whose niche (Settings → Niche) has the product, so
+     * everyone fills toward the daily quota together and any excess is spread evenly; a lead no CRA's niche takes
+     * waits unassigned. Today's own leads still untouched with another CRA (and not transferred) are moved to their
+     * customer's CRA.
      */
     public function assign(CarbonImmutable $date): int
     {
@@ -361,9 +365,14 @@ class LeadGenerator
             ->get();
 
         $highValue = app(HighValueCustomers::class);
+        $niches = NicheRules::current();
         $phones = $pending->mapWithKeys(fn (Lead $lead) => [$lead->id => self::normalizePhone((string) $lead->phone_number)]);
         $owners = $this->ownersFor($phones->unique()->values()->all(), $highValue);
-        $ownerOf = fn (Lead $lead) => isset($owners[$phones[$lead->id]]) && array_key_exists($owners[$phones[$lead->id]], $load) ? $owners[$phones[$lead->id]] : null;
+        $ownerOf = function (Lead $lead) use ($owners, $phones, $niches, $load) {
+            $owner = self::ownerFor($owners, $phones[$lead->id], $lead->product_name, $niches);
+
+            return $owner !== null && array_key_exists($owner, $load) ? $owner : null;
+        };
         // Customers' own CRAs first, then the even split.
         [$owned, $rest] = $pending->partition(fn (Lead $lead) => $ownerOf($lead) !== null);
         $handedOut = [];
@@ -371,8 +380,13 @@ class LeadGenerator
 
         foreach ($owned->concat($rest) as $lead) {
             $owner = $ownerOf($lead);
-            // Else the least-loaded CRA; ties go to the earliest CRA so the split is stable.
-            $craId = $owner ?? array_search(min($load), $load, true);
+            // Else the least-loaded CRA whose niche has the product; ties go to the earliest CRA so the split is stable.
+            $open = array_filter($load, fn (int $total, int $craId) => $niches->allows($craId, $lead->product_name), ARRAY_FILTER_USE_BOTH);
+            $craId = $owner ?? ($open === [] ? null : array_search(min($open), $open, true));
+
+            if ($craId === null) {
+                continue;
+            }
 
             $lead->update(['assigned_to' => $craId, 'assigned_at' => now()]);
             $load[$craId]++;
@@ -390,16 +404,33 @@ class LeadGenerator
     }
 
     /**
-     * Each number's own CRA: their High AOV / VIP CRA, else the CRA who has handled two of their orders (CustomerOwners).
+     * Each number's own CRAs: their High AOV / VIP CRA and the CRA who has handled two of their orders (CustomerOwners).
+     * ownerFor() picks between them for a lead.
      *
      * @param  list<string>  $phoneKeys
-     * @return array<string, int> phone key => CRA id
+     * @return array{high_value: array<string, int>, handled: array<string, int>} phone key => CRA id
      */
     public function ownersFor(array $phoneKeys, ?HighValueCustomers $highValue = null): array
     {
         $highValue ??= app(HighValueCustomers::class);
 
-        return rescue(fn () => $highValue->crasFor($phoneKeys), []) + rescue(fn () => app(CustomerOwners::class)->for($phoneKeys), []);
+        return [
+            'high_value' => rescue(fn () => $highValue->crasFor($phoneKeys), []),
+            'handled' => rescue(fn () => app(CustomerOwners::class)->for($phoneKeys), []),
+        ];
+    }
+
+    /**
+     * A lead's own CRA: the customer's High AOV / VIP CRA whatever the product, else the CRA who has handled two of
+     * their orders when the product is in that CRA's niche (Settings → Niche).
+     *
+     * @param  array{high_value: array<string, int>, handled: array<string, int>}  $owners  from ownersFor()
+     */
+    public static function ownerFor(array $owners, string $phoneKey, ?string $product, NicheRules $niches): ?int
+    {
+        $handled = $owners['handled'][$phoneKey] ?? null;
+
+        return $owners['high_value'][$phoneKey] ?? ($handled !== null && $niches->allows($handled, $product) ? $handled : null);
     }
 
     /**
@@ -412,16 +443,56 @@ class LeadGenerator
     {
         $leads = Lead::whereDate('listed_on', $date)->whereDate('est_out_of_stock_date', $date)
             ->whereNotNull('assigned_to')->untouched()->withoutPosSales()->doesntHave('transfers')
-            ->get(['id', 'phone_number', 'assigned_to']);
+            ->get(['id', 'phone_number', 'product_name', 'assigned_to']);
         $owners = $this->ownersFor($leads->map(fn (Lead $lead) => self::normalizePhone((string) $lead->phone_number))->unique()->values()->all());
+        $niches = NicheRules::current();
 
         foreach ($leads as $lead) {
-            $owner = $owners[self::normalizePhone((string) $lead->phone_number)] ?? null;
+            $owner = self::ownerFor($owners, self::normalizePhone((string) $lead->phone_number), $lead->product_name, $niches);
 
             if ($owner !== null && $owner !== $lead->assigned_to && in_array($owner, $craIds, true)) {
                 $lead->update(['assigned_to' => $owner, 'assigned_at' => now()]);
             }
         }
+    }
+
+    /**
+     * After Settings → Niche is saved: a CRA's untouched leads (nobody worked or transferred them) of a product outside
+     * their niche leave them, unless the customer is their High AOV / VIP customer. Worked leads stay where they are.
+     * Today's go to a CRA whose niche has the product now (assign()); earlier days' wait unassigned for the backlog
+     * fill, kept on their day's total (LeadMove) so past days don't change.
+     *
+     * @return int leads released
+     */
+    public function releaseOutsideNiches(CarbonImmutable $today): int
+    {
+        $niches = NicheRules::current();
+
+        if (! $niches->active()) {
+            return 0;
+        }
+
+        $leads = Lead::whereIn('assigned_to', $niches->craIds())->untouched()->withoutPosSales()->doesntHave('transfers')
+            ->get(['id', 'phone_number', 'product_name', 'assigned_to', 'listed_on'])
+            ->reject(fn (Lead $lead) => $niches->allows($lead->assigned_to, $lead->product_name));
+        $highValue = rescue(fn () => app(HighValueCustomers::class)->crasFor($leads->map(fn (Lead $lead) => self::normalizePhone((string) $lead->phone_number))->unique()->values()->all()), []);
+        $leads = $leads->reject(fn (Lead $lead) => ($highValue[self::normalizePhone((string) $lead->phone_number)] ?? null) === $lead->assigned_to);
+
+        DB::transaction(function () use ($leads, $today) {
+            foreach ($leads->filter(fn (Lead $lead) => $lead->listed_on->lt($today))->chunk(500) as $chunk) {
+                LeadMove::insert($chunk->map(fn (Lead $lead) => [
+                    'lead_id' => $lead->id, 'assigned_to' => $lead->assigned_to, 'listed_on' => $lead->listed_on->toDateString(),
+                    'moved_to' => $today->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+                ])->values()->all());
+            }
+            foreach ($leads->pluck('id')->chunk(500) as $ids) {
+                Lead::whereIn('id', $ids->all())->update(['assigned_to' => null, 'assigned_at' => null]);
+            }
+        });
+
+        $this->assign($today);
+
+        return $leads->count();
     }
 
     /**

@@ -20,10 +20,15 @@ use Illuminate\Support\Facades\DB;
  *   the Customer Database counts orders they sold as handled by a CRA.
  * - Each CRA's own account (User Access → Pancake account): credits sales, orders and
  *   conversion to that CRA across the deck; the Customer Database counts them too.
+ * - Each CRA's other accounts (set here, default config customers.cra_account_aliases): count as
+ *   that CRA's own account everywhere it is used.
  */
 class PancakeAccounts
 {
     public const CRD = 'customers.crd_accounts';
+
+    /** Each CRA's other accounts: other account => the CRA's own account. */
+    public const ALIASES = 'customers.cra_account_aliases';
 
     /** When the CRD team accounts last changed: recent customers checked before it get their earlier history checked again. */
     public const HISTORY_RECHECK_FROM = 'customers.history_recheck_from';
@@ -93,8 +98,85 @@ class PancakeAccounts
     }
 
     /**
+     * The CRAs' other accounts as entered: other account => the CRA's own account.
+     *
+     * @return array<string, string>
+     */
+    public static function aliases(): array
+    {
+        $saved = Setting::value(self::ALIASES);
+
+        return $saved === null ? config('customers.cra_account_aliases', []) : json_decode($saved, true);
+    }
+
+    /**
+     * Each CRA's other accounts as entered, by CRA id.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, list<string>>
+     */
+    public static function aliasesByCra(Collection $cras): array
+    {
+        $aliases = collect(self::aliases());
+
+        return $cras->mapWithKeys(fn (User $cra) => [$cra->id => $cra->pancake_name
+            ? $aliases->filter(fn (string $account) => PancakeEngagement::staffKey($account) === PancakeEngagement::staffKey($cra->pancake_name))->keys()->values()->all()
+            : []])->all();
+    }
+
+    /**
+     * Save the other accounts of these CRAs (blanks, repeats and their own account dropped). Other accounts of
+     * CRAs not in $cras are kept.
+     *
+     * @param  Collection<int, User>  $cras
+     * @param  array<int, list<string|null>>  $names  by CRA id
+     */
+    public static function saveAliases(Collection $cras, array $names, User $by): void
+    {
+        $owners = $cras->map(fn (User $cra) => PancakeEngagement::staffKey($cra->pancake_name))->all();
+        $aliases = collect(self::aliases())->reject(fn (string $account) => in_array(PancakeEngagement::staffKey($account), $owners, true));
+
+        foreach ($cras as $cra) {
+            $own = PancakeEngagement::staffKey($cra->pancake_name);
+
+            collect($names[$cra->id] ?? [])
+                ->map(fn (?string $name) => trim(preg_replace('/\s+/', ' ', (string) $name)))
+                ->filter(fn (string $name) => $name !== '' && PancakeEngagement::staffKey($name) !== $own)
+                ->unique(PancakeEngagement::staffKey(...))
+                ->each(function (string $name) use ($aliases, $cra) {
+                    $aliases[$name] = $cra->pancake_name;
+                });
+        }
+
+        Setting::put(self::ALIASES, json_encode($aliases->all()), $by);
+        CustomerDatabase::flushCache();
+    }
+
+    /**
+     * A CRA's own account switched in User Access: the previous account becomes one of their other accounts and
+     * their other accounts follow to the new one, so their earlier orders and chats still count as theirs.
+     */
+    public static function switchOwnAccount(User $cra, ?string $previous, User $by): void
+    {
+        $old = PancakeEngagement::staffKey((string) $previous);
+        $new = PancakeEngagement::staffKey((string) $cra->pancake_name);
+
+        if ($old === '' || $new === '' || $old === $new || $cra->role?->slug !== Role::CRA) {
+            return;
+        }
+
+        $aliases = collect(self::aliases())
+            ->map(fn (string $account) => PancakeEngagement::staffKey($account) === $old ? $cra->pancake_name : $account)
+            ->reject(fn (string $account, string $alias) => PancakeEngagement::staffKey($alias) === $new || PancakeEngagement::staffKey($alias) === $old);
+        $aliases[$previous] = $cra->pancake_name;
+
+        Setting::put(self::ALIASES, json_encode($aliases->all()), $by);
+        CustomerDatabase::flushCache();
+    }
+
+    /**
      * A CRA's Pancake accounts as staff keys: their own (User Access) first, then their other accounts
-     * (config customers.cra_account_aliases, e.g. LHEA GATDULA for CRD LHEI). Empty when no account is set.
+     * (aliases(), e.g. LHEA GATDULA for CRD LHEI). Empty when no account is set.
      *
      * @return list<string>
      */
@@ -106,19 +188,19 @@ class PancakeAccounts
 
         $own = PancakeEngagement::staffKey($cra->pancake_name);
 
-        return collect(config('customers.cra_account_aliases', []))
+        return collect(self::aliases())
             ->filter(fn (string $account) => PancakeEngagement::staffKey($account) === $own)
             ->keys()->map(fn (string $alias) => PancakeEngagement::staffKey($alias))
             ->prepend($own)->unique()->values()->all();
     }
 
     /**
-     * The account a seller key counts as: the CRA's own account when it is one of their other accounts (config
-     * customers.cra_account_aliases), else the key itself.
+     * The account a seller key counts as: the CRA's own account when it is one of their other accounts
+     * (aliases()), else the key itself.
      */
     public static function ownerKey(string $sellerKey): string
     {
-        foreach (config('customers.cra_account_aliases', []) as $alias => $account) {
+        foreach (self::aliases() as $alias => $account) {
             if (PancakeEngagement::staffKey($alias) === $sellerKey) {
                 return PancakeEngagement::staffKey($account);
             }

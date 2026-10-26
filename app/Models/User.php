@@ -54,6 +54,14 @@ class User extends Authenticatable
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Settings → Niche: the only products whose leads this CRA gets (none = every product).
+     */
+    public function niche(): BelongsTo
+    {
+        return $this->belongsTo(Niche::class);
+    }
+
     public function callRecordings(): HasMany
     {
         return $this->hasMany(CallRecording::class);

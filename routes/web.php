@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AgeBracketController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\CallRecordingController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadChatController;
 use App\Http\Controllers\MonthlyCostController;
 use App\Http\Controllers\MonthlyMniController;
+use App\Http\Controllers\NicheController;
 use App\Http\Controllers\OnDutyController;
 use App\Http\Controllers\OrderDatabaseController;
 use App\Http\Controllers\OrderIssueRecheckController;
@@ -32,6 +34,7 @@ use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
+use App\Http\Controllers\ProductStageController;
 use App\Http\Controllers\RepeatPurchaseController;
 use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
@@ -202,6 +205,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('pancake_accounts.manage') => 'settings.pancake-accounts.index',
                 request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
                 request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
+                request()->user()->can('niches.manage') => 'settings.niches.index',
                 request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
                 request()->user()->can('call_recordings.manage') => 'settings.call-recordings.index',
                 request()->user()->can('segmentation.view') => 'settings.spiels.index',
@@ -230,6 +234,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('pancake-accounts')->name('pancake-accounts.')->middleware('can:pancake_accounts.manage')->group(function () {
             Route::get('/', [PancakeAccountController::class, 'index'])->name('index');
             Route::put('/', [PancakeAccountController::class, 'update'])->name('update');
+            Route::put('/aliases', [PancakeAccountController::class, 'updateAliases'])->name('aliases');
         });
 
         Route::prefix('sales-goals')->name('sales-goals.')->middleware('can:sales_goals.manage')->group(function () {
@@ -246,6 +251,13 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::get('/', [SegmentationOptionController::class, 'index'])->name('index');
             Route::put('/cold-attempts', [SegmentationOptionController::class, 'updateColdAttempts'])->name('cold-attempts');
             Route::put('/{list}', [SegmentationOptionController::class, 'update'])->where('list', '[a-z_]+')->name('update');
+        });
+
+        Route::prefix('niches')->name('niches.')->middleware('can:niches.manage')->group(function () {
+            Route::get('/', [NicheController::class, 'index'])->name('index');
+            Route::post('/', [NicheController::class, 'store'])->name('store');
+            Route::put('/{niche}', [NicheController::class, 'update'])->name('update');
+            Route::delete('/{niche}', [NicheController::class, 'destroy'])->name('destroy');
         });
 
         Route::prefix('daily-is')->name('daily-is.')->middleware('can:daily_is_products.manage')->group(function () {
@@ -269,6 +281,16 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {
             Route::get('/', [ConnectionCheckController::class, 'index'])->name('index');
             Route::post('/', [ConnectionCheckController::class, 'run'])->name('run');
+        });
+
+        Route::prefix('testing-products')->name('product-stage.')->group(function () {
+            Route::get('/', [ProductStageController::class, 'index'])->middleware('can:product_consumption.view')->name('index');
+            Route::put('/', [ProductStageController::class, 'update'])->middleware('can:product_stage.manage')->name('update');
+        });
+
+        Route::prefix('age-bracket')->name('age-bracket.')->group(function () {
+            Route::get('/', [AgeBracketController::class, 'index'])->middleware('can:product_consumption.view')->name('index');
+            Route::put('/', [AgeBracketController::class, 'update'])->middleware('can:product_consumption.manage')->name('update');
         });
 
         Route::prefix('product-consumption')->name('product-consumption.')->group(function () {

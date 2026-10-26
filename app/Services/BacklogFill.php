@@ -6,6 +6,7 @@ use App\Models\BacklogHandout;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
+use App\Support\NicheRules;
 use App\Support\OnDuty;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -63,26 +64,27 @@ class BacklogFill
         // other field) move: worked ones stay on their day.
         $waiting = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
             ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
-            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'listed_on', 'est_out_of_stock_date']);
+            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'listed_on', 'est_out_of_stock_date']);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
         $owners = app(LeadGenerator::class)->ownersFor($waiting->map($phoneOf)->unique()->values()->all());
+        $niches = NicheRules::current();
         $active = LeadGenerator::cras()->pluck('id')->flip();
 
         // Three lists, each by out-of-stock month: a filled CRA's own customers (whoever has the lead now: their CRA
         // takes it back), then their backlog of customers no CRA owns, then the unowned pool. A lead whose CRA isn't
-        // being filled now stays for them.
+        // being filled now stays for them. Backlog of a product outside its CRA's niche goes to the pool.
         $owned = [];
         $own = [];
         $pool = [];
         foreach ($waiting as $lead) {
-            $owner = $owners[$phoneOf($lead)] ?? null;
+            $owner = LeadGenerator::ownerFor($owners, $phoneOf($lead), $lead->product_name, $niches);
             $month = $lead->est_out_of_stock_date->format('Y-m');
 
             if ($owner !== null && isset($active[$owner])) {
                 if (isset($room[$owner])) {
                     $owned[$owner][$month][] = $lead;
                 }
-            } elseif ($lead->assigned_to === null) {
+            } elseif ($lead->assigned_to === null || ! $niches->allows($lead->assigned_to, $lead->product_name)) {
                 $pool[$month][] = $lead;
             } elseif (isset($room[$lead->assigned_to])) {
                 $own[$lead->assigned_to][$month][] = $lead;
@@ -95,12 +97,13 @@ class BacklogFill
         $none = [];
 
         // One lead at a time per CRA, each pick from the next month in turn: their own customers' leads while any are
-        // left, then their backlog of that month before pool ones, so every month moves a little each day and the
-        // pool splits evenly.
+        // left, then their backlog of that month before pool ones (of their niche's products), so every month moves a
+        // little each day and the pool splits evenly.
         while ($room !== []) {
             foreach (array_keys($room) as $craId) {
+                $fits = $niches->active() ? fn (Lead $lead) => $niches->allows($craId, $lead->product_name) : null;
                 $lead = $this->nextLead($months, $turn[$craId], $owned[$craId], $none)
-                    ?? $this->nextLead($months, $turn[$craId], $own[$craId], $pool);
+                    ?? $this->nextLead($months, $turn[$craId], $own[$craId], $pool, $fits);
 
                 if ($lead === null || --$room[$craId] === 0) {
                     unset($room[$craId]);
@@ -139,22 +142,43 @@ class BacklogFill
     }
 
     /**
-     * The next lead from the first month, starting at $turn, that still has one; $turn moves past it.
+     * The next lead from the first month, starting at $turn, that still has one; $turn moves past it. With $fits, only
+     * a pool lead it accepts (the CRA's niche) is taken.
      *
      * @param  list<string>  $months
      * @param  array<string, list<Lead>>|null  $own
      * @param  array<string, list<Lead>>  $pool
+     * @param  (callable(Lead): bool)|null  $fits
      */
-    private function nextLead(array $months, int &$turn, ?array &$own, array &$pool): ?Lead
+    private function nextLead(array $months, int &$turn, ?array &$own, array &$pool, ?callable $fits = null): ?Lead
     {
         $count = count($months);
 
         for ($step = 0; $step < $count; $step++) {
             $month = $months[($turn + $step) % $count];
-            $lead = ($own[$month] ?? []) !== [] ? array_shift($own[$month]) : (($pool[$month] ?? []) !== [] ? array_shift($pool[$month]) : null);
+            $lead = ($own[$month] ?? []) !== [] ? array_shift($own[$month]) : $this->takeFromPool($pool, $month, $fits);
 
             if ($lead !== null) {
                 $turn = ($turn + $step + 1) % $count;
+
+                return $lead;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The first pool lead of $month (that $fits accepts, when given), taken out of the pool.
+     *
+     * @param  array<string, list<Lead>>  $pool
+     * @param  (callable(Lead): bool)|null  $fits
+     */
+    private function takeFromPool(array &$pool, string $month, ?callable $fits): ?Lead
+    {
+        foreach ($pool[$month] ?? [] as $index => $lead) {
+            if ($fits === null || $fits($lead)) {
+                array_splice($pool[$month], $index, 1);
 
                 return $lead;
             }

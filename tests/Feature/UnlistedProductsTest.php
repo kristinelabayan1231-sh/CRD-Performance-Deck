@@ -79,7 +79,7 @@ class UnlistedProductsTest extends TestCase
         $this->assertTrue(LogisticsOrder::firstWhere('order_id', '6')->non_crd);
 
         // Adding it back to the list counts from today (Oct 10): its earlier orders stay out.
-        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['name' => 'NutriLay', 'consumption_days' => 15]);
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['is_testing' => '0', 'name' => 'NutriLay', 'consumption_days' => 15]);
         $this->assertSame('2026-10-10', Product::firstWhere('name', 'NutriLay')->counts_from->toDateString());
         $this->assertSame(['1', '6'], PancakeOrder::where('non_crd', true)->orderBy('pancake_order_id')->pluck('pancake_order_id')->all());
     }
@@ -97,7 +97,7 @@ class UnlistedProductsTest extends TestCase
             ['order_id' => 'L-today', 'team' => 'crd', 'customer_name' => 'B', 'phone_number' => '9174444444', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-10'],
         ]);
 
-        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['name' => 'Prime Man', 'consumption_days' => 15]);
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['is_testing' => '0', 'name' => 'Prime Man', 'consumption_days' => 15]);
 
         // Today's order and delivery count; yesterday's stay out.
         $this->assertSame(['yesterday'], PancakeOrder::where('non_crd', true)->pluck('pancake_order_id')->all());
