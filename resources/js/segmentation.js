@@ -113,14 +113,15 @@ function initAutosave() {
             const result = await send(form.action, new FormData(form));
             field.dataset.saved = field.value;
             flash(field, true);
-            if (['status', 'assigned_to', 'repeat_purchase', 'feedback'].includes(field.name)) refreshSummary();
-            // A status can set the feedback too (PJR → NO VERBAL CONV): show it in the same row.
-            const feedback = field.name === 'status' && field.closest('tr')?.querySelector('select[name=feedback]');
-            if (feedback && result.feedback !== undefined && feedback.value !== (result.feedback ?? '')) {
-                feedback.value = result.feedback ?? '';
-                feedback.dataset.saved = feedback.value;
-                recolor(feedback);
-                flash(feedback, true);
+            if (['status', 'assigned_to', 'repeat_purchase', 'feedbacks[]'].includes(field.name)) refreshSummary();
+            if (field.name === 'feedbacks[]') renderFeedback(form, result.feedbacks);
+            // A status can add a feedback too (PJR → NO VERBAL CONV): show it in the same row.
+            const feedback = field.name === 'status' && field.closest('tr')?.querySelector('[data-feedback-form]');
+            if (feedback && result.feedbacks !== undefined) {
+                const before = checkedFeedbacks(feedback).join();
+                feedback.querySelectorAll('input[name="feedbacks[]"]:not([value=""])').forEach((box) => (box.checked = result.feedbacks.includes(box.value)));
+                renderFeedback(feedback, result.feedbacks);
+                if (checkedFeedbacks(feedback).join() !== before) flash(feedback.querySelector('[popovertarget]'), true);
             }
             // A customer tag sets the Date and Time of contact: show them in the same row.
             if (field.name === 'customer_tag') {
@@ -141,7 +142,10 @@ function initAutosave() {
         } catch (error) {
             flash(field, false, error.message);
             alert(error.message);
-            if (field.tagName === 'SELECT') {
+            if (field.type === 'checkbox') {
+                field.checked = !field.checked;
+                renderFeedback(form);
+            } else if (field.tagName === 'SELECT') {
                 field.value = field.dataset.saved ?? [...field.options].find((o) => o.defaultSelected)?.value ?? '';
                 recolor(field);
             } else {
@@ -149,6 +153,49 @@ function initAutosave() {
             }
         }
     });
+}
+
+// Customer's Feedback cell: the ticked choices as badges on its button, in the saved order (main one first) when given.
+function checkedFeedbacks(form) {
+    return [...form.querySelectorAll('input[name="feedbacks[]"]:checked:not([value=""])')].map((box) => box.value);
+}
+
+function renderFeedback(form, order = null) {
+    const boxes = [...form.querySelectorAll('input[name="feedbacks[]"]:checked:not([value=""])')];
+    if (order) boxes.sort((a, b) => order.indexOf(a.value) - order.indexOf(b.value));
+    const badges = boxes.map((box) => box.nextElementSibling.cloneNode(true));
+    if (!badges.length) {
+        const empty = document.createElement('span');
+        empty.className = 'px-1 text-xs font-semibold text-muted';
+        empty.textContent = '—';
+        badges.push(empty);
+    }
+    form.querySelector('[data-feedback-badges]').replaceChildren(...badges);
+}
+
+// Its pop-up opens under the button (above it when there's no room below), kept inside the window.
+function initFeedbackMenus() {
+    // Placed before it shows (so it doesn't flash in the middle) and again once its size is known.
+    const place = (event) => {
+        const menu = event.target;
+        if (!menu.matches?.('[data-feedback-menu]') || event.newState !== 'open') return;
+        const button = menu.closest('form').querySelector('[popovertarget]');
+        const box = button.getBoundingClientRect();
+        const below = window.innerHeight - box.bottom;
+        menu.style.position = 'fixed';
+        menu.style.inset = 'auto';
+        menu.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+        menu.style.top = below >= menu.offsetHeight + 8 || below >= box.top
+            ? `${box.bottom + 4}px`
+            : `${Math.max(8, box.top - menu.offsetHeight - 4)}px`;
+    };
+    document.addEventListener('beforetoggle', place, true);
+    document.addEventListener('toggle', place, true);
+    // The table scrolls under a fixed pop-up: close it rather than leave it floating.
+    document.addEventListener('scroll', (event) => {
+        if (event.target.closest?.('[data-feedback-menu]')) return;
+        document.querySelectorAll('[data-feedback-menu]:popover-open').forEach((menu) => menu.hidePopover());
+    }, true);
 }
 
 // Summary tiles: refresh after a status change and every 30 seconds.
@@ -790,7 +837,7 @@ function initGreeting() {
     dialog.showModal();
 }
 
-// Summary: NO VERBAL CONV's slice or legend row flips the feedback card to its reasons; "Back to chart" flips it back.
+// Product Performance → Segmentation Summary: NO VERBAL CONV's slice or legend row flips the Customer's Feedback card to its reasons; "Back to chart" flips it back.
 function initFlip() {
     const inner = document.querySelector('[data-flip-inner]');
     if (!inner?.querySelector('[data-flip-face="back"]')) return;
@@ -965,4 +1012,5 @@ export function initSegmentation() {
     initTransfer();
     initAutosave();
     initNotes();
+    if (document.querySelector('[data-feedback-menu]')) initFeedbackMenus();
 }

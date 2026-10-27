@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasFeedbacks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Database\Factories\PancakeReservationFactory;
@@ -19,13 +20,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'assigned_to', 'created_by', 'customer_name', 'phone_number', 'phone_key',
     'product_name', 'qty', 'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'lead_type', 'filled_from',
     'status', 'status_updated_by', 'status_updated_at',
-    'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
+    'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'feedbacks', 'callback_date',
     'notes', 'notes_updated_by', 'notes_updated_at',
 ])]
 class PancakeReservation extends Model
 {
     /** @use HasFactory<PancakeReservationFactory> */
     use HasFactory;
+
+    use HasFeedbacks;
 
     protected function casts(): array
     {

@@ -410,17 +410,25 @@ class SegmentationController extends Controller
             'contact_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'contact_time' => $in('contact_times'),
             'feedback' => $in('feedback'),
+            'feedbacks' => ['sometimes', 'nullable', 'array'],
+            'feedbacks.*' => $in('feedback'),
             'callback_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'processed' => ['sometimes', 'boolean'],
         ], [
             'assigned_to.in' => 'Leads can only be assigned to active CRAs.',
             'feedback.in' => "That Customer's Feedback option isn't available.",
+            'feedbacks.*.in' => "That Customer's Feedback option isn't available.",
         ]);
 
         $lead->fill(array_intersect_key($data, array_flip([
             'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
         ])));
+
+        // Customer's Feedback: every choice ticked (several can be).
+        if (array_key_exists('feedbacks', $data)) {
+            $lead->pickFeedbacks(array_filter($data['feedbacks'] ?? []));
+        }
 
         // Tagging a customer means they were just contacted: Date and Time of contact follow (now, Manila time),
         // unless they were sent too. An hour outside the Time of contact choices leaves the time as it is.
@@ -463,7 +471,7 @@ class SegmentationController extends Controller
 
             // Some statuses imply the feedback (PJR → NO VERBAL CONV).
             if ($feedback = config('segmentation.status_feedback')[$data['status']] ?? null) {
-                $lead->feedback = $feedback;
+                $lead->addFeedback($feedback);
             }
         }
 
@@ -492,6 +500,7 @@ class SegmentationController extends Controller
                 'saved' => true,
                 // The page mirrors it into the row's Customer's Feedback cell (it can follow the status).
                 'feedback' => $lead->feedback,
+                'feedbacks' => $lead->feedbackKeys(),
                 // And into Date / Time of contact (a customer tag sets them).
                 'contact_date' => $lead->contact_date?->toDateString(),
                 'contact_time' => $lead->contact_time,

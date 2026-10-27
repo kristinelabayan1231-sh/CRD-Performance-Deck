@@ -5,9 +5,9 @@
     $statusOptions = config('segmentation.statuses');
     $tagOptions = config('segmentation.customer_tags');
 
-    // Customer's Feedback colours: one fixed colour per option (never by rank), in the validated
-    // categorical order (dataviz palette, light: every adjacent pair passes CVD and normal-vision checks).
-    // The rarest option, BLOCKED, folds into a grey "Other" so the donut keeps to eight hues.
+    // Feedback colours: one fixed colour per choice (never by rank), in the validated categorical order (dataviz
+    // palette, light: every adjacent pair passes CVD and normal-vision checks), shared by the donut and the per-product
+    // bars. The rarest choice, BLOCKED, and any choice added later fold into a grey "Other" so the donut keeps to eight hues.
     $sliceColors = [
         'still_have_stocks' => '#2a78d6',
         'no_budget' => '#eb6834',
@@ -18,15 +18,17 @@
         'no_verbal_conv' => '#6250d6',
         'ineffective' => '#e34948',
     ];
-    $feedback = $summary['feedback'];
-    $slices = collect($sliceColors)->map(fn (string $color, string $key) => ['key' => $key, 'label' => $feedbackOptions[$key][0], 'value' => $feedback[$key] ?? 0, 'color' => $color]);
-    $other = $feedback->except(array_keys($sliceColors))->sum();
-    $slices = $slices->put('other', ['key' => 'other', 'label' => 'Other ('.collect($feedbackOptions)->except(array_keys($sliceColors))->map(fn ($o) => $o[0])->join(', ').')', 'value' => $other, 'color' => '#8a8984']);
-    $feedbackTotal = $slices->sum('value');
+    $fold = fn (string $key) => isset($sliceColors[$key]) ? $key : 'other';
+    $otherLabel = 'Other ('.collect($feedbackOptions)->except(array_keys($sliceColors))->map(fn ($o) => $o[0])->join(', ').')';
+
+    // Every choice ticked, so a lead with two counts in both.
+    $picks = $summary['feedback_picks'];
+    $pickSlices = collect($sliceColors)->map(fn (string $color, string $key) => ['key' => $key, 'label' => $feedbackOptions[$key][0] ?? $key, 'value' => $picks[$key] ?? 0, 'color' => $color])
+        ->put('other', ['key' => 'other', 'label' => $otherLabel, 'value' => $picks->except(array_keys($sliceColors))->sum(), 'color' => '#8a8984']);
+    $pickTotal = $pickSlices->sum('value');
     // NO VERBAL CONV leads: their slice or legend row flips the card to why there was no conversation.
     $noVerbalTotal = count($summary['no_verbal']['notes']);
     $noVerbal = $noVerbalTotal > 0;
-    $circumference = 2 * M_PI * 40;
 
     $badge = fn (array $options, ?string $key) => $key && isset($options[$key])
         ? '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap '.$options[$key][1].'">'.e($options[$key][0]).'</span>'
@@ -34,12 +36,12 @@
 @endphp
 
 <x-layouts.app title="Segmentation Summary">
-    <h1 class="mb-4 text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Summary of the leads, {{ $period }}</span></h1>
+    <div class="mb-4">@include('product-performance._tabs')</div>
 
-    @include('segmentation._tabs')
+    <h1 class="mb-4 text-xl font-semibold">Product Performance <span class="text-sm font-normal text-muted">· Segmentation Tracker leads, {{ $period }}</span></h1>
 
     {{-- Filters: CRA, type, product on the left; month and day on the right --}}
-    <form method="GET" action="{{ route('segmentation.overview') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
+    <form method="GET" action="{{ route('product-performance.segmentation-summary') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
         @if ($canViewAll)
             <label class="text-xs font-medium text-muted">
                 <span class="mb-1 block">CRA</span>
@@ -80,7 +82,7 @@
                 <input type="date" name="date" value="{{ $filters['date'] ?? '' }}" onchange="this.form.submit()" class="{{ $field }} text-ink">
             </label>
             @if (array_filter(\Illuminate\Support\Arr::except($filters, ['month', 'cra'])) || ($canViewAll && $filters['cra'] !== 'all'))
-                <a href="{{ route('segmentation.overview') }}" class="grid h-9 place-items-center rounded-lg border border-line px-3 text-sm font-medium hover:border-brand-400 hover:text-brand-600">Reset</a>
+                <a href="{{ route('product-performance.segmentation-summary') }}" class="grid h-9 place-items-center rounded-lg border border-line px-3 text-sm font-medium hover:border-brand-400 hover:text-brand-600">Reset</a>
             @endif
         </div>
         <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white">Apply</button></noscript>
@@ -108,61 +110,23 @@
         </section>
 
         <div class="grid items-start gap-4 xl:grid-cols-12">
-            {{-- Customer's Feedback donut --}}
-            <x-panel title="Customer's feedback" icon="pie" class="xl:col-span-5" body-class="p-4">
+            {{-- Customer's Feedback: every choice ticked, so a lead with two counts twice; by product beside it --}}
+            <x-panel title="Customer's Feedback" icon="pie" class="xl:col-span-12" body-class="p-4">
                 <x-slot:badges>
-                    <span class="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-brand-700 tabular-nums shadow-sm">{{ number_format($feedbackTotal) }}</span>
+                    <span class="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-brand-700 tabular-nums shadow-sm">{{ number_format($pickTotal) }}</span>
                 </x-slot:badges>
-                @if ($feedbackTotal === 0)
+                @if ($pickTotal === 0)
                     <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">No Customer's Feedback recorded yet.</p>
                 @else
+                    {{-- Donut and By product side by side at the same height; By product scrolls when longer --}}
+                    <div class="grid gap-4 lg:grid-cols-2">
                     {{-- A flip card: the donut in front; NO VERBAL CONV's slice or legend row turns it to their reasons --}}
                     <div class="grid perspective-[1200px]">
                     <div data-flip-inner class="grid transition-transform duration-500 transform-3d motion-reduce:transition-none data-flipped:rotate-y-180">
                     <div data-flip-face="front" class="col-start-1 row-start-1 backface-hidden">
-                    <div class="flex flex-col items-center gap-4 rounded-xl bg-white p-4 shadow-sm sm:flex-row sm:items-start">
-                        <svg viewBox="0 0 100 100" class="size-48 shrink-0 -rotate-90" role="img" aria-label="Customer's feedback, {{ $period }}">
-                            <circle cx="50" cy="50" r="40" fill="none" stroke="#f2edf3" stroke-width="16" />
-                            @php($offset = 0)
-                            @php($drawn = $slices->filter(fn ($s) => $s['value'] > 0))
-                            @foreach ($drawn as $slice)
-                                @php($length = $slice['value'] / $feedbackTotal * $circumference)
-                                {{-- 2px surface gap between slices (none for a single slice) --}}
-                                <circle cx="50" cy="50" r="40" fill="none" stroke="{{ $slice['color'] }}" stroke-width="16" @class(['transition-opacity hover:opacity-80', 'cursor-pointer' => $slice['key'] === 'no_verbal_conv' && $noVerbal]) @if ($slice['key'] === 'no_verbal_conv' && $noVerbal) data-flip-open @endif
-                                        stroke-dasharray="{{ max(0.5, $length - ($drawn->count() > 1 ? 1.2 : 0)) }} {{ $circumference }}" stroke-dashoffset="{{ -$offset }}">
-                                    <title>{{ $slice['label'] }}: {{ number_format($slice['value']) }} ({{ round($slice['value'] / $feedbackTotal * 100, 1) }}%)</title>
-                                </circle>
-                                @php($offset += $length)
-                            @endforeach
-                            <text x="50" y="47" text-anchor="middle" transform="rotate(90 50 50)" class="fill-ink text-[14px] font-bold">{{ number_format($feedbackTotal) }}</text>
-                            <text x="50" y="58" text-anchor="middle" transform="rotate(90 50 50)" class="fill-muted text-[6px]">with feedback</text>
-                        </svg>
-                        {{-- Legend doubles as the table view: every option, its count and share --}}
-                        <table class="w-full text-sm">
-                            <caption class="sr-only">Customer's feedback counts</caption>
-                            <tbody>
-                                @foreach ($slices->sortByDesc('value') as $slice)
-                                    <tr @class(['text-muted' => $slice['value'] === 0])>
-                                        <td class="py-1 pr-2">
-                                            <span class="flex items-center gap-2">
-                                                <span aria-hidden="true" class="size-2.5 shrink-0 rounded-sm" style="background: {{ $slice['color'] }}"></span>
-                                                @if ($slice['key'] === 'no_verbal_conv' && $noVerbal)
-                                                    <button type="button" data-flip-open class="text-left text-xs font-semibold text-brand-700 underline decoration-dotted underline-offset-2 hover:text-brand-600">{{ $slice['label'] }} · why?</button>
-                                                @else
-                                                    <span class="text-xs">{{ $slice['label'] }}</span>
-                                                @endif
-                                            </span>
-                                        </td>
-                                        <td class="py-1 text-right text-xs font-semibold tabular-nums">{{ number_format($slice['value']) }}</td>
-                                        <td class="w-12 py-1 text-right text-xs text-muted tabular-nums">{{ round($slice['value'] / $feedbackTotal * 100) }}%</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                    @include('product-performance._feedback-donut', ['slices' => $pickSlices, 'total' => $pickTotal, 'centerLabel' => 'choices ticked',
+                        'ariaLabel' => "Customer's feedback, every choice ticked, {$period}", 'flipKey' => $noVerbal ? 'no_verbal_conv' : null])
                     </div>
-                    <p class="mt-2 text-xs text-muted">{{ number_format($summary['catered'] - $summary['with_feedback']) }} catered {{ Str::plural('lead', $summary['catered'] - $summary['with_feedback']) }} have no feedback yet and aren't in the chart.</p>
-                    </div>
-
                     @if ($noVerbal)
                         {{-- Back: why there was no verbal conversation, from the CRAs' notes --}}
                         <div data-flip-face="back" inert class="col-start-1 row-start-1 flex rotate-y-180 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm backface-hidden">
@@ -211,28 +175,53 @@
                     @endif
                     </div>
                     </div>
-                @endif
-            </x-panel>
+                    <div class="relative min-h-48">
+                        <div class="lg:absolute lg:inset-0">
+                            @include('product-performance._feedback-by-product', ['byProduct' => $summary['feedback_picks_by_product'], 'slices' => $pickSlices, 'noun' => 'choices'])
+                        </div>
+                    </div>
+                    </div>
+                    <p class="mt-2 text-xs text-muted">Every choice ticked on {{ number_format($summary['with_feedback']) }} {{ Str::plural('lead', $summary['with_feedback']) }} (a lead with several counts once for each). {{ number_format($summary['catered'] - $summary['with_feedback']) }} catered {{ Str::plural('lead', $summary['catered'] - $summary['with_feedback']) }} have no feedback yet and aren't in the chart.</p>
 
-            {{-- Insights --}}
-            <x-panel title="Insights" icon="bulb" accent="amber" class="xl:col-span-7" body-class="p-4">
-                @if (empty($summary['insights']))
-                    <p class="rounded-xl bg-white px-4 py-6 text-center text-sm text-muted shadow-sm">Not enough activity yet for insights.</p>
-                @else
-                    <ul class="space-y-2">
-                        @foreach ($summary['insights'] as $insight)
-                            <li class="flex items-start gap-3 rounded-xl bg-white p-3 text-sm shadow-sm">
-                                {{-- Tone shown by icon and colour together, never colour alone --}}
-                                <span @class([
-                                    'grid size-6 shrink-0 place-items-center rounded-full text-xs font-bold',
-                                    'bg-teal/15 text-teal-700' => $insight['tone'] === 'good',
-                                    'bg-coral/20 text-coral-700' => $insight['tone'] === 'warning',
-                                    'bg-sky/20 text-[#156c8c]' => $insight['tone'] === 'info',
-                                ]) aria-label="{{ ['good' => 'Good', 'warning' => 'Needs attention', 'info' => 'Note'][$insight['tone']] }}">{{ ['good' => '✓', 'warning' => '!', 'info' => 'i'][$insight['tone']] }}</span>
-                                <span>{{ $insight['text'] }}</span>
-                            </li>
-                        @endforeach
-                    </ul>
+                    {{-- Per product: click one for its customers and Qty per choice ticked (like Order Database → CRA's Performance) --}}
+                    <div class="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
+                        <h3 class="px-4 pt-4 pb-2 text-xs font-bold tracking-wide text-muted uppercase">Feedback by product <span class="font-normal tracking-normal normal-case">· click a product for its customers and Qty per choice</span></h3>
+                        <div class="x-scrollbar overflow-x-auto">
+                            <table class="w-full min-w-[520px] text-sm tabular-nums">
+                                <thead class="bg-canvas text-[11px] font-semibold tracking-wide text-muted uppercase">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3 text-left">Product / Reason</th>
+                                        <th scope="col" class="px-4 py-3 text-right whitespace-nowrap"># of Customers</th>
+                                        <th scope="col" class="px-4 py-3 text-right">Qty</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($summary['feedback_reasons_by_product'] as $product => $row)
+                                        @php($rowId = 'feedback-product-'.$loop->index)
+                                        <tr class="border-t border-line">
+                                            <th scope="row" class="px-4 py-2.5 text-left">
+                                                <button type="button" aria-expanded="false" aria-controls="{{ $rowId }}"
+                                                        onclick="const open = this.getAttribute('aria-expanded') !== 'true'; this.setAttribute('aria-expanded', open); document.querySelectorAll('[data-feedback-product=&quot;{{ $loop->index }}&quot;]').forEach((row) => row.hidden = ! open)"
+                                                        class="group inline-flex items-center gap-1.5 font-semibold text-brand-600 hover:underline">
+                                                    <svg class="size-3.5 transition group-aria-expanded:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
+                                                    {{ $product ?: '—' }}
+                                                </button>
+                                            </th>
+                                            <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['customers']) }}</td>
+                                            <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['qty']) }}</td>
+                                        </tr>
+                                        @foreach ($row['reasons'] as $reason => $counts)
+                                            <tr data-feedback-product="{{ $loop->parent->index }}" @if ($loop->first) id="{{ $rowId }}" @endif hidden class="border-t border-brand-100 bg-brand-50/60 text-[13px]">
+                                                <th scope="row" class="py-2 pr-4 pl-10 text-left font-medium">{!! $badge($feedbackOptions, $reason) !!}</th>
+                                                <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['customers']) }}</td>
+                                                <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['qty']) }}</td>
+                                            </tr>
+                                        @endforeach
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 @endif
             </x-panel>
 
@@ -334,9 +323,10 @@
                 <div><dt class="font-semibold text-ink">Leads</dt><dd>Segmentation Tracker leads whose lead day (est. out of stock) is in the month picked, up to today's lead day, or the one day picked.</dd></div>
                 <div><dt class="font-semibold text-ink">Catered / Pending</dt><dd>Catered = a status, a date of contact, or marked catered. Pending = none of these yet.</dd></div>
                 <div><dt class="font-semibold text-ink">Converted</dt><dd>Repeat Purchase Yes, or Repeat Purchase No with feedback PURCHASED.</dd></div>
-                <div><dt class="font-semibold text-ink">Customer's feedback</dt><dd>Leads with Customer's Feedback filled in. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: its leads' notes grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, other) and every note.</dd></div>
+                <div><dt class="font-semibold text-ink">Customer's Feedback</dt><dd>Every Customer's Feedback choice ticked, so a lead with two choices counts in both; By product splits them by the lead's product. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: the notes of its leads grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, other) and every note.</dd></div>
+                <div><dt class="font-semibold text-ink">Feedback by product</dt><dd>Per product, the customers (by contact number) with Customer's Feedback and their leads' Qty (the pieces in the delivered order that made them a lead); open a product for the same per choice ticked. A customer with two choices is under both, so the choices can add up to more than the product.</dd></div>
+                <div><dt class="font-semibold text-ink">Top feedback</dt><dd>The most common main choice of the CRA's or product's leads: PURCHASED when it's ticked, else the first one ticked.</dd></div>
                 <div><dt class="font-semibold text-ink">Time of contact</dt><dd>Leads by the Time of Contact picked; the dark part of each bar is how many of them converted.</dd></div>
-                <div><dt class="font-semibold text-ink">Insights</dt><dd>Worked out from these numbers. Hours, products and CRAs are only compared once they have at least {{ \App\Services\SegmentationSummary::MIN_FOR_INSIGHT }} leads.</dd></div>
             </dl>
         </details>
     @endif

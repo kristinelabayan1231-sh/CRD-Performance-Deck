@@ -95,7 +95,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [SegmentationController::class, 'index'])->name('index');
         Route::get('/summary', [SegmentationController::class, 'summary'])->name('summary');
         Route::get('/weekly', [WeeklySegmentationController::class, 'index'])->name('weekly');
-        Route::get('/overview', [SegmentationSummaryController::class, 'index'])->name('overview');
+        // Summary moved to Product Performance → Segmentation Summary; old links still land there.
+        Route::redirect('/overview', '/product-performance/segmentation-summary');
         Route::get('/repeat-purchases', [RepeatPurchaseController::class, 'index'])->name('repeat-purchases');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
@@ -151,7 +152,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [RunningSalesController::class, 'index'])->name('index');
         Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
     });
-    Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
+    Route::prefix('product-performance')->name('product-performance.')->middleware('can:product_performance.view')->group(function () {
+        Route::get('/', [ProductPerformanceController::class, 'index'])->name('index');
+        Route::get('/segmentation-summary', [SegmentationSummaryController::class, 'index'])->name('segmentation-summary');
+    });
     Route::prefix('product-target-market')->name('product-target-market.')->middleware('can:product_target_market.view')->group(function () {
         Route::get('/', [ProductTargetMarketController::class, 'index'])->name('index');
         Route::post('/ages', [ProductTargetMarketController::class, 'fetchAges'])->name('ages');

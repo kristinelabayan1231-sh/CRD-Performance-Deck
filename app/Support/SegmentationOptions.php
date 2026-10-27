@@ -68,6 +68,13 @@ class SegmentationOptions
     {
         $column = config("segmentation.editable_lists.{$list}.column");
 
+        // Customer's Feedback can hold several choices: each one ticked counts, not just the main one.
+        if ($list === 'feedback') {
+            return Lead::whereNotNull('feedback')->toBase()->get(['feedback', 'feedbacks'])
+                ->flatMap(fn (object $lead) => Lead::storedFeedbacks($lead->feedbacks, $lead->feedback))
+                ->countBy()->all();
+        }
+
         return Lead::whereNotNull($column)->groupBy($column)->selectRaw("{$column} as option_key, count(*) as total")
             ->pluck('total', 'option_key')->map(fn ($total) => (int) $total)->all();
     }

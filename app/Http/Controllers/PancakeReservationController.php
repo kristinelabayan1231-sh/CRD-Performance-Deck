@@ -105,13 +105,23 @@ class PancakeReservationController extends Controller
             'contact_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'contact_time' => $in('contact_times'),
             'feedback' => $in('feedback'),
+            'feedbacks' => ['sometimes', 'nullable', 'array'],
+            'feedbacks.*' => $in('feedback'),
             'callback_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
-        ], ['assigned_to.in' => 'Reservations can only be assigned to active CRAs.']);
+        ], [
+            'assigned_to.in' => 'Reservations can only be assigned to active CRAs.',
+            'feedbacks.*.in' => "That Customer's Feedback option isn't available.",
+        ]);
 
         $reservation->fill(array_intersect_key($data, array_flip([
             'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
         ])));
+
+        // Customer's Feedback: every choice ticked (several can be).
+        if (array_key_exists('feedbacks', $data)) {
+            $reservation->pickFeedbacks(array_filter($data['feedbacks'] ?? []));
+        }
 
         if (array_key_exists('notes', $data)) {
             $notes = trim((string) $data['notes']);
@@ -131,7 +141,7 @@ class PancakeReservationController extends Controller
             $reservation->forceFill(['status' => $data['status'], 'status_updated_by' => $user->id, 'status_updated_at' => now()]);
 
             if ($feedback = config('segmentation.status_feedback')[$data['status']] ?? null) {
-                $reservation->feedback = $feedback;
+                $reservation->addFeedback($feedback);
             }
         }
 
@@ -141,6 +151,7 @@ class PancakeReservationController extends Controller
         return response()->json([
             'saved' => true,
             'feedback' => $reservation->feedback,
+            'feedbacks' => $reservation->feedbackKeys(),
             'contact_date' => $reservation->contact_date?->toDateString(),
             'contact_time' => $reservation->contact_time,
             'notes' => $reservation->notes,

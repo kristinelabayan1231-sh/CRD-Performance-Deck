@@ -126,7 +126,7 @@
                     <x-lead-select :lead="$lead" field="contact_time" list="contact_times" :editable="$canEdit" aria-label="Time of contact for {{ $lead->customer_name }}" />
                     @break
                 @case('feedback')
-                    <x-lead-select :lead="$lead" field="feedback" list="feedback" :editable="$canEdit" empty-note="Options coming soon" aria-label="Customer's feedback for {{ $lead->customer_name }}" />
+                    <x-lead-feedback :lead="$lead" :editable="$canEdit" aria-label="Customer's feedback for {{ $lead->customer_name }}" />
                     @break
                 @case('callback_date')
                     <x-lead-date :lead="$lead" field="callback_date" :editable="$canEdit" aria-label="Callback date for {{ $lead->customer_name }}" />
