@@ -45,6 +45,7 @@
                     // Pending: shown but not clickable for now, except for super admins.
                     ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view'), ! $user->isSuperAdmin()],
                     ['Product Performance', route('product-performance.index'), request()->routeIs('product-performance.*'), $user->can('product_performance.view')],
+                    ['Product Target Market', route('product-target-market.index'), request()->routeIs('product-target-market.*'), $user->can('product_target_market.view')],
                 ]],
                 ['name' => 'Customers & Costs', 'icon' => 'database', 'items' => [
                     ['Customer Database', route($user->can('customers.view') ? 'customers.index' : 'customers.high-value'), request()->routeIs('customers.*'), $user->canAny(['customers.view', 'customers.high_value.view'])],

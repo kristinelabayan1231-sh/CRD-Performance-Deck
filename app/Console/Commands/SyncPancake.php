@@ -19,6 +19,7 @@ class SyncPancake extends Command
         {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
         {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
         {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}
+        {--ages : Only fetch the POS orders created on these days again to save the customer ages CRAs noted on them ("Age: 17"; Product Target Market)}
         {--engagements : Only fetch the chat engagements (for backfilling past days without saving their orders again)}
         {--dry-run : With --engagements, show what Pancake returns per staff without saving}
         {--skip=* : With --engagements, a Pancake staff name to leave out (repeat for more)}';
@@ -45,6 +46,17 @@ class SyncPancake extends Command
             $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
 
             return self::SUCCESS;
+        }
+
+        if ($this->option('ages')) {
+            $result = $sync->syncAges($from, $to);
+            $this->info("Pancake noted ages {$from->toDateString()} to {$to->toDateString()}: {$result['customers']} customers with an age.");
+
+            if ($result['failedDays']) {
+                $this->warn('Pancake failed on: '.implode(', ', $result['failedDays']));
+            }
+
+            return $result['failedDays'] ? self::FAILURE : self::SUCCESS;
         }
 
         if ($this->option('engagements')) {

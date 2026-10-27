@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerAge;
 use App\Models\DeliveredOrder;
 use App\Models\LogisticsOrder;
 use App\Models\OrderStatusChange;
@@ -10,6 +11,7 @@ use App\Models\PancakeOrder;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +32,10 @@ class PancakeSync
 
     /** How often (seconds) a page visit may re-check the header's flagged orders in Pancake. */
     public const ISSUES_RECHECK_SECONDS = 120;
+
+    private const AGES_KEY = 'pancake-ages-at';
+
+    private const AGES_RUNNING_KEY = 'pancake-ages-running';
 
     /**
      * Copy one day's chat engagements and POS orders from Pancake. Rows are
@@ -235,6 +241,11 @@ class PancakeSync
      */
     private function saveOrders(Collection $orders, CarbonInterface $now): void
     {
+        CustomerAge::remember($orders->filter(fn (array $row) => ($row['customer_age'] ?? null) && $row['phone_key'])
+            ->sortBy('ordered_on')
+            ->mapWithKeys(fn (array $row) => [$row['phone_key'] => ['age' => $row['customer_age'], 'noted_on' => $row['ordered_on']]])->all());
+        $orders = $orders->map(fn (array $row) => Arr::except($row, 'customer_age'));
+
         foreach ($orders->chunk(200) as $chunk) {
             $before = PancakeOrder::whereIn('pancake_order_id', $chunk->pluck('pancake_order_id'))->pluck('status', 'pancake_order_id')->all();
             OrderStatusChange::recordLeaving($before, $chunk->pluck('status', 'pancake_order_id')->all());
@@ -310,6 +321,9 @@ class PancakeSync
      */
     private function applyChanges(array $orders): int
     {
+        // A note typed after the order was made changes the order, so its age arrives here.
+        CustomerAge::remember(self::noteAges($orders));
+
         $changed = collect($orders)
             ->filter(fn (array $order) => ! empty($order['display_id'] ?? $order['id'] ?? null))
             ->mapWithKeys(function (array $order) {
@@ -576,7 +590,122 @@ class PancakeSync
             // upsert() skips model casts, so the list is stored as JSON here.
             'tags' => json_encode($tagIds),
             'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
+            // Not an order column: saveOrders() keeps it as the customer's CustomerAge.
+            'customer_age' => self::noteAge($order),
         ];
+    }
+
+    /**
+     * The customer's age a CRA typed in the order's internal POS note ("Age: 17" or "Age:17"), or null when there is
+     * none or it isn't 1–120. The printed note (on the waybill) isn't read.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    public static function noteAge(array $order): ?int
+    {
+        if (! is_string($order['note'] ?? null) || ! preg_match('/\bage\s*[:=-]?\s*(\d{1,3})(?!\d)/iu', $order['note'], $match)) {
+            return null;
+        }
+
+        $age = (int) $match[1];
+
+        return $age >= 1 && $age <= 120 ? $age : null;
+    }
+
+    /**
+     * The noted ages on these Pancake orders, by customer: the newest order's when a customer has several.
+     *
+     * @param  iterable<array<string, mixed>>  $orders  as Pancake sends them
+     * @return array<string, array{age: int, noted_on: string}> phone key => age and the order's day (Y-m-d)
+     */
+    public static function noteAges(iterable $orders): array
+    {
+        $ages = [];
+
+        foreach ($orders as $order) {
+            $age = self::noteAge($order);
+            $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
+            $phoneKey = $phone ? LeadGenerator::normalizePhone((string) $phone) : '';
+
+            if ($age === null || $phoneKey === '' || empty($order['inserted_at'])) {
+                continue;
+            }
+
+            $day = CarbonImmutable::parse($order['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString();
+            if (! isset($ages[$phoneKey]) || $ages[$phoneKey]['noted_on'] <= $day) {
+                $ages[$phoneKey] = ['age' => $age, 'noted_on' => $day];
+            }
+        }
+
+        return $ages;
+    }
+
+    /**
+     * Product Target Market: fetch the POS orders created from $from to $to again, only to save the ages CRAs noted
+     * on them (often typed after the order was synced). Days Pancake fails are skipped.
+     *
+     * @return array{customers: int, failedDays: list<string>}
+     */
+    public function syncAges(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $found = [];
+        $failedDays = [];
+
+        for ($day = $from->startOfDay(); $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+            try {
+                $ages = self::noteAges($this->client->orders($day));
+            } catch (Throwable $e) {
+                $failedDays[] = $day->toDateString();
+                Log::warning('Pancake noted ages failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
+
+                continue;
+            }
+
+            CustomerAge::remember($ages);
+            $found += $ages;
+        }
+
+        Cache::put(self::AGES_KEY, now()->toIso8601String(), now()->addYear());
+
+        return ['customers' => count($found), 'failedDays' => $failedDays];
+    }
+
+    /**
+     * syncAges() for the last 3 months after the response is sent (it fetches every order, so it takes a while).
+     * Does nothing while one is already running.
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     */
+    public function syncAgesLater(CarbonImmutable $today): void
+    {
+        if (self::isBuiltInServer() || ! Cache::add(self::AGES_RUNNING_KEY, true, now()->addHour())) {
+            return;
+        }
+
+        defer(function () use ($today) {
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            try {
+                $this->syncAges($today->subMonths(3)->addDay(), $today);
+            } catch (Throwable $e) {
+                Log::warning('Pancake noted ages failed', ['message' => $e->getMessage()]);
+            } finally {
+                Cache::forget(self::AGES_RUNNING_KEY);
+            }
+        }, 'pancake-ages');
+    }
+
+    /** When the last 3 months' ages were last fetched, and whether a fetch is running. */
+    public static function agesFetchedAt(): ?CarbonImmutable
+    {
+        $at = Cache::get(self::AGES_KEY);
+
+        return $at ? CarbonImmutable::parse($at) : null;
+    }
+
+    public static function agesRunning(): bool
+    {
+        return Cache::has(self::AGES_RUNNING_KEY);
     }
 
     /**
