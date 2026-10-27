@@ -112,6 +112,19 @@ class BacklogFillTest extends TestCase
         $this->assertSame('2026-09-01', $regina->fresh()->listed_on->toDateString());
     }
 
+    public function test_a_lead_whose_customer_ordered_the_same_product_again_is_not_handed_out(): void
+    {
+        $old = $this->lead('2026-09-03', null, ['phone_number' => '09165752354', 'delivered_date' => '2026-08-15']);
+        $this->lead('2026-09-21', $this->regina, ['phone_number' => '9165752354', 'delivered_date' => '2026-09-02', 'repeat_purchase' => 'yes']);
+        $otherProduct = $this->lead('2026-09-04', null, ['phone_number' => '9165752354', 'delivered_date' => '2026-08-16', 'product_name' => 'Guyabano']);
+
+        $this->assertSame([$this->july->id => 1], $this->fill($this->july));
+
+        $this->assertNull($old->fresh()->assigned_to);
+        $this->assertSame('2026-09-03', $old->fresh()->listed_on->toDateString());
+        $this->assertSame($this->july->id, $otherProduct->fresh()->assigned_to);
+    }
+
     public function test_a_cra_is_filled_once_a_day_and_processed_leads_still_count(): void
     {
         foreach (range(1, 5) as $i) {

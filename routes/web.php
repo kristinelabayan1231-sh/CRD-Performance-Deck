@@ -21,6 +21,7 @@ use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadChatController;
+use App\Http\Controllers\LeadHandoverController;
 use App\Http\Controllers\MonthlyCostController;
 use App\Http\Controllers\MonthlyMniController;
 use App\Http\Controllers\NicheController;
@@ -99,6 +100,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
+        Route::get('/leads/{lead}/handover', [LeadHandoverController::class, 'show'])->name('handover.show');
+        Route::post('/leads/{lead}/handover', [LeadHandoverController::class, 'store'])->name('handover.store');
         Route::get('/leads/{lead}/chat', LeadChatController::class)->middleware('throttle:30,1')->name('chat');
         Route::post('/leads/{lead}/call', LeadCallController::class)->middleware('throttle:20,1')->name('call');
         Route::post('/leads/{lead}/attempts', [LeadAttemptController::class, 'store'])->name('attempts.store');

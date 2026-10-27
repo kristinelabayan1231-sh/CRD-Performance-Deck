@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Cache;
  * waiting leads of the CRA's own customers (CustomerOwners: two orders handled; High AOV / VIP CRA), wherever they
  * are (the pool, their backlog or another CRA's untouched backlog); then their own untouched backlog of that month,
  * then the unassigned pool (the June–Aug backfill rows with no CRA kept), split evenly. A customer's lead waits for
- * their CRA, never going to another one. Old months are worked little by little next to the current one. A moved lead is listed on $day
+ * their CRA, never going to another one. A lead whose customer has since ordered the same product again stays where it is. Old months are worked little by little next to the current one. A moved lead is listed on $day
  * (listed_on) in the tracker and every report; its out-of-stock date never changes. One still untouched
  * on a later day is that CRA's backlog again and can move again. Moves off a CRA's day are kept (LeadMove)
  * so that day's total never changes.
@@ -64,8 +64,9 @@ class BacklogFill
         // other field) move: worked ones stay on their day.
         $waiting = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
             ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
-            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'listed_on', 'est_out_of_stock_date']);
+            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date']);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
+        $waiting = $this->withoutReordered($waiting, $phoneOf);
         $owners = app(LeadGenerator::class)->ownersFor($waiting->map($phoneOf)->unique()->values()->all());
         $niches = NicheRules::current();
         $active = LeadGenerator::cras()->pluck('id')->flip();
@@ -139,6 +140,26 @@ class BacklogFill
         }
 
         return $moved;
+    }
+
+    /**
+     * $waiting without the leads whose customer has a later order of the same product in the tracker (any CRA's lead,
+     * a POS sale included): they bought again, so the old lead is never handed out.
+     *
+     * @param  Collection<int, Lead>  $waiting
+     * @param  callable(Lead): string  $phoneOf
+     * @return Collection<int, Lead>
+     */
+    private function withoutReordered(Collection $waiting, callable $phoneOf): Collection
+    {
+        // Lead numbers are stored as entered: 9…, 09…, 639… or +639….
+        $formats = $waiting->map($phoneOf)->filter()->unique()->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key]);
+        $lastDelivered = $formats->chunk(1000)
+            ->flatMap(fn (Collection $chunk) => Lead::whereIn('phone_number', $chunk->values()->all())->get(['phone_number', 'product_name', 'delivered_date']))
+            ->groupBy(fn (Lead $lead) => $phoneOf($lead).'|'.$lead->product_name)
+            ->map(fn (Collection $leads) => $leads->max('delivered_date'));
+
+        return $waiting->reject(fn (Lead $lead) => $lastDelivered->get($phoneOf($lead).'|'.$lead->product_name)?->greaterThan($lead->delivered_date) ?? false)->values();
     }
 
     /**

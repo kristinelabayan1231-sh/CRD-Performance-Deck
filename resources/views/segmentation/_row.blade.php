@@ -1,13 +1,15 @@
 {{-- One lead row. Expects $lead plus the parent's $canManage, $cras, $visibleOptional, $canTransfer; pass backlogRow => true for carried-over leads. --}}
 @php($canEdit = $canManage || $lead->assigned_to === auth()->id())
 @php($transferable = ($backlogRow ?? false) && $canTransfer && $lead->carriesOver() && $lead->assigned_to)
-{{-- Right-click opens Copy name / Copy mobile number and Mark as catered / Unmark catered (segmentation.js) for leads this user can edit.
+{{-- Right-click opens Copy name / Copy mobile number, Mark as catered / Unmark catered and, on a Pending row, Transfer to the CRA
+     of the customer's latest order (segmentation.js) for leads this user can edit.
      Clicking the row opens the customer's Pancake chat and the Spiels panel (spiels.js). --}}
 <tr class="cursor-pointer align-middle hover:bg-canvas/30" data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
     data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
     data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}"
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
-        data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}" @endif>
+        data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}"
+        @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
     <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}

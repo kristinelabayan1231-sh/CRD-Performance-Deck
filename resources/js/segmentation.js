@@ -551,7 +551,8 @@ function initCopyPhones() {
     });
 }
 
-// Right-click a lead row: Copy name / Copy mobile number, and Mark as catered (Pending) or Unmark catered (Catered).
+// Right-click a lead row: Copy name / Copy mobile number, Mark as catered (Pending) or Unmark catered (Catered), and on a
+// Pending row "Transfer to <CRA>" when another CRA handled the customer's latest order (looked up as the menu opens).
 function initRowMenu() {
     const menu = document.createElement('div');
     menu.setAttribute('role', 'menu');
@@ -571,13 +572,40 @@ function initRowMenu() {
     const divider = document.createElement('div');
     divider.className = 'my-1 border-t border-line';
     const item = menuItem();
-    menu.append(copyName, copyPhone, divider, item);
+    const handover = menuItem();
+    let handoverTo = null;
+    menu.append(copyName, copyPhone, divider, item, handover);
     document.body.append(menu);
 
     let row = null;
     const close = () => {
         menu.hidden = true;
         row = null;
+    };
+
+    // The CRA of the customer's latest order, if it isn't this row's CRA; shown while the menu is still open on that row.
+    const loadHandover = async (target) => {
+        handoverTo = null;
+        handover.hidden = !target.dataset.handoverUrl;
+        if (handover.hidden) return;
+        handover.disabled = true;
+        handover.textContent = 'Checking last order…';
+        try {
+            const response = await fetch(target.dataset.handoverUrl, { headers: { Accept: 'application/json' } });
+            const { cra } = await response.json();
+            if (row !== target) return;
+            if (!cra) {
+                handover.hidden = true;
+                return;
+            }
+            handoverTo = cra;
+            handover.disabled = false;
+            handover.innerHTML = '<svg class="size-4 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-5-5 5 5-5 5"/></svg>';
+            handover.append(`Transfer to ${cra.name}`);
+            handover.title = `${cra.name} handled their last order (${cra.ordered_on}).`;
+        } catch {
+            if (row === target) handover.hidden = true;
+        }
     };
 
     document.addEventListener('contextmenu', (event) => {
@@ -594,6 +622,7 @@ function initRowMenu() {
         const toProcessed = row.dataset.mark === 'processed';
         item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
         item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
+        loadHandover(row);
         menu.hidden = false;
         // At the pointer; from the keyboard (menu key), under the row's first shown cell (columns can be hidden).
         const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : (() => {
@@ -635,6 +664,28 @@ function initRowMenu() {
         target.style.opacity = '0.35';
         try {
             await send(target.dataset.updateUrl, data);
+            await refreshSections();
+            refreshSummary();
+        } catch (error) {
+            target.style.opacity = '';
+            alert(error.message);
+        }
+    });
+
+    handover.addEventListener('click', async () => {
+        const target = row;
+        const cra = handoverTo;
+        if (!target || !cra) return;
+        close();
+        if (!confirm(`Transfer ${target.dataset.customer} to ${cra.name}? ${cra.name} handled their last order (${cra.ordered_on}).`)) return;
+
+        const data = new FormData();
+        data.append('_token', document.querySelector('meta[name=csrf-token]')?.content || '');
+
+        target.style.transition = 'opacity 200ms';
+        target.style.opacity = '0.35';
+        try {
+            await send(target.dataset.handoverUrl, data);
             await refreshSections();
             refreshSummary();
         } catch (error) {
