@@ -22,10 +22,11 @@ class PancakeClient
     private const ORDER_FIELDS = [
         'id', 'display_id', 'inserted_at', 'status', 'status_name', 'bill_phone_number', 'bill_full_name',
         'customer', 'total_price', 'total_discount', 'page', 'page_id', 'conversation_id', 'assigning_seller', 'tags', 'items',
+        'note',
     ];
 
-    /** What a tag, status or seller refresh keeps of an order. */
-    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name', 'assigning_seller'];
+    /** What a tag, status or seller refresh keeps of an order, with its internal note for Product Target Market's ages. */
+    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name', 'assigning_seller', 'inserted_at', 'bill_phone_number', 'note'];
 
     /**
      * Chat → Analytics → Engagements → Customer engagement for one day, per

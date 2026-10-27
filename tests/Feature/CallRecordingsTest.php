@@ -232,7 +232,8 @@ class CallRecordingsTest extends TestCase
         $latest = $this->recording($this->regina, $lead, 185, '2026-10-23 10:00');
 
         $this->actingAs($this->regina)->get(route('segmentation.index'))->assertOk()
-            ->assertSeeInOrder(['Call Recording', 'Oct 23, 10:00 AM · 3:05', route('call-recordings.audio', $latest), '+ 1 more', route('call-recordings.audio', $older)]);
+            ->assertSeeInOrder(['Call Recording', route('call-recordings.audio', $latest), 'Oct 23, 10:00 AM · 3:05', '+ 1 more', route('call-recordings.audio', $older)])
+            ->assertSee('id="recording-dialog"', false);
 
         // Lhea may open Regina's tracker, but not hear her calls.
         $this->actingAs($this->lhea)->get(route('segmentation.index', ['cra' => $this->regina->id]))->assertOk()
@@ -243,7 +244,8 @@ class CallRecordingsTest extends TestCase
     {
         $webhook = 'https://trigger.macrodroid.com/regina-phone/call';
         $this->regina->forceFill(['call_webhook_url' => $webhook])->save();
-        $mine = $this->lead('09171234567', $this->regina, 'Ana Cruz');
+        // Kept without the 0, as most leads are; the phone needs 09….
+        $mine = $this->lead('9171234567', $this->regina, 'Ana Cruz');
         $theirs = $this->lead('09181234567', $this->lhea, 'Ben Reyes');
         Http::preventStrayRequests();
         Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
@@ -261,9 +263,11 @@ class CallRecordingsTest extends TestCase
     {
         $this->regina->forceFill(['call_webhook_url' => 'https://trigger.macrodroid.com/regina-phone/call'])->save();
         Http::preventStrayRequests();
-        Http::fake(['trigger.macrodroid.com/*' => Http::response('offline', 500)]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::sequence()->push('offline', 500)->push('{"error":"Not found"}', 404)]);
+        $lead = $this->lead('09171234567', $this->regina, 'Ana Cruz');
 
-        $this->actingAs($this->regina)->postJson(route('segmentation.call', $this->lead('09171234567', $this->regina, 'Ana Cruz')))->assertStatus(502);
+        $this->actingAs($this->regina)->postJson(route('segmentation.call', $lead))->assertStatus(502)->assertJsonFragment(['message' => 'Your phone didn\'t answer. Check that it is on, online and MacroDroid is running.']);
+        $this->actingAs($this->regina)->postJson(route('segmentation.call', $lead))->assertStatus(502)->assertJsonPath('message', fn (string $message) => str_contains($message, 'doesn\'t know your phone link'));
     }
 
     public function test_the_call_button_shows_only_once_the_cras_phone_is_linked(): void

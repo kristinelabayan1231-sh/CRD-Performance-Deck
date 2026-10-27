@@ -96,6 +96,9 @@ $modules = [
     'Product Performance' => [
         'product_performance.view' => 'View Product Performance: every CRD account\'s sales, delivered, RTS and cancelled orders per product, with trends and insights',
     ],
+    'Product Target Market' => [
+        'product_target_market.view' => 'View Product Target Market (the ages of each product\'s customers, from "Age: 17" in their POS internal order notes, against Settings → Age Bracket) and fetch the last 3 months\' noted ages',
+    ],
     'Order Database' => [
         'order_database.view' => 'View own CRA\'s Performance and Product Report (Pancake POS orders per status, product, cost and delivery rates)',
         'order_database.view_all' => 'View every CRD account\'s orders and filter by CRA',

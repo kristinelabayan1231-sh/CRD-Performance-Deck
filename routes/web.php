@@ -35,6 +35,7 @@ use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\ProductStageController;
+use App\Http\Controllers\ProductTargetMarketController;
 use App\Http\Controllers\RepeatPurchaseController;
 use App\Http\Controllers\ReportSummaryController;
 use App\Http\Controllers\RoleController;
@@ -148,6 +149,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
     });
     Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
+    Route::prefix('product-target-market')->name('product-target-market.')->middleware('can:product_target_market.view')->group(function () {
+        Route::get('/', [ProductTargetMarketController::class, 'index'])->name('index');
+        Route::post('/ages', [ProductTargetMarketController::class, 'fetchAges'])->name('ages');
+    });
 
     Route::prefix('pc-report')->name('pc-report.')->middleware('can:pc_report.view')->group(function () {
         Route::get('/', [PcReportController::class, 'index'])->name('index');

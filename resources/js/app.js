@@ -9,6 +9,7 @@ import { initMonthlyCost } from './monthly-cost';
 import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
 import { initProductPerformance } from './product-performance';
+import { initProductTargetMarket } from './product-target-market';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initSpiels } from './spiels';
@@ -35,4 +36,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initMni();
     initProductGroups();
     initProductPerformance();
+    initProductTargetMarket();
 });

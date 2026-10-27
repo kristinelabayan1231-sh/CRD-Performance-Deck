@@ -36,6 +36,7 @@
     @endif
 
     @include('segmentation._note-dialog')
+    @include('segmentation._recording-dialog')
 
     {{-- A horizontal scrollbar pinned to the pop-up's bottom: the table's own sits below the last row, out of reach on a mouse without sideways scrolling --}}
     <div data-x-scrollbar hidden class="x-scrollbar fixed bottom-0 z-30 overflow-x-auto overflow-y-hidden border-t border-line bg-white">
