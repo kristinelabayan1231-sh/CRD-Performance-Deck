@@ -31,6 +31,12 @@ class Lead extends Model
         self::TYPE_FSD => 'FSD Lead',
     ];
 
+    /**
+     * Customer Tagging set by itself on a High AOV / VIP customer's lead (HighValueCustomers::tagLeads). On its own it
+     * doesn't count as the lead being touched; a CRA picking it sets the Date of contact, which does.
+     */
+    public const HIGH_VALUE_TAG = 'high_value';
+
     /** Order # prefix of a lead added from a CRA's Pancake POS order (PosLeads), not from the retention report. */
     public const POS_PREFIX = 'POS-';
 
@@ -103,14 +109,22 @@ class Lead extends Model
     }
 
     /**
-     * Never touched by a CRA: unprocessed and every tracking field blank (no note, feedback, Repeat Purchase, tag,
-     * time, callback date or recording). Only these leads may be moved by the backlog fill.
+     * Never touched by a CRA: unprocessed and every tracking field blank (no note, feedback, Repeat Purchase, tag other
+     * than the automatic High Value one, time, callback date or recording). Only these leads may be moved by the backlog fill.
      */
     public function scopeUntouched(Builder $query): Builder
     {
         return $query->unprocessed()
-            ->whereNull('notes')->whereNull('feedback')->whereNull('repeat_purchase')->whereNull('customer_tag')
+            ->whereNull('notes')->whereNull('feedback')->whereNull('repeat_purchase')->untagged()
             ->whereNull('contact_time')->whereNull('callback_date')->whereNull('call_recording_url');
+    }
+
+    /**
+     * No Customer Tagging picked: blank, or only the automatic High Value tag.
+     */
+    public function scopeUntagged(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('customer_tag')->orWhere('customer_tag', self::HIGH_VALUE_TAG));
     }
 
     public function scopeProcessed(Builder $query): Builder

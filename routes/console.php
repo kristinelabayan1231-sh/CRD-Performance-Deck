@@ -76,9 +76,9 @@ Schedule::command('customers:check-history')
     ->withoutOverlapping(20)
     ->runInBackground();
 
-// High AOV CVR & VIP: each High AOV customer goes to the CRA of the first CRA-handled
-// order at which their running AOV (CRA orders only) reached the High AOV minimum.
-// Runs before the hourly lead assignment so their leads go to that CRA.
+// High AOV CVR & VIP: each new High AOV / VIP customer gets a CRA for good (the CRA who handled two
+// of their orders, else the one whose order made them High AOV / VIP), and their current leads are
+// tagged High Value Customers. Runs before the hourly lead assignment so their leads go to that CRA.
 Schedule::command('customers:assign-high-aov')
     ->hourlyAt(50)
     ->timezone(config('segmentation.timezone'))

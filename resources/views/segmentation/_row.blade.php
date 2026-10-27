@@ -4,13 +4,16 @@
 {{-- Right-click opens Copy name / Copy mobile number, Mark as catered / Unmark catered and, on a Pending row, Transfer to the CRA
      of the customer's latest order (segmentation.js) for leads this user can edit.
      Clicking the row opens the customer's Pancake chat and the Spiels panel (spiels.js). --}}
-<tr class="cursor-pointer align-middle hover:bg-canvas/30" data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
+{{-- A High AOV / VIP customer's row looks like theirs in Customer Database: VIP gold, High AOV purple, with its pill --}}
+@php($isVip = (bool) ($highValue['vip'] ?? false))
+@php($isHighAov = ! $isVip && ($highValue['high_aov'] ?? false))
+<tr @class(['cursor-pointer align-middle', 'bg-[#fbf3e0] hover:bg-[#f7ebcd]' => $isVip, 'bg-brand-50/60 hover:bg-brand-50' => $isHighAov, 'hover:bg-canvas/30' => ! $isVip && ! $isHighAov]) data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
     data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
     data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}"
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}"
         @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
-    <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-medium whitespace-nowrap" data-note-cell
+    <td data-col="customer_name" @class(['group sticky left-0 z-10 px-4 py-3 font-medium whitespace-nowrap', 'bg-[#fbf3e0]' => $isVip, 'bg-brand-50' => $isHighAov, 'bg-white' => ! $isVip && ! $isHighAov]) data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
         <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"
@@ -21,6 +24,13 @@
                        aria-label="Select {{ $lead->customer_name }} for transfer" class="size-4 accent-brand-500">
             @endif
             {{ $lead->customer_name }}
+            {{-- Same pills as Customer Database → High AOV CVR & VIP; a VIP shows only VIP --}}
+            @if ($isVip)
+                <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
+                      title="VIP in {{ implode(', ', $highValue['vip_products']) }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+            @elseif ($isHighAov)
+                <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
+            @endif
             {{-- Hover: the customer's order history (order date · product), loaded on first hover (segmentation.js) --}}
             <button type="button" data-orders-open data-orders-url="{{ route('segmentation.orders', $lead) }}" aria-label="Order history of {{ $lead->customer_name }}"
                     class="rounded p-0.5 text-muted/60 transition hover:text-brand-600">
@@ -39,6 +49,9 @@
             <p data-note-meta class="mt-2 text-xs text-muted">{{ \App\Http\Controllers\SegmentationController::notesMeta($lead) }}</p>
         </div>
         <template data-note-value>{{ $lead->notes }}</template>
+        @if ($isVip && $highValue['vip_products'])
+            <span class="mt-0.5 block text-[11px] font-normal text-[#6e5214]">VIP in {{ implode(', ', $highValue['vip_products']) }}</span>
+        @endif
         @if ($backlogRow ?? false)
             <span @class([
                 'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
