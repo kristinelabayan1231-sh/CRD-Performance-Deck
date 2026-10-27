@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CallRecording;
 use App\Models\Lead;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,10 +30,15 @@ class LeadCallController extends Controller
 
         try {
             $response = Http::connectTimeout(5)->timeout(10)
-                ->get($user->call_webhook_url, ['number' => $lead->phone_number, 'lead' => $lead->id]);
+                ->get($user->call_webhook_url, ['number' => $this->dialNumber($lead->phone_number), 'lead' => $lead->id]);
         } catch (Throwable $e) {
             report($e);
             $response = null;
+        }
+
+        // MacroDroid answers 404 for a link it doesn't know, e.g. one typed out with a character missing.
+        if ($response?->notFound()) {
+            return response()->json(['message' => 'MacroDroid doesn\'t know your phone link. Copy it again from the Webhook trigger on your phone and save it in Settings → Call Recordings.'], 502);
         }
 
         if (! $response?->successful()) {
@@ -40,5 +46,15 @@ class LeadCallController extends Controller
         }
 
         return response()->json(['message' => "Calling {$lead->customer_name} on your phone…"]);
+    }
+
+    /**
+     * The number as the phone dials it: leads keep PH mobiles as 9xx…, 09xx… or 639xx…, and the phone needs 09xx….
+     */
+    private function dialNumber(string $phone): string
+    {
+        $phoneKey = CallRecording::phoneKey($phone);
+
+        return strlen($phoneKey) === 10 && str_starts_with($phoneKey, '9') ? '0'.$phoneKey : $phone;
     }
 }

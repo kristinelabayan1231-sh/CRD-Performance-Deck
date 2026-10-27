@@ -791,6 +791,40 @@ function initCallButtons() {
     });
 }
 
+// Call Recording column: a call's button opens the player dialog and starts it; closing stops it.
+function initRecordingPlayer() {
+    const dialog = document.getElementById('recording-dialog');
+    if (!dialog) return;
+
+    const audio = dialog.querySelector('[data-recording-audio]');
+    const error = dialog.querySelector('[data-recording-error]');
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-recording-url]');
+        if (!button) return;
+
+        dialog.querySelector('[data-recording-title]').textContent = button.dataset.recordingTitle || 'Call recording';
+        dialog.querySelector('[data-recording-meta]').textContent = button.dataset.recordingMeta || '';
+        error.hidden = true;
+        audio.src = button.dataset.recordingUrl;
+        dialog.showModal();
+        audio.play().catch(() => {});
+    });
+
+    audio.addEventListener('error', () => {
+        if (audio.getAttribute('src')) error.hidden = false;
+    });
+    dialog.querySelector('[data-recording-close]').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+    });
+}
+
 // Cold leads' Attempt button: logs today's attempt, or takes it back when already logged today.
 function initAttempts() {
     document.addEventListener('click', async (event) => {
@@ -870,6 +904,7 @@ export function initSegmentation() {
     if (document.querySelector('[data-lead-section]')) initCopyPhones();
     if (document.querySelector('[data-lead-section]')) initOrderHistory();
     if (document.querySelector('[data-call-url]')) initCallButtons();
+    initRecordingPlayer();
     if (document.querySelector('[data-attempt]')) initAttempts();
     if (document.querySelector('[data-reservation-form]')) initReservationForm();
     if (!document.querySelector('[data-column-picker], form[data-autosave], [data-live-summary], #transfer-dialog')) return;

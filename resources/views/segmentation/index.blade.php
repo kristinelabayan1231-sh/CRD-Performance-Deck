@@ -208,4 +208,5 @@
     @endif
 
     @include('segmentation._note-dialog')
+    @include('segmentation._recording-dialog')
 </x-layouts.app>

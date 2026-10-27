@@ -1,4 +1,4 @@
-{{-- The lead's call recordings, latest first: the latest with a player, earlier ones under "+ more". A recording plays for its own
+{{-- The lead's call recordings, latest first, earlier ones under "+ more". A recording opens the player dialog for its own
      CRA and for those who may hear every CRA's calls; others see its time and length. A link from the sheet shows as Open link. --}}
 @php
     $recordings = $lead->callRecordings;
@@ -9,7 +9,7 @@
 @if ($recordings->isEmpty() && ! $lead->call_recording_url)
     <span class="text-xs text-muted">—</span>
 @else
-    <div class="flex w-64 flex-col gap-1.5">
+    <div class="flex w-56 flex-col gap-1.5">
         @foreach ($recordings->take(1) as $recording)
             @include('segmentation._recording', ['recording' => $recording])
         @endforeach
