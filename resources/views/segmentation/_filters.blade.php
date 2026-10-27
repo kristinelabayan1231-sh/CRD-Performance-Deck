@@ -4,6 +4,8 @@
 
 {{-- One line on a laptop screen and wider: search and filters, then dates and columns on the right; wraps on narrower screens. --}}
 <form method="GET" action="{{ route('segmentation.index') }}" class="flex flex-wrap items-center gap-2">
+    {{-- First submit button, so Enter in the search submits plainly instead of clicking the range's Apply (which needs both dates). --}}
+    <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
     @if ($filters['repeat'] ?? null)
         <input type="hidden" name="repeat" value="{{ $filters['repeat'] }}">
     @endif
