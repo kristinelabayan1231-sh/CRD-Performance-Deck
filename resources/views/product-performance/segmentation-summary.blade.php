@@ -185,13 +185,14 @@
 
                     {{-- Per product: click one for its customers and Qty per choice ticked (like Order Database → CRA's Performance) --}}
                     <div class="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
-                        <h3 class="px-4 pt-4 pb-2 text-xs font-bold tracking-wide text-muted uppercase">Feedback by product <span class="font-normal tracking-normal normal-case">· click a product for its customers and Qty per choice</span></h3>
+                        <h3 class="px-4 pt-4 pb-2 text-xs font-bold tracking-wide text-muted uppercase">Feedback by product <span class="font-normal tracking-normal normal-case">· click a product for its customers, shipments and Qty per choice</span></h3>
                         <div class="x-scrollbar overflow-x-auto">
                             <table class="w-full min-w-[520px] text-sm tabular-nums">
                                 <thead class="bg-canvas text-[11px] font-semibold tracking-wide text-muted uppercase">
                                     <tr>
                                         <th scope="col" class="px-4 py-3 text-left">Product / Reason</th>
                                         <th scope="col" class="px-4 py-3 text-right whitespace-nowrap"># of Customers</th>
+                                        <th scope="col" class="px-4 py-3 text-right">Shipments</th>
                                         <th scope="col" class="px-4 py-3 text-right">Qty</th>
                                     </tr>
                                 </thead>
@@ -208,12 +209,14 @@
                                                 </button>
                                             </th>
                                             <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['customers']) }}</td>
+                                            <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['shipments']) }}</td>
                                             <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['qty']) }}</td>
                                         </tr>
                                         @foreach ($row['reasons'] as $reason => $counts)
                                             <tr data-feedback-product="{{ $loop->parent->index }}" @if ($loop->first) id="{{ $rowId }}" @endif hidden class="border-t border-brand-100 bg-brand-50/60 text-[13px]">
                                                 <th scope="row" class="py-2 pr-4 pl-10 text-left font-medium">{!! $badge($feedbackOptions, $reason) !!}</th>
                                                 <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['customers']) }}</td>
+                                                <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['shipments']) }}</td>
                                                 <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['qty']) }}</td>
                                             </tr>
                                         @endforeach
@@ -324,7 +327,7 @@
                 <div><dt class="font-semibold text-ink">Catered / Pending</dt><dd>Catered = a status, a date of contact, or marked catered. Pending = none of these yet.</dd></div>
                 <div><dt class="font-semibold text-ink">Converted</dt><dd>Repeat Purchase Yes, or Repeat Purchase No with feedback PURCHASED.</dd></div>
                 <div><dt class="font-semibold text-ink">Customer's Feedback</dt><dd>Every Customer's Feedback choice ticked, so a lead with two choices counts in both; By product splits them by the lead's product. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: the notes of its leads grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, other) and every note.</dd></div>
-                <div><dt class="font-semibold text-ink">Feedback by product</dt><dd>Per product, the customers (by contact number) with Customer's Feedback and their leads' Qty (the pieces in the delivered order that made them a lead); open a product for the same per choice ticked. A customer with two choices is under both, so the choices can add up to more than the product.</dd></div>
+                <div><dt class="font-semibold text-ink">Feedback by product</dt><dd>Per product, the customers (by contact number) with Customer's Feedback, their shipments (leads: each is one delivered order) and Qty (the pieces in those orders); open a product for the same per choice ticked. A customer with two choices is under both, so the choices can add up to more than the product.</dd></div>
                 <div><dt class="font-semibold text-ink">Top feedback</dt><dd>The most common main choice of the CRA's or product's leads: PURCHASED when it's ticked, else the first one ticked.</dd></div>
                 <div><dt class="font-semibold text-ink">Time of contact</dt><dd>Leads by the Time of Contact picked; the dark part of each bar is how many of them converted.</dd></div>
             </dl>

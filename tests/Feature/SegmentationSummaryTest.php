@@ -60,9 +60,11 @@ class SegmentationSummaryTest extends TestCase
                 && $s['feedback_picks']->sortKeys()->all() === ['blocked' => 1, 'no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 2]
                 && $s['feedback_picks_by_product']['Sinuxyl']->sortKeys()->all() === ['blocked' => 1, 'still_have_stocks' => 1]
                 && $s['feedback_picks_by_product']['CanPro']->sortKeys()->all() === ['no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 1]
-                && $s['feedback_reasons_by_product']['CanPro']['customers'] === 5 && $s['feedback_reasons_by_product']['CanPro']['qty'] === 5
+                && $s['feedback_reasons_by_product']['CanPro']['customers'] === 5 && $s['feedback_reasons_by_product']['CanPro']['shipments'] === 5
+                && $s['feedback_reasons_by_product']['CanPro']['qty'] === 5
                 && $s['feedback_reasons_by_product']['CanPro']['reasons']->all() === [
-                    'no_verbal_conv' => ['customers' => 4, 'qty' => 4], 'purchased' => ['customers' => 1, 'qty' => 1], 'still_have_stocks' => ['customers' => 1, 'qty' => 1],
+                    'no_verbal_conv' => ['customers' => 4, 'shipments' => 4, 'qty' => 4], 'purchased' => ['customers' => 1, 'shipments' => 1, 'qty' => 1],
+                    'still_have_stocks' => ['customers' => 1, 'shipments' => 1, 'qty' => 1],
                 ]
                 && $s['hours']['10'] === ['label' => '10:00AM-11:00AM', 'contacts' => 5, 'converted' => 1])
             ->assertDontSee('Call Outcome')

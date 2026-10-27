@@ -77,8 +77,9 @@ class SegmentationSummary
                 'product_name' => $row->product_name, 'phone' => $row->phone_number, 'qty' => (int) $row->qty,
                 'all' => Lead::storedFeedbacks($row->feedbacks, $row->feedback),
             ]);
-        // Customers (by contact number) and their leads' Qty, per product and per choice ticked.
-        $customersAndQty = fn (Collection $rows) => ['customers' => $rows->pluck('phone')->unique()->count(), 'qty' => $rows->sum('qty')];
+        // Customers (by contact number), shipments (leads: one delivered order each) and their Qty (pieces), per product
+        // and per choice ticked.
+        $customersAndQty = fn (Collection $rows) => ['customers' => $rows->pluck('phone')->unique()->count(), 'shipments' => $rows->count(), 'qty' => $rows->sum('qty')];
 
         $rate = fn (int $part, int $whole) => $whole > 0 ? $part / $whole : null;
 
