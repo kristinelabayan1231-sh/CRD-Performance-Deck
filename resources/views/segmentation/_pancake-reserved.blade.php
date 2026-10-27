@@ -166,7 +166,7 @@
                                             <x-lead-select :lead="$reservation" :action="$updateUrl" field="contact_time" list="contact_times" :editable="$canEdit" aria-label="Time of contact for {{ $reservation->customer_name }}" />
                                             @break
                                         @case('feedback')
-                                            <x-lead-select :lead="$reservation" :action="$updateUrl" field="feedback" list="feedback" :editable="$canEdit" empty-note="Options coming soon" aria-label="Customer's feedback for {{ $reservation->customer_name }}" />
+                                            <x-lead-feedback :lead="$reservation" :action="$updateUrl" :editable="$canEdit" aria-label="Customer's feedback for {{ $reservation->customer_name }}" />
                                             @break
                                         @case('callback_date')
                                             <x-lead-date :lead="$reservation" :action="$updateUrl" field="callback_date" :editable="$canEdit" aria-label="Callback date for {{ $reservation->customer_name }}" />

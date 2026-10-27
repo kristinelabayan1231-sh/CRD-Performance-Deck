@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasFeedbacks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -14,11 +15,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'order_id', 'tracking_number', 'customer_name', 'phone_number', 'product_name', 'product_raw', 'qty', 'qty_unknown',
     'delivered_date', 'consumption_days', 'est_out_of_stock_date', 'listed_on', 'lead_type',
     'assigned_to', 'assigned_at', 'status', 'status_updated_by', 'status_updated_at',
-    'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
+    'repeat_purchase', 'repeat_purchase_on', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'feedbacks', 'callback_date',
     'call_recording_url', 'notes', 'notes_updated_by', 'notes_updated_at',
 ])]
 class Lead extends Model
 {
+    use HasFeedbacks;
+
     public const TYPE_CRD = 'crd';
 
     public const TYPE_FSD = 'fsd';
@@ -27,6 +30,12 @@ class Lead extends Model
         self::TYPE_CRD => 'CRD Lead',
         self::TYPE_FSD => 'FSD Lead',
     ];
+
+    /**
+     * Customer Tagging set by itself on a High AOV / VIP customer's lead (HighValueCustomers::tagLeads). On its own it
+     * doesn't count as the lead being touched; a CRA picking it sets the Date of contact, which does.
+     */
+    public const HIGH_VALUE_TAG = 'high_value';
 
     /** Order # prefix of a lead added from a CRA's Pancake POS order (PosLeads), not from the retention report. */
     public const POS_PREFIX = 'POS-';
@@ -100,14 +109,22 @@ class Lead extends Model
     }
 
     /**
-     * Never touched by a CRA: unprocessed and every tracking field blank (no note, feedback, Repeat Purchase, tag,
-     * time, callback date or recording). Only these leads may be moved by the backlog fill.
+     * Never touched by a CRA: unprocessed and every tracking field blank (no note, feedback, Repeat Purchase, tag other
+     * than the automatic High Value one, time, callback date or recording). Only these leads may be moved by the backlog fill.
      */
     public function scopeUntouched(Builder $query): Builder
     {
         return $query->unprocessed()
-            ->whereNull('notes')->whereNull('feedback')->whereNull('repeat_purchase')->whereNull('customer_tag')
+            ->whereNull('notes')->whereNull('feedback')->whereNull('repeat_purchase')->untagged()
             ->whereNull('contact_time')->whereNull('callback_date')->whereNull('call_recording_url');
+    }
+
+    /**
+     * No Customer Tagging picked: blank, or only the automatic High Value tag.
+     */
+    public function scopeUntagged(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereNull('customer_tag')->orWhere('customer_tag', self::HIGH_VALUE_TAG));
     }
 
     public function scopeProcessed(Builder $query): Builder
@@ -317,6 +334,19 @@ class Lead extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    /**
+     * Hand the lead to $to from $day on: listed on $day for them, while its old day keeps counting it for the CRA
+     * who had it (LeadMove), so past days read the same. Logged as a transfer by $by.
+     */
+    public function transferTo(User $to, User $by, CarbonImmutable $day): void
+    {
+        BacklogHandout::create(['lead_id' => $this->id, 'user_id' => $to->id, 'handed_on' => $day->toDateString(), 'source' => BacklogHandout::TRANSFER]);
+        LeadMove::create(['lead_id' => $this->id, 'assigned_to' => $this->assigned_to, 'listed_on' => $this->listed_on->toDateString(), 'moved_to' => $day->toDateString()]);
+        LeadTransfer::create(['lead_id' => $this->id, 'from_user_id' => $this->assigned_to, 'to_user_id' => $to->id, 'transferred_by' => $by->id]);
+
+        $this->forceFill(['assigned_to' => $to->id, 'assigned_at' => now(), 'listed_on' => $day->toDateString()])->save();
     }
 
     public function notesAuthor(): BelongsTo

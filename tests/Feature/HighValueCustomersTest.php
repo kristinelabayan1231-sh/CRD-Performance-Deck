@@ -200,27 +200,89 @@ class HighValueCustomersTest extends TestCase
         );
     }
 
-    public function test_the_rule_replaces_a_customers_cra_but_an_admin_or_manager_change_always_wins(): void
+    public function test_a_customers_cra_is_set_once_and_stays_and_a_cleared_one_by_hand_stays_cleared(): void
     {
         [$lhea, $anna] = $this->sellers();
         $this->delivered('P1', 'crd', 'Pia Lopez', '9170000001', '2026-08-01', 1500, seller: 'CRD LHEI');
+        $this->delivered('S1', 'crd', 'Sol Ramos', '9170000003', '2026-08-01', 1500, seller: 'CRD LHEI');
         CustomerAccount::create(['phone_key' => '9170000001', 'assigned_cra_id' => $this->regina->id]);
 
-        $this->artisan('customers:assign-high-aov')->assertSuccessful();
-        $this->assertSame($lhea->id, CustomerAccount::firstWhere('phone_key', '9170000001')->assigned_cra_id);
-
-        // Lhea letting go of her own customer doesn't lock it: the rule gives Pia back to her.
-        $this->actingAs($lhea)->patchJson(route('customers.high-value.update', '9170000001'), ['assigned_cra_id' => null])->assertOk();
-        $this->artisan('customers:assign-high-aov')->assertSuccessful();
-        $this->assertSame($lhea->id, CustomerAccount::firstWhere('phone_key', '9170000001')->assigned_cra_id);
-
-        $this->actingAs($this->owner)->patchJson(route('customers.high-value.update', '9170000001'), ['assigned_cra_id' => $this->regina->id])->assertOk();
-        // An earlier order by Anna now makes her the rule's answer; the edit still wins.
-        $this->delivered('P0', 'crd', 'Pia Lopez', '9170000001', '2026-07-01', 1500, seller: 'CRD ANNA PACLIBARE 2');
-        CustomerDatabase::flushCache();
-        $this->assertSame($anna->id, app(HighValueCustomers::class)->firstReorderCras()['9170000001']);
+        // Pia already has Regina: the job leaves her there. Sol is new: Lhea's order made her High AOV.
         $this->artisan('customers:assign-high-aov')->assertSuccessful();
         $this->assertSame($this->regina->id, CustomerAccount::firstWhere('phone_key', '9170000001')->assigned_cra_id);
+        $this->assertSame($lhea->id, CustomerAccount::firstWhere('phone_key', '9170000003')->assigned_cra_id);
+
+        // An earlier order by Anna would now be the answer, but Sol's CRA doesn't change.
+        $this->delivered('S0', 'crd', 'Sol Ramos', '9170000003', '2026-07-01', 1500, seller: 'CRD ANNA PACLIBARE 2');
+        CustomerDatabase::flushCache();
+        $this->artisan('customers:assign-high-aov')->assertSuccessful();
+        $this->assertSame($lhea->id, CustomerAccount::firstWhere('phone_key', '9170000003')->assigned_cra_id);
+
+        // A supervisor clearing a CRA by hand keeps it cleared.
+        $this->actingAs($this->owner)->patchJson(route('customers.high-value.update', '9170000001'), ['assigned_cra_id' => null])->assertOk();
+        $this->artisan('customers:assign-high-aov')->assertSuccessful();
+        $this->assertNull(CustomerAccount::firstWhere('phone_key', '9170000001')->assigned_cra_id);
+    }
+
+    public function test_a_new_high_value_customer_goes_to_the_cra_who_handled_two_orders_before_the_qualifying_order(): void
+    {
+        [$lhea, $anna] = $this->sellers();
+        // Tess: Anna's ₱1,500 order made her High AOV, but Lhea handled two of her orders → Lhea.
+        $this->delivered('T1', 'crd', 'Tess Ong', '9170000004', '2026-08-01', 1500, seller: 'CRD ANNA PACLIBARE 2');
+        $this->delivered('T2', 'crd', 'Tess Ong', '9170000004', '2026-08-20', 1500, seller: 'CRD LHEI');
+        $this->delivered('T3', 'crd', 'Tess Ong', '9170000004', '2026-09-10', 1500, seller: 'CRD LHEI');
+        PancakeOrder::whereIn('pancake_order_id', ['T1', 'T2', 'T3'])->get()->each(fn (PancakeOrder $order) => $order->update(['ordered_at' => $order->ordered_on]));
+        // Vera: VIP on Anna's order that took her Pterygium spend to its CLTV (₱499 × 30); Lhea's small one came first.
+        $this->delivered('V1', 'crd', 'Vera Sy', '9170000005', '2026-07-01', 300, [['name' => 'Pterygium', 'qty' => 1]], 'CRD LHEI');
+        $this->delivered('V2', 'crd', 'Vera Sy', '9170000005', '2026-08-01', 14970, [['name' => 'Pterygium', 'qty' => 30]], 'CRD ANNA PACLIBARE 2');
+
+        $this->assertSame(['9170000005' => $anna->id], app(HighValueCustomers::class)->vipQualifyingCras(['9170000005']));
+
+        $this->assertSame(2, app(HighValueCustomers::class)->assignNewCustomers());
+        $this->assertSame($lhea->id, CustomerAccount::firstWhere('phone_key', '9170000004')->assigned_cra_id);
+        $this->assertSame($anna->id, CustomerAccount::firstWhere('phone_key', '9170000005')->assigned_cra_id);
+    }
+
+    public function test_high_value_leads_go_to_their_cra_tagged_and_look_like_their_customer_database_row(): void
+    {
+        $this->customers();
+        CustomerAccount::create(['phone_key' => '9174444444', 'assigned_cra_id' => $this->lhea->id]);
+        $lead = fn (string $phone, string $name, array $fields = []) => Lead::create([
+            'order_id' => 'L'.$phone, 'customer_name' => $name, 'phone_number' => '0'.$phone, 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-09-20', 'consumption_days' => 20, 'est_out_of_stock_date' => '2026-10-10', 'lead_type' => Lead::TYPE_CRD, ...$fields,
+        ]);
+        $dina = $lead('9174444444', 'Dina Lim');
+        $ana = $lead('9171111111', 'Ana Cruz');
+        $ben = $lead('9172222222', 'Ben Reyes');
+        // A tag already picked is kept; an older untouched lead of hers is tagged by the job.
+        $edgar = $lead('9108803020', 'Edgar Recamara', ['customer_tag' => 'warm']);
+        $old = $lead('9171111111', 'Ana Cruz', ['order_id' => 'OLD', 'est_out_of_stock_date' => '2026-10-01', 'listed_on' => '2026-10-01']);
+
+        app(LeadGenerator::class)->assign(CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertSame($this->lhea->id, $dina->fresh()->assigned_to);
+        foreach ([$dina, $ana] as $tagged) {
+            $tagged = $tagged->fresh();
+            $this->assertSame(Lead::HIGH_VALUE_TAG, $tagged->customer_tag);
+            // Not contacted, and the backlog fill can still move it.
+            $this->assertNull($tagged->contact_date);
+            $this->assertTrue(Lead::untouched()->whereKey($tagged->id)->exists());
+        }
+        $this->assertNull($ben->fresh()->customer_tag);
+        $this->assertSame('warm', $edgar->fresh()->customer_tag);
+
+        $this->assertNull($old->fresh()->customer_tag);
+        $this->artisan('customers:assign-high-aov')->assertSuccessful();
+        $this->assertSame(Lead::HIGH_VALUE_TAG, $old->fresh()->customer_tag);
+
+        // Dina's row is gold with the VIP pill; Ana's purple with HIGH AOV; Ben's plain.
+        $page = $this->actingAs($this->owner)->get(route('segmentation.index', ['date' => '2026-10-10']))->assertOk()
+            ->assertSeeInOrder(['Dina Lim', 'VIP', 'VIP in Pterygium'])->getContent();
+        $row = fn (string $name) => substr($page, strrpos(substr($page, 0, strpos($page, $name)), '<tr'), 600);
+        $this->assertStringContainsString('bg-[#fbf3e0]', $row('Dina Lim'));
+        $this->assertStringContainsString('bg-brand-50/60', $row('Ana Cruz'));
+        $this->assertStringNotContainsString('bg-brand-50/60', $row('Ben Reyes'));
+        $this->assertStringContainsString('HIGH AOV', substr($page, strpos($page, 'Ana Cruz'), 2500));
     }
 
     public function test_orders_from_before_the_first_day_come_first(): void

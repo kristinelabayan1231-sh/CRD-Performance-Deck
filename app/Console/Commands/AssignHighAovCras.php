@@ -10,12 +10,13 @@ class AssignHighAovCras extends Command
 {
     protected $signature = 'customers:assign-high-aov';
 
-    protected $description = 'Give each High AOV customer the CRA of the first CRA-handled order at which their running AOV (CRA orders only) reached the High AOV minimum';
+    protected $description = 'Give each new High AOV / VIP customer a CRA for good (handled two orders, else the order that made them High AOV / VIP) and tag their current leads High Value Customers';
 
     public function handle(HighValueCustomers $highValue): int
     {
-        $changed = $highValue->assignByFirstReorder();
-        $summary = "{$changed} High AOV customers moved to the CRA of their first reorder.";
+        $assigned = $highValue->assignNewCustomers();
+        $tagged = $highValue->tagLeads();
+        $summary = "{$assigned} new High AOV / VIP customers given a CRA; {$tagged} leads tagged High Value Customers.";
         $this->info($summary);
 
         // Runs in the background, so its output is lost: log it for the host's logs.

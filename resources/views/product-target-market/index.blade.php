@@ -102,10 +102,10 @@
                                 <tr class="text-left text-[11px] font-semibold tracking-wide text-muted uppercase">
                                     <th class="px-2 py-1">Product</th>
                                     @foreach ($bands as $band)
-                                        <th class="px-2 py-1 text-center">{{ ProductTargetMarket::bandLabel($band) }}</th>
+                                        <th class="whitespace-nowrap px-2 py-1 text-center">{{ ProductTargetMarket::bandLabel($band) }}</th>
                                     @endforeach
-                                    <th class="px-2 py-1 text-right">With age</th>
-                                    <th class="px-2 py-1 text-right">In target</th>
+                                    <th class="whitespace-nowrap px-2 py-1 text-right">With age</th>
+                                    <th class="whitespace-nowrap px-2 py-1 text-right">In target</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -129,8 +129,8 @@
                                                 {{ $share === null ? '—' : $percent($share) }}
                                             </td>
                                         @endforeach
-                                        <td class="px-2 text-right">{{ number_format($row['withAge']) }}<span class="block text-xs text-muted">of {{ number_format($row['customers']) }}</span></td>
-                                        <td class="px-2 text-right">{!! $pill($row['status']) !!}<span class="block text-xs text-muted">{{ $percent($row['share']) }}</span></td>
+                                        <td class="whitespace-nowrap px-2 text-right tabular-nums">{{ number_format($row['withAge']) }}<span class="block text-xs text-muted">of {{ number_format($row['customers']) }}</span></td>
+                                        <td class="whitespace-nowrap px-2 text-right">{!! $pill($row['status']) !!}<span class="block text-xs text-muted">{{ $percent($row['share']) }}</span></td>
                                     </tr>
                                 @endforeach
                             </tbody>

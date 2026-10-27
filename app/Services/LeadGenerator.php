@@ -367,7 +367,10 @@ class LeadGenerator
         $highValue = app(HighValueCustomers::class);
         $niches = NicheRules::current();
         $phones = $pending->mapWithKeys(fn (Lead $lead) => [$lead->id => self::normalizePhone((string) $lead->phone_number)]);
+        // A High AOV / VIP customer new to the list gets their CRA for good first, so their lead goes to them.
+        rescue(fn () => $highValue->assignNewCustomers($phones->unique()->values()->all()));
         $owners = $this->ownersFor($phones->unique()->values()->all(), $highValue);
+        $highValueFlags = rescue(fn () => $highValue->flagsForNumbers($phones->unique()->values()->all()), []);
         $ownerOf = function (Lead $lead) use ($owners, $phones, $niches, $load) {
             $owner = self::ownerFor($owners, $phones[$lead->id], $lead->product_name, $niches);
 
@@ -397,8 +400,15 @@ class LeadGenerator
             }
         }
 
-        // A new High AOV / VIP customer is kept with whoever got their lead.
+        // A High AOV / VIP customer nobody could be found for is kept with whoever got their lead.
         rescue(fn () => $highValue->claimForLeads($handedOut));
+
+        // Their leads are tagged High Value Customers when no tag is picked yet (without a Date or Time of contact).
+        $highValueLeads = $pending->filter(fn (Lead $lead) => $lead->customer_tag === null && $lead->assigned_to !== null)
+            ->filter(fn (Lead $lead) => isset($highValueFlags[$phones[$lead->id]]));
+        if ($highValueLeads->isNotEmpty() && array_key_exists(Lead::HIGH_VALUE_TAG, config('segmentation.customer_tags'))) {
+            Lead::whereIn('id', $highValueLeads->modelKeys())->update(['customer_tag' => Lead::HIGH_VALUE_TAG]);
+        }
 
         return $assigned;
     }

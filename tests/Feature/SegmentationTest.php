@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\LeadGenerator;
+use App\Support\SegmentationOptions;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -521,14 +522,38 @@ class SegmentationTest extends TestCase
         $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'active'])
             ->assertOk()->assertJson(['feedback' => 'no_budget']);
 
-        // PJR replaces the feedback (a real Customer's Feedback option), and the response carries it so the row's
-        // feedback cell can follow. Customer Tagging is left alone.
+        // PJR adds NO VERBAL CONV as the main choice and keeps the one already ticked; the response carries them so the
+        // row's feedback cell can follow. Customer Tagging is left alone.
         $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['status' => 'pjr_drop_call'])
-            ->assertOk()->assertJson(['feedback' => 'no_verbal_conv']);
+            ->assertOk()->assertJson(['feedback' => 'no_verbal_conv', 'feedbacks' => ['no_verbal_conv', 'no_budget']]);
         $lead->refresh();
-        $this->assertArrayHasKey($lead->feedback, config('segmentation.feedback'));
         $this->assertSame('no_verbal_conv', $lead->feedback);
+        $this->assertSame(['no_verbal_conv', 'no_budget'], $lead->feedbackKeys());
         $this->assertSame('hot', $lead->customer_tag);
+    }
+
+    public function test_customers_feedback_holds_several_choices_with_purchased_as_the_main_one(): void
+    {
+        $alice = $this->cra('alice@gmail.com');
+        $lead = Lead::create([
+            'order_id' => '1', 'customer_name' => 'Pat', 'phone_number' => '9171', 'product_name' => 'Sinuxyl', 'qty' => 1,
+            'delivered_date' => '2026-09-05', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-05',
+            'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $alice->id, 'feedback' => 'still_have_stocks',
+        ]);
+        $update = fn (array $feedbacks) => $this->actingAs($alice)->patchJson(route('segmentation.update', $lead), ['feedbacks' => ['', ...$feedbacks]]);
+
+        // A choice already ticked keeps its place; a new one goes after it.
+        $update(['no_budget', 'still_have_stocks'])->assertOk()->assertJson(['feedback' => 'still_have_stocks', 'feedbacks' => ['still_have_stocks', 'no_budget']]);
+
+        // PURCHASED is always the main one, so Converted (Repeat Purchase No + PURCHASED) still reads it.
+        $update(['no_budget', 'purchased', 'still_have_stocks'])->assertOk()->assertJson(['feedback' => 'purchased', 'feedbacks' => ['purchased', 'still_have_stocks', 'no_budget']]);
+        $this->assertSame(3, collect(SegmentationOptions::usage('feedback'))->only(['purchased', 'still_have_stocks', 'no_budget'])->sum());
+
+        $update(['happy'])->assertUnprocessable();
+
+        // Unticking every one clears them.
+        $update([])->assertOk()->assertJson(['feedback' => null, 'feedbacks' => []]);
+        $this->assertNull($lead->fresh()->feedbacks);
     }
 
     public function test_the_order_icon_lists_the_customers_orders_by_date_and_product(): void

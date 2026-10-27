@@ -54,8 +54,13 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
+                    {{-- High AOV / VIP customers (Customer Database), looked up once for the section's rows --}}
+                    @php($highValueFlags = rescue(fn () => app(\App\Services\HighValueCustomers::class)->flagsForNumbers(
+                        collect($leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads)
+                            ->map(fn ($lead) => \App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number))->unique()->values()->all()), [], false))
                     @foreach ($leads as $lead)
-                        @include('segmentation._row', ['lead' => $lead, 'backlogRow' => $backlogRows ?? false])
+                        @include('segmentation._row', ['lead' => $lead, 'backlogRow' => $backlogRows ?? false,
+                            'highValue' => $highValueFlags[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null])
                     @endforeach
                 </tbody>
             </table>

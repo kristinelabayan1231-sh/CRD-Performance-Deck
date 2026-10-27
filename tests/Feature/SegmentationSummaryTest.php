@@ -42,33 +42,40 @@ class SegmentationSummaryTest extends TestCase
             'assigned_to' => $cra->id, ...$fields]);
     }
 
-    public function test_summary_adds_up_feedback_statuses_hours_and_gives_insights(): void
+    public function test_summary_adds_up_feedback_statuses_and_hours(): void
     {
         foreach (range(1, 4) as $i) {
             $this->lead($this->alice, 'CanPro', ['status' => 'active', 'contact_time' => '10', 'feedback' => 'no_verbal_conv']);
         }
-        $this->lead($this->alice, 'CanPro', ['status' => 'active', 'contact_time' => '10', 'repeat_purchase' => 'yes', 'feedback' => 'purchased']);
+        $this->lead($this->alice, 'CanPro', ['status' => 'active', 'contact_time' => '10', 'repeat_purchase' => 'yes', 'feedbacks' => ['still_have_stocks', 'purchased']]);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'busy_callback', 'feedback' => 'still_have_stocks']);
         $this->lead($this->bea, 'Sinuxyl', ['feedback' => 'blocked', 'status' => 'blocked']);
         $this->lead($this->bea, 'Sinuxyl');
         $this->lead($this->bea, 'Sinuxyl', [], '2026-09-20'); // other month
 
-        $this->actingAs($this->owner)->get(route('segmentation.overview'))
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))
             ->assertOk()
-            ->assertSeeInOrder(['Daily', 'Weekly Segmentation', 'Summary'])
+            ->assertSeeInOrder(['Products', 'Segmentation Summary'])
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 8 && $s['catered'] === 7 && $s['pending'] === 1 && $s['converted'] === 1
-                && $s['feedback']->all() === ['blocked' => 1, 'no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 1]
-                && $s['hours']['10'] === ['label' => '10:00AM-11:00AM', 'contacts' => 5, 'converted' => 1]
-                && $s['stocks_no_callback'] === 1)
-            ->assertSee("Customer's feedback")
-            ->assertSee('NO VERBAL CONV: 4 (57.1%)')
+                && $s['feedback_picks']->sortKeys()->all() === ['blocked' => 1, 'no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 2]
+                && $s['feedback_picks_by_product']['Sinuxyl']->sortKeys()->all() === ['blocked' => 1, 'still_have_stocks' => 1]
+                && $s['feedback_picks_by_product']['CanPro']->sortKeys()->all() === ['no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 1]
+                && $s['feedback_reasons_by_product']['CanPro']['customers'] === 5 && $s['feedback_reasons_by_product']['CanPro']['qty'] === 5
+                && $s['feedback_reasons_by_product']['CanPro']['reasons']->all() === [
+                    'no_verbal_conv' => ['customers' => 4, 'qty' => 4], 'purchased' => ['customers' => 1, 'qty' => 1], 'still_have_stocks' => ['customers' => 1, 'qty' => 1],
+                ]
+                && $s['hours']['10'] === ['label' => '10:00AM-11:00AM', 'contacts' => 5, 'converted' => 1])
+            ->assertDontSee('Call Outcome')
+            ->assertSee("Customer's Feedback")
+            ->assertSee('NO VERBAL CONV: 4 (50%)')
+            ->assertSee('STILL HAVE STOCKS: 2 (25%)')
             ->assertSee('Other (BLOCKED)')
-            ->assertSee('Most common feedback: NO VERBAL CONV (57% of 7).')
-            ->assertSee('Best converting hour: 10:00AM-11:00AM (20% converted)')
-            ->assertSee('with STILL HAVE STOCKS have no callback date yet');
+            ->assertSee('By product')
+            ->assertSeeInOrder(['Feedback by product', 'CanPro', 'NO VERBAL CONV', 'Sinuxyl'])
+            ->assertDontSee('Insights');
 
         // Filters narrow it: one CRA and one product.
-        $this->actingAs($this->owner)->get(route('segmentation.overview', ['cra' => $this->bea->id, 'product' => 'Sinuxyl']))
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id, 'product' => 'Sinuxyl']))
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 3 && $s['converted'] === 0);
     }
 
@@ -84,41 +91,32 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'Unattended']);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'voicemail']);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedback' => 'no_budget', 'notes' => 'cx ended the call']);
+        // Ticked as a second choice still counts.
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedbacks' => ['no_budget', 'no_verbal_conv'], 'notes' => 'wrong number']);
 
-        $this->actingAs($this->owner)->get(route('segmentation.overview'))->assertOk()
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk()
             ->assertViewHas('summary', fn (array $s) => collect($s['no_verbal']['reasons'])->pluck('total', 'key')->sortKeys()->all() === [
-                'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 2, 'pjr' => 1, 'status_inactive' => 1, 'unattended' => 1,
+                'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 2, 'pjr' => 1, 'status_inactive' => 1, 'unattended' => 1, 'wrong_number' => 1,
             ] && collect($s['no_verbal']['reasons'])->firstWhere('key', 'status_inactive')['label'] === 'Inactive'
-                && count($s['no_verbal']['notes']) === 9)
+                && count($s['no_verbal']['notes']) === 10)
             ->assertSee('NO VERBAL CONV · why?')
-            ->assertSeeInOrder(['Why no verbal conversation', '9', 'Back to chart', 'Customer ended / dropped the call', '2', '22%'])
+            ->assertSeeInOrder(['Why no verbal conversation', '10', 'Back to chart', 'Customer ended / dropped the call', '2', '20%'])
             ->assertSeeInOrder(['Alice · Oct 3 · PJR/Inactive/CBR/Drop call', '“cx ended the call”']);
 
         // The filters apply: Bea's leads only.
-        $this->actingAs($this->owner)->get(route('segmentation.overview', ['cra' => $this->bea->id]))
-            ->assertViewHas('summary', fn (array $s) => count($s['no_verbal']['notes']) === 7);
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id]))
+            ->assertViewHas('summary', fn (array $s) => count($s['no_verbal']['notes']) === 8);
     }
 
-    public function test_supervisors_and_team_leads_open_the_tracker_on_summary(): void
+    public function test_summary_moved_from_the_tracker_to_product_performance(): void
     {
+        $this->actingAs($this->owner)->get('/segmentation/overview')->assertRedirect('/product-performance/segmentation-summary');
+        $this->actingAs($this->owner)->get(route('segmentation.index'))->assertOk()
+            ->assertSee('Weekly Segmentation')->assertDontSee('href="'.url('/segmentation/overview').'"', false);
+
+        // Supervisors open it from Product Performance.
         $supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
-        $teamLead = User::create(['email' => 'lead@example.com', 'is_active' => true, 'role_id' => Role::create([
-            'slug' => Role::CRA_TEAM_LEAD, 'name' => 'CRA Team Lead', 'permissions' => ['segmentation.view', 'segmentation.view_all'],
-        ])->id]);
-
-        foreach ([$supervisor, $teamLead] as $user) {
-            $this->assertSame(route('segmentation.overview'), $user->segmentationHome());
-            $this->actingAs($user)->get(route('segmentation.overview'))->assertOk()
-                ->assertSee('href="'.route('segmentation.overview').'"', false);
-        }
-
-        // A role first saved under another name and renamed to "CRA Team Lead" counts too.
-        $teamLead->role->update(['slug' => 'team-lead']);
-        $this->assertSame(route('segmentation.overview'), $teamLead->fresh()->segmentationHome());
-
-        // Everyone else starts on Daily; the Daily tab stays reachable for all.
-        $this->assertSame(route('segmentation.index'), $this->alice->segmentationHome());
-        $this->assertSame(route('segmentation.index'), $this->owner->segmentationHome());
+        $this->actingAs($supervisor)->get(route('product-performance.segmentation-summary'))->assertOk();
     }
 
     public function test_a_cra_sees_only_their_own_leads(): void
@@ -127,7 +125,9 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'CanPro');
         $this->lead($this->bea, 'CanPro');
 
-        $this->actingAs($this->alice)->get(route('segmentation.overview', ['cra' => $this->bea->id]))
+        // Product Performance access without the tracker's view-all.
+        $this->alice->role->update(['permissions' => [...$this->alice->role->permissions, 'product_performance.view']]);
+        $this->actingAs($this->alice->fresh())->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id]))
             ->assertOk()
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 1)
             ->assertDontSee('All CRAs');

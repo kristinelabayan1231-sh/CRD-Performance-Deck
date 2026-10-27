@@ -85,6 +85,8 @@
 
 <x-layouts.app title="Product Performance">
     <div class="space-y-5">
+        @include('product-performance._tabs')
+
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">Product Performance</h1>

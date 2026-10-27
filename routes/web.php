@@ -21,6 +21,7 @@ use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadChatController;
+use App\Http\Controllers\LeadHandoverController;
 use App\Http\Controllers\MonthlyCostController;
 use App\Http\Controllers\MonthlyMniController;
 use App\Http\Controllers\NicheController;
@@ -94,11 +95,14 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [SegmentationController::class, 'index'])->name('index');
         Route::get('/summary', [SegmentationController::class, 'summary'])->name('summary');
         Route::get('/weekly', [WeeklySegmentationController::class, 'index'])->name('weekly');
-        Route::get('/overview', [SegmentationSummaryController::class, 'index'])->name('overview');
+        // Summary moved to Product Performance → Segmentation Summary; old links still land there.
+        Route::redirect('/overview', '/product-performance/segmentation-summary');
         Route::get('/repeat-purchases', [RepeatPurchaseController::class, 'index'])->name('repeat-purchases');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
         Route::get('/leads/{lead}/orders', [SegmentationController::class, 'orders'])->name('orders');
+        Route::get('/leads/{lead}/handover', [LeadHandoverController::class, 'show'])->name('handover.show');
+        Route::post('/leads/{lead}/handover', [LeadHandoverController::class, 'store'])->name('handover.store');
         Route::get('/leads/{lead}/chat', LeadChatController::class)->middleware('throttle:30,1')->name('chat');
         Route::post('/leads/{lead}/call', LeadCallController::class)->middleware('throttle:20,1')->name('call');
         Route::post('/leads/{lead}/attempts', [LeadAttemptController::class, 'store'])->name('attempts.store');
@@ -148,7 +152,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [RunningSalesController::class, 'index'])->name('index');
         Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
     });
-    Route::get('/product-performance', [ProductPerformanceController::class, 'index'])->middleware('can:product_performance.view')->name('product-performance.index');
+    Route::prefix('product-performance')->name('product-performance.')->middleware('can:product_performance.view')->group(function () {
+        Route::get('/', [ProductPerformanceController::class, 'index'])->name('index');
+        Route::get('/segmentation-summary', [SegmentationSummaryController::class, 'index'])->name('segmentation-summary');
+    });
     Route::prefix('product-target-market')->name('product-target-market.')->middleware('can:product_target_market.view')->group(function () {
         Route::get('/', [ProductTargetMarketController::class, 'index'])->name('index');
         Route::post('/ages', [ProductTargetMarketController::class, 'fetchAges'])->name('ages');

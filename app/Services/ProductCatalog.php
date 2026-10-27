@@ -204,7 +204,7 @@ class ProductCatalog
 
         $ids = Lead::query()
             ->whereNull('status')->whereNull('processed_at')->whereNull('notes')
-            ->whereNull('repeat_purchase')->whereNull('customer_tag')->whereNull('feedback')
+            ->whereNull('repeat_purchase')->untagged()->whereNull('feedback')
             ->whereNull('contact_date')->whereNull('contact_time')->whereNull('callback_date')
             ->whereDoesntHave('transfers')
             ->get(['id', 'product_raw', 'product_name'])

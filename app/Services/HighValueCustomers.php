@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CustomerAccount;
 use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
+use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
@@ -21,9 +22,10 @@ use Illuminate\Support\Facades\DB;
  * Customer Database → High AOV CVR & VIP. Among CRA-handled customers (merged numbers count
  * as one): High AOV = total spent ÷ delivered orders ≥ config customers.high_aov_min; VIP =
  * delivered units of one product × its SRP reached that product's CLTV (SRP × 30).
- * Each has a CRA (assigning seller): a High AOV customer goes to the CRA of their first reorder
- * that made them High AOV (assignByFirstReorder) unless an admin or manager set one by hand; otherwise claimed by a CRA, or the CRA their
- * Segmentation Tracker lead is handed to. Their leads then go to that CRA.
+ * Each has a CRA (assigning seller) who keeps them for good (only an admin or manager changes it): once listed, a
+ * customer goes to the CRA who handled two of their orders, else the CRA of the order that made them High AOV or VIP
+ * (assignNewCustomers); with neither, the CRA a CRA claims or their Segmentation Tracker lead is handed to. Their leads
+ * then go to that CRA, tagged High Value Customers (tagLeads).
  */
 class HighValueCustomers
 {
@@ -125,9 +127,26 @@ class HighValueCustomers
             return [];
         }
 
+        $orders = $this->craOrders($keys);
+
+        return $orders->groupBy('key')
+            ->map(fn (Collection $own) => collect($this->customers->productCltv($own))->where('reached', true)->pluck('name')->all())
+            ->filter()
+            ->all();
+    }
+
+    /**
+     * These customers' CRA-handled delivered orders, for VIP: delivered POS orders sold by a CRA or CRD account, and
+     * CRD deliveries Pancake has no copy of yet (logistics' product and qty, no seller).
+     *
+     * @param  list<string>  $keys  main numbers
+     * @return Collection<int, array{key: string, items: array<int, array<string, mixed>>, amount: mixed, seller: ?string, at: string}>
+     */
+    private function craOrders(array $keys): Collection
+    {
         $owner = $this->numbersOf($keys);
         $numbers = array_keys($owner);
-        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'team', 'phone_key', 'product', 'qty', 'non_crd']);
+        $delivered = LogisticsOrder::covered()->whereIn('phone_key', $numbers)->get(['order_id', 'team', 'phone_key', 'product', 'qty', 'non_crd', 'delivered_date']);
         $inPancake = PancakeOrder::whereIn('pancake_order_id', $delivered->pluck('order_id'))->pluck('pancake_order_id')->flip();
 
         $pos = PancakeOrder::crdProducts()
@@ -135,7 +154,7 @@ class HighValueCustomers
             ->where(fn ($q) => $q
                 ->where(fn ($q) => $q->whereIn('phone_key', $numbers)->where('ordered_on', '>=', config('customers.backfill_from')))
                 ->orWhereIn('pancake_order_id', $delivered->pluck('order_id')))
-            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'items', 'total_price']);
+            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'items', 'total_price', 'ordered_on', 'ordered_at']);
         $deliveredTo = $delivered->pluck('phone_key', 'order_id');
         $teams = $delivered->pluck('team', 'order_id');
 
@@ -144,18 +163,17 @@ class HighValueCustomers
         foreach ($pos as $order) {
             $key = $owner[$order->phone_key] ?? $owner[$deliveredTo[$order->pancake_order_id] ?? ''] ?? null;
             if ($key !== null && $this->customers->handledByCra($teams[$order->pancake_order_id] ?? null, $order->seller_name)) {
-                $orders->push(['key' => $key, 'items' => $order->items ?? [], 'amount' => $order->total_price]);
+                $orders->push(['key' => $key, 'items' => $order->items ?? [], 'amount' => $order->total_price, 'seller' => $order->seller_name,
+                    'at' => (string) ($order->ordered_at ?? $order->ordered_on)]);
             }
         }
         // Delivered orders Pancake has no copy of yet count with logistics' product and qty.
         foreach ($delivered->reject(fn (LogisticsOrder $order) => isset($inPancake[$order->order_id]) || $order->team !== LogisticsOrder::TEAM_CRD || $order->non_crd) as $order) {
-            $orders->push(['key' => $owner[$order->phone_key], 'items' => [['name' => $order->product, 'qty' => $order->qty ?? 1]], 'amount' => null]);
+            $orders->push(['key' => $owner[$order->phone_key], 'items' => [['name' => $order->product, 'qty' => $order->qty ?? 1]], 'amount' => null,
+                'seller' => null, 'at' => (string) $order->delivered_date]);
         }
 
-        return $orders->groupBy('key')
-            ->map(fn (Collection $own) => collect($this->customers->productCltv($own))->where('reached', true)->pluck('name')->all())
-            ->filter()
-            ->all();
+        return $orders;
     }
 
     /**
@@ -334,20 +352,19 @@ class HighValueCustomers
      * Pancake amount reached config customers.high_aov_min. Orders sold by a former CRA or an
      * account no active CRA owns are passed over for the next qualifying one.
      *
+     * @param  list<string>|null  $only  just these main numbers; null = every High AOV customer
      * @return array<string, int> main number => CRA id (customers with no such order left out)
      */
-    public function firstReorderCras(): array
+    public function firstReorderCras(?array $only = null): array
     {
-        $keys = collect($this->all())->where('high_aov', true)->keys()->map(fn ($key) => (string) $key)->all();
+        $keys = collect($this->all())->where('high_aov', true)->keys()->map(fn ($key) => (string) $key)
+            ->when($only !== null, fn (Collection $keys) => $keys->intersect(array_map('strval', $only)))->values()->all();
         if ($keys === []) {
             return [];
         }
 
         $minAov = (float) config('customers.high_aov_min');
-        $aliases = collect(PancakeAccounts::aliases())
-            ->mapWithKeys(fn (string $account, string $alias) => [PancakeEngagement::staffKey($alias) => PancakeEngagement::staffKey($account)]);
-        $cras = LeadGenerator::cras()->whereNotNull('pancake_name')
-            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        $craOf = $this->craOfSeller();
         $owner = $this->numbersOf($keys);
 
         // Earlier orders (all before the covered ones), each merged number's in time order, then the covered orders.
@@ -371,8 +388,7 @@ class HighValueCustomers
             }
             $spent[$key] = ($spent[$key] ?? 0) + $order['amount'];
             $count[$key] = ($count[$key] ?? 0) + 1;
-            $seller = PancakeEngagement::staffKey($order['seller']);
-            $craId = $cras[$aliases[$seller] ?? $seller] ?? null;
+            $craId = $craOf($order['seller']);
             if ($craId !== null && $minAov <= $spent[$key] / $count[$key]) {
                 $found[$key] = $craId;
             }
@@ -382,28 +398,149 @@ class HighValueCustomers
     }
 
     /**
-     * Give each High AOV customer the CRA of their first reorder (firstReorderCras), replacing
-     * the CRA they had, except customers whose CRA an admin or manager set by hand: that edit always wins.
+     * The CRA each VIP customer goes to: the seller of the CRA-handled order (oldest first) at which their spend on one
+     * product reached its CLTV. Orders sold by a former CRA or an account no active CRA owns, or with no seller (a CRD
+     * delivery Pancake has no copy of), are passed over for the next one.
      *
-     * @return int customers whose CRA changed
+     * @param  list<string>  $keys  main numbers
+     * @return array<string, int> main number => CRA id (customers with no such order left out)
      */
-    public function assignByFirstReorder(): int
+    public function vipQualifyingCras(array $keys): array
     {
-        $changed = 0;
-        $found = $this->firstReorderCras();
-        $accounts = CustomerAccount::whereIn('phone_key', array_map('strval', array_keys($found)))->get()->keyBy('phone_key');
-
-        foreach ($found as $key => $craId) {
-            $account = $accounts->get((string) $key) ?? new CustomerAccount(['phone_key' => (string) $key]);
-            if ($account->cra_set_by_hand || $account->assigned_cra_id === $craId) {
-                continue;
-            }
-
-            $account->fill(['assigned_cra_id' => $craId, 'assigned_at' => now()])->save();
-            $changed++;
+        if ($keys === []) {
+            return [];
         }
 
-        return $changed;
+        $craOf = $this->craOfSeller();
+
+        return $this->craOrders(array_map('strval', $keys))->groupBy('key')->map(function (Collection $orders) use ($craOf) {
+            $orders = $orders->sortBy('at')->values();
+            foreach ($orders as $i => $order) {
+                $craId = $craOf($order['seller']);
+                if ($craId !== null && collect($this->customers->productCltv($orders->take($i + 1)))->contains('reached', true)) {
+                    return $craId;
+                }
+            }
+
+            return null;
+        })->filter()->all();
+    }
+
+    /**
+     * Give each listed customer without a CRA one, which then stays theirs: the CRA who handled two of their orders
+     * (CustomerOwners), else the CRA of the order that made them High AOV (firstReorderCras) or VIP
+     * (vipQualifyingCras). A CRA an admin or manager set or cleared by hand is left alone. Customers with neither
+     * wait for a CRA to claim them or their lead to be handed out (claimForLeads).
+     *
+     * @param  list<string>|null  $phoneKeys  only these numbers' customers; null = every listed customer
+     * @return int customers given a CRA
+     */
+    public function assignNewCustomers(?array $phoneKeys = null): int
+    {
+        $listed = $this->all();
+        $keys = $phoneKeys === null
+            ? collect(array_keys($listed))->map(fn ($key) => (string) $key)
+            : collect($this->primariesOf($phoneKeys))->unique()->values();
+        $keys = $keys->filter(fn (string $key) => isset($listed[$key]));
+        $settled = CustomerAccount::whereIn('phone_key', $keys->all())
+            ->where(fn ($q) => $q->whereNotNull('assigned_cra_id')->orWhere('cra_set_by_hand', true))->pluck('phone_key')->flip();
+        $keys = $keys->reject(fn (string $key) => isset($settled[$key]))->values()->all();
+
+        if ($keys === []) {
+            return 0;
+        }
+
+        $found = app(CustomerOwners::class)->for($keys);
+        $rest = array_values(array_filter($keys, fn (string $key) => ! isset($found[$key])));
+        $found += $this->firstReorderCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['high_aov'])));
+        $found += $this->vipQualifyingCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['vip'] && ! isset($found[$key]))));
+
+        foreach ($found as $key => $craId) {
+            CustomerAccount::updateOrCreate(['phone_key' => (string) $key], ['assigned_cra_id' => $craId, 'assigned_at' => now()]);
+        }
+
+        return count($found);
+    }
+
+    /**
+     * Tag the High AOV / VIP customers' current leads (from today, or still untouched) with no Customer Tagging as
+     * High Value Customers. Saved without the model, so the Date and Time of contact a picked tag brings stay blank.
+     *
+     * @return int leads tagged
+     */
+    public function tagLeads(): int
+    {
+        if (! array_key_exists(Lead::HIGH_VALUE_TAG, config('segmentation.customer_tags'))) {
+            return 0;
+        }
+
+        $listed = $this->all();
+        $leads = Lead::whereNull('customer_tag')
+            ->where(fn ($q) => $q->whereDate('listed_on', '>=', Lead::today())->orWhere(fn ($q) => $q->untouched()))
+            ->get(['id', 'phone_number']);
+        $numbers = $leads->mapWithKeys(fn (Lead $lead) => [$lead->id => LeadGenerator::normalizePhone((string) $lead->phone_number)]);
+        $primaryOf = $this->primariesOf($numbers->unique()->values()->all());
+        $ids = $numbers->filter(fn (string $number) => isset($listed[$primaryOf[$number] ?? $number]))->keys();
+
+        foreach ($ids->chunk(500) as $chunk) {
+            Lead::whereIn('id', $chunk->all())->update(['customer_tag' => Lead::HIGH_VALUE_TAG]);
+        }
+
+        return $ids->count();
+    }
+
+    /**
+     * Each number => its customer's main number (merged numbers count as one customer).
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, string>
+     */
+    private function primariesOf(array $phoneKeys): array
+    {
+        $phoneKeys = array_values(array_filter(array_map('strval', $phoneKeys)));
+        $primaries = collect(array_chunk($phoneKeys, 1000))
+            ->flatMap(fn (array $chunk) => CustomerLink::whereIn('phone_key', $chunk)->pluck('primary_phone_key', 'phone_key'));
+
+        return collect($phoneKeys)->mapWithKeys(fn (string $key) => [$key => (string) ($primaries[$key] ?? $key)])->all();
+    }
+
+    /**
+     * The active CRA owning a Pancake seller name (their own account or an alias of it), or null.
+     *
+     * @return \Closure(?string): ?int
+     */
+    private function craOfSeller(): \Closure
+    {
+        $aliases = collect(PancakeAccounts::aliases())
+            ->mapWithKeys(fn (string $account, string $alias) => [PancakeEngagement::staffKey($alias) => PancakeEngagement::staffKey($account)]);
+        $cras = LeadGenerator::cras()->whereNotNull('pancake_name')
+            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+
+        return function (?string $seller) use ($aliases, $cras): ?int {
+            if ($seller === null) {
+                return null;
+            }
+            $seller = PancakeEngagement::staffKey($seller);
+
+            return $cras[$aliases[$seller] ?? $seller] ?? null;
+        };
+    }
+
+    /**
+     * High AOV / VIP flags of these numbers' customers, by number (numbers of unlisted customers left out), for the
+     * Segmentation Tracker's rows.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, array{high_aov: bool, vip: bool, vip_products: list<string>}>
+     */
+    public function flagsForNumbers(array $phoneKeys): array
+    {
+        $listed = $this->all();
+
+        return collect($this->primariesOf($phoneKeys))
+            ->filter(fn (string $primary) => isset($listed[$primary]))
+            ->map(fn (string $primary) => collect($listed[$primary])->only(['high_aov', 'vip', 'vip_products'])->all())
+            ->all();
     }
 
     /**

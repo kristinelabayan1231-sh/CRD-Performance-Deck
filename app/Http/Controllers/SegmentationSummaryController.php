@@ -16,8 +16,8 @@ use Illuminate\View\View;
 class SegmentationSummaryController extends Controller
 {
     /**
-     * Segmentation Tracker → Summary for one month of lead days (or a single day), for every CRA or one.
-     * A CRA sees only their own leads.
+     * Product Performance → Segmentation Summary: the Segmentation Tracker's leads for one month of lead days (or a
+     * single day), for every CRA or one. Someone without Segmentation Tracker's view-all sees only their own leads.
      */
     public function index(Request $request, SegmentationSummary $summary): View
     {
@@ -56,7 +56,7 @@ class SegmentationSummaryController extends Controller
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, string $product) => $q->where('product_name', $product));
 
-        return view('segmentation.overview', [
+        return view('product-performance.segmentation-summary', [
             'summary' => $summary->for($scope, $cras, LeadMove::departed($from, $to,
                 ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null)),
             'filters' => $filters,

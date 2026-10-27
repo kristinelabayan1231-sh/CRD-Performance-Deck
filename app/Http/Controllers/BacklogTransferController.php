@@ -2,10 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\BacklogHandout;
 use App\Models\Lead;
-use App\Models\LeadMove;
-use App\Models\LeadTransfer;
 use App\Services\LeadGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,16 +47,7 @@ class BacklogTransferController extends Controller
 
         DB::transaction(function () use ($leads, $to, $request, $today) {
             foreach ($leads as $lead) {
-                BacklogHandout::create(['lead_id' => $lead->id, 'user_id' => $to->id, 'handed_on' => $today->toDateString(), 'source' => BacklogHandout::TRANSFER]);
-                LeadMove::create(['lead_id' => $lead->id, 'assigned_to' => $lead->assigned_to, 'listed_on' => $lead->listed_on->toDateString(), 'moved_to' => $today->toDateString()]);
-                LeadTransfer::create([
-                    'lead_id' => $lead->id,
-                    'from_user_id' => $lead->assigned_to,
-                    'to_user_id' => $to->id,
-                    'transferred_by' => $request->user()->id,
-                ]);
-
-                $lead->forceFill(['assigned_to' => $to->id, 'assigned_at' => now(), 'listed_on' => $today->toDateString()])->save();
+                $lead->transferTo($to, $request->user(), $today);
             }
         });
 

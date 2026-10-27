@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\CustomerLink;
 use App\Models\CvrOrderEntry;
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\PancakeAccounts;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
@@ -77,6 +79,37 @@ class CustomerOwners
             ->mapWithKeys(fn (string $phone) => [$phone => $ownerOf[$primaryOf[$phone] ?? $phone] ?? null])
             ->filter()
             ->all();
+    }
+
+    /**
+     * The active CRA who handled the customer's latest CRA-handled order (all their merged numbers; claimed in the
+     * CVR Tracker, else the CRA whose Pancake account sold it), with the order day. Null when none did.
+     *
+     * @return array{cra: User, ordered_on: CarbonImmutable}|null
+     */
+    public function latestHandler(string $phoneKey): ?array
+    {
+        $cras = LeadGenerator::cras()->keyBy('id');
+        $bySeller = PancakeAccounts::craBySeller($cras);
+        $primary = $this->primaries([$phoneKey])[$phoneKey];
+        $numbers = [$primary, ...CustomerLink::where('primary_phone_key', $primary)->pluck('phone_key')->all()];
+
+        $orders = PancakeOrder::whereIn('phone_key', $numbers)->counted()
+            ->orderByDesc('ordered_on')->orderByDesc('ordered_at')->orderByDesc('id')
+            ->get(['pancake_order_id', 'seller_name', 'ordered_on']);
+        $claimed = CvrOrderEntry::whereNotNull('user_id')->whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))->pluck('user_id', 'pancake_order_id');
+
+        foreach ($orders as $order) {
+            $cra = isset($claimed[$order->pancake_order_id])
+                ? $cras->get($claimed[$order->pancake_order_id])
+                : $bySeller->get(PancakeEngagement::staffKey((string) $order->seller_name));
+
+            if ($cra !== null) {
+                return ['cra' => $cra, 'ordered_on' => $order->ordered_on];
+            }
+        }
+
+        return null;
     }
 
     /**
