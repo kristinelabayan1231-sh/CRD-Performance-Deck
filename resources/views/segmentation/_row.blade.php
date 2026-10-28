@@ -71,7 +71,7 @@
             @if ($canEdit && ($canDial ?? false))
                 {{-- Dials on the CRA's own phone (MacroDroid), so the call and its recording come back to this lead --}}
                 <button type="button" data-call-url="{{ route('segmentation.call', $lead) }}" aria-label="Call {{ $lead->customer_name }} from your phone"
-                        class="flex h-7 items-center gap-1 rounded-full bg-teal/15 px-2.5 text-xs font-semibold text-teal-700 transition hover:bg-teal/25 disabled:opacity-60">
+                        class="flex h-7 items-center gap-1 rounded-full bg-teal/15 px-2.5 text-xs font-semibold text-teal-700 select-none transition hover:bg-teal/25 disabled:opacity-60">
                     <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
                     <span data-call-label>Call</span>
                 </button>
