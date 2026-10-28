@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-28 · Settings → Product Consumption · Adding TSD upsell products: "+ Another product" adds more product rows (name, also matches, not-if, SRP, cost; Remove on extra rows) and one "Add products" saves them all with one starting date; blank rows are skipped, a name already listed or entered twice stops the save · shots: settings-product-consumption
 - 2026-10-28 · Settings → Call Recordings · New "Shared phone" column: pick another CRA and hours (e.g. 06:00 to 15:00) for a phone two CRAs share; uploads called in those hours (Manila time, end not included) are saved under that CRA — Call Recordings page, lead match and the Drive file name — while the phone keeps its owner's token · shots: settings-call-recordings
 - 2026-10-28 · Call Recordings · Drive file names keep the leading 0 (09xx…); when the phone sends a blank/unfilled number (e.g. "{call_number}"), the number is read from the recording's file name so the call still matches its lead · shots: —
 

@@ -44,6 +44,10 @@ class ProductConsumptionController extends Controller
         $isTsd = $request->boolean('is_tsd');
         abort_unless($this->canChange($request, $isTsd), 403);
 
+        if ($isTsd && $request->has('products')) {
+            return $this->storeTsdProducts($request);
+        }
+
         $data = $this->validated($request);
         // Testing or existing: decided when a CRD product is added (Settings → Testing Products changes it later).
         $data = [...$data, ...($isTsd
@@ -58,6 +62,53 @@ class ProductConsumptionController extends Controller
 
         return redirect()->route('settings.product-consumption.index', ['source' => $request->query('source'), 'product' => Product::firstWhere('name', $data['name'])->id])
             ->with('status', ($isTsd ? 'TSD upsell product' : 'Product')." \"{$data['name']}\" added.");
+    }
+
+    /**
+     * Several TSD upsell products from one submission (the add panel's product rows), all from one starting date.
+     * Rows left blank are skipped.
+     */
+    private function storeTsdProducts(Request $request): RedirectResponse
+    {
+        $rows = collect($request->input('products'))
+            ->filter(fn ($row) => is_array($row) && collect($row)->filter(fn ($field) => filled($field))->isNotEmpty())
+            ->map(fn (array $row) => [
+                'name' => trim((string) ($row['name'] ?? '')),
+                'keywords' => $this->keywordList($row['keywords'] ?? null),
+                'exclude_keywords' => $this->keywordList($row['exclude_keywords'] ?? null),
+                'srp' => filled($row['srp'] ?? null) ? $row['srp'] : null,
+                'unit_cost' => filled($row['unit_cost'] ?? null) ? $row['unit_cost'] : null,
+            ])
+            ->values();
+        $request->merge(['products' => $rows->all(), 'counts_from' => filled($request->input('counts_from')) ? $request->input('counts_from') : null]);
+
+        $validated = $request->validate([
+            'products' => ['required', 'array', 'max:50'],
+            'products.*.name' => ['required', 'string', 'max:255', 'distinct:ignore_case', Rule::unique('products', 'name')],
+            'products.*.keywords' => ['nullable', 'string', 'max:1000'],
+            'products.*.exclude_keywords' => ['nullable', 'string', 'max:1000'],
+            'products.*.srp' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'products.*.unit_cost' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            'counts_from' => ['nullable', 'date_format:Y-m-d'],
+        ], [
+            'products.required' => 'Enter at least one product.',
+            'products.*.name.required' => 'Each product needs a name.',
+            'products.*.name.unique' => 'A product named ":input" already exists.',
+            'products.*.name.distinct' => '":input" is in the list twice.',
+        ]);
+
+        $countsFrom = $validated['counts_from'] ?? WorkingDate::realToday()->toDateString();
+        $products = collect($validated['products'])->map(fn (array $row) => Product::create([
+            ...$row, 'is_tsd' => true, 'is_testing' => false, 'consumption_days' => null, 'counts_from' => $countsFrom, 'created_by' => $request->user()->id,
+        ]));
+        $catalog = app(ProductCatalog::class);
+        $catalog->renormalizeLeads();
+        $this->applyList($catalog, removeLeads: false);
+
+        return redirect()->route('settings.product-consumption.index', array_filter(['source' => $request->query('source'), 'product' => $products->count() === 1 ? $products->first()->id : null]))
+            ->with('status', $products->count() === 1
+                ? "TSD upsell product \"{$products->first()->name}\" added."
+                : $products->count().' TSD upsell products added: '.$products->pluck('name')->join(', ').'.');
     }
 
     public function update(Request $request, Product $product): RedirectResponse
@@ -143,11 +194,10 @@ class ProductConsumptionController extends Controller
      */
     private function validated(Request $request, ?Product $product = null): array
     {
-        $list = fn (string $field) => collect(explode(',', (string) $request->input($field)))->map(fn ($k) => trim($k))->filter()->unique()->join(', ') ?: null;
         $request->merge([
             'name' => trim((string) $request->input('name')),
-            'keywords' => $list('keywords'),
-            'exclude_keywords' => $list('exclude_keywords'),
+            'keywords' => $this->keywordList($request->input('keywords')),
+            'exclude_keywords' => $this->keywordList($request->input('exclude_keywords')),
             'consumption_days' => filled($request->input('consumption_days')) ? $request->input('consumption_days') : null,
             'srp' => filled($request->input('srp')) ? $request->input('srp') : null,
             'unit_cost' => filled($request->input('unit_cost')) ? $request->input('unit_cost') : null,
@@ -169,5 +219,13 @@ class ProductConsumptionController extends Controller
         ], [
             'name.unique' => 'A product with this name already exists.',
         ]);
+    }
+
+    /**
+     * "a, b,, a" as "a, b"; nothing as null.
+     */
+    private function keywordList(mixed $keywords): ?string
+    {
+        return collect(explode(',', (string) $keywords))->map(fn ($k) => trim($k))->filter()->unique()->join(', ') ?: null;
     }
 }
