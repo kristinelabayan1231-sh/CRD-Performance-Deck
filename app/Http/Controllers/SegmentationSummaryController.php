@@ -63,7 +63,7 @@ class SegmentationSummaryController extends Controller
             'period' => $from->equalTo($to) ? $from->format('D, M j, Y') : $from->format('M j').'–'.$to->format('M j, Y'),
             'cras' => $allCras,
             'canViewAll' => $canViewAll,
-            'products' => Product::orderBy('name')->pluck('name'),
+            'products' => Product::crd()->orderBy('name')->pluck('name'),
         ]);
     }
 }

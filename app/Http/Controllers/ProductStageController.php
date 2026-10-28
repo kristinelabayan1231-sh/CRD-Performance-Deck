@@ -15,7 +15,7 @@ class ProductStageController extends Controller
     public function index(): View
     {
         return view('settings.product-stage', [
-            'products' => Product::orderBy('name')->get(['id', 'name', 'is_testing']),
+            'products' => Product::crd()->orderBy('name')->get(['id', 'name', 'is_testing']),
         ]);
     }
 
@@ -30,7 +30,7 @@ class ProductStageController extends Controller
         ]);
         $testing = array_map('intval', $data['testing'] ?? []);
 
-        Product::all()->each(fn (Product $product) => $product->update(['is_testing' => in_array($product->id, $testing, true)]));
+        Product::crd()->get()->each(fn (Product $product) => $product->update(['is_testing' => in_array($product->id, $testing, true)]));
 
         return back()->with('status', 'Testing products saved.');
     }

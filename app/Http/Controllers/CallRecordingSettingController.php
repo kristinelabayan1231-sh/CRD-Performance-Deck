@@ -8,12 +8,14 @@ use App\Services\LeadGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Laravel\Socialite\Facades\Socialite;
 use Throwable;
 
 /**
- * Settings → Call Recordings: the Google Drive the recordings go to, and each CRA phone's upload token for MacroDroid.
+ * Settings → Call Recordings: the Google Drive the recordings go to, each CRA phone's upload token for MacroDroid, and
+ * who shares a phone for which hours.
  */
 class CallRecordingSettingController extends Controller
 {
@@ -86,6 +88,34 @@ class CallRecordingSettingController extends Controller
 
         return redirect()->route('settings.call-recordings.index')
             ->with('status', $user->call_webhook_url ? "{$user->displayName()}'s phone link saved: Call buttons now dial from their phone." : "{$user->displayName()}'s phone link removed.");
+    }
+
+    /**
+     * Another CRA who uses this CRA's phone for part of the day: calls in their hours upload under them. No CRA removes it.
+     */
+    public function updateSharedPhone(Request $request, User $user): RedirectResponse
+    {
+        $craIds = LeadGenerator::cras()->pluck('id');
+        abort_unless($craIds->contains($user->id), 404);
+
+        $validated = $request->validate([
+            'shared_phone_cra_id' => ['nullable', 'integer', Rule::in($craIds->reject(fn (int $id) => $id === $user->id)->all())],
+            'shared_phone_from' => ['required_with:shared_phone_cra_id', 'nullable', 'date_format:H:i'],
+            'shared_phone_until' => ['required_with:shared_phone_cra_id', 'nullable', 'date_format:H:i', 'after:shared_phone_from'],
+        ], ['shared_phone_until.after' => 'The shared hours must end after they start.']);
+
+        $sharer = isset($validated['shared_phone_cra_id']) ? User::find($validated['shared_phone_cra_id']) : null;
+
+        $user->forceFill([
+            'shared_phone_cra_id' => $sharer?->id,
+            'shared_phone_from' => $sharer ? $validated['shared_phone_from'] : null,
+            'shared_phone_until' => $sharer ? $validated['shared_phone_until'] : null,
+        ])->save();
+
+        return redirect()->route('settings.call-recordings.index')
+            ->with('status', $sharer
+                ? "{$user->displayName()}'s phone: calls from {$user->shared_phone_from} until {$user->shared_phone_until} now go to {$sharer->displayName()}."
+                : "{$user->displayName()}'s phone is no longer shared.");
     }
 
     /**

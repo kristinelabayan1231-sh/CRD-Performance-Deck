@@ -60,7 +60,7 @@ class HighValueCustomers
     {
         $minAov = (float) config('customers.high_aov_min');
         // Nobody can have spent a product's CLTV on it with a smaller total, so only bigger spenders are checked for VIP.
-        $minSrp = Product::where('srp', '>', 0)->min('srp');
+        $minSrp = Product::crd()->where('srp', '>', 0)->min('srp');
         $minCltv = $minSrp === null ? null : (float) $minSrp * (int) config('customers.cltv_units');
 
         $rows = DB::query()->fromSub($this->customers->craCustomers(), 'c')
@@ -101,7 +101,7 @@ class HighValueCustomers
     public function flagsFor(iterable $rows): array
     {
         $minAov = (float) config('customers.high_aov_min');
-        $minSrp = Product::where('srp', '>', 0)->min('srp');
+        $minSrp = Product::crd()->where('srp', '>', 0)->min('srp');
         $minCltv = $minSrp === null ? null : (float) $minSrp * (int) config('customers.cltv_units');
         $rows = collect($rows);
 

@@ -16,7 +16,7 @@ class AgeBracketController extends Controller
     public function index(): View
     {
         return view('settings.age-bracket', [
-            'products' => Product::orderBy('name')->get(),
+            'products' => Product::crd()->orderBy('name')->get(),
         ]);
     }
 
@@ -31,7 +31,7 @@ class AgeBracketController extends Controller
             'brackets.*.max' => ['nullable', 'integer', 'min:1', 'max:120'],
         ], [], ['brackets.*.min' => 'youngest age', 'brackets.*.max' => 'oldest age']);
 
-        $products = Product::all();
+        $products = Product::crd()->get();
 
         foreach ($products as $product) {
             $min = $data['brackets'][$product->id]['min'] ?? null;

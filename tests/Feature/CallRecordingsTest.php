@@ -108,7 +108,7 @@ class CallRecordingsTest extends TestCase
             'called_at' => '2026-10-23 05:55:00',
         ]);
         Http::assertSent(fn (Request $request) => $request->url() === 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable'
-            && $request['parents'] === ['folder-1'] && $request['name'] === '2026-10-23 1355 regina 9171234567.m4a');
+            && $request['parents'] === ['folder-1'] && $request['name'] === '2026-10-23 1355 regina 09171234567.m4a');
     }
 
     public function test_without_a_duration_the_length_is_read_from_the_recording_and_an_unknown_number_is_kept_unmatched(): void
@@ -295,6 +295,53 @@ class CallRecordingsTest extends TestCase
         $this->upload($token, ['number' => '09171234567', 'lead' => $other->id, 'filename' => 'b.wav'], $this->wav(1))->assertCreated();
 
         $this->assertSame([$dialled->id, $newer->id], CallRecording::orderBy('id')->pluck('lead_id')->all());
+    }
+
+    public function test_a_number_the_phone_did_not_fill_in_is_read_from_the_file_name(): void
+    {
+        $this->fakeDrive();
+        $lead = $this->lead('9930353215', $this->regina, 'Ana Cruz');
+
+        $this->upload($this->regina->issueRecordingToken(), ['number' => '{call_number}', 'called_at' => '2026-10-23 13:55', 'filename' => '09930353215 2026-10-23 13-50-00.m4a'], $this->wav(1))
+            ->assertCreated()->assertJson(['matched' => true]);
+
+        $this->assertDatabaseHas('call_recordings', ['phone_number' => '09930353215', 'phone_key' => '9930353215', 'lead_id' => $lead->id]);
+        Http::assertSent(fn (Request $request) => ($request['name'] ?? null) === '2026-10-23 1355 regina 09930353215.m4a');
+    }
+
+    public function test_a_shared_phone_saves_calls_in_the_sharers_hours_under_the_sharer(): void
+    {
+        $this->fakeDrive();
+        $this->lhea->forceFill(['shared_phone_cra_id' => $this->regina->id, 'shared_phone_from' => '06:00', 'shared_phone_until' => '15:00'])->save();
+        $token = $this->lhea->issueRecordingToken();
+
+        $this->upload($token, ['number' => '09171234567', 'called_at' => '2026-10-23 14:59', 'filename' => 'a.wav'], $this->wav(1))->assertCreated();
+        $this->upload($token, ['number' => '09171234567', 'called_at' => '2026-10-23 15:00', 'filename' => 'b.wav'], $this->wav(1))->assertCreated();
+        // Sent again by the catch-up upload: already saved under Regina.
+        $this->upload($token, ['number' => '09171234567', 'called_at' => '2026-10-23 14:59', 'filename' => 'a.wav'], $this->wav(1))->assertOk();
+
+        $this->assertSame([$this->regina->id, $this->lhea->id], CallRecording::orderBy('id')->pluck('user_id')->all());
+        Http::assertSent(fn (Request $request) => ($request['name'] ?? null) === '2026-10-23 1459 regina 09171234567.wav');
+        Http::assertSent(fn (Request $request) => ($request['name'] ?? null) === '2026-10-23 1500 lhea 09171234567.wav');
+    }
+
+    public function test_a_shared_phone_needs_another_cra_and_hours_that_end_after_they_start(): void
+    {
+        $admin = User::create(['email' => 'admin@example.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+        $route = route('settings.call-recordings.shared-phone', $this->lhea);
+
+        $this->actingAs($admin)->put($route, ['shared_phone_cra_id' => $this->lhea->id, 'shared_phone_from' => '06:00', 'shared_phone_until' => '15:00'])
+            ->assertSessionHasErrors('shared_phone_cra_id');
+        $this->actingAs($admin)->put($route, ['shared_phone_cra_id' => $this->regina->id, 'shared_phone_from' => '15:00', 'shared_phone_until' => '06:00'])
+            ->assertSessionHasErrors('shared_phone_until');
+        $this->actingAs($admin)->put($route, ['shared_phone_cra_id' => $this->regina->id, 'shared_phone_from' => '06:00', 'shared_phone_until' => '15:00'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame([$this->regina->id, '06:00', '15:00'], [$this->lhea->fresh()->shared_phone_cra_id, $this->lhea->fresh()->shared_phone_from, $this->lhea->fresh()->shared_phone_until]);
+
+        $this->actingAs($admin)->put($route, ['shared_phone_cra_id' => '', 'shared_phone_from' => '06:00', 'shared_phone_until' => '15:00'])->assertSessionHasNoErrors();
+        $this->assertNull($this->lhea->fresh()->shared_phone_cra_id);
+
+        $this->actingAs($this->regina)->put($route, ['shared_phone_cra_id' => ''])->assertForbidden();
     }
 
     public function test_a_phone_link_must_be_a_macrodroid_webhook(): void

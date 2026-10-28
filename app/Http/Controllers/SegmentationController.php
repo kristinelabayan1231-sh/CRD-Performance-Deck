@@ -125,7 +125,7 @@ class SegmentationController extends Controller
             'canViewAll' => $canViewAll,
             'canManage' => $user->can('segmentation.manage'),
             'statuses' => config('segmentation.statuses'),
-            'products' => Product::orderBy('name')->pluck('name'),
+            'products' => Product::crd()->orderBy('name')->pluck('name'),
             'optionalColumns' => config('segmentation.optional_columns'),
             'today' => $today,
             'lastSync' => LeadGenerator::lastSync(CarbonImmutable::parse($filters['date'] ?? $today)),

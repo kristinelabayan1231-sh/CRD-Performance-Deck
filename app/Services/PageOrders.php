@@ -36,7 +36,7 @@ class PageOrders
 
         $pageOf = self::pageMatcher($pages);
 
-        $orders = PancakeOrder::crdProducts()
+        $orders = PancakeOrder::crdSales()
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
             ->whereDate('ordered_on', $day)
             ->whereIn('seller_name', $sellers)

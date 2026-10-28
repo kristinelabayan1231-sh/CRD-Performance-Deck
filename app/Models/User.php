@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Carbon\CarbonImmutable;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -149,6 +150,26 @@ class User extends Authenticatable
     public static function findByRecordingToken(?string $token): ?self
     {
         return $token ? static::where('recording_token', hash('sha256', $token))->where('is_active', true)->first() : null;
+    }
+
+    /**
+     * The CRA who shares this CRA's phone for part of the day (Settings → Call Recordings).
+     */
+    public function sharedPhoneCra(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'shared_phone_cra_id');
+    }
+
+    /**
+     * Whose call this is when this CRA's phone uploads it: the CRA sharing the phone during their hours
+     * (from included, until not), else this CRA.
+     */
+    public function phoneCraAt(CarbonImmutable $calledAt): self
+    {
+        $time = $calledAt->timezone(config('segmentation.timezone'))->format('H:i');
+        $sharer = $this->sharedPhoneCra;
+
+        return $sharer && $time >= $this->shared_phone_from && $time < $this->shared_phone_until ? $sharer : $this;
     }
 
     public function initials(): string

@@ -17,7 +17,8 @@ use Throwable;
 
 /**
  * POST /api/call-recordings from a CRA's phone (MacroDroid): the audio file is the request body, the call details are
- * query parameters, and the CRA's upload token (Settings → Call Recordings) is the Bearer token.
+ * query parameters, and the CRA's upload token (Settings → Call Recordings) is the Bearer token. A phone two CRAs
+ * share saves each call under the CRA whose hours it falls in.
  */
 class CallRecordingUploadController extends Controller
 {
@@ -26,9 +27,9 @@ class CallRecordingUploadController extends Controller
 
     public function __invoke(Request $request, GoogleDrive $drive): JsonResponse
     {
-        $cra = User::findByRecordingToken($request->bearerToken());
+        $phoneOwner = User::findByRecordingToken($request->bearerToken());
 
-        if (! $cra) {
+        if (! $phoneOwner) {
             return response()->json(['message' => 'Unknown or missing upload token.'], 401);
         }
 
@@ -44,8 +45,11 @@ class CallRecordingUploadController extends Controller
 
         $filename = isset($details['filename']) ? basename($details['filename']) : null;
 
-        // The catch-up upload sends files again; the phone may move them once it gets a 200.
-        if ($filename !== null && ($existing = CallRecording::where('user_id', $cra->id)->where('original_filename', $filename)->first())) {
+        // The catch-up upload sends files again; the phone may move them once it gets a 200. A shared phone's file
+        // may already be under the CRA sharing it.
+        $phoneCraIds = array_filter([$phoneOwner->id, $phoneOwner->shared_phone_cra_id]);
+
+        if ($filename !== null && ($existing = CallRecording::whereIn('user_id', $phoneCraIds)->where('original_filename', $filename)->first())) {
             return response()->json(['message' => 'Already uploaded.', 'id' => $existing->id]);
         }
 
@@ -57,7 +61,9 @@ class CallRecordingUploadController extends Controller
         }
 
         $calledAt = isset($details['called_at']) ? CarbonImmutable::parse($details['called_at'], config('segmentation.timezone')) : CarbonImmutable::now();
-        $phoneKey = CallRecording::phoneKey($details['number']);
+        $cra = $phoneOwner->phoneCraAt($calledAt);
+        $number = $this->callNumber($details['number'], $filename);
+        $phoneKey = CallRecording::phoneKey($number);
 
         try {
             $fileId = $drive->upload($contents, $this->driveName($cra, $calledAt, $phoneKey, $filename), $mimeType);
@@ -71,7 +77,7 @@ class CallRecordingUploadController extends Controller
         $recording = CallRecording::create([
             'user_id' => $cra->id,
             'lead_id' => $this->lead($details['lead'] ?? null, $phoneKey, $cra)?->id,
-            'phone_number' => $details['number'],
+            'phone_number' => $number,
             'phone_key' => $phoneKey,
             'direction' => $details['direction'] ?? null,
             // Saved in UTC: a Manila time would be stored as is.
@@ -101,6 +107,19 @@ class CallRecordingUploadController extends Controller
     }
 
     /**
+     * The number sent, or the one in the recording's file name (e.g. "09930353215 2026-10-28 19-44-44.m4a") when the
+     * phone sent something else, such as a MacroDroid variable it didn't fill in ("{call_number}").
+     */
+    private function callNumber(string $number, ?string $filename): string
+    {
+        if (strlen(CallRecording::phoneKey($number)) >= 10 || $filename === null || ! preg_match('/\+?\d{10,13}/', $filename, $match)) {
+            return $number;
+        }
+
+        return $match[0];
+    }
+
+    /**
      * finfo names M4A and 3GP calls video/*.
      */
     private function isAudio(string $mimeType): bool
@@ -109,13 +128,13 @@ class CallRecordingUploadController extends Controller
     }
 
     /**
-     * e.g. "2026-10-23 1405 Regina 9171234567.m4a", so the Drive folder reads by date.
+     * e.g. "2026-10-23 1405 regina 09171234567.m4a", so the Drive folder reads by date.
      */
     private function driveName(User $cra, CarbonImmutable $calledAt, string $phoneKey, ?string $filename): string
     {
         $extension = $filename ? pathinfo($filename, PATHINFO_EXTENSION) : '';
 
         return $calledAt->timezone(config('segmentation.timezone'))->format('Y-m-d Hi')
-            .' '.Str::slug($cra->displayName()).' '.$phoneKey.($extension !== '' ? '.'.$extension : '');
+            .' '.Str::slug($cra->displayName()).' '.CallRecording::dialNumber($phoneKey).($extension !== '' ? '.'.$extension : '');
     }
 }

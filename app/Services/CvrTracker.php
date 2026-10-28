@@ -149,7 +149,7 @@ class CvrTracker
 
     private function tagged(CarbonImmutable $day, bool $counted = true): Builder
     {
-        return PancakeOrder::crdProducts()->when($counted, fn (Builder $q) => $q->counted())
+        return PancakeOrder::crdSales()->when($counted, fn (Builder $q) => $q->counted())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->whereDate('ordered_on', $day);
     }

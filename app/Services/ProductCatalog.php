@@ -19,13 +19,48 @@ use Illuminate\Support\Collection;
  *
  * A product added later counts from its counts_from day: given the day of an order, delivery or lead ($on, Y-m-d), the
  * list is the products there that day, so adding one leaves earlier days as they were. Without a day every product counts.
+ *
+ * TSD upsell products (is_tsd) are kept apart: match() and the "unlisted" checks see only the CRD products, so leads, the
+ * Customer Database and churn are unchanged; matchSold() and tsdUpsell() also see the TSD ones, for the CRAs' sales.
  */
 class ProductCatalog
 {
     /** @var Collection<int, array{key: string, product: Product}>|null */
     private ?Collection $keywords = null;
 
+    /** @var Collection<int, array{key: string, product: Product}>|null */
+    private ?Collection $tsdKeywords = null;
+
     public function match(string $raw, ?string $on = null): ?Product
+    {
+        return $this->matchIn($this->keywords(), $raw, $on);
+    }
+
+    /**
+     * The CRD product the item is, else the TSD upsell product: how the CRAs' sales file an item.
+     */
+    public function matchSold(string $raw, ?string $on = null): ?Product
+    {
+        return $this->match($raw, $on) ?? $this->matchIn($this->tsdKeywords(), $raw, $on);
+    }
+
+    /**
+     * Whether an order with these items has no CRD product but a TSD upsell product on $on: it counts in the CRA's sales only.
+     *
+     * @param  list<?string>  $names
+     */
+    public function tsdUpsell(array $names, ?string $on = null): bool
+    {
+        $names = array_filter(array_map(fn (?string $name) => trim((string) $name), $names), fn (string $name) => $name !== '');
+
+        return $this->unlisted(array_values($names), $on)
+            && collect($names)->contains(fn (string $name) => $this->matchIn($this->tsdKeywords(), $name, $on) !== null);
+    }
+
+    /**
+     * @param  Collection<int, array{key: string, product: Product}>  $keywords
+     */
+    private function matchIn(Collection $keywords, string $raw, ?string $on): ?Product
     {
         $name = self::squash($raw);
 
@@ -33,7 +68,7 @@ class ProductCatalog
             return null;
         }
 
-        return $this->keywords()
+        return $keywords
             ->first(fn (array $k) => str_contains($name, $k['key']) && ! $this->excluded($name, $k['product']) && self::countsOn($k['product'], $on))['product'] ?? null;
     }
 
@@ -157,7 +192,7 @@ class ProductCatalog
      */
     public function flagUnlistedOrders(): array
     {
-        $this->keywords = null;
+        $this->keywords = $this->tsdKeywords = null;
 
         // Logistics: per product text, never / every day / from a day (delivered before it = tagged).
         foreach (LogisticsOrder::query()->distinct()->pluck('product')->chunk(500) as $chunk) {
@@ -176,17 +211,25 @@ class ProductCatalog
             }
         }
 
-        $flagged = [];
-        PancakeOrder::query()->select(['id', 'items', 'ordered_on'])->chunkById(5000, function ($orders) use (&$flagged) {
+        $flagged = $upsells = [];
+        PancakeOrder::query()->select(['id', 'items', 'ordered_on'])->chunkById(5000, function ($orders) use (&$flagged, &$upsells) {
             foreach ($orders as $order) {
-                if ($this->unlisted(array_column($order->items ?? [], 'name'), $order->ordered_on?->toDateString())) {
+                $names = array_column($order->items ?? [], 'name');
+                $on = $order->ordered_on?->toDateString();
+                if ($this->unlisted($names, $on)) {
                     $flagged[] = $order->id;
+                    if ($this->tsdUpsell($names, $on)) {
+                        $upsells[] = $order->id;
+                    }
                 }
             }
         });
-        PancakeOrder::where('non_crd', true)->update(['non_crd' => false]);
+        PancakeOrder::where('non_crd', true)->orWhere('tsd_upsell', true)->update(['non_crd' => false, 'tsd_upsell' => false]);
         foreach (array_chunk($flagged, 1000) as $ids) {
             PancakeOrder::whereIn('id', $ids)->update(['non_crd' => true]);
+        }
+        foreach (array_chunk($upsells, 1000) as $ids) {
+            PancakeOrder::whereIn('id', $ids)->update(['tsd_upsell' => true]);
         }
 
         return ['pancake' => count($flagged), 'logistics' => LogisticsOrder::where('non_crd', true)->count()];
@@ -224,13 +267,32 @@ class ProductCatalog
     }
 
     /**
-     * Every keyword of every product, longest first.
+     * Every keyword of every CRD product, longest first.
      *
      * @return Collection<int, array{key: string, product: Product}>
      */
     private function keywords(): Collection
     {
-        return $this->keywords ??= Product::all()
+        return $this->keywords ??= self::keywordsOf(Product::crd()->get());
+    }
+
+    /**
+     * Every keyword of every TSD upsell product, longest first.
+     *
+     * @return Collection<int, array{key: string, product: Product}>
+     */
+    private function tsdKeywords(): Collection
+    {
+        return $this->tsdKeywords ??= self::keywordsOf(Product::where('is_tsd', true)->get());
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return Collection<int, array{key: string, product: Product}>
+     */
+    private static function keywordsOf(Collection $products): Collection
+    {
+        return $products
             ->flatMap(fn (Product $product) => collect([$product->name, ...$product->keywordList()])
                 ->map(fn ($k) => ['key' => self::squash($k), 'product' => $product]))
             ->filter(fn ($k) => $k['key'] !== '')

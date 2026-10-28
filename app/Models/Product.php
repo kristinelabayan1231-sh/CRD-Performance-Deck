@@ -3,16 +3,18 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['name', 'is_testing', 'keywords', 'exclude_keywords', 'consumption_days', 'age_min', 'age_max', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
+#[Fillable(['name', 'is_testing', 'is_tsd', 'keywords', 'exclude_keywords', 'consumption_days', 'age_min', 'age_max', 'srp', 'unit_cost', 'counts_from', 'created_by'])]
 class Product extends Model
 {
     protected function casts(): array
     {
         return [
             'is_testing' => 'boolean',
+            'is_tsd' => 'boolean',
             'consumption_days' => 'integer',
             'age_min' => 'integer',
             'age_max' => 'integer',
@@ -20,6 +22,14 @@ class Product extends Model
             'srp' => 'decimal:2',
             'unit_cost' => 'decimal:2',
         ];
+    }
+
+    /**
+     * The CRD products: the TSD upsell products left out (they count only in the CRAs' sales).
+     */
+    public function scopeCrd(Builder $query): Builder
+    {
+        return $query->where('is_tsd', false);
     }
 
     /**

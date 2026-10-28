@@ -581,8 +581,8 @@ function initCopyPhones() {
         const button = event.target.closest('[data-copy-phones]');
         if (!button) return;
 
-        const phones = [...button.closest('table').querySelectorAll('tbody td[data-col="contact_number"]')]
-            .map((cell) => cell.textContent.trim())
+        const phones = [...button.closest('table').querySelectorAll('tbody td[data-col="contact_number"] a[href^="tel:"]')]
+            .map((link) => link.textContent.trim())
             .filter(Boolean);
         if (!phones.length) return;
 
