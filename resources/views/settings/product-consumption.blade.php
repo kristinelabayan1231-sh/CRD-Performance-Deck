@@ -155,31 +155,45 @@
                             <input type="hidden" name="is_tsd" value="1">
                         @endif
 
-                        <label>
-                            <span class="{{ $label }}">Product (keyword)</span>
-                            <input type="text" name="name" required maxlength="255" value="{{ $value('name', $selected?->name) }}"
-                                   placeholder="{{ $isTsd ? 'e.g. Haplunas' : 'e.g. Pterygium' }}" class="{{ $input }}">
-                        </label>
-                        <label>
-                            <span class="{{ $label }}">Also matches <span class="font-normal text-muted">(comma-separated)</span></span>
-                            <input type="text" name="keywords" maxlength="1000" value="{{ $value('keywords', $selected?->keywords) }}"
-                                   placeholder="{{ $isTsd ? 'e.g. Haplunas Healing Eye Cream' : 'e.g. Clear Sight, Clearsite' }}" class="{{ $input }}">
-                        </label>
-                        <label>
-                            <span class="{{ $label }}">Not this product if it has</span>
-                            <input type="text" name="exclude_keywords" maxlength="1000" value="{{ $value('exclude_keywords', $selected?->exclude_keywords) }}"
-                                   placeholder="e.g. Nasal Inhaler" class="{{ $input }}">
-                        </label>
-                        <div class="grid grid-cols-2 gap-3">
+                        @if ($add !== null && $isTsd)
+                            {{-- Several TSD products at once: one row each, sharing the starting date below. --}}
+                            @php($rows = $bag->any() && is_array(old('products')) ? array_values(old('products')) : [[]])
+                            <div data-tsd-rows class="grid gap-3">
+                                @foreach ($rows as $index => $row)
+                                    @include('settings._tsd-product-row', ['index' => $index, 'row' => $row])
+                                @endforeach
+                            </div>
+                            <template data-tsd-template>
+                                @include('settings._tsd-product-row', ['index' => '__i__', 'row' => []])
+                            </template>
+                            <button type="button" data-tsd-add class="h-9 justify-self-start rounded-lg border border-line px-3 text-xs font-semibold text-brand-700 transition hover:border-brand-400">+ Another product</button>
+                        @else
                             <label>
-                                <span class="{{ $label }}">SRP <span class="font-normal text-muted">(₱ per unit)</span></span>
-                                <input type="number" name="srp" min="0" step="0.01" value="{{ $value('srp', $selected?->srp) }}" placeholder="Not set" class="{{ $input }} tabular-nums">
+                                <span class="{{ $label }}">Product (keyword)</span>
+                                <input type="text" name="name" required maxlength="255" value="{{ $value('name', $selected?->name) }}"
+                                       placeholder="{{ $isTsd ? 'e.g. Haplunas' : 'e.g. Pterygium' }}" class="{{ $input }}">
                             </label>
                             <label>
-                                <span class="{{ $label }}">Product cost <span class="font-normal text-muted">(₱)</span></span>
-                                <input type="number" name="unit_cost" min="0" step="0.01" value="{{ $value('unit_cost', $selected?->unit_cost) }}" placeholder="Not set" class="{{ $input }} tabular-nums">
+                                <span class="{{ $label }}">Also matches <span class="font-normal text-muted">(comma-separated)</span></span>
+                                <input type="text" name="keywords" maxlength="1000" value="{{ $value('keywords', $selected?->keywords) }}"
+                                       placeholder="{{ $isTsd ? 'e.g. Haplunas Healing Eye Cream' : 'e.g. Clear Sight, Clearsite' }}" class="{{ $input }}">
                             </label>
-                        </div>
+                            <label>
+                                <span class="{{ $label }}">Not this product if it has</span>
+                                <input type="text" name="exclude_keywords" maxlength="1000" value="{{ $value('exclude_keywords', $selected?->exclude_keywords) }}"
+                                       placeholder="e.g. Nasal Inhaler" class="{{ $input }}">
+                            </label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label>
+                                    <span class="{{ $label }}">SRP <span class="font-normal text-muted">(₱ per unit)</span></span>
+                                    <input type="number" name="srp" min="0" step="0.01" value="{{ $value('srp', $selected?->srp) }}" placeholder="Not set" class="{{ $input }} tabular-nums">
+                                </label>
+                                <label>
+                                    <span class="{{ $label }}">Product cost <span class="font-normal text-muted">(₱)</span></span>
+                                    <input type="number" name="unit_cost" min="0" step="0.01" value="{{ $value('unit_cost', $selected?->unit_cost) }}" placeholder="Not set" class="{{ $input }} tabular-nums">
+                                </label>
+                            </div>
+                        @endif
                         @unless ($isTsd)
                             <div class="grid grid-cols-2 gap-3">
                                 <label>
@@ -233,7 +247,7 @@
                             <a href="{{ $here() }}" class="inline-flex h-10 items-center rounded-lg border border-line px-3 text-sm font-medium hover:border-brand-400 hover:text-brand-600">Cancel</a>
                         @endif
                         <button type="submit" form="{{ $formId }}" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700">
-                            {{ $add !== null ? 'Add product' : 'Save' }}
+                            {{ $add !== null ? ($isTsd ? 'Add products' : 'Add product') : 'Save' }}
                         </button>
                     </div>
                 @else
@@ -271,4 +285,33 @@
             </aside>
         @endif
     </div>
+
+    <script>
+        // TSD add panel: "+ Another product" copies the row template; rows are renumbered so each posts its own products[i].
+        (() => {
+            const rows = document.querySelector('[data-tsd-rows]');
+            const template = document.querySelector('[data-tsd-template]');
+            if (! rows || ! template) return;
+
+            const renumber = () => rows.querySelectorAll('[data-tsd-row]').forEach((row, i) => {
+                row.querySelector('[data-tsd-number]').textContent = i + 1;
+                row.querySelector('[data-tsd-remove]').classList.toggle('hidden', i === 0);
+                row.querySelectorAll('[name^="products["]').forEach((field) => {
+                    field.name = field.name.replace(/^products\[[^\]]*\]/, `products[${i}]`);
+                });
+            });
+
+            document.querySelector('[data-tsd-add]').addEventListener('click', () => {
+                rows.append(template.content.cloneNode(true));
+                renumber();
+                rows.lastElementChild.querySelector('input').focus();
+            });
+            rows.addEventListener('click', (event) => {
+                if (event.target.closest('[data-tsd-remove]')) {
+                    event.target.closest('[data-tsd-row]').remove();
+                    renumber();
+                }
+            });
+        })();
+    </script>
 </x-layouts.settings>

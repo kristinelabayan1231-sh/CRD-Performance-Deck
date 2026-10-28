@@ -83,6 +83,32 @@ class TsdUpsellTest extends TestCase
         $this->assertFalse($order->fresh()->tsd_upsell);
     }
 
+    public function test_several_tsd_products_are_added_in_one_submission(): void
+    {
+        $supervisor = $this->supervisor();
+        $this->actingAs($supervisor)->get(route('settings.product-consumption.index', ['add' => 'tsd']))->assertOk()->assertSee('+ Another product');
+
+        // A name already listed, or twice in the list: nothing is added.
+        $this->actingAs($supervisor)->post(route('settings.product-consumption.store'), ['is_tsd' => '1', 'counts_from' => '2026-10-01', 'products' => [
+            ['name' => 'Turmeric'], ['name' => 'Clear Sight 3.0'],
+        ]])->assertSessionHasErrors('products.1.name');
+        $this->actingAs($supervisor)->post(route('settings.product-consumption.store'), ['is_tsd' => '1', 'counts_from' => '2026-10-01', 'products' => [
+            ['name' => 'Turmeric'], ['name' => 'turmeric'],
+        ]])->assertSessionHasErrors('products.1.name');
+        $this->assertSame(1, Product::count());
+
+        // A row left blank is skipped.
+        $this->actingAs($supervisor)->post(route('settings.product-consumption.store'), ['is_tsd' => '1', 'counts_from' => '2026-10-01', 'products' => [
+            ['name' => ' Turmeric ', 'keywords' => 'Turmeric Capsule,, Turmeric Capsule', 'srp' => '399', 'unit_cost' => '80'],
+            ['name' => '', 'keywords' => '', 'srp' => ''],
+            ['name' => 'Haplunas'],
+        ]])->assertSessionHasNoErrors()->assertSessionHas('status', '2 TSD upsell products added: Turmeric, Haplunas.');
+
+        $turmeric = Product::firstWhere('name', 'Turmeric');
+        $this->assertSame([true, 'Turmeric Capsule', '399.00', '80.00', '2026-10-01'], [$turmeric->is_tsd, $turmeric->keywords, $turmeric->srp, $turmeric->unit_cost, $turmeric->counts_from->toDateString()]);
+        $this->assertTrue(Product::firstWhere('name', 'Haplunas')->is_tsd);
+    }
+
     public function test_a_supervisor_manages_tsd_products_but_not_crd_products(): void
     {
         $supervisor = $this->supervisor();
