@@ -30,7 +30,7 @@ class LeadCallController extends Controller
 
         try {
             $response = Http::connectTimeout(5)->timeout(10)
-                ->get($user->call_webhook_url, ['number' => $this->dialNumber($lead->phone_number), 'lead' => $lead->id]);
+                ->get($user->call_webhook_url, ['number' => CallRecording::dialNumber($lead->phone_number), 'lead' => $lead->id]);
         } catch (Throwable $e) {
             report($e);
             $response = null;
@@ -46,15 +46,5 @@ class LeadCallController extends Controller
         }
 
         return response()->json(['message' => "Calling {$lead->customer_name} on your phone…"]);
-    }
-
-    /**
-     * The number as the phone dials it: leads keep PH mobiles as 9xx…, 09xx… or 639xx…, and the phone needs 09xx….
-     */
-    private function dialNumber(string $phone): string
-    {
-        $phoneKey = CallRecording::phoneKey($phone);
-
-        return strlen($phoneKey) === 10 && str_starts_with($phoneKey, '9') ? '0'.$phoneKey : $phone;
     }
 }

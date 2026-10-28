@@ -283,6 +283,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::get('/drive/callback', [CallRecordingSettingController::class, 'callback'])->name('drive-callback');
             Route::post('/tokens/{user}', [CallRecordingSettingController::class, 'issueToken'])->name('token');
             Route::put('/phones/{user}', [CallRecordingSettingController::class, 'updatePhone'])->name('phone');
+            Route::put('/phones/{user}/shared', [CallRecordingSettingController::class, 'updateSharedPhone'])->name('shared-phone');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

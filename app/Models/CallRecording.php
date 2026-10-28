@@ -59,6 +59,16 @@ class CallRecording extends Model
     }
 
     /**
+     * The number as a phone shows it: leads keep PH mobiles as 9xx…, 09xx… or 639xx…, and phones use 09xx….
+     */
+    public static function dialNumber(string $phone): string
+    {
+        $phoneKey = self::phoneKey($phone);
+
+        return strlen($phoneKey) === 10 && str_starts_with($phoneKey, '9') ? '0'.$phoneKey : $phone;
+    }
+
+    /**
      * 4:05, or 1:02:09 past an hour.
      */
     public static function formatDuration(?float $seconds): string
