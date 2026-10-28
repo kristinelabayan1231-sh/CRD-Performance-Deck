@@ -15,18 +15,40 @@ use function Illuminate\Support\defer;
 
 class ProductConsumptionController extends Controller
 {
-    public function index(): View
+    /**
+     * One list of CRD and TSD upsell products (filtered by ?source), with the product picked (?product) or the add
+     * form (?add=crd|tsd) in a panel beside it.
+     */
+    public function index(Request $request): View
     {
+        $products = Product::orderBy('name')->get();
+        $source = in_array($request->query('source'), ['crd', 'tsd'], true) ? $request->query('source') : null;
+        $add = in_array($request->query('add'), ['crd', 'tsd'], true) ? $request->query('add') : null;
+
+        // Only those who may add that kind of product get its add form.
+        if ($add !== null && ! $this->canChange($request, $add === 'tsd')) {
+            $add = null;
+        }
+
         return view('settings.product-consumption', [
-            'products' => Product::orderBy('name')->get(),
+            'products' => $source === null ? $products : $products->where('is_tsd', $source === 'tsd')->values(),
+            'counts' => ['all' => $products->count(), 'crd' => $products->where('is_tsd', false)->count(), 'tsd' => $products->where('is_tsd', true)->count()],
+            'source' => $source,
+            'add' => $add,
+            'selected' => $add === null ? $products->firstWhere('id', (int) $request->query('product')) : null,
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $isTsd = $request->boolean('is_tsd');
+        abort_unless($this->canChange($request, $isTsd), 403);
+
         $data = $this->validated($request);
-        // Testing or existing: decided when the product is added (Settings → Testing Products changes it later).
-        $data += $request->validate(['is_testing' => ['required', 'boolean']], ['is_testing.required' => 'Choose whether the product is Testing or Existing.']);
+        // Testing or existing: decided when a CRD product is added (Settings → Testing Products changes it later).
+        $data = [...$data, ...($isTsd
+            ? ['is_tsd' => true, 'is_testing' => false, 'consumption_days' => null]
+            : $request->validate(['is_testing' => ['required', 'boolean']], ['is_testing.required' => 'Choose whether the product is Testing or Existing.']))];
 
         // Counts from its starting date (today when none is given): orders, deliveries and leads before it are left as they were.
         Product::create([...$data, 'counts_from' => $data['counts_from'] ?? WorkingDate::realToday()->toDateString(), 'created_by' => $request->user()->id]);
@@ -34,17 +56,32 @@ class ProductConsumptionController extends Controller
         $catalog->renormalizeLeads();
         $this->applyList($catalog, removeLeads: false);
 
-        return back()->with('status', "Product \"{$data['name']}\" added.");
+        return redirect()->route('settings.product-consumption.index', ['source' => $request->query('source'), 'product' => Product::firstWhere('name', $data['name'])->id])
+            ->with('status', ($isTsd ? 'TSD upsell product' : 'Product')." \"{$data['name']}\" added.");
     }
 
     public function update(Request $request, Product $product): RedirectResponse
     {
-        $product->update($this->validated($request, $product));
+        // Moving a product between CRD and TSD upsell (is_tsd sent) takes the full permission.
+        $isTsd = $request->has('is_tsd') ? $request->boolean('is_tsd') : $product->is_tsd;
+        abort_unless($this->canChange($request, $product->is_tsd && $isTsd), 403);
+
+        $data = $this->validated($request, $product);
+        $product->update([...$data, 'is_tsd' => $isTsd, ...($isTsd ? ['is_testing' => false, 'consumption_days' => null] : [])]);
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
-        $removed = $product->wasChanged(['name', 'keywords', 'exclude_keywords', 'counts_from']) ? $this->applyList($catalog) : 0;
+        $removed = $product->wasChanged(['name', 'keywords', 'exclude_keywords', 'counts_from', 'is_tsd']) ? $this->applyList($catalog) : 0;
 
         return back()->with('status', "Product \"{$product->name}\" updated.".$this->removedNote($removed));
+    }
+
+    /**
+     * Whether the user may add, edit or delete a product: every product with product_consumption.manage, only TSD upsell
+     * products with product_consumption.tsd.
+     */
+    private function canChange(Request $request, bool $tsd): bool
+    {
+        return $request->user()->can('product_consumption.manage') || ($tsd && $request->user()->can('product_consumption.tsd'));
     }
 
     /**
@@ -88,14 +125,17 @@ class ProductConsumptionController extends Controller
         return back()->with('status', "SRP of \"{$product->name}\" updated.");
     }
 
-    public function destroy(Product $product): RedirectResponse
+    public function destroy(Request $request, Product $product): RedirectResponse
     {
+        abort_unless($this->canChange($request, $product->is_tsd), 403);
+
         $product->delete();
         $catalog = app(ProductCatalog::class);
         $catalog->renormalizeLeads();
         $removed = $this->applyList($catalog);
 
-        return back()->with('status', "Product \"{$product->name}\" deleted.".$this->removedNote($removed));
+        return redirect()->route('settings.product-consumption.index', ['source' => $request->query('source')])
+            ->with('status', "Product \"{$product->name}\" deleted.".$this->removedNote($removed));
     }
 
     /**

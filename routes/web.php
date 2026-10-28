@@ -309,7 +309,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::get('/', [ProductConsumptionController::class, 'index'])->middleware('can:product_consumption.view')->name('index');
             Route::patch('/{product}/srp', [ProductConsumptionController::class, 'updateSrp'])->middleware('can:product_consumption.srp')->name('srp');
 
-            Route::middleware('can:product_consumption.manage')->group(function () {
+            // product_consumption.manage for every product, product_consumption.tsd for TSD upsell products (checked in the controller).
+            Route::middleware('can:product_consumption.view')->group(function () {
                 Route::post('/', [ProductConsumptionController::class, 'store'])->name('store');
                 Route::patch('/{product}', [ProductConsumptionController::class, 'update'])->name('update');
                 Route::delete('/{product}', [ProductConsumptionController::class, 'destroy'])->name('destroy');

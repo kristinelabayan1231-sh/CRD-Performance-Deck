@@ -24,11 +24,11 @@ class NicheController extends Controller
 
         return view('settings.niches', [
             'niches' => $niches,
-            'products' => Product::orderBy('name')->get(['id', 'name']),
+            'products' => Product::crd()->orderBy('name')->get(['id', 'name']),
             'cras' => $cras,
             // With every CRA in a niche, a product in none has nobody to take its leads.
             'unclaimed' => $niches->isNotEmpty() && $cras->every(fn (User $cra) => $cra->niche_id !== null)
-                ? Product::whereNotIn('id', $inNiche)->orderBy('name')->pluck('name')
+                ? Product::crd()->whereNotIn('id', $inNiche)->orderBy('name')->pluck('name')
                 : collect(),
         ]);
     }

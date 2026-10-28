@@ -11,8 +11,8 @@ use Illuminate\Support\Collection;
 /**
  * Each CRA's gross sales per product: their own Pancake orders tagged CRD - BROADCAST or CRD - SEGMENTATION
  * (not canceled), the same orders and amounts as Conversion Breakdown's gross sales. Items are filed under the
- * Settings → Product Consumption product they match; an order with several products is split by qty × SRP
- * (by qty when a product has no SRP), and an item matching no product counts under its own name.
+ * Settings → Product Consumption product they match (CRD or TSD upsell); an order with several products is split by
+ * qty × SRP (by qty when a product has no SRP), and an item matching no product counts under its own name.
  */
 class CraProductSales
 {
@@ -32,7 +32,7 @@ class CraProductSales
 
         $totals = [];
         // Every status, as in gross sales.
-        PancakeOrder::crdProducts()->whereIn('seller_name', $accounts->keys())
+        PancakeOrder::crdSales()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
             ->get(['seller_name', 'items', 'total_price', 'shecom_sales', 'ordered_on'])
@@ -57,7 +57,7 @@ class CraProductSales
     {
         $items = collect($order->items ?? [])->map(function (array $item) use ($order) {
             $raw = trim((string) ($item['name'] ?? ''));
-            $product = $raw === '' ? null : $this->catalog->match($raw, $order->ordered_on?->toDateString());
+            $product = $raw === '' ? null : $this->catalog->matchSold($raw, $order->ordered_on?->toDateString());
             $qty = max(1, (int) ($item['qty'] ?? 1));
 
             return [

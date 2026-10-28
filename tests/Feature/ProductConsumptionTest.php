@@ -80,7 +80,7 @@ class ProductConsumptionTest extends TestCase
         $product = Product::create(['name' => 'CanPro', 'keywords' => 'Can Pro', 'consumption_days' => 10]);
         $supervisor = User::create(['email' => 'sup@gmail.com', 'role_id' => Role::where('slug', Role::CRA_SUPERVISOR)->value('id'), 'is_active' => true]);
 
-        $this->actingAs($supervisor)->get('/settings/product-consumption')
+        $this->actingAs($supervisor)->get(route('settings.product-consumption.index', ['product' => $product->id]))
             ->assertOk()->assertSee(route('settings.product-consumption.srp', $product))->assertDontSee('Add product');
 
         $this->actingAs($supervisor)->patch(route('settings.product-consumption.srp', $product), ['srp' => '499', 'name' => 'Renamed'])

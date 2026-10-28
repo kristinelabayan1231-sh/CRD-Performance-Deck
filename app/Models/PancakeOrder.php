@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 #[Fillable([
     'pancake_order_id', 'ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name',
-    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'page_name', 'page_id', 'conversation_id', 'tags', 'conversion_type',
+    'phone_number', 'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'tsd_upsell', 'page_name', 'page_id', 'conversation_id', 'tags', 'conversion_type',
 ])]
 class PancakeOrder extends Model
 {
@@ -43,6 +43,7 @@ class PancakeOrder extends Model
             'tags' => 'array',
             'items' => 'array',
             'non_crd' => 'boolean',
+            'tsd_upsell' => 'boolean',
         ];
     }
 
@@ -97,6 +98,14 @@ class PancakeOrder extends Model
     public function scopeCrdProducts(Builder $query): Builder
     {
         return $query->where('non_crd', false);
+    }
+
+    /**
+     * The orders that count in the CRAs' sales: those with a CRD product, and those with only a TSD upsell product.
+     */
+    public function scopeCrdSales(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->where('non_crd', false)->orWhere('tsd_upsell', true));
     }
 
     public function scopeCounted(Builder $query): Builder

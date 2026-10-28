@@ -20,6 +20,7 @@ $modules = [
         'product_consumption.view' => 'View products and their keywords',
         'product_consumption.manage' => 'Add, edit and delete products',
         'product_consumption.srp' => 'Set each product\'s SRP (sets its CLTV in the Customer Database)',
+        'product_consumption.tsd' => 'Add, edit and remove TSD upsell products (counted in the CRAs\' gross sales)',
     ],
     'Settings · Testing Products' => [
         'product_stage.manage' => 'Mark each product as Testing or Existing',

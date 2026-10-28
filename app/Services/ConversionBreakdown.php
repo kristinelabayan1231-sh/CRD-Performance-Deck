@@ -127,7 +127,7 @@ class ConversionBreakdown
      */
     public static function taggedOrders(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
-        return PancakeOrder::crdProducts()
+        return PancakeOrder::crdSales()
             ->leftJoin('cvr_order_entries as cvr', 'cvr.pancake_order_id', '=', 'pancake_orders.pancake_order_id')
             ->whereIn('pancake_orders.conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhere('pancake_orders.status', '!=', CraPerformance::DELETED))

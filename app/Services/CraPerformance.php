@@ -103,7 +103,8 @@ class CraPerformance
     }
 
     /**
-     * The order's main product: the first item on the Product Consumption list on $on (the order's day), else "Other products".
+     * The order's main product: the first item on the Product Consumption list on $on (the order's day), else its first
+     * TSD upsell product, else "Other products".
      *
      * @param  list<array{name?: string, qty?: int}>  $items
      */
@@ -111,6 +112,12 @@ class CraPerformance
     {
         foreach ($items as $item) {
             if ($product = $this->catalog->match((string) ($item['name'] ?? ''), $on)) {
+                return $product->name;
+            }
+        }
+
+        foreach ($items as $item) {
+            if ($product = $this->catalog->matchSold((string) ($item['name'] ?? ''), $on)) {
                 return $product->name;
             }
         }
