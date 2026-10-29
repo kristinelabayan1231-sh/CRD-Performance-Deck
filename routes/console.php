@@ -52,6 +52,13 @@ Schedule::command('pancake:sync --date=yesterday')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(60);
 
+// Shecom's sales of the last two weeks' orders again (one request): an amount corrected in Shecom after the
+// order's day is otherwise never picked up (Pancake's own price edits come with the day's changed orders).
+Schedule::command('pancake:sync --sales --last=14')
+    ->dailyAt('01:15')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(15);
+
 // The CRAs' POS sales of the last week in the Segmentation Tracker again: late orders, products added to Settings
 // later and orders counted for another CRA in the CVR Tracker (a customer is never added twice).
 Schedule::command('leads:record-pos-sales --last=7')

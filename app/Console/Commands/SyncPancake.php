@@ -14,6 +14,7 @@ class SyncPancake extends Command
         {--date= : Day to sync (YYYY-MM-DD, or "yesterday"). Defaults to today in the segmentation timezone.}
         {--from= : First day of a range to backfill (YYYY-MM-DD)}
         {--to= : Last day of the range (YYYY-MM-DD). Defaults to today.}
+        {--last= : Instead of dates: the last this many days up to today}
         {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
         {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
         {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
@@ -31,7 +32,10 @@ class SyncPancake extends Command
         // Pancake activity happens on real days, whatever the tracker's working date.
         $today = WorkingDate::realToday();
 
-        if ($this->option('from')) {
+        if ($this->option('last')) {
+            $to = $today;
+            $from = $to->subDays(max(1, (int) $this->option('last')) - 1);
+        } elseif ($this->option('from')) {
             $from = CarbonImmutable::parse($this->option('from'));
             $to = $this->option('to') ? CarbonImmutable::parse($this->option('to')) : $today;
         } else {
