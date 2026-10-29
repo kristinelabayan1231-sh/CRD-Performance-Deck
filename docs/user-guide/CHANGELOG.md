@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-29 · Segmentation Tracker · The copy icon by Contact # copies the numbers like a copied Google Sheets column (one per line, also as a table) instead of space-separated, so pasting them in Pancake's search finds those customers · shots: —
 - 2026-10-29 · Sales (CRA's Performance, Conversion Breakdown, CVR, Running Sales, Daily I.S.) · A price or item edited in Pancake after the order's day now updates the order's amount (it used to keep the first-day amount), and Shecom amounts of the last 14 days are re-read every night at 1:15 AM · shots: —
 - 2026-10-28 · Settings → Product Consumption · Adding TSD upsell products: "+ Another product" adds more product rows (name, also matches, not-if, SRP, cost; Remove on extra rows) and one "Add products" saves them all with one starting date; blank rows are skipped, a name already listed or entered twice stops the save · shots: settings-product-consumption
 - 2026-10-28 · Settings → Call Recordings · New "Shared phone" column: pick another CRA and hours (e.g. 06:00 to 15:00) for a phone two CRAs share; uploads called in those hours (Manila time, end not included) are saved under that CRA — Call Recordings page, lead match and the Drive file name — while the phone keeps its owner's token · shots: settings-call-recordings

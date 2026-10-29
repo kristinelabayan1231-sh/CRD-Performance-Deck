@@ -575,7 +575,22 @@ async function copyText(text) {
     }
 }
 
-// The copy icon by a list's Contact # header: every contact number in that list, space-separated ("9938742536 9507297299").
+// Copy values the way Google Sheets copies a column: plain text one per line plus an HTML table, one row per value.
+async function copyColumn(values) {
+    const text = values.join('\r\n');
+    try {
+        const html = `<table><tbody>${values.map((value) => `<tr><td>${value}</td></tr>`).join('')}</tbody></table>`;
+        await navigator.clipboard.write([new ClipboardItem({
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+            'text/html': new Blob([html], { type: 'text/html' }),
+        })]);
+    } catch {
+        await copyText(text);
+    }
+}
+
+// The copy icon by a list's Contact # header: every contact number in that list, copied like a Google Sheets column, so
+// Pancake's search reads it as a list of numbers (space-separated it runs a loose text search).
 function initCopyPhones() {
     document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-copy-phones]');
@@ -586,7 +601,7 @@ function initCopyPhones() {
             .filter(Boolean);
         if (!phones.length) return;
 
-        await copyText(phones.join(' '));
+        await copyColumn(phones);
         button.title = `Copied ${phones.length} number${phones.length === 1 ? '' : 's'}`;
         button.querySelector('[data-copy-icon]').classList.add('hidden');
         button.querySelector('[data-copied-icon]').classList.remove('hidden');
