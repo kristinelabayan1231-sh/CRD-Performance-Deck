@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-29 · Daily I.S. · Product Cost now comes from Shecom: each item's cost (by its Pancake name, e.g. "3 Bottles Sinuxyl") on the order's day × qty, refreshed hourly; ₱0 when Shecom has no cost (Settings unit cost no longer used here) · shots: daily-is
 - 2026-10-29 · Whole app · Text and spacing are about 12% smaller (14px base, like the Shecom dashboard), so pages no longer look zoomed in · shots: all (re-capture when the guide is rebuilt)
 - 2026-10-29 · Segmentation Tracker · The copy icon by Contact # copies the numbers like a copied Google Sheets column (one per line, also as a table) instead of space-separated, so pasting them in Pancake's search finds those customers · shots: —
 - 2026-10-29 · Sales (CRA's Performance, Conversion Breakdown, CVR, Running Sales, Daily I.S.) · A price or item edited in Pancake after the order's day now updates the order's amount (it used to keep the first-day amount), and Shecom amounts of the last 14 days are re-read every night at 1:15 AM · shots: —

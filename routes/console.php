@@ -100,3 +100,9 @@ Schedule::command('customers:warm-cache')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(10)
     ->runInBackground();
+
+// Daily I.S. Product Cost: Shecom's cost of each Pancake item, every hour at :10 (a change counts from its effective day).
+Schedule::command('shecom:product-costs')
+    ->hourlyAt(10)
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(10);

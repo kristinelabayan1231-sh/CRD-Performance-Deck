@@ -43,7 +43,7 @@
             <span class="font-semibold">How it fills in:</span> leads and engagements are the PC Report's Total Inquiries and Total Engagement on each product's pages; orders are the CRA's Pancake orders on those pages that day (canceled and deleted left out), and Gross Sales those orders' sales with the canceled ones too.
             Actual Cancelled = the orders that are Canceled or Waiting for goods now, so it changes when an order is resolved.
             Projected Returns = Gross Sales × the month's % Projected Returns; Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns.
-            Product Cost is from Order Database → Product Report. Shipping Fee = orders × ₱75, COD Fee = Projected Delivered × 2.24%, Fulfillment Fee = orders × ₱25; Advertising Cost, Ads VAT and VAT on COD Fee are 0.
+            Product Cost is each item's cost in Shecom × qty (₱0 when Shecom has no cost). Shipping Fee = orders × ₱75, COD Fee = Projected Delivered × 2.24%, Fulfillment Fee = orders × ₱25; Advertising Cost, Ads VAT and VAT on COD Fee are 0.
             Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI ÷ 24, then ÷ the day's {{ count($data['products']) }} {{ Str::plural('product', count($data['products'])) }} on a product card.
         </div>
 

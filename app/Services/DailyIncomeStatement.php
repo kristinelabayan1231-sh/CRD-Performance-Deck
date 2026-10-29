@@ -6,6 +6,7 @@ use App\Models\MniDepartment;
 use App\Models\PancakeOrder;
 use App\Models\PcReportEntry;
 use App\Models\Setting;
+use App\Models\ShecomProductCost;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
@@ -23,8 +24,9 @@ use Illuminate\Support\Str;
  * Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders.
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
- * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = the
- * orders' cost as Order Database → Product Report has it (items not on Product Consumption left out). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
+ * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
+ * item's cost in Shecom on the order's day × its qty, by the item's Pancake name ("2 Bottles Sinuxyl"); an item without
+ * a Shecom cost is ₱0, and items not on Product Consumption are left out. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
  * Fulfillment Fee = orders × ₱25.
  * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
@@ -104,7 +106,7 @@ class DailyIncomeStatement
     /** Figures counted from the day's PC Report entries and orders (the rest are worked out from them). */
     private const COUNTED = ['leads', 'engagements', 'orders', 'gross', 'cancelled', 'product_cost'];
 
-    public function __construct(private PageOrders $pageOrders, private MonthlyMni $mni, private ProductReport $productReport) {}
+    public function __construct(private PageOrders $pageOrders, private MonthlyMni $mni, private ProductCatalog $catalog) {}
 
     /**
      * @param  Collection<int, User>  $cras
@@ -137,8 +139,7 @@ class DailyIncomeStatement
         ['orders' => $orders, 'missingPage' => $missingPage] = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day);
         $sellers = PancakeAccounts::craBySeller($cras);
         $craOf = $sellers->map(fn (User $cra) => $cra->id);
-        $costs = $orders->isEmpty() ? collect() : $this->productReport->lines($sellers->map(fn (User $cra) => $cra->displayName())->all(), $day, $day)
-            ->where('listed', true)->groupBy('order')->map(fn (Collection $lines) => (float) $lines->sum(fn (array $line) => $line['cost'] ?? 0));
+        $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->pluck('id')->all(), $day);
         foreach ($orders as $order) {
             $product = &$figures[$craOf[$order['seller']]][$groupOf[$order['page']]];
             $product['orders'] += $order['counted'] ? 1 : 0;
@@ -203,6 +204,30 @@ class DailyIncomeStatement
     public static function saveDeactivated(array $groups, User $by): void
     {
         Setting::put(self::DEACTIVATED_KEY, json_encode(array_values(array_unique(array_map(fn (string $name) => Str::lower($name), $groups)))), $by);
+    }
+
+    /**
+     * Each order's Product Cost: its items on Product Consumption (on $day) × their Shecom cost that day, 0 without one.
+     *
+     * @param  list<int>  $orderIds
+     * @return array<int, float> order id => cost
+     */
+    private function productCosts(array $orderIds, CarbonImmutable $day): array
+    {
+        $shecom = ShecomProductCost::costsOn($day->toDateString());
+        $costs = [];
+
+        foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {
+            $costs[$id] = 0.0;
+            foreach ($items ?? [] as $item) {
+                $name = trim((string) ($item['name'] ?? ''));
+                if ($this->catalog->matchSold($name, $day->toDateString()) !== null) {
+                    $costs[$id] += max(1, (int) ($item['qty'] ?? 1)) * ($shecom[mb_strtolower($name)] ?? 0);
+                }
+            }
+        }
+
+        return $costs;
     }
 
     /**

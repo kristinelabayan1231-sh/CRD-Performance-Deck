@@ -7,6 +7,7 @@ use App\Models\PancakePage;
 use App\Models\PcReportEntry;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\ShecomProductCost;
 use App\Models\User;
 use App\Services\DailyIncomeStatement;
 use App\Services\LeadGenerator;
@@ -73,13 +74,17 @@ class DailyIncomeStatementTest extends TestCase
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
         $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
-        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one of 3 pieces: 3 × the ₱35 unit cost in
-        // Settings, not Pancake's ₱100) and a canceled one
+        // Shecom's costs by Pancake item: "3 Bottles Sinuxyl" was ₱90, ₱105 from Oct 1 and ₱200 from Oct 2; "1 Sinuxyl" has none.
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 90, 'effective_from' => null]);
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 105, 'effective_from' => '2026-10-01']);
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 200, 'effective_from' => '2026-10-02']);
+        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one "3 Bottles Sinuxyl" at Oct 1's ₱105
+        // Shecom cost, not Settings' ₱35 unit cost or Pancake's ₱100; one with no Shecom cost, ₱0) and a canceled one
         // (in Gross Sales and Actual Cancelled, not in orders); another day's is left out.
         $this->entry($regina, 'Sinuxyl Nasal Spray', 100, 50);
         $this->entry($regina, 'Sinuxyl Nasal Care', 20, 10);
-        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'pieces' => 3, 'name' => 'Sinuxyl', 'cost' => 100]]]);
-        $this->order($regina, 'Sinuxyl Nasal Care', 500);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'pieces' => 3, 'name' => '3 Bottles Sinuxyl', 'cost' => 100]]]);
+        $this->order($regina, 'Sinuxyl Nasal Care', 500, ['items' => [['qty' => 1, 'name' => '1 Sinuxyl']]]);
         $this->order($regina, 'Sinuxyl Nasal Spray', 700, ['status' => PancakeOrder::CANCELED, 'pancake_order_id' => 'canceled-1']);
         $this->order($regina, 'Sinuxyl Nasal Spray', 800, ['ordered_on' => '2026-10-02']);
         // July Ann's ClearSight.
