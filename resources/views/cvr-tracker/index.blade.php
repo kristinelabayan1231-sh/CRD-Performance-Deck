@@ -5,8 +5,8 @@
     $peso = fn (?float $n) => $n === null ? '—' : '₱'.number_format($n);
     $dash = '<span class="text-muted">—</span>';
     $tile = 'grid content-start gap-0.5 rounded-xl border border-line bg-white px-3 py-2.5';
-    $label = 'text-[11px] font-bold tracking-wide text-muted uppercase';
-    $pending = 'w-max rounded-full bg-[#fff6d6] px-2 py-px text-[11px] font-semibold text-[#8a5f00]';
+    $label = 'text-[0.6875rem] font-bold tracking-wide text-muted uppercase';
+    $pending = 'w-max rounded-full bg-[#fff6d6] px-2 py-px text-[0.6875rem] font-semibold text-[#8a5f00]';
     $classes = fn (array $options) => collect($options)->map(fn ($o) => $o[1]);
     $s = $data['summary'] ?? null;
 @endphp
@@ -70,7 +70,7 @@
                        @class(['inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition',
                                'border-brand-600 bg-brand-600 text-white' => $current, 'border-line bg-white text-ink hover:border-brand-400 hover:text-brand-600' => ! $current])>
                         {{ $c->displayName() }}
-                        <span @class(['rounded-full px-1.5 text-[11px] font-bold tabular-nums', 'bg-white/25 text-white' => $current, 'bg-brand-50 text-brand-700' => ! $current])>{{ $counts[$c->id] ?? 0 }}</span>
+                        <span @class(['rounded-full px-1.5 text-[0.6875rem] font-bold tabular-nums', 'bg-white/25 text-white' => $current, 'bg-brand-50 text-brand-700' => ! $current])>{{ $counts[$c->id] ?? 0 }}</span>
                     </a>
                 @endforeach
             </nav>
@@ -140,7 +140,7 @@
                 </x-slot:actions>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1180px] text-sm tabular-nums">
+                    <table class="w-full min-w-[73.75rem] text-sm tabular-nums">
                         <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-3 py-3 text-left font-semibold">Order ID</th>
@@ -162,7 +162,7 @@
                                     <td class="px-3 py-2 font-mono text-xs">
                                         {{ $order['id'] }}
                                         @if ($cra->pancake_name && $order['seller'] !== \App\Models\PancakeEngagement::staffKey($cra->pancake_name))
-                                            <span class="block font-sans text-[11px] text-muted" title="Made under another Pancake account; counted for {{ $cra->displayName() }}">via {{ $order['seller'] }}</span>
+                                            <span class="block font-sans text-[0.6875rem] text-muted" title="Made under another Pancake account; counted for {{ $cra->displayName() }}">via {{ $order['seller'] }}</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2 text-center">
@@ -212,7 +212,7 @@
                                     <td class="px-3 py-2.5 text-right">
                                         {{ $peso($s['gross']) }}
                                         @if ($s['canceled']['orders'])
-                                            <span class="block text-[11px] font-normal text-muted">incl. {{ $peso($s['canceled']['amount']) }} canceled</span>
+                                            <span class="block text-[0.6875rem] font-normal text-muted">incl. {{ $peso($s['canceled']['amount']) }} canceled</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5 whitespace-nowrap">{{ $s['pancake_leads'] }} Pancake · {{ $s['assigned_leads'] }} Assigned</td>

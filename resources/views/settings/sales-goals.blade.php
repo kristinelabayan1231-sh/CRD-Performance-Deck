@@ -73,7 +73,7 @@
                 <p class="text-sm text-muted">Leave blank to use the CRA daily goal (₱{{ number_format($craDaily) }}). Set an amount only when management gives a CRA a different goal.</p>
             </header>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[520px] text-left text-sm">
+                <table class="w-full min-w-[32.5rem] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-3 font-semibold">CRA</th>

@@ -78,7 +78,7 @@
                         @endif
                     </span>
                     <span class="relative block text-xl font-bold tabular-nums" data-tile-value="{{ $key }}">{{ $tile['value'] }}</span>
-                    <span class="relative block min-h-4 text-[11px] font-medium text-white/90" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
+                    <span class="relative block min-h-4 text-[0.6875rem] font-medium text-white/90" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
                 </{{ $pressable ? 'button' : 'div' }}>
             @endforeach
         </div>

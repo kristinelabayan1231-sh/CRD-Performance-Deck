@@ -18,7 +18,7 @@
     <x-slot:badges>
         <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-teal-700 shadow-sm">{{ $range->label() }}</span>
         @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($range->from, $range->to))
-            <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[10px] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
+            <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[0.625rem] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
         @endif
     </x-slot:badges>
     <x-slot:actions>
@@ -29,8 +29,8 @@
     </x-slot:actions>
 
     <div class="overflow-x-auto rounded-xl bg-white p-4 shadow-sm">
-        <table class="w-full min-w-[820px] text-sm">
-            <thead class="text-[11px] tracking-wide text-muted uppercase">
+        <table class="w-full min-w-[51.25rem] text-sm">
+            <thead class="text-[0.6875rem] tracking-wide text-muted uppercase">
                 <tr>
                     <th class="pb-2 text-left font-semibold">CRA</th>
                     <th class="pb-2 text-left font-semibold" colspan="2">Goal · {{ $short($results['general_daily']) }}/day{{ $range->days() > 1 ? ' × '.$range->days() : '' }}</th>
@@ -51,7 +51,7 @@
                             {{-- Days off: no goal those days; on duty: a share of the goals of CRAs off (DutyGoals) --}}
                             <x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="$range->days() > 1" class="mt-0.5" />
                             @if ($row['shared'] > 0)
-                                <span class="block text-[11px] font-normal whitespace-nowrap text-muted">+{{ $short($row['shared']) }} from CRAs off</span>
+                                <span class="block text-[0.6875rem] font-normal whitespace-nowrap text-muted">+{{ $short($row['shared']) }} from CRAs off</span>
                             @endif
                         </td>
                         <td class="w-full min-w-24 py-2 pr-2">
@@ -86,7 +86,7 @@
                 @endforelse
             </tbody>
         </table>
-        <p class="mt-2 text-[11px] text-muted">
+        <p class="mt-2 text-[0.6875rem] text-muted">
             Conv % = (Broadcast + Segmentation orders) ÷ (engagements + leads), as in Conversion Breakdown. Top product sales = the product with the most of their gross sales.
             @if ($results['cras']->contains('own_goal', true)) * Own daily goal set in Settings → Sales Goals. @endif
             @if ($results['cras']->contains(fn ($row) => $row['absent_days'] > 0)) Rest Day / Absent / Leave = a day off set in My schedule, or not logged in on duty while others were: no goal that day; their daily goal is split equally among the CRAs on duty. @endif

@@ -154,7 +154,7 @@
                             {{-- Days off: Rest Day or Absent / Leave (DutyGoals) --}}
                             <span class="flex flex-col items-end gap-1"><x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="! $row['absent_all']" /></span>
                         @elseif ($now['assigned'] === 0 && $now['answered'] === 0)
-                            <span class="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-muted">No activity</span>
+                            <span class="rounded-full bg-canvas px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">No activity</span>
                         @endif
                     </div>
 
@@ -182,17 +182,17 @@
                                 <span class="text-right font-semibold tabular-nums">{{ number_format($value + ($extra ?? 0)) }}</span>
                             </div>
                         @endforeach
-                        <p class="text-[11px] text-muted">
+                        <p class="text-[0.6875rem] text-muted">
                             Answered: {{ number_format($now['calls']) }} calls + {{ number_format($now['chat']) }} chat ·
                             Confirmed: {{ number_format($now['alc']) }} assigned lead + {{ number_format($now['pc']) }} Pancake
                         </p>
                     </div>
 
                     <dl class="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-line pt-3 text-sm">
-                        <div><dt class="text-[11px] text-muted">Conversion</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['conversion_rate'], 'percent') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">Pick-up</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['pickup_rate'], 'percent') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">AOV</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['aov'], 'money') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">Gross sales</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['gross'], 'money') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Conversion</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['conversion_rate'], 'percent') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Pick-up</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['pickup_rate'], 'percent') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">AOV</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['aov'], 'money') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Gross sales</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['gross'], 'money') }}</dd></div>
                     </dl>
 
                     {{-- Sparkline of the chosen metric --}}
@@ -203,7 +203,7 @@
                     @php($sx = fn ($i) => round(4 + ($n > 1 ? $i * 192 / ($n - 1) : 96), 1))
                     @php($sy = fn ($v) => round(40 - $v / $top * 34, 1))
                     <div class="border-t border-line pt-3">
-                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $metricLabel }}, {{ $view === 'day' ? 'daily' : 'weekly' }}</p>
+                        <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $metricLabel }}, {{ $view === 'day' ? 'daily' : 'weekly' }}</p>
                         <svg viewBox="0 0 200 46" class="mt-1 h-12 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="{{ $metricLabel }} trend for {{ $row['cra']->displayName() }}">
                             <line x1="0" x2="200" y1="40" y2="40" stroke="#ebe6ee" stroke-width="1" vector-effect="non-scaling-stroke" />
                             @php($path = '')
@@ -254,7 +254,7 @@
                     <svg viewBox="0 0 320 156" class="h-auto w-full" role="img" aria-label="Confirmed orders per week by CRA, {{ $month->format('F Y') }}">
                         @foreach ([0, $wMax / 2, $wMax] as $tick)
                             <line x1="30" x2="312" y1="{{ $wy($tick) }}" y2="{{ $wy($tick) }}" stroke="#ebe6ee" stroke-width="1" />
-                            <text x="24" y="{{ $wy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[9px]">{{ (int) $tick }}</text>
+                            <text x="24" y="{{ $wy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[0.5625rem]">{{ (int) $tick }}</text>
                         @endforeach
                         @foreach ($weekly as $i => $w)
                             @php($cx = 30 + $slot * ($i + 0.5))
@@ -271,8 +271,8 @@
                                     @php($stacked += $seg['value'])
                                 @endif
                             @endforeach
-                            <text x="{{ $cx }}" y="{{ $wy($stacked) - 4 }}" text-anchor="middle" class="fill-ink text-[9px] font-semibold">{{ number_format($stacked) }}</text>
-                            <text x="{{ $cx }}" y="148" text-anchor="middle" class="fill-muted text-[9px]">{{ $w['label'] }}</text>
+                            <text x="{{ $cx }}" y="{{ $wy($stacked) - 4 }}" text-anchor="middle" class="fill-ink text-[0.5625rem] font-semibold">{{ number_format($stacked) }}</text>
+                            <text x="{{ $cx }}" y="148" text-anchor="middle" class="fill-muted text-[0.5625rem]">{{ $w['label'] }}</text>
                         @endforeach
                     </svg>
                 </figure>
@@ -306,7 +306,7 @@
                     <svg viewBox="0 0 320 166" class="h-auto w-full" role="img" aria-label="Gross sales per CRA by {{ $salesBy }}">
                         @foreach ([0, $sStep, $sTop] as $tick)
                             <line x1="34" x2="312" y1="{{ $sy($tick) }}" y2="{{ $sy($tick) }}" stroke="#ebe6ee" stroke-width="1" />
-                            <text x="30" y="{{ $sy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[8px]">{{ $tick >= 1000 ? '₱'.rtrim(rtrim(number_format($tick / 1000, 1), '0'), '.').'k' : '₱'.$tick }}</text>
+                            <text x="30" y="{{ $sy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[0.5rem]">{{ $tick >= 1000 ? '₱'.rtrim(rtrim(number_format($tick / 1000, 1), '0'), '.').'k' : '₱'.$tick }}</text>
                         @endforeach
                         @foreach ($sales as $i => $b)
                             @php($cx = 34 + $sslot * ($i + 0.5))
@@ -330,10 +330,10 @@
                                 @endif
                             </g>
                         @endforeach
-                        <text x="34" y="135" dy="3" text-anchor="end" class="fill-muted text-[7px]" dx="-4">Top</text>
+                        <text x="34" y="135" dy="3" text-anchor="end" class="fill-muted text-[0.4375rem]" dx="-4">Top</text>
                         @foreach ($sn > 8 ? array_unique([0, intdiv($sn - 1, 2), $sn - 1]) : range(0, $sn - 1) as $i)
                             @if (isset($sales[$i]))
-                                <text x="{{ 34 + $sslot * ($i + 0.5) }}" y="158" text-anchor="middle" class="fill-muted text-[9px]">{{ $sales[$i]['label'] }}</text>
+                                <text x="{{ 34 + $sslot * ($i + 0.5) }}" y="158" text-anchor="middle" class="fill-muted text-[0.5625rem]">{{ $sales[$i]['label'] }}</text>
                             @endif
                         @endforeach
                     </svg>
@@ -357,8 +357,8 @@
                     <p class="text-muted">Assigned base {{ $base }} per CRA per day; the actual count is shown.</p>
                 </x-slot:actions>
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[920px] text-sm">
-                        <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
+                    <table class="w-full min-w-[57.5rem] text-sm">
+                        <thead class="bg-canvas/60 text-[0.6875rem] tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-2.5 text-left font-semibold">Team</th>
                                 <th class="px-3 py-2.5 text-right font-semibold">Assigned transactions</th>
@@ -411,8 +411,8 @@
                     <p class="text-muted">Older leads handed to each CRA (daily fill or transfer): how many they worked and how many reordered.</p>
                 </x-slot:actions>
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[860px] text-sm">
-                        <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
+                    <table class="w-full min-w-[53.75rem] text-sm">
+                        <thead class="bg-canvas/60 text-[0.6875rem] tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-2.5 text-left font-semibold">CRA</th>
                                 <th class="px-3 py-2.5 text-right font-semibold">Backlog handed out</th>

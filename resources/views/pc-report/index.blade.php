@@ -99,7 +99,7 @@
                 </x-slot:badges>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1040px] text-sm tabular-nums">
+                    <table class="w-full min-w-[65rem] text-sm tabular-nums">
                         <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 text-left font-semibold">Page</th>

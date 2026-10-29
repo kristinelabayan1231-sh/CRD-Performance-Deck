@@ -40,7 +40,7 @@
         <section aria-label="Monthly cost" class="grid grid-cols-2 gap-3 lg:grid-cols-6">
             <div class="relative col-span-2 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
                 <span aria-hidden="true" class="absolute -top-7 -right-7 size-24 rounded-full bg-white/15"></span>
-                <p class="relative text-[11px] font-semibold tracking-wide uppercase">Total monthly cost</p>
+                <p class="relative text-[0.6875rem] font-semibold tracking-wide uppercase">Total monthly cost</p>
                 <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($totals['total']) }}</p>
                 <p class="relative text-xs text-white/90">{{ $totals['people'] }} {{ Str::plural('person', $totals['people']) }}{{ $totals['people'] ? ' · '.$money($totals['total'] / $totals['people']).' per person' : '' }}</p>
             </div>
@@ -51,7 +51,7 @@
                 ['Gov. Benefits', $totals['gov_benefits'], $plain($cost->govBenefitsPerPerson()).' × '.$totals['people'].' '.Str::plural('person', $totals['people']), 'bg-teal-700'],
             ] as [$label, $amount, $formula, $dot])
                 <div class="rounded-xl border border-line bg-white p-4 shadow-sm">
-                    <p class="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-muted uppercase">
+                    <p class="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                         <span aria-hidden="true" class="size-2.5 rounded-sm {{ $dot }}"></span>{{ $label }}
                     </p>
                     <p class="mt-1 text-xl font-bold tabular-nums">{{ $money($amount) }}</p>
@@ -88,7 +88,7 @@
                 </x-slot:actions>
 
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[480px] text-left text-sm">
+                    <table class="w-full min-w-[30rem] text-left text-sm">
                         <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Name · Position</th>
@@ -138,7 +138,7 @@
 
                             {{-- The shared salaries count toward TOTAL SALARY OF CRD --}}
                             <tr class="bg-brand-50/60">
-                                <td colspan="3" class="px-4 py-2 text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Shared salaries</td>
+                                <td colspan="3" class="px-4 py-2 text-[0.6875rem] font-semibold tracking-wide text-brand-700 uppercase">Shared salaries</td>
                             </tr>
                             @foreach ($shared as $part)
                                 @php($sharedKey = 'shared-'.$part['key'])

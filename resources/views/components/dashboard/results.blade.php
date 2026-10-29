@@ -51,7 +51,7 @@
                 </p>
                 @if ($month['progress'] !== null)
                     <span @class([
-                        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                        'shrink-0 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold',
                         'bg-white text-teal-700' => $month['progress'] >= 1 || $ahead,
                         'bg-white text-coral-700' => $month['progress'] < 1 && ! $ahead,
                     ])>{{ $month['progress'] >= 1 ? '✓ Goal hit' : ($month['pace'] === null ? '▼ Below goal' : ($ahead ? '▲ Ahead' : '▼ Behind')) }}</span>
@@ -73,7 +73,7 @@
                     <span class="absolute -inset-y-1 w-0.5 rounded bg-[#ffe5a0]" style="left: {{ min(100, $month['pace'] * 100) }}%" title="Pace for day {{ $month['day'] }}: {{ $pct($month['pace']) }}"></span>
                 @endif
             </div>
-            <p class="mt-1.5 flex flex-wrap justify-between gap-x-2 text-[11px] text-white/90">
+            <p class="mt-1.5 flex flex-wrap justify-between gap-x-2 text-[0.6875rem] text-white/90">
                 @if ($month['pace'] !== null)
                     <span>Day {{ $month['day'] }}/{{ $month['days'] }} · pace <span class="font-semibold text-[#ffe5a0]">{{ $pct($month['pace']) }}</span></span>
                 @else
@@ -93,7 +93,7 @@
     {{-- Confirmed orders (opens the list), conversion rate, AOV: one colour each so they read apart --}}
     @php($tile = 'relative flex min-w-0 flex-col justify-between gap-1 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm')
     @php($bubble = '<span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>')
-    @php($label = 'relative text-[11px] font-semibold tracking-wide text-white/95 uppercase')
+    @php($label = 'relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase')
     @php($note = 'relative text-xs text-white/90 tabular-nums')
     @php($span = $customers ? 'sm:col-span-2' : '')
     <x-dashboard.flip :class="$span">
@@ -136,7 +136,7 @@
                     <span class="col-span-2 h-1 overflow-hidden rounded-full bg-white/25" aria-hidden="true">
                         <span class="block h-full min-w-1 rounded-full bg-white" style="width: {{ min(100, ($row['rate'] ?? 0) * 100) }}%"></span>
                     </span>
-                    <span class="col-span-2 text-[11px] text-white/85">{{ $rowNote }}</span>
+                    <span class="col-span-2 text-[0.6875rem] text-white/85">{{ $rowNote }}</span>
                 </div>
             @endforeach
         </div>
@@ -192,7 +192,7 @@
                         <span class="rounded-full bg-white/20 px-2 py-0.5 text-sm font-bold tabular-nums" title="{{ number_format($cancelled['total']) }} of {{ number_format($cancelled['orders']) }} orders in these dates (confirmed + canceled, as Total confirmed orders counts them)">{{ $pct($cancelled['rate']) }}</span>
                     </p>
                     {{-- The amount of these orders: a small pill under the count --}}
-                    <p class="mt-1 inline-block rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap tabular-nums" title="Amount of the cancelled and waiting orders">{{ $peso($cancelled['amount']) }}</p>
+                    <p class="mt-1 inline-block rounded-full bg-white/20 px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap tabular-nums" title="Amount of the cancelled and waiting orders">{{ $peso($cancelled['amount']) }}</p>
                 </div>
                 <div class="text-right text-xs text-white/90 tabular-nums">
                     <p class="whitespace-nowrap">Cancelled {{ number_format($cancelled['cancelled']) }}</p>
@@ -233,7 +233,7 @@
                 <div class="relative flex items-start justify-between gap-2">
                     <p class="{{ $label }}">{{ $segmentLabel }}</p>
                     @if ($leads)
-                        <span @class(['shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold', 'text-teal-700' => $toGoal === 0, 'text-coral-700' => $toGoal > 0])>{{ $toGoal === 0 ? '✓ Goal hit' : '▼ Below goal' }}</span>
+                        <span @class(['shrink-0 rounded-full bg-white px-2 py-0.5 text-[0.6875rem] font-semibold', 'text-teal-700' => $toGoal === 0, 'text-coral-700' => $toGoal > 0])>{{ $toGoal === 0 ? '✓ Goal hit' : '▼ Below goal' }}</span>
                     @endif
                 </div>
                 <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
@@ -246,7 +246,7 @@
                     <div class="h-2 rounded-full bg-white/25" role="progressbar" aria-label="{{ $segmentLabel }} goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round($goalProgress * 100) }}">
                         <span class="block h-full rounded-full bg-white" style="width: {{ $goalProgress * 100 }}%"></span>
                     </div>
-                    <p class="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[11px] text-white/90 tabular-nums">
+                    <p class="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[0.6875rem] text-white/90 tabular-nums">
                         <span>Goal <span class="font-bold text-white">{{ $goalLabel }}</span> · {{ number_format($goalCount) }} of {{ number_format($leads) }}</span>
                         @if (! $leads)
                             <span>No leads in these dates</span>
@@ -270,8 +270,8 @@
                 @php($scale = max(1, ...array_values(array_map(fn ($row) => max($row['count'], $row['goal_count']), $segments))))
                 <div class="flex h-full flex-col gap-3">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3">
-                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Retained & repeat vs goal</p>
-                        <p class="flex items-center gap-1 text-[11px] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · each out of its own leads</p>
+                        <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Retained & repeat vs goal</p>
+                        <p class="flex items-center gap-1 text-[0.6875rem] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · each out of its own leads</p>
                     </div>
                     <div class="flex flex-1 flex-col justify-center gap-4">
                         @foreach ($segments as $segment => $row)

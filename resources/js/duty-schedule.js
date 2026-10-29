@@ -87,7 +87,7 @@ function initCalendar(form) {
                 past ? 'cursor-default opacity-50' : 'cursor-pointer hover:border-brand-400',
                 selected.has(key) ? 'ring-2 ring-brand-500 ring-offset-1' : '',
             ].join(' ');
-            cell.innerHTML = `<span>${day}</span><span class="text-[10px] leading-none font-semibold">${tag || (key === data.today ? 'Today' : '&nbsp;')}</span>`;
+            cell.innerHTML = `<span>${day}</span><span class="text-[0.625rem] leading-none font-semibold">${tag || (key === data.today ? 'Today' : '&nbsp;')}</span>`;
             if (!past) {
                 cell.addEventListener('click', () => {
                     if (selected.has(key)) selected.delete(key);

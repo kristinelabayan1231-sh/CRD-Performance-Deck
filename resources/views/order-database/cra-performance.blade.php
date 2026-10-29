@@ -19,7 +19,7 @@
             @else
                 <div class="x-scrollbar overflow-x-auto">
                     <table class="w-full text-sm tabular-nums">
-                        <thead class="bg-canvas text-[11px] font-semibold tracking-wide text-muted uppercase">
+                        <thead class="bg-canvas text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                             <tr>
                                 <th scope="col" class="{{ $sticky }} min-w-56 bg-canvas px-4 py-3 text-left">Assigned seller</th>
                                 @foreach ($statuses as $name)
@@ -45,7 +45,7 @@
                                     <td class="px-4 py-2.5 text-right font-mono">{{ $peso($row['sales']) }}@include('order-database._discount', ['discount' => $row['discount']])</td>
                                 </tr>
                                 @foreach ($row['products'] as $product)
-                                    <tr data-products="{{ $index }}" @if ($loop->first) id="products-{{ $index }}" @endif @if (! $open) hidden @endif class="border-t border-brand-100 bg-brand-50/60 text-[13px]">
+                                    <tr data-products="{{ $index }}" @if ($loop->first) id="products-{{ $index }}" @endif @if (! $open) hidden @endif class="border-t border-brand-100 bg-brand-50/60 text-[0.8125rem]">
                                         <th scope="row" class="{{ $sticky }} bg-brand-50 py-2 pr-4 pl-10 text-left font-medium">{{ $product['product'] }}</th>
                                         @include('order-database._status-cells', ['counts' => $product['statuses']])
                                         <td class="px-3 py-2 text-center font-mono">{{ number_format($product['qty']) }}</td>

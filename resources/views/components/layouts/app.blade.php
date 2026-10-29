@@ -83,10 +83,10 @@
                         <div class="flex flex-col gap-0.5 pt-0.5 pr-1.5 pb-2 pl-5">
                             @foreach ($group['items'] as $item)
                                 @if ($item[4] ?? false)
-                                    <span class="flex min-h-9 cursor-not-allowed items-center gap-3 rounded-lg px-2.5 text-[13.5px] font-medium text-[#8f84ad]" aria-disabled="true" title="Pending — not available yet">
+                                    <span class="flex min-h-9 cursor-not-allowed items-center gap-3 rounded-lg px-2.5 text-[0.84375rem] font-medium text-[#8f84ad]" aria-disabled="true" title="Pending — not available yet">
                                         <span class="size-1.5 shrink-0 rounded-full bg-[#6d628f]" aria-hidden="true"></span>
                                         <span class="flex-1">{{ $item[0] }}</span>
-                                        <span class="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#c9bfe6] uppercase">Pending</span>
+                                        <span class="rounded-full bg-white/10 px-2 py-0.5 text-[0.625rem] font-semibold tracking-wide text-[#c9bfe6] uppercase">Pending</span>
                                     </span>
                                 @else
                                     <x-nav-link :href="$item[1]" :active="$item[2]" sub>{{ $item[0] }}</x-nav-link>

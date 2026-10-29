@@ -99,7 +99,7 @@
                     @include('daily-is._card', ['title' => $row['title'], 'sub' => $dayLabel, 'variant' => $row['variant'], 'f' => $row['statement']['total']])
                     <div class="x-scrollbar flex snap-x gap-3 overflow-x-auto pb-2" tabindex="0" aria-label="{{ $row['label'] }}'s products, scroll sideways">
                         @foreach ($data['products'] as $product)
-                            <div class="w-[310px] shrink-0 snap-start">
+                            <div class="w-[19.375rem] shrink-0 snap-start">
                                 @include('daily-is._card', ['title' => $product['name'], 'deactivated' => $product['deactivated'], 'sub' => $row['by'], 'variant' => 'product', 'f' => $row['statement']['products'][$product['slug']]])
                             </div>
                         @endforeach

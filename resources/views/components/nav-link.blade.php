@@ -5,7 +5,7 @@
    @class([
        'flex items-center gap-3 rounded-lg transition focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none',
        'min-h-10 px-3 font-medium' => ! $sub,
-       'min-h-9 px-2.5 text-[13.5px] font-medium' => $sub,
+       'min-h-9 px-2.5 text-[0.84375rem] font-medium' => $sub,
        'bg-brand-600 font-semibold text-white' => $active,
        'text-[#d8d0ee] hover:bg-white/5 hover:text-white' => ! $active,
    ])>

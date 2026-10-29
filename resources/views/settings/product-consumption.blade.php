@@ -54,7 +54,7 @@
                 </p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[760px] text-left text-sm">
+                    <table class="w-full min-w-[47.5rem] text-left text-sm">
                         <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Product</th>

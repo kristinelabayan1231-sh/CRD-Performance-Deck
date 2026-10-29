@@ -134,10 +134,10 @@
                 @php($d = $delta($total[$key], $totalBefore[$key], $type))
                 <div class="relative flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-3.5 text-white shadow-sm {{ $gradient }}">
                     <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
-                    <span class="relative text-[11px] font-semibold tracking-wide text-white/95 uppercase">{{ $label }}</span>
+                    <span class="relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase">{{ $label }}</span>
                     <span class="relative text-xl font-bold tabular-nums" title="{{ $fmt($total[$key], $type) }}">{{ $type === 'money' ? '₱'.number_format($total[$key]) : $fmt($total[$key], $type) }}</span>
                     <span @class([
-                        'relative w-fit rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                        'relative w-fit rounded-full px-1.5 text-[0.6875rem] font-semibold tabular-nums',
                         'bg-white text-teal-700' => $d['dir'] === 'up',
                         'bg-white text-coral-700' => $d['dir'] === 'down',
                         'bg-white/20 text-white' => $d['dir'] === 'flat',
@@ -170,8 +170,8 @@
             </x-slot:actions>
 
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[1180px] text-sm">
-                    <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
+                <table class="w-full min-w-[73.75rem] text-sm">
+                    <thead class="bg-canvas/60 text-[0.6875rem] tracking-wide text-muted uppercase">
                         <tr class="border-b border-line">
                             <th class="px-4 pt-2.5 text-left font-semibold" rowspan="2">CRA</th>
                             <th class="px-3 pt-2.5 text-left font-semibold" rowspan="2">Funnel</th>
@@ -197,7 +197,7 @@
                                 <td class="px-4 py-3 font-medium">{{ $row['cra']->displayName() }}</td>
                                 <td class="px-3 py-3">
                                     {{-- Each bar's length is the reach (engagements or leads); the dark part is the orders. --}}
-                                    <div class="w-36 space-y-1.5 text-[11px] text-muted">
+                                    <div class="w-36 space-y-1.5 text-[0.6875rem] text-muted">
                                         @foreach ([['BC', $n['engagements'], $n['bc_orders'], 'bg-teal-700', 'bg-teal-700/20', 'engagements'], ['SC', $n['leads'], $n['sc_orders'], 'bg-brand-600', 'bg-brand-600/20', 'leads']] as [$tag, $reach, $orders, $dark, $light, $noun])
                                             <div class="grid grid-cols-[18px_1fr] items-center gap-1.5" title="{{ $tag }}: {{ number_format($reach) }} {{ $noun }} → {{ number_format($orders) }} orders">
                                                 <span>{{ $tag }}</span>
@@ -221,7 +221,7 @@
                                             {{ $fmt($n[$key], $type) }}
                                         @endif
                                         @if (($type === 'percent' || $key === 'gross') && $d['text'] !== 'no comparison')
-                                            <span class="block text-[11px] font-medium {{ $deltaClass($d) }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
+                                            <span class="block text-[0.6875rem] font-medium {{ $deltaClass($d) }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
                                         @endif
                                     </td>
                                 @endforeach
@@ -235,7 +235,7 @@
                                             @if ($n['sc_orders'])<span class="flex-1 rounded-sm bg-brand-600"></span>@endif
                                         @endif
                                     </div>
-                                    <span class="mt-1 block text-[11px] text-muted">{{ $n['bc_orders'] }} BC · {{ $n['sc_orders'] }} SC</span>
+                                    <span class="mt-1 block text-[0.6875rem] text-muted">{{ $n['bc_orders'] }} BC · {{ $n['sc_orders'] }} SC</span>
                                 </td>
                             </tr>
                         @empty

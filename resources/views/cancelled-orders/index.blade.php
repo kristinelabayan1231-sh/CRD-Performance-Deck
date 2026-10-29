@@ -26,7 +26,7 @@
             ] as [$title, $value, $colors])
                 <div class="relative overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm {{ $colors }}">
                     <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <p class="relative text-[11px] font-semibold tracking-wide text-white/95 uppercase">{{ $title }}</p>
+                    <p class="relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase">{{ $title }}</p>
                     <p class="relative text-2xl font-bold tabular-nums">{{ $value }}</p>
                 </div>
             @endforeach
@@ -214,7 +214,7 @@
                 @else
                     {{-- Scrolls inside the panel (as Per day), the column headers staying on top --}}
                     <div class="max-h-[32rem] overflow-auto">
-                        <table class="w-full min-w-[760px] text-left text-sm">
+                        <table class="w-full min-w-[47.5rem] text-left text-sm">
                             <thead class="sticky top-0 z-10 bg-brand-50 text-xs tracking-wide text-muted uppercase">
                                 <tr>
                                     <th class="px-4 py-3 font-semibold">Ordered</th>

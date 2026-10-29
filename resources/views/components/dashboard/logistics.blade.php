@@ -38,13 +38,13 @@
                         @if (! $valueColor)
                             <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
                         @endif
-                        <p @class(['relative flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase', (string) $valueColor => $valueColor, 'text-white' => ! $valueColor])>
+                        <p @class(['relative flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide uppercase', (string) $valueColor => $valueColor, 'text-white' => ! $valueColor])>
                             <svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">{!! $icons[$icon] !!}</svg>
                             <span class="truncate">{{ $label }}</span>
                         </p>
                         <p class="relative text-2xl font-bold tabular-nums {{ $valueColor }}">{{ $value }}</p>
                         @if ($note)
-                            <p @class(['relative truncate text-[11px]', 'text-ink/80' => $valueColor, 'text-white' => ! $valueColor])>{{ $note }}</p>
+                            <p @class(['relative truncate text-[0.6875rem]', 'text-ink/80' => $valueColor, 'text-white' => ! $valueColor])>{{ $note }}</p>
                         @endif
                     </div>
                 @endforeach

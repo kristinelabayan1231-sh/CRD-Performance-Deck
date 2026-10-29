@@ -144,7 +144,7 @@
         @php
             $top = $products->first();
             $tile = 'grid gap-0.5 rounded-xl bg-white px-4 py-3.5 shadow-sm';
-            $tileLabel = 'text-[11px] font-semibold tracking-wide text-muted uppercase';
+            $tileLabel = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase';
         @endphp
         <section class="grid grid-cols-2 gap-3 tabular-nums lg:grid-cols-4" aria-label="Summary">
             <div class="{{ $tile }}">
@@ -216,7 +216,7 @@
                             @endphp
                             <div class="overflow-x-auto">
                                 <table class="w-full min-w-[40rem] text-sm tabular-nums">
-                                    <thead class="text-[11px] tracking-wide text-muted uppercase">
+                                    <thead class="text-[0.6875rem] tracking-wide text-muted uppercase">
                                         <tr class="border-b border-line">
                                             <th scope="col" class="px-2.5 py-2 text-left font-semibold">#</th>
                                             <th scope="col" class="px-2.5 py-2 text-left font-semibold" title="Places up or down since {{ $previousLabel }}">vs before</th>
@@ -262,7 +262,7 @@
                                                             <span class="text-muted">None delivered yet</span>
                                                         @else
                                                             {{-- Green at or below all products' RTS, red above it --}}
-                                                            <span class="mr-1.5 text-[11px] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
+                                                            <span class="mr-1.5 text-[0.6875rem] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
                                                             <span @class(['rounded-full px-2 py-0.5 text-xs font-bold',
                                                                 'bg-[#dff6f1] text-[#0b6e60]' => $rate <= $overallRts,
                                                                 'bg-[#fde4e4] text-[#9e2f33]' => $rate > $overallRts])>{{ $percent($rate) }}</span>

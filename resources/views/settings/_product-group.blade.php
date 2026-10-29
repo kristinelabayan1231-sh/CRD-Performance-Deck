@@ -4,7 +4,7 @@
         <p class="font-semibold" data-group-title>{{ $name }}</p>
         <p class="text-xs text-muted"><span data-group-count>{{ count($pages) }}</span> <span data-group-rows>{{ count($pages) === 1 ? 'row' : 'rows' }}</span> per CRA</p>
         <label class="mt-1.5 block" title="PC Report and the Daily I.S. count this product from this day; blank = from the start">
-            <span class="block text-[11px] font-semibold text-muted">Starting date</span>
+            <span class="block text-[0.6875rem] font-semibold text-muted">Starting date</span>
             <input type="date" data-group-start value="{{ $startsOn ?? '' }}" aria-label="Starting date of {{ $name ?: 'this product' }}"
                    class="h-8 w-full rounded-lg border border-line bg-white px-2 text-xs focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
         </label>

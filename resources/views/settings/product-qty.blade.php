@@ -5,7 +5,7 @@
             <p class="text-sm text-muted">Whether each user sees how many of each product a customer ordered in the Customer Database order history: <span class="font-semibold text-ink">1 × CanPro Guyabano Oil</span> when on, <span class="font-semibold text-ink">CanPro Guyabano Oil</span> when off. Off for everyone unless turned on here.</p>
         </header>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[560px] text-left text-sm">
+            <table class="w-full min-w-[35rem] text-left text-sm">
                 <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-4 py-3 font-semibold">User</th>

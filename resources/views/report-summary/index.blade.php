@@ -60,7 +60,7 @@
             @include('report-summary._table', ['report' => $periodReport, 'perCra' => false])
         </x-panel>
 
-        <div class="flex items-center gap-3 text-[11px] font-semibold tracking-widest text-muted uppercase" aria-hidden="true">
+        <div class="flex items-center gap-3 text-[0.6875rem] font-semibold tracking-widest text-muted uppercase" aria-hidden="true">
             <span class="h-px flex-1 bg-line"></span>compare with<span class="h-px flex-1 bg-line"></span>
         </div>
 

@@ -99,7 +99,7 @@
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[46rem] border-separate border-spacing-1 text-sm tabular-nums">
                             <thead>
-                                <tr class="text-left text-[11px] font-semibold tracking-wide text-muted uppercase">
+                                <tr class="text-left text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                                     <th class="px-2 py-1">Product</th>
                                     @foreach ($bands as $band)
                                         <th class="whitespace-nowrap px-2 py-1 text-center">{{ ProductTargetMarket::bandLabel($band) }}</th>

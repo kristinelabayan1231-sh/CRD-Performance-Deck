@@ -1,7 +1,7 @@
 {{-- Orders that left Canceled / Waiting: when the sync noticed it, the order, and from → to --}}
 @php($badge = fn (?int $status) => $statuses[$status] ?? ($status === 7 ? ['Deleted', 'bg-[#e6e6e6] text-[#3d3d3d]'] : ['Status '.($status ?? '—'), 'bg-canvas text-muted']))
 <div class="overflow-x-auto">
-    <table class="w-full min-w-[820px] text-left text-sm">
+    <table class="w-full min-w-[51.25rem] text-left text-sm">
         <thead class="bg-[#ecfaf6] text-xs tracking-wide text-muted uppercase">
             <tr>
                 <th class="px-4 py-3 font-semibold">Changed</th>
@@ -21,7 +21,7 @@
                     <td class="px-4 py-3 whitespace-nowrap tabular-nums">
                         {{ $change->created_at->timezone(config('segmentation.timezone'))->format('M j, g:i A') }}
                         @if (isset($unseenIds) && $unseenIds->contains($change->id))
-                            <span class="ml-1 rounded-full bg-teal-700 px-1.5 py-0.5 text-[10px] font-bold text-white uppercase">New</span>
+                            <span class="ml-1 rounded-full bg-teal-700 px-1.5 py-0.5 text-[0.625rem] font-bold text-white uppercase">New</span>
                         @endif
                     </td>
                     <td class="px-4 py-3 tabular-nums">

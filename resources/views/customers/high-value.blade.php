@@ -35,10 +35,10 @@
                 <a href="{{ $query([...$link, 'page' => null]) }}" @if ($active) aria-current="true" @endif
                    @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 transition', $gradient, $key === 'vip' ? 'text-[#f3dca3]' : 'text-white', '-translate-y-1.5 shadow-xl' => $active, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => ! $active])>
                     <span aria-hidden="true" @class(['absolute -top-6 -right-6 size-20 rounded-full', $key === 'vip' ? 'bg-[#c9a24a]/20' : 'bg-white/10'])></span>
-                    <span class="relative flex items-center justify-between text-[11px] font-semibold tracking-wide uppercase">
+                    <span class="relative flex items-center justify-between text-[0.6875rem] font-semibold tracking-wide uppercase">
                         {{ $label }}
                         @if ($active)
-                            <span class="rounded-full bg-white px-1.5 text-[10px] text-ink normal-case">Showing</span>
+                            <span class="rounded-full bg-white px-1.5 text-[0.625rem] text-ink normal-case">Showing</span>
                         @endif
                     </span>
                     <span class="relative text-2xl font-bold tabular-nums">{{ number_format($value) }}</span>
@@ -106,8 +106,8 @@
                 <p class="px-4 py-10 text-center text-sm text-muted">No customers match.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[1100px] text-left text-[13px]">
-                        <thead class="bg-[#f7f4f8] text-[11px] tracking-wide whitespace-nowrap text-muted uppercase">
+                    <table class="w-full min-w-[68.75rem] text-left text-[0.8125rem]">
+                        <thead class="bg-[#f7f4f8] text-[0.6875rem] tracking-wide whitespace-nowrap text-muted uppercase">
                             <tr>
                                 <th class="px-3 py-3 font-semibold">{{ $perOrder ? 'Order ID' : 'Last order ID' }}</th>
                                 <th class="px-3 py-3 font-semibold">Assigning seller</th>
@@ -135,7 +135,7 @@
                                     <td class="px-3 py-2.5 tabular-nums">
                                         {{ $row['order_id'] ?? '—' }}
                                         @if ($perOrder)
-                                            <span class="block text-[11px] text-muted">delivered {{ $row['delivered_on']?->format('M j, Y') }}</span>
+                                            <span class="block text-[0.6875rem] text-muted">delivered {{ $row['delivered_on']?->format('M j, Y') }}</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5">
@@ -154,22 +154,22 @@
                                             <span class="text-xs font-semibold">{{ $account?->cra?->displayName() ?? '—' }}</span>
                                         @endif
                                         @if ($perOrder && $row['order_seller'])
-                                            <span class="mt-0.5 block text-[11px] text-muted" title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
+                                            <span class="mt-0.5 block text-[0.6875rem] text-muted" title="The order's seller in Pancake">sold by {{ $row['order_seller'] }}</span>
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5">
                                         <div class="flex items-center gap-2.5">
                                             {{-- Initials; a VIP's is black and gold with a gold ring --}}
                                             <span aria-hidden="true" @class([
-                                                'grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-bold',
+                                                'grid size-8 shrink-0 place-items-center rounded-full text-[0.6875rem] font-bold',
                                                 'bg-[#1a1814] text-[#f3dca3] shadow-[0_0_0_2px_#fbf3e0,0_0_0_3.5px_#c9a24a]' => $row['vip'],
                                                 'bg-brand-100 text-brand-700' => ! $row['vip'],
                                             ])>{{ $initials($row['customer_name']) }}</span>
                                             <div class="min-w-0 whitespace-nowrap">
                                                 <span class="font-semibold">{{ $row['customer_name'] }}</span>
                                                 @if ($row['vip'])
-                                                    <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[10px] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-2.5 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
-                                                    <span class="mt-0.5 block text-[11px] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
+                                                    <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[0.625rem] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-2.5 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+                                                    <span class="mt-0.5 block text-[0.6875rem] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
                                                 @endif
                                             </div>
                                         </div>
