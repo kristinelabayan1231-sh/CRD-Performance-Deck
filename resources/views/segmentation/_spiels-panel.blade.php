@@ -4,7 +4,7 @@
     customer, to copy into the chat. Filled in by spiels.js from the row's data-spiel-* and data-spiels.
 --}}
 <aside hidden data-spiels-panel aria-label="Spiels" data-spiels='@json(auth()->user()->spiels->map->only(['id', 'title', 'body'])->values())'
-       class="fixed inset-y-0 right-0 z-40 flex w-full flex-col bg-white shadow-2xl sm:w-[420px]">
+       class="fixed inset-y-0 right-0 z-40 flex w-full flex-col bg-white shadow-2xl sm:w-[26.25rem]">
     <div class="space-y-3 border-b border-line p-5">
         <div class="flex items-start gap-3">
             <div class="min-w-0 flex-1">

@@ -27,7 +27,7 @@
             <svg class="size-3.5 shrink-0 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
         </button>
         <div id="{{ $menuId }}" popover data-feedback-menu class="m-0 w-64 rounded-lg border border-line bg-white p-1.5 text-ink shadow-lg">
-            <p class="px-2 pt-1 pb-1.5 text-[11px] text-muted">Tick every one that applies.</p>
+            <p class="px-2 pt-1 pb-1.5 text-[0.6875rem] text-muted">Tick every one that applies.</p>
             @foreach ($options as $key => [$label, $classes])
                 <label class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-canvas">
                     <input type="checkbox" name="feedbacks[]" value="{{ $key }}" @checked(in_array($key, $picked, true)) class="size-4 accent-brand-500">

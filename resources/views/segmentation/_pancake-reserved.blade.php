@@ -103,7 +103,7 @@
                                     <p data-note-meta class="mt-2 text-xs text-muted">{{ \App\Http\Controllers\PancakeReservationController::notesMeta($reservation) }}</p>
                                 </div>
                                 <template data-note-value>{{ $reservation->notes }}</template>
-                                <span class="mt-1 inline-block rounded-full bg-[#ffe5a0]/60 px-2 py-0.5 text-[11px] font-semibold text-[#473821]">Added {{ $reservation->created_at->timezone(config('segmentation.timezone'))->format('M j') }}</span>
+                                <span class="mt-1 inline-block rounded-full bg-[#ffe5a0]/60 px-2 py-0.5 text-[0.6875rem] font-semibold text-[#473821]">Added {{ $reservation->created_at->timezone(config('segmentation.timezone'))->format('M j') }}</span>
                             </td>
                             <td data-col="qty" class="px-4 py-3 text-right tabular-nums">{{ $reservation->qty ?? '—' }}</td>
                             <td data-col="product" class="px-4 py-3 whitespace-nowrap">{{ $reservation->product_name ?? '—' }}</td>

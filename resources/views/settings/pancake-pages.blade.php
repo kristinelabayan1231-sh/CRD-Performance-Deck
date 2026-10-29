@@ -43,7 +43,7 @@
             <p class="px-4 py-10 text-center text-sm text-muted">No pages yet. Add your first one above.</p>
         @else
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[980px] text-left text-sm">
+                <table class="w-full min-w-[61.25rem] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-3 font-semibold">Page name</th>

@@ -19,7 +19,7 @@
             @else
                 <div class="x-scrollbar overflow-x-auto">
                     <table class="w-full text-sm tabular-nums">
-                        <thead class="bg-canvas text-[11px] font-semibold tracking-wide text-muted uppercase">
+                        <thead class="bg-canvas text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                             <tr>
                                 <th scope="col" class="{{ $sticky }} min-w-56 bg-canvas px-4 py-3 text-left">Product</th>
                                 @foreach ($statuses as $name)

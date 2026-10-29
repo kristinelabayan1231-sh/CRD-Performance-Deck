@@ -7,6 +7,11 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-29 · Daily I.S. · No longer Pending: everyone with Daily I.S. access (CRA Supervisors) opens it from the sidebar, not just super admins · shots: 04-daily-table (sidebar)
+- 2026-10-29 · Daily I.S. · Product Cost now comes from Shecom: each item's cost (by its Pancake name, e.g. "3 Bottles Sinuxyl") on the order's day × qty, refreshed hourly; ₱0 when Shecom has no cost (Settings unit cost no longer used here) · shots: daily-is
+- 2026-10-29 · Whole app · Text and spacing are about 12% smaller (14px base, like the Shecom dashboard), so pages no longer look zoomed in · shots: all (re-capture when the guide is rebuilt)
+- 2026-10-29 · Segmentation Tracker · The copy icon by Contact # copies the numbers like a copied Google Sheets column (one per line, also as a table) instead of space-separated, so pasting them in Pancake's search finds those customers · shots: —
+- 2026-10-29 · Sales (CRA's Performance, Conversion Breakdown, CVR, Running Sales, Daily I.S.) · A price or item edited in Pancake after the order's day now updates the order's amount (it used to keep the first-day amount), and Shecom amounts of the last 14 days are re-read every night at 1:15 AM · shots: —
 - 2026-10-28 · Settings → Product Consumption · Adding TSD upsell products: "+ Another product" adds more product rows (name, also matches, not-if, SRP, cost; Remove on extra rows) and one "Add products" saves them all with one starting date; blank rows are skipped, a name already listed or entered twice stops the save · shots: settings-product-consumption
 - 2026-10-28 · Settings → Call Recordings · New "Shared phone" column: pick another CRA and hours (e.g. 06:00 to 15:00) for a phone two CRAs share; uploads called in those hours (Manila time, end not included) are saved under that CRA — Call Recordings page, lead match and the Drive file name — while the phone keeps its owner's token · shots: settings-call-recordings
 - 2026-10-28 · Call Recordings · Drive file names keep the leading 0 (09xx…); when the phone sends a blank/unfilled number (e.g. "{call_number}"), the number is read from the recording's file name so the call still matches its lead · shots: —

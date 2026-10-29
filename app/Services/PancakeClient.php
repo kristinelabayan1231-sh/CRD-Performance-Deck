@@ -25,8 +25,8 @@ class PancakeClient
         'note',
     ];
 
-    /** What a tag, status or seller refresh keeps of an order, with its internal note for Product Target Market's ages. */
-    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name', 'assigning_seller', 'inserted_at', 'bill_phone_number', 'note'];
+    /** What a refresh of changed orders keeps: tags, status, seller and amount, with the internal note for Product Target Market's ages. */
+    private const CHANGE_FIELDS = ['id', 'display_id', 'tags', 'status', 'status_name', 'assigning_seller', 'total_price', 'total_discount', 'items', 'inserted_at', 'bill_phone_number', 'note'];
 
     /**
      * Chat → Analytics → Engagements → Customer engagement for one day, per
@@ -372,10 +372,10 @@ class PancakeClient
 
     /**
      * Every POS order changed on $day (segmentation timezone), whenever it was created: only its id,
-     * tags and status. Catches CRD tags added or changed days after the order was placed. With $since,
-     * only the changes from then to the end of $day.
+     * tags, status, seller and amount (total, discount, items). Catches CRD tags added or changed and
+     * prices edited days after the order was placed. With $since, only the changes from then to the end of $day.
      *
-     * @return list<array{display_id?: int|string, id?: string, tags?: list<mixed>, status?: int, status_name?: string}>
+     * @return list<array{display_id?: int|string, id?: string, tags?: list<mixed>, status?: int, status_name?: string, total_price?: int|float, total_discount?: int|float, items?: list<array<string, mixed>>}>
      */
     public function updatedOrders(CarbonImmutable $day, ?CarbonImmutable $since = null): array
     {
@@ -395,6 +395,9 @@ class PancakeClient
 
             // Pancake ignores fields[] here and sends whole orders; keep only these so a busy day fits in memory.
             foreach ($body['data'] ?? [] as $order) {
+                if (isset($order['items'])) {
+                    $order['items'] = self::slimItems($order['items']);
+                }
                 $orders[] = array_intersect_key($order, array_flip(self::CHANGE_FIELDS));
             }
 
@@ -446,7 +449,7 @@ class PancakeClient
                     ->first(fn (array $order) => (string) ($order['display_id'] ?? '') === $number);
 
                 if ($order) {
-                    if ($full) {
+                    if (isset($order['items'])) {
                         $order['items'] = self::slimItems($order['items'] ?? []);
                     }
                     $orders[] = array_intersect_key($order, array_flip($fields));

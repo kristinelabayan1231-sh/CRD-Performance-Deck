@@ -49,7 +49,7 @@
                     @endif
 
                     <div class="overflow-x-auto">
-                        <table class="w-full min-w-[720px] text-left text-sm">
+                        <table class="w-full min-w-[45rem] text-left text-sm">
                             <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                                 <tr>
                                     <th class="px-4 py-3 font-semibold">Preview</th>

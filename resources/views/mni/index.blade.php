@@ -45,7 +45,7 @@
                 <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $month->format('F Y') }} · {{ MniDepartment::PLANS[$plan] }}</span>
             </x-slot:badges>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[960px] text-sm tabular-nums">
+                <table class="w-full min-w-[60rem] text-sm tabular-nums">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-2.5 text-left font-semibold">CRA</th>

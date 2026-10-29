@@ -32,7 +32,7 @@
             ] as [$title, $value, $colors])
                 <div class="relative overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm {{ $colors }}">
                     <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <p class="relative text-[11px] font-semibold tracking-wide text-white/95 uppercase">{{ $title }}</p>
+                    <p class="relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase">{{ $title }}</p>
                     <p class="relative text-2xl font-bold tabular-nums">{{ $value }}</p>
                 </div>
             @endforeach
@@ -78,7 +78,7 @@
         @if ($canViewAll)
             <x-panel title="AHT per CRA" icon="clock" accent="teal" bodyClass="p-0" :tinted="false">
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[640px] text-sm">
+                    <table class="w-full min-w-[40rem] text-sm">
                         <thead class="bg-canvas/60 text-xs whitespace-nowrap text-muted">
                             <tr>
                                 <th scope="col" class="px-4 py-2 text-left font-semibold">CRA</th>
@@ -128,7 +128,7 @@
                 <p class="px-4 py-10 text-center text-sm text-muted">No calls uploaded for these dates.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[900px] text-sm">
+                    <table class="w-full min-w-[56.25rem] text-sm">
                         <thead class="bg-canvas/60 text-xs whitespace-nowrap text-muted">
                             <tr>
                                 <th scope="col" class="px-4 py-2 text-left font-semibold">Time</th>

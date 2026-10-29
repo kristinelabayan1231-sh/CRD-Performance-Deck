@@ -13,7 +13,7 @@
         <section aria-label="Totals" class="grid grid-cols-3 gap-3">
             @foreach ([['Confirmed orders', number_format($count)], ['Gross sales', '₱'.number_format($gross, 2)], ['AOV', $aov === null ? '—' : '₱'.number_format($aov, 2)]] as [$label, $value])
                 <div class="rounded-xl bg-white p-4 shadow-sm">
-                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $label }}</p>
+                    <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $label }}</p>
                     <p class="text-xl font-bold tabular-nums">{{ $value }}</p>
                 </div>
             @endforeach
@@ -41,7 +41,7 @@
                 <p class="px-4 py-10 text-center text-sm text-muted">No confirmed orders in this period.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[760px] text-left text-sm">
+                    <table class="w-full min-w-[47.5rem] text-left text-sm">
                         <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Ordered</th>

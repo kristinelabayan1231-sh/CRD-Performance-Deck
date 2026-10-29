@@ -33,7 +33,7 @@
                         <th data-col="contact_number" class="px-4 py-3 font-semibold">
                             <span class="inline-flex items-center gap-1.5">
                                 Contact #
-                                {{-- Copies every contact # in this list, space-separated (segmentation.js) --}}
+                                {{-- Copies every contact # in this list, one per line (segmentation.js) --}}
                                 <button type="button" data-copy-phones title="Copy all contact numbers" aria-label="Copy all contact numbers in {{ $title }}"
                                         class="grid size-6 place-items-center rounded-md text-muted normal-case hover:bg-white hover:text-brand-600">
                                     <svg data-copy-icon class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>

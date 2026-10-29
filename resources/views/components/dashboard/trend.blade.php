@@ -51,9 +51,9 @@
 
 <div class="flex h-full min-h-0 flex-col gap-1.5">
     <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $title }}</p>
+        <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $title }}</p>
         @if ($legend)
-            <ul class="flex flex-wrap gap-x-2.5 text-[11px] text-ink tabular-nums">
+            <ul class="flex flex-wrap gap-x-2.5 text-[0.6875rem] text-ink tabular-nums">
                 @foreach ($legend as [$name, $color, $value, $dashed])
                     <li class="flex items-center gap-1">
                         <span aria-hidden="true" @class(['inline-block w-2.5', 'h-0 border-t-2 border-dashed' => $dashed, 'h-2.5 rounded-sm' => ! $dashed]) style="{{ $dashed ? 'border-color' : 'background' }}: {{ $color }}"></span>
@@ -65,7 +65,7 @@
     </div>
 
     <div class="relative min-h-6 flex-1">
-        <span class="absolute -top-1 left-0 z-10 rounded bg-white/80 px-0.5 text-[10px] leading-none text-muted tabular-nums">{{ $format($top) }}</span>
+        <span class="absolute -top-1 left-0 z-10 rounded bg-white/80 px-0.5 text-[0.625rem] leading-none text-muted tabular-nums">{{ $format($top) }}</span>
         <svg viewBox="0 0 {{ $width }} {{ $height }}" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible" role="img" aria-label="{{ $title }}">
             <line x1="0" x2="{{ $width }}" y1="0" y2="0" stroke="#ebe6ee" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
             <line x1="0" x2="{{ $width }}" y1="{{ $height / 2 }}" y2="{{ $height / 2 }}" stroke="#ebe6ee" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" />
@@ -103,7 +103,7 @@
         </svg>
     </div>
 
-    <div class="flex justify-between text-[10px] text-muted tabular-nums">
+    <div class="flex justify-between text-[0.625rem] text-muted tabular-nums">
         <span>{{ $dayLabel($days[0]) }}</span>
         @if ($count > 2)
             <span>{{ $dayLabel($days[intdiv($count - 1, 2)]) }}</span>

@@ -31,7 +31,7 @@
     $noVerbal = $noVerbalTotal > 0;
 
     $badge = fn (array $options, ?string $key) => $key && isset($options[$key])
-        ? '<span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap '.$options[$key][1].'">'.e($options[$key][0]).'</span>'
+        ? '<span class="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap '.$options[$key][1].'">'.e($options[$key][0]).'</span>'
         : '<span class="text-xs text-muted">—</span>';
 @endphp
 
@@ -102,7 +102,7 @@
             ] as [$label, $value, $note, $gradient])
                 <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} p-4 text-white shadow-sm">
                     <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <p class="relative text-[11px] font-semibold tracking-wide uppercase">{{ $label }}</p>
+                    <p class="relative text-[0.6875rem] font-semibold tracking-wide uppercase">{{ $label }}</p>
                     <p class="relative text-3xl font-bold tabular-nums">{{ $value }}</p>
                     <p class="relative text-xs text-white/90">{{ $note }}</p>
                 </div>
@@ -170,7 +170,7 @@
                                     </li>
                                 @endforeach
                             </ul>
-                            <p class="text-[11px] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other; leads without a note are grouped by their status.</p>
+                            <p class="text-[0.6875rem] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other; leads without a note are grouped by their status.</p>
                         </div>
                     @endif
                     </div>
@@ -187,8 +187,8 @@
                     <div class="mt-4 overflow-hidden rounded-xl bg-white shadow-sm">
                         <h3 class="px-4 pt-4 pb-2 text-xs font-bold tracking-wide text-muted uppercase">Feedback by product <span class="font-normal tracking-normal normal-case">· click a product for its customers, shipments and Qty per choice</span></h3>
                         <div class="x-scrollbar overflow-x-auto">
-                            <table class="w-full min-w-[520px] text-sm tabular-nums">
-                                <thead class="bg-canvas text-[11px] font-semibold tracking-wide text-muted uppercase">
+                            <table class="w-full min-w-[32.5rem] text-sm tabular-nums">
+                                <thead class="bg-canvas text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
                                     <tr>
                                         <th scope="col" class="px-4 py-3 text-left">Product / Reason</th>
                                         <th scope="col" class="px-4 py-3 text-right whitespace-nowrap"># of Customers</th>
@@ -213,7 +213,7 @@
                                             <td class="px-4 py-2.5 text-right font-mono">{{ number_format($row['qty']) }}</td>
                                         </tr>
                                         @foreach ($row['reasons'] as $reason => $counts)
-                                            <tr data-feedback-product="{{ $loop->parent->index }}" @if ($loop->first) id="{{ $rowId }}" @endif hidden class="border-t border-brand-100 bg-brand-50/60 text-[13px]">
+                                            <tr data-feedback-product="{{ $loop->parent->index }}" @if ($loop->first) id="{{ $rowId }}" @endif hidden class="border-t border-brand-100 bg-brand-50/60 text-[0.8125rem]">
                                                 <th scope="row" class="py-2 pr-4 pl-10 text-left font-medium">{!! $badge($feedbackOptions, $reason) !!}</th>
                                                 <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['customers']) }}</td>
                                                 <td class="px-4 py-2 text-right font-mono">{{ number_format($counts['shipments']) }}</td>
@@ -264,11 +264,11 @@
                     </span>
                 </x-slot:actions>
                 <div class="overflow-x-auto rounded-xl bg-white p-4 shadow-sm">
-                    <div class="flex h-48 min-w-[720px] items-end gap-2 border-b border-line" role="img" aria-label="Leads contacted and converted per hour, {{ $period }}">
+                    <div class="flex h-48 min-w-[45rem] items-end gap-2 border-b border-line" role="img" aria-label="Leads contacted and converted per hour, {{ $period }}">
                         @foreach ($hours as $hour)
                             <div class="group relative flex h-full flex-1 flex-col justify-end" data-tip="{{ $hour['label'] }}: {{ number_format($hour['contacts']) }} contacted, {{ number_format($hour['converted']) }} converted">
                                 @if ($hour['contacts'] > 0)
-                                    <span class="mb-1 text-center text-[10px] font-semibold text-muted tabular-nums">{{ $hour['contacts'] }}</span>
+                                    <span class="mb-1 text-center text-[0.625rem] font-semibold text-muted tabular-nums">{{ $hour['contacts'] }}</span>
                                 @endif
                                 <span class="relative block rounded-t bg-[#86b6ef] group-hover:bg-[#6da7ec]" style="height: {{ $hour['contacts'] / $peak * 85 }}%; min-height: {{ $hour['contacts'] ? '4px' : '0' }}">
                                     <span class="absolute inset-x-0 bottom-0 block bg-[#1c5cab]" style="height: {{ $hour['contacts'] ? $hour['converted'] / $hour['contacts'] * 100 : 0 }}%"></span>
@@ -276,9 +276,9 @@
                             </div>
                         @endforeach
                     </div>
-                    <div class="mt-1.5 flex min-w-[720px] gap-2">
+                    <div class="mt-1.5 flex min-w-[45rem] gap-2">
                         @foreach ($hours as $hour)
-                            <span class="flex-1 text-center text-[10px] text-muted">{{ \Illuminate\Support\Str::before($hour['label'], '-') }}</span>
+                            <span class="flex-1 text-center text-[0.625rem] text-muted">{{ \Illuminate\Support\Str::before($hour['label'], '-') }}</span>
                         @endforeach
                     </div>
                 </div>
@@ -291,8 +291,8 @@
             ] as [$title, $icon, $rows, $first])
                 <x-panel :title="$title" :icon="$icon" class="xl:col-span-6" :tinted="false" body-class="">
                     <div class="overflow-x-auto">
-                        <table class="w-full min-w-[520px] text-sm">
-                            <thead class="bg-[#f7f4f8] text-[11px] tracking-wide text-muted uppercase">
+                        <table class="w-full min-w-[32.5rem] text-sm">
+                            <thead class="bg-[#f7f4f8] text-[0.6875rem] tracking-wide text-muted uppercase">
                                 <tr>
                                     <th class="px-4 py-2.5 text-left font-semibold">{{ $first }}</th>
                                     <th class="px-3 py-2.5 text-right font-semibold">Leads</th>

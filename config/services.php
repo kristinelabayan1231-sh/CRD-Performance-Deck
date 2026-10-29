@@ -44,6 +44,9 @@ return [
         'key' => env('SHECOM_API_KEY'),
         // A separate key for the sales endpoint (per-order sales without the child TSD row).
         'sales_key' => env('SHECOM_SALES_API_KEY'),
+        // GM Logistics v2's external API: product costs for the Daily I.S.
+        'external_url' => env('SHECOM_EXTERNAL_API_URL', 'https://gm-logistics-v2-production.up.railway.app/api/external/v1'),
+        'product_cost_key' => env('SHECOM_PRODUCT_COST_API_KEY'),
         // Memory for reading the retention report (about 150 MB decoded).
         'memory_limit' => env('SHECOM_MEMORY_LIMIT', '512M'),
     ],

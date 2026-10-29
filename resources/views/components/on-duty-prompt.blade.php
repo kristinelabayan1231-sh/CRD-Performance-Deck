@@ -43,7 +43,7 @@
             @endif
 
             <div class="mt-auto space-y-2 border-t border-line pt-3 text-left text-sm">
-                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase"><span data-schedule-month-name></span> at a glance</p>
+                <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase"><span data-schedule-month-name></span> at a glance</p>
                 <p class="flex justify-between"><span class="flex items-center gap-2"><span aria-hidden="true" class="size-2.5 rounded-sm bg-sky"></span>Rest days</span><strong data-schedule-count="rest">0</strong></p>
                 <p class="flex justify-between"><span class="flex items-center gap-2"><span aria-hidden="true" class="size-2.5 rounded-sm bg-coral"></span>Absent / Leave</span><strong data-schedule-count="leave">0</strong></p>
                 <p class="flex justify-between"><span class="flex items-center gap-2"><span aria-hidden="true" class="size-2.5 rounded-full bg-teal"></span>Logged in on duty</span><strong data-schedule-count="duty">0</strong></p>
@@ -70,7 +70,7 @@
 
             <div class="grid grid-cols-7 gap-1.5 text-center" data-schedule-grid>
                 @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $weekday)
-                    <span class="pb-0.5 text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $weekday }}</span>
+                    <span class="pb-0.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $weekday }}</span>
                 @endforeach
             </div>
 

@@ -58,7 +58,7 @@
                     ])>
                         {{ $format($value, $kind) }}
                         @if (in_array($kind, ['money', 'total', 'net'], true) && ! in_array($key, ['aov'], true) && $column['figures']['gross'] > 0)
-                            <span class="block text-[11px] font-normal text-muted">{{ number_format($value / $column['figures']['gross'] * 100, 2) }}%</span>
+                            <span class="block text-[0.6875rem] font-normal text-muted">{{ number_format($value / $column['figures']['gross'] * 100, 2) }}%</span>
                         @endif
                     </td>
                 @endforeach

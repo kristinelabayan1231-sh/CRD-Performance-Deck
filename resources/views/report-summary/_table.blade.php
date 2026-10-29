@@ -9,17 +9,17 @@
     $soon = 'bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgb(242_237_243/0.8)_6px_12px)] text-muted/70';
     // key, label, sub-label, kind, column width
     $columns = [
-        ['bc_orders', 'Orders', 'Broadcast', 'count', 'w-[96px]'],
-        ['sc_orders', 'Orders', 'Segmentation', 'count', 'w-[112px]'],
-        ['bc_gross', 'Gross sales', 'Broadcast', 'money', 'w-[132px]'],
-        ['sc_gross', 'Gross sales', 'Segmentation', 'money', 'w-[140px]'],
-        ['gross', 'Total gross', 'BC & SC', 'money', 'w-[148px]'],
-        ['is_leads', 'Leads', null, 'count', 'w-[108px]'],
-        ['is_engagements', 'Engagement', null, 'count', 'w-[116px]'],
-        ['conv', 'Conv %', null, 'percent', 'w-[90px]'],
-        ['aov', 'AOV', null, 'money', 'w-[116px]'],
-        ['net_income', 'Net income', null, 'soon', 'w-[116px]'],
-        ['ibsc', 'I.BSC %', null, 'waits', 'w-[90px]'],
+        ['bc_orders', 'Orders', 'Broadcast', 'count', 'w-[6rem]'],
+        ['sc_orders', 'Orders', 'Segmentation', 'count', 'w-[7rem]'],
+        ['bc_gross', 'Gross sales', 'Broadcast', 'money', 'w-[8.25rem]'],
+        ['sc_gross', 'Gross sales', 'Segmentation', 'money', 'w-[8.75rem]'],
+        ['gross', 'Total gross', 'BC & SC', 'money', 'w-[9.25rem]'],
+        ['is_leads', 'Leads', null, 'count', 'w-[6.75rem]'],
+        ['is_engagements', 'Engagement', null, 'count', 'w-[7.25rem]'],
+        ['conv', 'Conv %', null, 'percent', 'w-[5.625rem]'],
+        ['aov', 'AOV', null, 'money', 'w-[7.25rem]'],
+        ['net_income', 'Net income', null, 'soon', 'w-[7.25rem]'],
+        ['ibsc', 'I.BSC %', null, 'waits', 'w-[5.625rem]'],
     ];
     // Group labels are sticky, so they stay centered in view instead of sliding under the pinned Team column.
     // The first column of each group (Orders & sales, Reach & conversion, Profit) gets a divider on its left.
@@ -35,19 +35,19 @@
 @endphp
 
 <div class="overflow-x-auto">
-    <table class="w-full min-w-[1480px] table-fixed text-sm">
+    <table class="w-full min-w-[92.5rem] table-fixed text-sm">
         <colgroup>
-            <col class="w-[200px]">
+            <col class="w-[12.5rem]">
             @foreach ($columns as $col)
                 <col class="{{ $col[4] }}">
             @endforeach
         </colgroup>
-        <thead class="text-[11px] tracking-wide text-muted uppercase">
+        <thead class="text-[0.6875rem] tracking-wide text-muted uppercase">
             <tr>
                 <th rowspan="2" class="{{ $teamCell }} border-b border-b-ink bg-ink px-4 py-2 text-left align-bottom font-semibold text-white">Team</th>
-                <th colspan="5" class="border-l border-line bg-[#e3f6f2] px-3 py-1 text-center text-[10px] font-bold tracking-widest text-teal-700"><span class="sticky right-3 left-[212px] inline-block">Orders &amp; sales</span></th>
-                <th colspan="4" class="border-l border-line bg-brand-50 px-3 py-1 text-center text-[10px] font-bold tracking-widest text-brand-700"><span class="sticky right-3 left-[212px] inline-block">Reach &amp; conversion</span></th>
-                <th colspan="2" class="border-l border-line bg-[#fdf3dc] px-3 py-1 text-center text-[10px] font-bold tracking-widest text-[#8a5f06]"><span class="sticky right-3 left-[212px] inline-block">Profit</span></th>
+                <th colspan="5" class="border-l border-line bg-[#e3f6f2] px-3 py-1 text-center text-[0.625rem] font-bold tracking-widest text-teal-700"><span class="sticky right-3 left-[13.25rem] inline-block">Orders &amp; sales</span></th>
+                <th colspan="4" class="border-l border-line bg-brand-50 px-3 py-1 text-center text-[0.625rem] font-bold tracking-widest text-brand-700"><span class="sticky right-3 left-[13.25rem] inline-block">Reach &amp; conversion</span></th>
+                <th colspan="2" class="border-l border-line bg-[#fdf3dc] px-3 py-1 text-center text-[0.625rem] font-bold tracking-widest text-[#8a5f06]"><span class="sticky right-3 left-[13.25rem] inline-block">Profit</span></th>
             </tr>
             <tr class="border-b border-line align-bottom">
                 @foreach ($columns as $col)
@@ -57,7 +57,7 @@
                             <span class="block font-medium tracking-normal normal-case">{{ $col[2] }}</span>
                         @endif
                         @if ($col[3] === 'soon')
-                            <span class="mt-0.5 inline-block rounded-full border border-dashed border-line bg-canvas px-1.5 text-[10px] font-semibold tracking-normal whitespace-nowrap normal-case" title="From the Daily I.S. once the MNI is in">Coming soon</span>
+                            <span class="mt-0.5 inline-block rounded-full border border-dashed border-line bg-canvas px-1.5 text-[0.625rem] font-semibold tracking-normal whitespace-nowrap normal-case" title="From the Daily I.S. once the MNI is in">Coming soon</span>
                         @endif
                     </th>
                 @endforeach
@@ -95,10 +95,10 @@
         @if ($perCra)
         <tfoot class="divide-y divide-line border-t border-line tabular-nums">
             <tr>
-                <th rowspan="3" scope="rowgroup" class="{{ $teamCell }} bg-brand-50 px-4 py-2 text-left align-top text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Per CRA</th>
+                <th rowspan="3" scope="rowgroup" class="{{ $teamCell }} bg-brand-50 px-4 py-2 text-left align-top text-[0.6875rem] font-semibold tracking-wide text-brand-700 uppercase">Per CRA</th>
                 <td colspan="8" class="px-3 py-2 text-right text-muted">Average IBSC per CRA <span class="text-xs">(Net income ÷ CRAs on duty)</span></td>
                 <td colspan="3" class="border-l border-line px-3 py-2 text-right font-semibold text-muted">
-                    <span class="mr-2 rounded-full border border-dashed border-line bg-canvas px-1.5 text-[10px] font-semibold">Coming soon</span>—
+                    <span class="mr-2 rounded-full border border-dashed border-line bg-canvas px-1.5 text-[0.625rem] font-semibold">Coming soon</span>—
                 </td>
             </tr>
             <tr>

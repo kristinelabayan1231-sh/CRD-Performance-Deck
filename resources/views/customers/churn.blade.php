@@ -61,10 +61,10 @@
                 <a href="{{ $query(['status' => $key, 'page' => null]) }}" title="{{ $hint }}. Click to filter." @if ($status === $key) aria-current="true" @endif
                    @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white transition', $gradient, '-translate-y-1.5 shadow-xl' => $status === $key, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => $status !== $key])>
                     <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <span class="relative flex items-center justify-between text-[11px] font-semibold tracking-wide uppercase">
+                    <span class="relative flex items-center justify-between text-[0.6875rem] font-semibold tracking-wide uppercase">
                         {{ $label }}
                         @if ($status === $key)
-                            <span class="rounded-full bg-white px-1.5 text-[10px] text-ink normal-case">Showing</span>
+                            <span class="rounded-full bg-white px-1.5 text-[0.625rem] text-ink normal-case">Showing</span>
                         @endif
                     </span>
                     <span class="relative text-2xl font-bold tabular-nums">{{ number_format($value) }}</span>
@@ -93,7 +93,7 @@
                 <p class="px-4 py-10 text-center text-sm text-muted">No customers here for these dates.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[960px] text-left text-sm">
+                    <table class="w-full min-w-[60rem] text-left text-sm">
                         <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Customer name</th>
@@ -116,11 +116,11 @@
                                            title="Open in the Customer Database">{{ $customer['name'] }}</a>
                                         <span class="block text-xs text-muted tabular-nums">{{ $customer['phone'] }}</span>
                                         @if ($status === 'due' && $customer['back'])
-                                            <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[11px] font-semibold text-teal-700">Came back</span>
+                                            <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-teal-700">Came back</span>
                                         @elseif (! $customer['back'])
                                             <span class="mt-1 flex flex-wrap gap-1">
-                                                <span class="rounded-full bg-coral/15 px-2 py-0.5 text-[11px] font-semibold text-coral-700">Lost</span>
-                                                <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[11px] font-semibold text-[#8a5a00]">For reactivation</span>
+                                                <span class="rounded-full bg-coral/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Lost</span>
+                                                <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[0.6875rem] font-semibold text-[#8a5a00]">For reactivation</span>
                                             </span>
                                         @endif
                                     </td>
@@ -133,7 +133,7 @@
                                     </td>
                                     <td class="px-4 py-3 text-right font-semibold tabular-nums">₱{{ number_format($customer['total_spent'], 2) }}</td>
                                     <td class="px-4 py-3">
-                                        <span @class(['rounded-full px-2 py-0.5 text-[11px] font-semibold', 'bg-brand-100 text-brand-700' => $customer['team'] === 'crd', 'bg-sky/20 text-[#156c8c]' => $customer['team'] === 'fsd'])>{{ strtoupper($customer['team']) }}</span>
+                                        <span @class(['rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold', 'bg-brand-100 text-brand-700' => $customer['team'] === 'crd', 'bg-sky/20 text-[#156c8c]' => $customer['team'] === 'fsd'])>{{ strtoupper($customer['team']) }}</span>
                                         <span class="mt-1 block text-xs text-muted">Delivered {{ $date($customer['delivered']) }}</span>
                                     </td>
                                     <td class="px-4 py-3 tabular-nums">

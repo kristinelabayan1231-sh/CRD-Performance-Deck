@@ -28,6 +28,13 @@
     --color-line: #ebe6ee;
 }
 
+/* A 14px root, like the Shecom dashboard: every rem-based size (text, spacing, widths) scales down together. */
+@layer base {
+    html {
+        font-size: 87.5%;
+    }
+}
+
 /* CRD poster mascot: a gentle wave (still for reduced motion). */
 @keyframes poster-wave {
     0%, 60%, 100% { transform: rotate(0deg); }

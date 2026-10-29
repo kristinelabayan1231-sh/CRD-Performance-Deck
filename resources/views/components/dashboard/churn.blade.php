@@ -14,7 +14,7 @@
 <section {{ $attributes->class('flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-xl bg-[#fdeeee] px-3 py-2 text-[#8f3236] ring-1 ring-[#f6d3d4]') }} aria-labelledby="churn-title">
     <h3 id="churn-title" class="flex items-center gap-2 text-sm font-bold">
         Customer churn
-        <span class="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
+        <span class="rounded-full bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
     </h3>
 
     <ul class="flex flex-1 flex-wrap gap-1.5 tabular-nums">
@@ -24,9 +24,9 @@
                 <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
                         class="inline-flex items-baseline gap-1.5 rounded-lg bg-white/70 px-2.5 py-1 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-coral"
                         title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
-                    <span class="text-[10px] font-bold tracking-wide uppercase">{{ $teamLabel }}</span>
-                    <span class="text-[15px] font-bold">{{ $pct($teamChurn['rate'], 2) }}</span>
-                    <span class="text-[11px] text-[#8f3236]/80">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</span>
+                    <span class="text-[0.625rem] font-bold tracking-wide uppercase">{{ $teamLabel }}</span>
+                    <span class="text-[0.9375rem] font-bold">{{ $pct($teamChurn['rate'], 2) }}</span>
+                    <span class="text-[0.6875rem] text-[#8f3236]/80">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</span>
                 </button>
             </li>
         @endforeach
@@ -94,7 +94,7 @@
                 </div>
 
                 <div class="rounded-xl border border-line p-4">
-                    <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Reorder date {{ $reorderDates }} <span class="normal-case">(+ {{ $churn['grace_days'] }} days grace = {{ $deadlines }})</span></p>
+                    <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Reorder date {{ $reorderDates }} <span class="normal-case">(+ {{ $churn['grace_days'] }} days grace = {{ $deadlines }})</span></p>
                     <p class="mt-1 text-xs text-muted">The Due to reorder customers above, by the month of the delivery that ran out.</p>
                     <dl class="mt-2 space-y-2 text-xs">
                         @foreach (['crd' => 'CRD', 'fsd' => 'FSD'] as $team => $teamLabel)

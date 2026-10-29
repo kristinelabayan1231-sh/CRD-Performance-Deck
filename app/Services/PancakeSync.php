@@ -312,9 +312,10 @@ class PancakeSync
     }
 
     /**
-     * Save Pancake's current tags, status and seller on the saved orders among $orders. Each order keeps its
+     * Save Pancake's current tags, status, seller and amount on the saved orders among $orders. Each order keeps its
      * own tags, so a customer can be broadcast on one order and segmentation on the next. An order assigned
      * to another seller after it was saved moves to them; one with no assigned seller has none (never the creator).
+     * A price or item edited after the order's day is saved too (when Pancake sends the order's amount).
      *
      * @param  list<array<string, mixed>>  $orders
      * @return int orders updated
@@ -343,6 +344,11 @@ class PancakeSync
                         'seller_pancake_id' => $seller['id'] ?? null,
                         'seller_name' => isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null,
                     ] : []),
+                    ...(array_key_exists('total_price', $order) ? [
+                        'total_price' => (float) ($order['total_price'] ?? 0),
+                        'total_discount' => (float) ($order['total_discount'] ?? 0),
+                        'items' => $order['items'] ?? [],
+                    ] : []),
                 ]];
             });
 
@@ -350,18 +356,29 @@ class PancakeSync
 
         foreach ($changed->keys()->chunk(500) as $ids) {
             PancakeOrder::whereIn('pancake_order_id', $ids->values())
-                ->get(['id', 'pancake_order_id', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name'])
+                ->get(['id', 'pancake_order_id', 'ordered_on', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name',
+                    'total_price', 'total_discount', 'items', 'non_crd', 'tsd_upsell'])
                 ->each(function (PancakeOrder $order) use ($changed, &$updated) {
                     $fresh = $changed[$order->pancake_order_id];
 
-                    if ($order->tags === $fresh['tags'] && $order->status === $fresh['status']
-                        && (! array_key_exists('seller_name', $fresh) || $order->seller_name === $fresh['seller_name'])) {
+                    if (array_key_exists('items', $fresh)) {
+                        // As toOrder() files them, from the order's own day.
+                        $names = array_column($fresh['items'], 'name');
+                        $day = $order->ordered_on?->toDateString();
+                        $fresh['non_crd'] = ($this->catalog ??= new ProductCatalog)->unlisted($names, $day);
+                        $fresh['tsd_upsell'] = $this->catalog->tsdUpsell($names, $day);
+                    }
+
+                    $before = $order->status;
+                    $order->forceFill($fresh);
+
+                    if (! $order->isDirty()) {
                         return;
                     }
 
-                    OrderStatusChange::recordLeaving([$order->pancake_order_id => $order->status], [$order->pancake_order_id => $fresh['status']]);
+                    OrderStatusChange::recordLeaving([$order->pancake_order_id => $before], [$order->pancake_order_id => $fresh['status']]);
 
-                    $order->forceFill($fresh)->save();
+                    $order->save();
                     $updated++;
                 });
         }

@@ -29,7 +29,7 @@
             <section aria-label="{{ $month->format('F Y') }}" class="min-w-0 flex-[999_1_640px] rounded-xl bg-white p-4 shadow-sm">
                 <div class="grid grid-cols-7 gap-1.5">
                     @foreach (['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as $weekday)
-                        <span class="pb-1 text-center text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $weekday }}</span>
+                        <span class="pb-1 text-center text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $weekday }}</span>
                     @endforeach
                     @for ($i = 0; $i < $month->dayOfWeek; $i++)
                         <span aria-hidden="true"></span>
@@ -50,13 +50,13 @@
                             <span class="flex items-center justify-between text-xs font-semibold">
                                 <span @class(['grid size-5 place-items-center rounded-full', 'bg-brand-600 text-white' => $date->isSameDay($today)])>{{ $date->day }}</span>
                                 @if ($loggedIn)
-                                    <span class="flex items-center gap-1 text-[10px] text-teal-700"><span aria-hidden="true" class="size-1.5 rounded-full bg-teal"></span>{{ $loggedIn }} on duty</span>
+                                    <span class="flex items-center gap-1 text-[0.625rem] text-teal-700"><span aria-hidden="true" class="size-1.5 rounded-full bg-teal"></span>{{ $loggedIn }} on duty</span>
                                 @endif
                             </span>
                             @foreach ($dayOff as $craId => $type)
                                 @php($isPlanned = isset($planned[$key][$craId]))
                                 <span title="{{ $names[$craId]->displayName() }}: {{ DutySchedule::TYPES[$type] }}{{ $isPlanned ? '' : ' (no log-in)' }}"
-                                      @class(['truncate rounded px-1.5 py-0.5 text-[10px] leading-tight font-semibold', $offColors[$type], 'border border-dashed border-coral' => ! $isPlanned])>{{ $names[$craId]->displayName() }}</span>
+                                      @class(['truncate rounded px-1.5 py-0.5 text-[0.625rem] leading-tight font-semibold', $offColors[$type], 'border border-dashed border-coral' => ! $isPlanned])>{{ $names[$craId]->displayName() }}</span>
                             @endforeach
                         </a>
                     @endfor
@@ -120,7 +120,7 @@
         <section aria-labelledby="totals-title" class="overflow-hidden rounded-xl bg-white shadow-sm">
             <h2 id="totals-title" class="border-b border-line px-4 py-3 font-semibold">{{ $month->format('F') }} per CRA</h2>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[480px] text-left text-sm">
+                <table class="w-full min-w-[30rem] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-2.5 font-semibold">CRA</th>

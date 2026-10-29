@@ -14,7 +14,7 @@
                 <a href="{{ route('segmentation.repeat-purchases', array_filter([...$dates, 'segment' => $key, 'cra' => $cra])) }}" aria-current="{{ $key === $segment ? 'page' : 'false' }}"
                    @class(['flex-1 rounded-md px-3 py-1.5 text-center text-sm font-semibold sm:flex-none', 'bg-brand-600 text-white' => $key === $segment, 'text-muted hover:text-brand-600' => $key !== $segment])>
                     {{ $tabLabel }} <span class="tabular-nums">{{ number_format($counts[$key]) }}</span>
-                    <span @class(['block text-[11px] font-medium', 'text-white/80' => $key === $segment, 'text-muted' => $key !== $segment])>{{ $tabType }}</span>
+                    <span @class(['block text-[0.6875rem] font-medium', 'text-white/80' => $key === $segment, 'text-muted' => $key !== $segment])>{{ $tabType }}</span>
                 </a>
             @endforeach
         </nav>
@@ -42,7 +42,7 @@
                 <p class="px-4 py-8 text-center text-sm text-muted">No {{ strtolower($title) }} in these dates.</p>
             @else
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[820px] text-left text-sm">
+                    <table class="w-full min-w-[51.25rem] text-left text-sm">
                         <thead class="bg-[#ecfaf6] text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Bought</th>

@@ -14,18 +14,18 @@
 @endphp
 
 <article class="overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
-    <header class="flex min-h-10 items-center justify-between gap-2 border-b px-3 py-2 text-[13px] font-bold whitespace-nowrap {{ $headers[$variant] }}">
+    <header class="flex min-h-10 items-center justify-between gap-2 border-b px-3 py-2 text-[0.8125rem] font-bold whitespace-nowrap {{ $headers[$variant] }}">
         <span class="flex min-w-0 items-center gap-2">
             <span aria-hidden="true" class="size-3 shrink-0 rounded {{ $chips[$variant] }}"></span>
             <span class="truncate uppercase" title="{{ $title }}">{{ $title }}</span>
             @if ($deactivated ?? false)
-                <span class="shrink-0 rounded-full bg-coral/15 px-2 py-0.5 text-[10px] font-semibold text-coral-700">Deactivated</span>
+                <span class="shrink-0 rounded-full bg-coral/15 px-2 py-0.5 text-[0.625rem] font-semibold text-coral-700">Deactivated</span>
             @endif
         </span>
         <span @class(['shrink-0 text-xs font-medium', 'text-white/80' => $variant === 'department', 'text-muted' => $variant !== 'department'])>{{ $sub }}</span>
     </header>
-    <table class="w-full table-fixed text-[13px] tabular-nums">
-        <colgroup><col><col class="w-[92px]"><col class="w-16"></colgroup>
+    <table class="w-full table-fixed text-[0.8125rem] tabular-nums">
+        <colgroup><col><col class="w-[5.75rem]"><col class="w-16"></colgroup>
         <tbody>
             @foreach ([['Total number of leads/inquiries', number_format($f['leads'], 2)], ['Total number of engagements', number_format($f['engagements'], 2)], ['Total number of orders', number_format($f['orders'], 2)], ['Overall conversion rate', $f['conversion'] === null ? '—' : number_format($f['conversion'] * 100, 2).'%'], ['Average Order Value', $f['aov'] === null ? '—' : $money($f['aov'])]] as [$label, $value])
                 <tr class="font-semibold">

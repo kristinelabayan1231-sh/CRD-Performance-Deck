@@ -42,7 +42,7 @@
                 @foreach ($groups as $group => $tabs)
                     <li @class(['contents lg:block', 'lg:mt-2 lg:border-t lg:border-line lg:pt-2' => ! $loop->first])>
                         {{-- Group label: a quiet caption, not a link --}}
-                        <p class="hidden cursor-default px-3 pt-1 pb-0.5 text-[10px] font-normal tracking-wider text-muted/70 uppercase select-none lg:block" aria-hidden="true">{{ $group }}</p>
+                        <p class="hidden cursor-default px-3 pt-1 pb-0.5 text-[0.625rem] font-normal tracking-wider text-muted/70 uppercase select-none lg:block" aria-hidden="true">{{ $group }}</p>
                         <ul class="contents lg:block lg:space-y-0.5">
                             @foreach ($tabs as $route => [$label])
                                 @php($active = request()->routeIs(str_replace('.index', '.*', $route)))

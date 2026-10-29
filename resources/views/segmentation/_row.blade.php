@@ -26,10 +26,10 @@
             {{ $lead->customer_name }}
             {{-- Same pills as Customer Database → High AOV CVR & VIP; a VIP shows only VIP --}}
             @if ($isVip)
-                <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
+                <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
                       title="VIP in {{ implode(', ', $highValue['vip_products']) }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
             @elseif ($isHighAov)
-                <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
+                <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
             @endif
             {{-- Hover: the customer's order history (order date · product), loaded on first hover (segmentation.js) --}}
             <button type="button" data-orders-open data-orders-url="{{ route('segmentation.orders', $lead) }}" aria-label="Order history of {{ $lead->customer_name }}"
@@ -50,16 +50,16 @@
         </div>
         <template data-note-value>{{ $lead->notes }}</template>
         @if ($isVip && $highValue['vip_products'])
-            <span class="mt-0.5 block text-[11px] font-normal text-[#6e5214]">VIP in {{ implode(', ', $highValue['vip_products']) }}</span>
+            <span class="mt-0.5 block text-[0.6875rem] font-normal text-[#6e5214]">VIP in {{ implode(', ', $highValue['vip_products']) }}</span>
         @endif
         @if ($backlogRow ?? false)
             <span @class([
-                'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                'mt-1 inline-block rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold',
                 'bg-coral/15 text-coral-700' => $lead->carriesOver(),
                 'bg-teal/15 text-teal-700' => ! $lead->carriesOver(),
             ])>{{ $lead->carriesOver() ? ($lead->statusLabel() ?? 'Pending') : 'Catered · carried' }} since {{ $lead->listed_on->format('M j') }}</span>
             @if ($lead->transfers->first())
-                <span class="mt-1 ml-1 inline-block text-[11px] text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
+                <span class="mt-1 ml-1 inline-block text-[0.6875rem] text-muted">from {{ $lead->transfers->first()->fromUser?->displayName() ?? 'another CRA' }}</span>
             @endif
         @endif
     </td>

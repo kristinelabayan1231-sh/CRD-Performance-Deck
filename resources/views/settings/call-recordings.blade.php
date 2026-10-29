@@ -49,7 +49,7 @@
             <p class="mt-1 text-sm text-muted">Each phone uploads to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $uploadUrl }}</code> with its own token as <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer …</code>, so each call goes to the right CRA.</p>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[1280px] text-left text-sm">
+            <table class="w-full min-w-[80rem] text-left text-sm">
                 <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-4 py-3 font-semibold">CRA</th>

@@ -9,7 +9,7 @@
     // Matrix shading: the bigger a cell against the biggest one, the darker its purple.
     $cellMax = max(1, collect($snapshot['cras'])->flatMap(fn (array $row) => collect($row['products'])->pluck($show))->max() ?? 0);
     $tile = 'flex flex-col gap-1 rounded-2xl border border-line bg-white p-4 shadow-sm';
-    $tileLabel = 'text-[11px] font-semibold tracking-wide text-muted uppercase';
+    $tileLabel = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase';
     // Off (Rest Day or Absent / Leave) on every day so far; their goal is split among the CRAs on duty (DutyGoals).
     $absent = collect($snapshot['cras'])->filter(fn (array $row) => $row['absent_days'] === $days);
     $onDutyCount = count($snapshot['cras']) - $absent->count();
@@ -92,7 +92,7 @@
             <x-slot:actions>
                 <span class="text-muted">
                     @if ($absent->isNotEmpty())
-                        <span class="mr-1 rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-ink">{{ $absent->count() }} off</span>
+                        <span class="mr-1 rounded-full bg-canvas px-2 py-0.5 text-[0.6875rem] font-semibold text-ink">{{ $absent->count() }} off</span>
                     @endif
                     Daily goal per CRA{{ $days > 1 ? ' × '.$days.' days' : '' }}{{ collect($snapshot['cras'])->contains(fn (array $row) => $row['absent_days'] > 0) ? ' · goals of CRAs off split with those on duty' : '' }}
                     @can('sales_goals.manage')
@@ -130,24 +130,24 @@
                             <span @class(['font-semibold', 'text-teal-700' => $progress >= 0.75, 'text-coral-700' => $progress !== null && $progress < 0.6])>{{ $progress === null ? '—' : round($progress * 100).'%' }}</span>
                         </div>
                         @if ($row['shared'] > 0)
-                            <p class="-mt-1 text-[11px] text-muted">
+                            <p class="-mt-1 text-[0.6875rem] text-muted">
                                 {{ $peso($row['goal'] - $row['shared']) }} + <span class="font-semibold text-ink">{{ $peso($row['shared']) }}</span>
                                 from {{ $days === 1 ? $absent->map(fn (array $r) => $r['name'].' ('.($r['rest_days'] ? 'Rest Day' : 'Absent').')')->join(', ', ' and ') : 'CRAs off' }}
                             </p>
                         @endif
                         @if ($isAbsent)
                             <div class="rounded-lg bg-canvas px-3 py-2">
-                                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Goal shared</p>
+                                <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Goal shared</p>
                                 <p class="text-sm font-semibold text-ink">Split with the {{ $onDutyCount }} {{ Str::plural('CRA', $onDutyCount) }} on duty</p>
                             </div>
                         @elseif ($left > 0)
                             <div class="rounded-lg bg-brand-50 px-3 py-2">
-                                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Left to reach goal</p>
+                                <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Left to reach goal</p>
                                 <p class="text-base font-bold text-brand-700 tabular-nums">{{ $peso($left) }}</p>
                             </div>
                         @elseif ($row['goal'] > 0)
                             <div class="rounded-lg bg-teal/10 px-3 py-2">
-                                <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">Goal reached</p>
+                                <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Goal reached</p>
                                 <p class="text-base font-bold text-teal-700 tabular-nums">+{{ $peso(-$left) }} over</p>
                             </div>
                         @endif
@@ -173,8 +173,8 @@
             @else
                 @php $cell = fn (?array $sold) => $show === 'qty' ? number_format($sold['qty'] ?? 0) : $peso($sold['sales'] ?? 0); @endphp
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[820px] text-sm tabular-nums">
-                        <thead class="text-[11px] tracking-wide text-muted uppercase">
+                    <table class="w-full min-w-[51.25rem] text-sm tabular-nums">
+                        <thead class="text-[0.6875rem] tracking-wide text-muted uppercase">
                             <tr>
                                 <th scope="col" class="px-4 py-3 text-left font-semibold">CRA</th>
                                 @foreach (array_keys($products) as $name)

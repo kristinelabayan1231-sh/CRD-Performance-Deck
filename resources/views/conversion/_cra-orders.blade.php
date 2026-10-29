@@ -16,15 +16,15 @@
         {{-- Same totals as the Gross BC, Gross SC and Gross sales columns --}}
         <dl class="flex gap-5 text-right">
             <div>
-                <dt class="text-[11px] font-semibold tracking-wide text-teal-700 uppercase">Gross BC</dt>
+                <dt class="text-[0.6875rem] font-semibold tracking-wide text-teal-700 uppercase">Gross BC</dt>
                 <dd class="font-bold tabular-nums">{{ $peso($bcGross) }}</dd>
             </div>
             <div>
-                <dt class="text-[11px] font-semibold tracking-wide text-brand-700 uppercase">Gross SC</dt>
+                <dt class="text-[0.6875rem] font-semibold tracking-wide text-brand-700 uppercase">Gross SC</dt>
                 <dd class="font-bold tabular-nums">{{ $peso($scGross) }}</dd>
             </div>
             <div>
-                <dt class="text-[11px] font-semibold tracking-wide text-muted uppercase">Gross sales</dt>
+                <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Gross sales</dt>
                 <dd class="text-xl font-bold tabular-nums">{{ $peso($bcGross + $scGross) }}</dd>
             </div>
         </dl>
@@ -36,7 +36,7 @@
         <p class="rounded-lg border border-dashed border-line px-3 py-6 text-center text-sm text-muted">No orders tagged CRD - BROADCAST or CRD - SEGMENTATION in these dates.</p>
     @else
         <div class="overflow-x-auto rounded-lg border border-line">
-            <table class="w-full min-w-[780px] text-left text-sm">
+            <table class="w-full min-w-[48.75rem] text-left text-sm">
                 <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-3 py-2 font-semibold">Created</th>
@@ -55,10 +55,10 @@
                             <td class="px-3 py-2 tabular-nums">{{ $order->pancake_order_id }}</td>
                             <td class="px-3 py-2">{{ $order->customer_name ?: '—' }}</td>
                             <td class="px-3 py-2">{{ $order->page_name ?: '—' }}</td>
-                            <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $tags[$order->counted_type][1] }}">{{ $tags[$order->counted_type][0] }}</span></td>
+                            <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap {{ $tags[$order->counted_type][1] }}">{{ $tags[$order->counted_type][0] }}</span></td>
                             <td class="px-3 py-2">
                                 @php($status = $statuses[$order->status] ?? [$order->status_name ?: '—', 'bg-canvas text-muted'])
-                                <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap {{ $status[1] }}">{{ $status[0] }}</span>
+                                <span class="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap {{ $status[1] }}">{{ $status[0] }}</span>
                             </td>
                             <td class="px-3 py-2 text-right tabular-nums">{{ $peso($order->sales()) }}</td>
                         </tr>

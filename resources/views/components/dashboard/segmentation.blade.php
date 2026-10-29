@@ -47,7 +47,7 @@
                         @if ($kpi['label'] === 'Converted')
                             {{-- The tiles above, added up: Converted = Retained + Repeat out of FSD + CRD leads --}}
                             @php($c = $p['counts'])
-                            <p class="relative mt-1 grid gap-0.5 border-t border-white/30 pt-1 text-[10px] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
+                            <p class="relative mt-1 grid gap-0.5 border-t border-white/30 pt-1 text-[0.625rem] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
                                 <span>Retained <span class="font-semibold text-white tabular-nums">{{ number_format($c['retained']) }}/{{ number_format($c['fsd']) }} · {{ number_format($p['retained'], 1) }}%</span></span>
                                 <span>Repeat <span class="font-semibold text-white tabular-nums">{{ number_format($c['repeat']) }}/{{ number_format($c['crd']) }} · {{ number_format($p['repeat'], 1) }}%</span></span>
                             </p>
@@ -74,7 +74,7 @@
                     <svg viewBox="0 0 320 140" class="h-auto w-full" role="img" aria-label="Catered and pending leads per day, {{ $p['label'] }}">
                         @foreach ([0, $yMax / 2, $yMax] as $tick)
                             <line x1="30" x2="312" y1="{{ $y($tick) }}" y2="{{ $y($tick) }}" stroke="#ebe6ee" stroke-width="1" />
-                            <text x="24" y="{{ $y($tick) + 3 }}" text-anchor="end" class="fill-muted text-[9px]">{{ (int) $tick }}</text>
+                            <text x="24" y="{{ $y($tick) + 3 }}" text-anchor="end" class="fill-muted text-[0.5625rem]">{{ (int) $tick }}</text>
                         @endforeach
                         @if ($n)
                             @foreach (['processed' => '#0E8F7C', 'unprocessed' => '#E0663F'] as $series => $color)
@@ -93,7 +93,7 @@
                                 </g>
                             @endforeach
                             @foreach (array_unique([0, intdiv($n - 1, 2), $n - 1]) as $i)
-                                <text x="{{ $x($i) }}" y="136" text-anchor="{{ $i === 0 && $n > 1 ? 'start' : ($i === $n - 1 && $n > 1 ? 'end' : 'middle') }}" class="fill-muted text-[9px]">{{ $pts[$i]['label'] }}</text>
+                                <text x="{{ $x($i) }}" y="136" text-anchor="{{ $i === 0 && $n > 1 ? 'start' : ($i === $n - 1 && $n > 1 ? 'end' : 'middle') }}" class="fill-muted text-[0.5625rem]">{{ $pts[$i]['label'] }}</text>
                             @endforeach
                         @endif
                     </svg>
@@ -118,7 +118,7 @@
                                 </circle>
                                 @php($offset += $len)
                             @endforeach
-                            <text x="50" y="50" text-anchor="middle" dominant-baseline="central" transform="rotate(90 50 50)" class="fill-ink text-[16px] font-bold">{{ number_format($p['leads']) }}</text>
+                            <text x="50" y="50" text-anchor="middle" dominant-baseline="central" transform="rotate(90 50 50)" class="fill-ink text-[1rem] font-bold">{{ number_format($p['leads']) }}</text>
                         </svg>
                         <ul class="w-full min-w-0 space-y-1 text-xs">
                             @foreach ($p['tags'] as $s)
@@ -153,7 +153,7 @@
                                         <td class="py-1.5">
                                             <span class="flex items-center gap-2">
                                                 <span @class([
-                                                    'grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-bold',
+                                                    'grid size-5 shrink-0 place-items-center rounded-full text-[0.625rem] font-bold',
                                                     'bg-brand-600 text-white' => $i === 0 && $row['processed'] > 0,
                                                     'bg-canvas text-muted' => ! ($i === 0 && $row['processed'] > 0),
                                                 ])>{{ $i + 1 }}</span>

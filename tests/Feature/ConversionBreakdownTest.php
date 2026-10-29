@@ -376,6 +376,47 @@ class ConversionBreakdownTest extends TestCase
         $this->assertNull(PancakeOrder::sole()->seller_name);
     }
 
+    public function test_a_price_edited_days_later_is_saved(): void
+    {
+        $this->orders = [$order = $this->order('CRD JULY ANN', [self::SEGMENTATION], 799)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        // Nine days later the price is changed to 999 in Pancake; Pancake lists it as changed that day.
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 12:00', 'Asia/Manila'));
+        $this->orders = [];
+        $this->changed = [[...$order, 'total_price' => 999, 'total_discount' => 0, 'items' => [['variation_info' => ['name' => 'Pterygium Drops'], 'quantity' => 1]]]];
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
+
+        $saved = PancakeOrder::sole();
+        $this->assertEqualsWithDelta(999.0, (float) $saved->total_price, 0.001);
+        $this->assertSame('Pterygium Drops', $saved->items[0]['name']);
+        $this->assertSame('2026-10-01', $saved->ordered_on->toDateString());
+
+        // Sent without the amount: it stays as saved.
+        $this->changed = [['id' => $order['id'], 'display_id' => $order['display_id'], 'tags' => [self::SEGMENTATION], 'status' => 3, 'status_name' => 'delivered']];
+        $this->travel(11)->minutes();
+        app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
+
+        $this->assertEqualsWithDelta(999.0, (float) PancakeOrder::sole()->total_price, 0.001);
+    }
+
+    public function test_the_nightly_sales_refresh_picks_up_amounts_corrected_in_shecom(): void
+    {
+        $this->orders = [$order = $this->order('CRD Rej Vergara', [self::SEGMENTATION], 499)];
+        $this->sales = [['order_id' => (string) $order['display_id'], 'date' => '2026-10-01', 'sales' => '749']];
+        app(PancakeSync::class)->sync(Lead::today());
+        $this->assertEqualsWithDelta(749.0, (float) PancakeOrder::sole()->shecom_sales, 0.001);
+
+        // Corrected to 499 in Shecom after the order's day.
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 01:15', 'Asia/Manila'));
+        $this->sales = [['order_id' => (string) $order['display_id'], 'date' => '2026-10-01', 'sales' => '499']];
+        $this->artisan('pancake:sync --sales --last=14')->assertSuccessful();
+
+        $this->assertEqualsWithDelta(499.0, (float) PancakeOrder::sole()->shecom_sales, 0.001);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales')
+            && $request['date_from'] === '2026-09-27' && $request['date_to'] === '2026-10-10');
+    }
+
     public function test_header_lists_order_issues_and_a_cra_sees_only_their_own(): void
     {
         $lhea = $this->cra('Lhea', 'CRD Lhei');

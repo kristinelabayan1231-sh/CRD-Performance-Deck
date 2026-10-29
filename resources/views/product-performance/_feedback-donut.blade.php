@@ -17,8 +17,8 @@
             </circle>
             @php($offset += $length)
         @endforeach
-        <text x="50" y="47" text-anchor="middle" transform="rotate(90 50 50)" class="fill-ink text-[14px] font-bold">{{ number_format($total) }}</text>
-        <text x="50" y="58" text-anchor="middle" transform="rotate(90 50 50)" class="fill-muted text-[6px]">{{ $centerLabel }}</text>
+        <text x="50" y="47" text-anchor="middle" transform="rotate(90 50 50)" class="fill-ink text-[0.875rem] font-bold">{{ number_format($total) }}</text>
+        <text x="50" y="58" text-anchor="middle" transform="rotate(90 50 50)" class="fill-muted text-[0.375rem]">{{ $centerLabel }}</text>
     </svg>
     <table class="w-full text-sm">
         <caption class="sr-only">{{ $ariaLabel }}</caption>

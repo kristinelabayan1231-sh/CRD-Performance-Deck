@@ -28,7 +28,7 @@
             </span>
         </div>
         <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm tabular-nums">
-            <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold {{ $teamPill($window['team']) }}">{{ strtoupper($window['team']) }}</span>
+            <span class="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold {{ $teamPill($window['team']) }}">{{ strtoupper($window['team']) }}</span>
             Delivered <span class="font-semibold">{{ $date($window['delivered']) }}</span>
             <span class="text-muted">→ ran out</span> {{ $date($window['ran_out']) }}
             <span class="text-muted">→ reorder by</span> <span class="font-semibold">{{ $date($window['deadline']) }}</span>
@@ -50,7 +50,7 @@
             <p class="rounded-lg border border-dashed border-line px-3 py-4 text-center text-sm text-muted">No orders found.</p>
         @else
             <div class="overflow-x-auto rounded-lg border border-line">
-                <table class="w-full min-w-[640px] text-left text-sm">
+                <table class="w-full min-w-[40rem] text-left text-sm">
                     <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="py-2 pr-3 pl-3 font-semibold">Ordered</th>
@@ -71,7 +71,7 @@
                                         <span class="block text-xs text-muted">delivered {{ \Carbon\CarbonImmutable::parse($order['delivered'])->format('M j') }}</span>
                                     @endif
                                     @if ($judged)
-                                        <span class="mt-0.5 inline-block rounded-full bg-brand-600 px-1.5 text-[10px] font-semibold text-white">Judged delivery</span>
+                                        <span class="mt-0.5 inline-block rounded-full bg-brand-600 px-1.5 text-[0.625rem] font-semibold text-white">Judged delivery</span>
                                     @endif
                                 </td>
                                 <td class="px-3 py-2 tabular-nums">{{ $order['order_id'] }}</td>
@@ -80,9 +80,9 @@
                                 <td class="px-3 py-2">
                                     {{ $order['seller'] ?? '—' }}
                                     @if ($order['team'])
-                                        <span class="ml-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold {{ $teamPill($order['team']) }}">{{ strtoupper($order['team']) }}</span>
+                                        <span class="ml-1 rounded-full px-1.5 py-0.5 text-[0.6875rem] font-semibold {{ $teamPill($order['team']) }}">{{ strtoupper($order['team']) }}</span>
                                     @elseif ($order['by_cra'])
-                                        <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[11px] font-semibold text-brand-700">CRA</span>
+                                        <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand-700">CRA</span>
                                     @endif
                                 </td>
                                 <td class="py-2 pr-3 pl-3 text-right tabular-nums">{{ $money($order['amount']) }}</td>

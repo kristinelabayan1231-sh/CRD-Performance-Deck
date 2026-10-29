@@ -176,6 +176,32 @@ class ShecomClient
     }
 
     /**
+     * Each Pancake item's current cost (null where Shecom has none yet) and the day it took effect.
+     *
+     * @return list<array{product: string, currentCost: int|float|null, currentEffectiveFrom: ?string}>
+     */
+    public function productCosts(): array
+    {
+        $key = config('services.shecom.product_cost_key');
+
+        if (! $key) {
+            throw new RuntimeException('SHECOM_PRODUCT_COST_API_KEY is not set in .env.');
+        }
+
+        $response = Http::withToken($key)
+            ->acceptJson()
+            ->timeout(60)
+            ->retry(2, 2000, throw: false)
+            ->get(rtrim(config('services.shecom.external_url'), '/').'/product-costs');
+
+        if ($response->failed()) {
+            throw new RuntimeException("Product costs API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
+        }
+
+        return $response->json('products') ?? [];
+    }
+
+    /**
      * The decoded retention report.
      *
      * @return array<string, mixed>
