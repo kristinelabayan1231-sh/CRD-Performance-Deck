@@ -42,8 +42,7 @@
                 ]],
                 ['name' => 'Income & Products', 'icon' => 'statement', 'items' => [
                     ['Monthly MNI', route('mni.index'), request()->routeIs('mni.*'), $user->can('mni.view')],
-                    // Pending: shown but not clickable for now, except for super admins.
-                    ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view'), ! $user->isSuperAdmin()],
+                    ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view')],
                     ['Product Performance', route('product-performance.index'), request()->routeIs('product-performance.*'), $user->can('product_performance.view')],
                     ['Product Target Market', route('product-target-market.index'), request()->routeIs('product-target-market.*'), $user->can('product_target_market.view')],
                 ]],
