@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\DailyIncomeStatement;
+use App\Services\DailyIsConflicts;
 use App\Services\LeadGenerator;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -17,7 +18,7 @@ use Illuminate\View\View;
  */
 class DailyIncomeStatementController extends Controller
 {
-    public function index(Request $request, DailyIncomeStatement $statement): View
+    public function index(Request $request, DailyIncomeStatement $statement, DailyIsConflicts $conflicts): View
     {
         $user = $request->user();
         $today = WorkingDate::realToday();
@@ -46,6 +47,8 @@ class DailyIncomeStatementController extends Controller
             'data' => $statement->day($cras, $day),
             'lines' => DailyIncomeStatement::LINES,
             'canSetReturns' => $canViewAll,
+            // Orders the Daily I.S. and the Report Summary count differently, for supervisors.
+            'conflicts' => $canViewAll ? $conflicts->for($cras, $day) : null,
         ]);
     }
 

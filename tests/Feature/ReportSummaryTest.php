@@ -8,6 +8,8 @@ use App\Models\PancakeOrder;
 use App\Models\PcReportEntry;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\DailyIncomeStatement;
+use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -107,6 +109,24 @@ class ReportSummaryTest extends TestCase
             // The week: Lhea's 3 orders (the canceled one left out) over 140 engagements.
             ->assertViewHas('periodReport', fn (array $week) => $reach($week) === [250, 140, 3 / 140] && $week['total']['is_leads'] === 250)
             ->assertViewHas('dayReport', fn (array $day) => $reach($day) === [200, 100, 0.02]);
+    }
+
+    public function test_net_income_adds_up_the_daily_is_cra_card_and_ibsc_is_it_over_total_gross(): void
+    {
+        $this->sheetOrders();
+        $statement = app(DailyIncomeStatement::class);
+        $cras = LeadGenerator::cras();
+        $cardNet = fn (User $cra, string $day) => $statement->day($cras, CarbonImmutable::parse($day))['cras'][$cra->id]['total']['net_income'];
+        $weekNet = collect(range(1, 7))->sum(fn (int $day) => $cardNet($this->lhea, sprintf('2026-10-%02d', $day)));
+        $metrics = fn (array $report, User $cra) => $report['rows']->firstWhere('cra.id', $cra->id)['metrics'];
+
+        $this->actingAs($this->supervisor)->get(route('report-summary.index', ['month' => '2026-10', 'week' => 1, 'date' => '2026-10-01']))->assertOk()
+            ->assertViewHas('periodReport', fn (array $week) => abs($metrics($week, $this->lhea)['net_income'] - $weekNet) < 0.01
+                && abs($metrics($week, $this->lhea)['ibsc'] - $weekNet / 7500) < 0.000001
+                && $metrics($week, $this->rose)['ibsc'] === null
+                && abs($week['total']['net_income'] - $week['rows']->sum('metrics.net_income')) < 0.01)
+            ->assertViewHas('dayReport', fn (array $day) => abs($metrics($day, $this->lhea)['net_income'] - $cardNet($this->lhea, '2026-10-01')) < 0.01)
+            ->assertDontSeeText('Coming soon');
     }
 
     public function test_the_weekly_section_flips_to_month_to_date_and_opens_on_this_week_and_today(): void

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\PcReportEntry;
@@ -10,6 +11,7 @@ use App\Models\Role;
 use App\Models\ShecomProductCost;
 use App\Models\User;
 use App\Services\DailyIncomeStatement;
+use App\Services\DailyIsConflicts;
 use App\Services\LeadGenerator;
 use App\Services\MonthlyMni;
 use App\Support\ProductGroups;
@@ -219,6 +221,40 @@ class DailyIncomeStatementTest extends TestCase
         $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->put(route('daily-is.returns.update'), ['month' => '2026-10', 'returns_pct' => 101])
             ->assertSessionHasErrors('returns_pct');
         $this->assertNull(DailyIncomeStatement::returnsPct(CarbonImmutable::parse('2026-10-01')));
+    }
+
+    public function test_an_order_the_cvr_tracker_counts_for_another_cra_goes_to_that_cra(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
+        $other = User::create(['email' => 'anna@example.com', 'pancake_name' => 'CRD Anna', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1000, ['conversion_type' => PancakeOrder::BROADCAST]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 700, ['conversion_type' => PancakeOrder::BROADCAST]);
+        $this->order($other, 'Sinuxyl Nasal Spray', 500, ['conversion_type' => PancakeOrder::SEGMENTATION]);
+        // Regina's ₱700 is July Ann's in the CVR Tracker; the ₱500 made under a non-CRA account is Regina's.
+        CvrOrderEntry::create(['pancake_order_id' => '1374002', 'user_id' => $julyAnn->id]);
+        CvrOrderEntry::create(['pancake_order_id' => '1374003', 'user_id' => $regina->id]);
+
+        $cras = app(DailyIncomeStatement::class)->day(LeadGenerator::cras(), CarbonImmutable::parse(self::DAY))['cras'];
+
+        $this->assertSame([1500.0, 700.0], [$cras[$regina->id]['total']['gross'], $cras[$julyAnn->id]['total']['gross']]);
+    }
+
+    public function test_supervisors_see_orders_the_daily_is_and_report_summary_count_differently(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1000, ['conversion_type' => PancakeOrder::BROADCAST]);   // in both
+        $this->order($regina, 'Some Other Page', 800, ['conversion_type' => PancakeOrder::BROADCAST]);       // Report Summary only
+        $this->order($regina, 'Sinuxyl Nasal Spray', 600);                                                    // Daily I.S. only
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => '2026-10-05']))->assertOk()
+            ->assertSee('2 order conflicts');
+
+        $conflicts = $response->viewData('conflicts')->map(fn (array $c) => [$c['type'], $c['order_id'], $c['note'], $c['amount']])->sortBy(1)->values()->all();
+        $this->assertSame([
+            [DailyIsConflicts::PAGE, '1374002', 'Not in a product group', 800.0],
+            [DailyIsConflicts::UNTAGGED, '1374003', null, 600.0],
+        ], $conflicts);
     }
 
     public function test_supervisor_can_narrow_to_one_cra(): void

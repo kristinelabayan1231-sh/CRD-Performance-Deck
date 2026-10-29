@@ -7,6 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-10-30 · Daily I.S. · Orders the CVR Tracker counts for a CRA now go to that CRA (as in the Report Summary/CVR), also when made under another account. New "order conflicts" badge beside the title (supervisors): lists this month's orders the Daily I.S. and the Report Summary count differently — "Page not in the Daily I.S." (page not in a product group that day, with its group's starting date) and "No CRD tag" — by CRA, with page and amount · shots: daily-is
+- 2026-10-30 · Report Summary · Net income (the Daily I.S. CRA card's NET INCOME added up over the days), I.BSC % (Net income ÷ Total gross BC & SC) and Average IBSC per CRA (Net income ÷ CRAs on duty) are filled in; "Coming soon" removed; negatives in red · shots: report-summary
+
 - 2026-10-29 · Daily I.S. · No longer Pending: everyone with Daily I.S. access (CRA Supervisors) opens it from the sidebar, not just super admins · shots: 04-daily-table (sidebar)
 - 2026-10-29 · Daily I.S. · Product Cost now comes from Shecom: each item's cost (by its Pancake name, e.g. "3 Bottles Sinuxyl") on the order's day × qty, refreshed hourly; ₱0 when Shecom has no cost (Settings unit cost no longer used here) · shots: daily-is
 - 2026-10-29 · Whole app · Text and spacing are about 12% smaller (14px base, like the Shecom dashboard), so pages no longer look zoomed in · shots: all (re-capture when the guide is rebuilt)

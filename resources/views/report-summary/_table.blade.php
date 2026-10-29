@@ -5,8 +5,7 @@
     $report: ReportSummary::for(); $perCra: show the per-CRA lines (daily only).
 --}}
 @php
-    $money = fn ($value) => $value === null ? '—' : '₱'.number_format($value, 2);
-    $soon = 'bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgb(242_237_243/0.8)_6px_12px)] text-muted/70';
+    $money = fn ($value) => $value === null ? '—' : ($value < 0 ? '−' : '').'₱'.number_format(abs($value), 2);
     // key, label, sub-label, kind, column width
     $columns = [
         ['bc_orders', 'Orders', 'Broadcast', 'count', 'w-[6rem]'],
@@ -18,8 +17,8 @@
         ['is_engagements', 'Engagement', null, 'count', 'w-[7.25rem]'],
         ['conv', 'Conv %', null, 'percent', 'w-[5.625rem]'],
         ['aov', 'AOV', null, 'money', 'w-[7.25rem]'],
-        ['net_income', 'Net income', null, 'soon', 'w-[7.25rem]'],
-        ['ibsc', 'I.BSC %', null, 'waits', 'w-[5.625rem]'],
+        ['net_income', 'Net income', 'Daily I.S.', 'money', 'w-[8.25rem]'],
+        ['ibsc', 'I.BSC %', null, 'percent', 'w-[5.625rem]'],
     ];
     // Group labels are sticky, so they stay centered in view instead of sliding under the pinned Team column.
     // The first column of each group (Orders & sales, Reach & conversion, Profit) gets a divider on its left.
@@ -35,7 +34,7 @@
 @endphp
 
 <div class="overflow-x-auto">
-    <table class="w-full min-w-[92.5rem] table-fixed text-sm">
+    <table class="w-full min-w-[93.5rem] table-fixed text-sm">
         <colgroup>
             <col class="w-[12.5rem]">
             @foreach ($columns as $col)
@@ -56,9 +55,6 @@
                         @if ($col[2])
                             <span class="block font-medium tracking-normal normal-case">{{ $col[2] }}</span>
                         @endif
-                        @if ($col[3] === 'soon')
-                            <span class="mt-0.5 inline-block rounded-full border border-dashed border-line bg-canvas px-1.5 text-[0.625rem] font-semibold tracking-normal whitespace-nowrap normal-case" title="From the Daily I.S. once the MNI is in">Coming soon</span>
-                        @endif
                     </th>
                 @endforeach
             </tr>
@@ -73,8 +69,8 @@
                             'px-3 py-2.5 text-right',
                             'border-l border-line' => in_array($col[0], $groupStarts),
                             'font-semibold' => $col[0] === 'gross',
-                            'text-muted' => in_array($col[3], ['count', 'money', 'percent']) && ! $value,
-                            $soon => in_array($col[3], ['soon', 'waits']),
+                            'text-muted' => ! $value,
+                            'text-coral-700' => $value < 0,
                         ])>{{ $cell($row['metrics'], $col) }}</td>
                     @endforeach
                 </tr>
@@ -85,7 +81,7 @@
                 <tr class="bg-ink font-semibold text-white">
                     <td class="sticky left-0 z-10 border-r border-white/15 bg-ink px-4 py-2.5">TOTAL</td>
                     @foreach ($columns as $col)
-                        <td @class(['px-3 py-2.5 text-right', 'border-l border-white/15' => in_array($col[0], $groupStarts), 'text-white/50' => in_array($col[3], ['soon', 'waits'])])>{{ $cell($report['total'], $col) }}</td>
+                        <td @class(['px-3 py-2.5 text-right', 'border-l border-white/15' => in_array($col[0], $groupStarts), 'text-[#ffb4b6]' => ($report['total'][$col[0]] ?? 0) < 0])>{{ $cell($report['total'], $col) }}</td>
                     @endforeach
                 </tr>
             @endif
@@ -97,9 +93,7 @@
             <tr>
                 <th rowspan="3" scope="rowgroup" class="{{ $teamCell }} bg-brand-50 px-4 py-2 text-left align-top text-[0.6875rem] font-semibold tracking-wide text-brand-700 uppercase">Per CRA</th>
                 <td colspan="8" class="px-3 py-2 text-right text-muted">Average IBSC per CRA <span class="text-xs">(Net income ÷ CRAs on duty)</span></td>
-                <td colspan="3" class="border-l border-line px-3 py-2 text-right font-semibold text-muted">
-                    <span class="mr-2 rounded-full border border-dashed border-line bg-canvas px-1.5 text-[0.625rem] font-semibold">Coming soon</span>—
-                </td>
+                <td colspan="3" @class(['border-l border-line px-3 py-2 text-right font-bold', 'text-coral-700' => ($report['average_ibsc'] ?? 0) < 0])>{{ $money($report['average_ibsc']) }}</td>
             </tr>
             <tr>
                 <td colspan="8" class="px-3 py-2 text-right text-muted">No. of Customer Retention Associates (On Duty)</td>
