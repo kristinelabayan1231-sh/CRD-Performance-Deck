@@ -8,7 +8,6 @@ use App\Models\PcReportEntry;
 use App\Models\Setting;
 use App\Models\ShecomProductCost;
 use App\Models\User;
-use App\Support\PancakeAccounts;
 use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -19,7 +18,8 @@ use Illuminate\Support\Str;
  * day, laid out like the CRAs' sheet. A product card:
  *
  * Leads/inquiries and engagements = the CRA's PC Report Total Inquiries and Total Engagement on the product's pages.
- * Orders = the CRA's Pancake orders on those pages that day, canceled and deleted left out (PC Report's # of Orders).
+ * Orders = the CRA's Pancake orders on those pages that day, canceled and deleted left out (PC Report's # of Orders); an
+ * order the CVR Tracker counts for another CRA goes to that CRA, as in the Conversion Breakdown.
  * Gross Sales = the sales of every one of those orders but deleted ones (Shecom's amount once synced), canceled included.
  * Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders.
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
@@ -106,6 +106,9 @@ class DailyIncomeStatement
     /** Figures counted from the day's PC Report entries and orders (the rest are worked out from them). */
     private const COUNTED = ['leads', 'engagements', 'orders', 'gross', 'cancelled', 'product_cost'];
 
+    /** @var array<string, array<int, array<string, float|int>>> month (Y-m) => the 1M Monthly MNI per CRA */
+    private array $mniByMonth = [];
+
     public function __construct(private PageOrders $pageOrders, private MonthlyMni $mni, private ProductCatalog $catalog) {}
 
     /**
@@ -137,11 +140,9 @@ class DailyIncomeStatement
             });
 
         ['orders' => $orders, 'missingPage' => $missingPage] = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day);
-        $sellers = PancakeAccounts::craBySeller($cras);
-        $craOf = $sellers->map(fn (User $cra) => $cra->id);
         $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->pluck('id')->all(), $day);
         foreach ($orders as $order) {
-            $product = &$figures[$craOf[$order['seller']]][$groupOf[$order['page']]];
+            $product = &$figures[$order['cra']][$groupOf[$order['page']]];
             $product['orders'] += $order['counted'] ? 1 : 0;
             $product['gross'] += $order['sales'];
             $product['cancelled'] += in_array($order['status'], PancakeOrder::CANCELLED_OR_WAITING_STATUSES, true) ? $order['sales'] : 0;
@@ -300,7 +301,8 @@ class DailyIncomeStatement
      */
     private function shares(Collection $cras, CarbonImmutable $day, int $products): array
     {
-        $mni = $this->mni->for(LeadGenerator::cras(), $day->startOfMonth(), '1m')['cras'];
+        // Worked out once per month: the Report Summary adds up every day of a month.
+        $mni = $this->mniByMonth[$day->format('Y-m')] ??= $this->mni->for(LeadGenerator::cras(), $day->startOfMonth(), '1m')['cras'];
 
         return $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect(['tax', ...array_keys(self::OPERATING)])
             ->mapWithKeys(fn (string $key) => [$key => (float) ($mni[$cra->id][$key] ?? 0) / self::WORKING_DAYS / $products])
@@ -342,6 +344,25 @@ class DailyIncomeStatement
             'operating' => array_sum($operating),
             'net_income' => $grossProfit - array_sum($selling) - array_sum($operating),
         ]);
+    }
+
+    /**
+     * Each CRA's NET INCOME over $from–$to: their CRA card's NET INCOME on each day, added up (Report Summary).
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, float> cra id => net income
+     */
+    public function netIncome(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $totals = $cras->mapWithKeys(fn (User $cra) => [$cra->id => 0.0])->all();
+
+        for ($day = $from; $day->lte($to); $day = $day->addDay()) {
+            foreach ($this->day($cras, $day)['cras'] as $craId => $statement) {
+                $totals[$craId] += (float) $statement['total']['net_income'];
+            }
+        }
+
+        return $totals;
     }
 
     /**

@@ -9,7 +9,12 @@
 <x-layouts.app title="Daily I.S.">
     <div class="space-y-4">
         <header class="flex flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Daily I.S. <span class="text-sm font-normal text-muted">· Income statement per CRA and product</span></h1>
+            <div class="flex min-w-0 flex-wrap items-center gap-3">
+                <h1 class="text-xl font-semibold">Daily I.S. <span class="text-sm font-normal text-muted">· Income statement per CRA and product</span></h1>
+                @if ($conflicts !== null)
+                    @include('daily-is._conflicts', ['conflicts' => $conflicts, 'day' => $day])
+                @endif
+            </div>
 
             <form method="GET" action="{{ route('daily-is.index') }}" class="flex flex-wrap items-center gap-2">
                 @if ($allCras)
