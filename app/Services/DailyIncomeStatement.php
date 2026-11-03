@@ -25,8 +25,9 @@ use Illuminate\Support\Str;
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
- * item's cost in Shecom on the order's day × its qty, by the item's Pancake name ("2 Bottles Sinuxyl"); an item without
- * a Shecom cost is ₱0, and items not on Product Consumption are left out. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
+ * item's cost in Shecom on the order's day (a cost per piece) × its pieces (qty × pieces: a 5-bottle bundle bought once
+ * is 5), by the item's Pancake name ("1 Bottle Sinuxyl"); an item without a Shecom cost takes the product's unit cost
+ * in Settings → Product Consumption (₱0 without either), and items not on Product Consumption are left out. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
  * Fulfillment Fee = orders × ₱25.
  * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
@@ -208,7 +209,8 @@ class DailyIncomeStatement
     }
 
     /**
-     * Each order's Product Cost: its items on Product Consumption (on $day) × their Shecom cost that day, 0 without one.
+     * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
+     * cost per piece that day, else the product's Settings unit cost (0 without either).
      *
      * @param  list<int>  $orderIds
      * @return array<int, float> order id => cost
@@ -222,8 +224,10 @@ class DailyIncomeStatement
             $costs[$id] = 0.0;
             foreach ($items ?? [] as $item) {
                 $name = trim((string) ($item['name'] ?? ''));
-                if ($this->catalog->matchSold($name, $day->toDateString()) !== null) {
-                    $costs[$id] += max(1, (int) ($item['qty'] ?? 1)) * ($shecom[mb_strtolower($name)] ?? 0);
+                $product = $this->catalog->matchSold($name, $day->toDateString());
+                if ($product !== null) {
+                    $pieces = max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
+                    $costs[$id] += $pieces * ($shecom[mb_strtolower($name)] ?? (float) $product->unit_cost);
                 }
             }
         }

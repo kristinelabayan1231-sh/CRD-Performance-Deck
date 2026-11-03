@@ -77,8 +77,8 @@ class DailyIncomeStatementTest extends TestCase
         ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 90, 'effective_from' => null]);
         ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 105, 'effective_from' => '2026-10-01']);
         ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 200, 'effective_from' => '2026-10-02']);
-        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one "3 Bottles Sinuxyl" at Oct 1's ₱105
-        // Shecom cost, not Settings' ₱35 unit cost or Pancake's ₱100; one with no Shecom cost, ₱0) and a canceled one
+        // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (one "3 Bottles Sinuxyl", 3 pieces at Oct 1's ₱105
+        // Shecom cost, not Settings' ₱35 unit cost or Pancake's ₱100; one with no Shecom cost takes Settings' ₱35) and a canceled one
         // (in Gross Sales and Actual Cancelled, not in orders); another day's is left out.
         $this->entry($regina, 'Sinuxyl Nasal Spray', 100, 50);
         $this->entry($regina, 'Sinuxyl Nasal Care', 20, 10);
@@ -105,10 +105,10 @@ class DailyIncomeStatementTest extends TestCase
         $selling = 2 * 75 + $delivered * 0.0224 + 2 * 25;
         $expected = [
             'leads' => 120, 'engagements' => 60, 'orders' => 2, 'gross' => 2199.0, 'cancelled' => 700.0, 'returns' => 219.9,
-            'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 105.0, 'gross_profit' => $delivered - $share('tax') - 105,
+            'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 350.0, 'gross_profit' => $delivered - $share('tax') - 350,
             'advertising' => 0.0, 'ads_vat' => 0.0, 'shipping' => 150, 'cod' => $delivered * 0.0224, 'vat_on_cod' => 0.0, 'fulfillment' => 50,
             'selling' => $selling, 'salaries' => $share('salaries'), 'hmo_expense' => $share('hmo_expense'), 'operating' => $operating,
-            'net_income' => $delivered - $share('tax') - 105 - $selling - $operating,
+            'net_income' => $delivered - $share('tax') - 350 - $selling - $operating,
         ];
         foreach ($expected as $key => $value) {
             $this->assertEqualsWithDelta($value, $sinuxyl[$key], 0.001, $key);
@@ -194,6 +194,25 @@ class DailyIncomeStatementTest extends TestCase
         $this->actingAs($admin)->put(route('settings.daily-is.update'), ['deactivated' => ['Not A Group']])->assertSessionHasErrors('deactivated.0');
         $this->actingAs($admin)->get(route('settings.daily-is.index'))->assertOk()->assertSeeText('SINUXYL NASAL SPRAY');
         $this->assertSame([], DailyIncomeStatement::deactivated());
+    }
+
+    public function test_settings_lists_shecoms_product_costs_and_the_sold_items_without_one(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 30, 'effective_from' => '2026-10-10']);
+        ShecomProductCost::create(['product' => 'Fungi Clear', 'cost' => 42, 'effective_from' => null]);
+        // Sold lately: "1 Bottle Sinuxyl" has a cost; "Sinuxyl" (5 pieces × 2) has none. An older sale isn't listed.
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => '2026-10-15', 'items' => [['qty' => 2, 'pieces' => 5, 'name' => 'Sinuxyl'], ['qty' => 1, 'name' => '1 Bottle Sinuxyl']]]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 500, ['ordered_on' => '2026-09-20', 'items' => [['qty' => 1, 'name' => 'Old Sinuxyl Bundle']]]);
+
+        $view = $this->actingAs($this->user('Admin', Role::SUPER_ADMIN))->get(route('settings.daily-is.index'))
+            ->assertOk()->assertSeeText('Product costs from Shecom');
+
+        $this->assertSame([
+            ['item' => '1 Bottle Sinuxyl', 'cost' => 30.0, 'from' => '2026-10-10', 'product' => 'Sinuxyl'],
+            ['item' => 'Fungi Clear', 'cost' => 42.0, 'from' => null, 'product' => null],
+        ], $view->viewData('costs'));
+        $this->assertSame([['item' => 'Sinuxyl', 'product' => 'Sinuxyl', 'pieces' => 10, 'fallback' => 35.0]], $view->viewData('missingCosts'));
     }
 
     public function test_a_page_added_today_counts_from_today_only(): void
