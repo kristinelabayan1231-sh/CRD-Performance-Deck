@@ -264,7 +264,10 @@ class DailyIncomeStatement
         return $key === null ? $group : self::PRODUCT_ORDER[$key];
     }
 
-    private static function productKey(string $group): ?string
+    /**
+     * The PRODUCT_ORDER key a group or card name starts with, ignoring case, spaces and symbols ("AudiCure" => audi).
+     */
+    public static function productKey(string $group): ?string
     {
         $squashed = preg_replace('/[^a-z0-9]/', '', strtolower($group));
 

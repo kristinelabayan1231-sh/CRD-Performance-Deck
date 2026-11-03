@@ -8,14 +8,15 @@ use Carbon\CarbonImmutable;
 /**
  * CRD Board (dashboard): the department's figures from the Daily I.S., every active CRA. Today's running Gross Sales and
  * Net Income, the same for the two days before, and yesterday's top seller and top product: the CRA and the product
- * card with the highest Net Income among those with sales.
+ * card with the highest Net Income among those with sales. The top product shows its photo from the
+ * Drive "Product Photos" folder when it has one.
  */
 class CrdBoard
 {
-    public function __construct(private DailyIncomeStatement $statement) {}
+    public function __construct(private DailyIncomeStatement $statement, private ProductPhotos $photos) {}
 
     /**
-     * @return array{today: array{day: CarbonImmutable, gross: float, net: float}, days: list<array{day: CarbonImmutable, gross: float, net: float}>, topSeller: ?array{user: User, gross: float, net: float}, topProduct: ?array{name: string, gross: float, net: float}, topDay: CarbonImmutable}
+     * @return array{today: array{day: CarbonImmutable, gross: float, net: float}, days: list<array{day: CarbonImmutable, gross: float, net: float}>, topSeller: ?array{user: User, gross: float, net: float}, topProduct: ?array{name: string, image: ?string, gross: float, net: float}, topDay: CarbonImmutable}
      */
     public function for(CarbonImmutable $today): array
     {
@@ -31,7 +32,7 @@ class CrdBoard
 
         $names = array_column($yesterday['products'], 'name', 'slug');
         $topProduct = collect($yesterday['department']['products'])
-            ->map(fn (array $statement, string $slug) => ['name' => $names[$slug], ...$figures($statement)])
+            ->map(fn (array $statement, string $slug) => ['name' => $names[$slug], 'image' => $this->photos->urlFor($names[$slug]), ...$figures($statement)])
             ->filter(fn (array $row) => $row['gross'] > 0)
             ->sortByDesc('net')->first();
 

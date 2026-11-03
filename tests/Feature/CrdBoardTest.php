@@ -11,6 +11,7 @@ use App\Services\LeadGenerator;
 use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -20,11 +21,21 @@ class CrdBoardTest extends TestCase
 
     private int $seq = 0;
 
+    /** The Drive "Product Photos" folder's files for the faked Drive: name => [file id, bytes]. */
+    private array $driveFiles = [];
+
     protected function setUp(): void
     {
         parent::setUp();
 
-        Http::fake();
+        Http::fake(function (Request $request) {
+            if (str_contains($request->url(), 'embeddedfolderview')) {
+                return Http::response(collect($this->driveFiles)->map(fn (array $file, string $name) => '<div class="flip-entry" id="entry-'.$file[0].'"><div class="flip-entry-title">'.$name.'</div></div>')->implode(''));
+            }
+            $file = collect($this->driveFiles)->firstWhere(0, $request->data()['id'] ?? null);
+
+            return $file ? Http::response($file[1], 200, ['Content-Type' => 'image/jpeg']) : Http::response('', 200);
+        });
         $this->travelTo(CarbonImmutable::parse('2026-10-16 10:00', 'Asia/Manila'));
         Product::create(['name' => 'Sinuxyl', 'unit_cost' => 35]);
         ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']], ['name' => 'ClearSight', 'pages' => ['Clear Sight Hub']]]);
@@ -69,6 +80,21 @@ class CrdBoardTest extends TestCase
         $days = $this->actingAs($this->user('Sup 2', Role::CRA_SUPERVISOR))->get(route('dashboard.board'))->viewData('days');
         $this->assertEqualsWithDelta(500, $days[0]['gross'], 0.001);
         $this->assertEqualsWithDelta($statement('2026-10-15')['net_income'], $days[1]['net'], 0.001);
+    }
+
+    public function test_top_product_shows_its_photo_from_the_drive_folder_matched_by_file_name(): void
+    {
+        $this->driveFiles = ['Sinuxyl.jpg' => ['file-sinuxyl', 'sinuxyl-photo'], 'Notes.txt' => ['file-notes', 'text']];
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 2000);
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+
+        $this->actingAs($supervisor)->get(route('dashboard.board'))->assertOk()->assertSee(route('product-photos.show', 'sinuxyl'));
+
+        $photo = $this->actingAs($supervisor)->get(route('product-photos.show', 'sinuxyl'))->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->assertSame('sinuxyl-photo', $photo->getContent());
+        // A product with no photo in the folder: none.
+        $this->actingAs($supervisor)->get(route('product-photos.show', 'clearsight'))->assertNotFound();
     }
 
     public function test_board_says_so_when_yesterday_had_no_sales(): void

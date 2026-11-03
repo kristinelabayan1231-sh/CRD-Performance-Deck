@@ -63,10 +63,13 @@
                 <p class="grow" style="margin: 0; padding: 28px 18px; color: #bdb6cf">No sales on {{ $topDay->format('M j') }}.</p>
             @endif
         </section>
-        <section aria-label="Top product" class="flex flex-col" style="{{ $glass }}">
-            <p style="{{ $head }}; background: linear-gradient(90deg, rgb(36 66 63 / .65), rgb(38 54 52 / .3))">Top product · {{ $topDay->format('M j') }}</p>
+        {{-- With a photo: it fills the section, darkened towards the bottom so the figures stay readable. --}}
+        @php($photo = $topProduct['image'] ?? null)
+        <section aria-label="Top product" class="flex flex-col overflow-hidden"
+                 style="{{ $glass }}{{ $photo ? "; border-color: rgb(255 255 255 / .2); background: linear-gradient(180deg, rgb(33 31 45 / .1) 0%, rgb(33 31 45 / .45) 40%, rgb(33 31 45 / .92) 78%), url('{$photo}') center 30% / cover no-repeat" : '' }}">
+            <p style="{{ $head }}; {{ $photo ? 'background: rgb(33 31 45 / .55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px)' : 'background: linear-gradient(90deg, rgb(36 66 63 / .65), rgb(38 54 52 / .3))' }}">Top product · {{ $topDay->format('M j') }}</p>
             @if ($topProduct)
-                <div class="flex grow flex-col items-center justify-center" style="padding: 14px 18px">
+                <div class="flex grow flex-col items-center {{ $photo ? 'justify-end' : 'justify-center' }}" style="padding: 14px 18px; {{ $photo ? 'min-height: 150px; text-shadow: 0 1px 8px rgb(0 0 0 / .6)' : '' }}">
                     <p style="margin: 0; font-size: 19px; font-weight: 700">{{ $topProduct['name'] }}</p>
                     <div class="mt-2.5 grid w-full grid-cols-2 gap-2.5">
                         <div><p style="{{ $label }}">Gross Sales</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap">{{ $money($topProduct['gross']) }}</p></div>

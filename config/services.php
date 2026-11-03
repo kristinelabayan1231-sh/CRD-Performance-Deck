@@ -37,6 +37,8 @@ return [
     // Call recordings: the Drive is connected in Settings → Call Recordings with the Google client above.
     'google_drive' => [
         'folder_name' => env('GOOGLE_DRIVE_FOLDER_NAME', 'CRD Call Recordings'),
+        // CRD Board: the "Product Photos" folder (shared with anyone with the link), one photo per product named after it.
+        'product_photos_folder' => env('PRODUCT_PHOTOS_FOLDER_ID', '1HwPfaK0M35IgT0qVV18hYTqKz0QmVjmg'),
     ],
 
     'shecom' => [
