@@ -1,0 +1,46 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\User;
+use Carbon\CarbonImmutable;
+
+/**
+ * CRD Board (dashboard): the department's figures from the Daily I.S., every active CRA. Today's running Gross Sales and
+ * Net Income, the same for the two days before, and yesterday's top seller and top product: the CRA and the product
+ * card with the highest Net Income among those with sales.
+ */
+class CrdBoard
+{
+    public function __construct(private DailyIncomeStatement $statement) {}
+
+    /**
+     * @return array{today: array{day: CarbonImmutable, gross: float, net: float}, days: list<array{day: CarbonImmutable, gross: float, net: float}>, topSeller: ?array{user: User, gross: float, net: float}, topProduct: ?array{name: string, gross: float, net: float}, topDay: CarbonImmutable}
+     */
+    public function for(CarbonImmutable $today): array
+    {
+        $cras = LeadGenerator::cras();
+        $figures = fn (array $total) => ['gross' => (float) $total['gross'], 'net' => (float) $total['net_income']];
+        $statements = collect([2, 1, 0])->mapWithKeys(fn (int $back) => [$back => $this->statement->day($cras, $today->subDays($back))]);
+        $yesterday = $statements[1];
+
+        $topSeller = collect($yesterday['cras'])
+            ->map(fn (array $statement, int $craId) => ['user' => $cras->firstWhere('id', $craId), ...$figures($statement['total'])])
+            ->filter(fn (array $row) => $row['gross'] > 0)
+            ->sortByDesc('net')->first();
+
+        $names = array_column($yesterday['products'], 'name', 'slug');
+        $topProduct = collect($yesterday['department']['products'])
+            ->map(fn (array $statement, string $slug) => ['name' => $names[$slug], ...$figures($statement)])
+            ->filter(fn (array $row) => $row['gross'] > 0)
+            ->sortByDesc('net')->first();
+
+        return [
+            'today' => ['day' => $today, ...$figures($statements[0]['department']['total'])],
+            'days' => array_map(fn (int $back) => ['day' => $today->subDays($back), ...$figures($statements[$back]['department']['total'])], [2, 1]),
+            'topSeller' => $topSeller,
+            'topProduct' => $topProduct,
+            'topDay' => $today->subDay(),
+        ];
+    }
+}

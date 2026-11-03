@@ -93,18 +93,29 @@
         @endif
 
         @forelse ($rows as $row)
-            <section class="space-y-2" aria-label="{{ $row['label'] }}">
-                <h2 class="flex items-center gap-2 text-sm font-bold">
-                    {{ $row['label'] }}
-                    @if ($row['hint'])
-                        <span class="font-normal text-muted">· {{ $row['hint'] }}</span>
-                    @endif
-                </h2>
-                <div class="grid items-start gap-3 md:grid-cols-[310px_minmax(0,1fr)]">
-                    @include('daily-is._card', ['title' => $row['title'], 'sub' => $dayLabel, 'variant' => $row['variant'], 'f' => $row['statement']['total']])
+            <section data-is-row class="space-y-2" aria-label="{{ $row['label'] }}">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="flex items-center gap-2 text-sm font-bold">
+                        {{ $row['label'] }}
+                        @if ($row['hint'])
+                            <span class="font-normal text-muted">· {{ $row['hint'] }}</span>
+                        @endif
+                    </h2>
+                    {{-- Saves this row (their card and every product card, scrolled or not) as one wide PNG (resources/js/daily-is-shot.js). --}}
+                    <button type="button" data-is-shot data-is-shot-title="{{ $row['label'] }} · Daily I.S. · {{ $day->format('M j, Y') }}"
+                            data-is-shot-file="Daily IS - {{ $row['label'] }} - {{ $day->toDateString() }}.png"
+                            class="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 text-xs font-semibold text-ink hover:border-brand-400 hover:text-brand-700 disabled:opacity-60">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                        <span data-is-shot-label>Screenshot</span>
+                    </button>
+                </div>
+                <div class="grid items-start gap-3 md:grid-cols-[350px_minmax(0,1fr)]">
+                    <div data-is-card>
+                        @include('daily-is._card', ['title' => $row['title'], 'sub' => $dayLabel, 'variant' => $row['variant'], 'f' => $row['statement']['total']])
+                    </div>
                     <div class="x-scrollbar flex snap-x gap-3 overflow-x-auto pb-2" tabindex="0" aria-label="{{ $row['label'] }}'s products, scroll sideways">
                         @foreach ($data['products'] as $product)
-                            <div class="w-[19.375rem] shrink-0 snap-start">
+                            <div data-is-card class="w-[350px] shrink-0 snap-start">
                                 @include('daily-is._card', ['title' => $product['name'], 'deactivated' => $product['deactivated'], 'sub' => $row['by'], 'variant' => 'product', 'f' => $row['statement']['products'][$product['slug']]])
                             </div>
                         @endforeach
