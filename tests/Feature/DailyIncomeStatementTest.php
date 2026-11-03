@@ -237,24 +237,24 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta(0, $data['cras'][$julyAnn->id]['products']['sinuxyl']['product_cost'], 0.001);
     }
 
-    public function test_from_nov_3_product_cost_is_shecoms_and_zero_without_one(): void
+    public function test_from_nov_3_product_cost_is_shecoms_current_cost_and_zero_without_one(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
-        $this->travelTo(CarbonImmutable::parse('2026-11-03 09:00', 'Asia/Manila'));
-        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 30, 'effective_from' => null]);
         $this->travelTo(CarbonImmutable::parse('2026-11-04 09:00', 'Asia/Manila'));
-        // "1 Sinuxyl" got its cost on Nov 4: Nov 3 keeps ₱0.
-        ShecomProductCost::create(['product' => '1 Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-03']);
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-04']);
         foreach (['2026-10-30', '2026-11-03'] as $day) {
             $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => $day, 'items' => [['qty' => 1, 'pieces' => 3, 'name' => '3 Bottles Sinuxyl'], ['qty' => 1, 'name' => '1 Sinuxyl']]]);
         }
 
         $cost = fn (string $day) => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $day]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['product_cost'];
 
-        // Oct 30: Settings' ₱35 × 4 pieces. Nov 3: Shecom's ₱30 × 3, and ₱0 for "1 Sinuxyl".
+        // Oct 30: Settings' ₱35 × 4 pieces. Nov 3: Shecom's ₱30 × 3 (dated Nov 4, it still counts), ₱0 for "1 Sinuxyl".
         $this->assertEqualsWithDelta(140, $cost('2026-10-30'), 0.001);
         $this->assertEqualsWithDelta(90, $cost('2026-11-03'), 0.001);
+        // A cost added later for "1 Sinuxyl" shows on Nov 3 too.
+        ShecomProductCost::create(['product' => '1 Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-05']);
+        $this->assertEqualsWithDelta(120, $cost('2026-11-03'), 0.001);
     }
 
     public function test_settings_lists_shecoms_product_costs_and_the_sold_items_without_one(): void

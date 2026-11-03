@@ -49,7 +49,7 @@ class DailyIsSettingController extends Controller
      */
     private function shecomCosts(ProductCatalog $catalog, string $today): array
     {
-        $costs = ShecomProductCost::costsOn($today);
+        $costs = ShecomProductCost::current();
         $from = ShecomProductCost::orderBy('effective_from')->get(['product', 'effective_from'])
             ->mapWithKeys(fn (ShecomProductCost $row) => [Str::lower($row->product) => $row->effective_from?->toDateString()]);
         $names = ShecomProductCost::pluck('product')->mapWithKeys(fn (string $name) => [Str::lower($name) => $name]);
