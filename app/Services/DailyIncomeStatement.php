@@ -25,9 +25,10 @@ use Illuminate\Support\Str;
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
- * item's cost in Shecom on the order's day (a cost per piece) × its pieces (qty × pieces: a 5-bottle bundle bought once
- * is 5), by the item's Pancake name ("1 Bottle Sinuxyl"); an item without a Shecom cost takes the product's unit cost
- * in Settings → Product Consumption (₱0 without either), and items not on Product Consumption are left out. Pieces are
+ * item's cost per piece × its pieces (qty × pieces: a 5-bottle bundle bought once is 5). From SHECOM_COSTS_FROM the cost
+ * is Shecom's on the order's day, by the item's Pancake name ("1 Bottle Sinuxyl"), ₱0 without one; before it, the
+ * product's unit cost in Settings → Product Consumption, as the CRD Sales Report sheet had it. Items not on Product
+ * Consumption are left out. Pieces are
  * counted as Order Database → Product Report counts them; a TSD upsell add-on on an order with a CRD product isn't the
  * card's product, so its cost is left out (an order of only TSD upsell products keeps theirs). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
@@ -48,6 +49,9 @@ class DailyIncomeStatement
     public const FULFILLMENT_PER_ORDER = 25;
 
     public const COD_RATE = 0.0224;
+
+    /** The first day Product Cost comes from Shecom; earlier days keep the Settings unit costs (the sheet's). */
+    public const SHECOM_COSTS_FROM = '2026-11-03';
 
     /** % Projected Returns per month (Y-m => percent as typed). */
     public const RETURNS_KEY = 'daily_is.returns_pct';
@@ -212,7 +216,7 @@ class DailyIncomeStatement
 
     /**
      * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
-     * cost per piece that day, else the product's Settings unit cost (0 without either). TSD upsell add-ons on an order
+     * cost per piece that day, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). TSD upsell add-ons on an order
      * with a CRD product are left out.
      *
      * @param  list<int>  $orderIds
@@ -220,7 +224,8 @@ class DailyIncomeStatement
      */
     private function productCosts(array $orderIds, CarbonImmutable $day): array
     {
-        $shecom = ShecomProductCost::costsOn($day->toDateString());
+        $fromShecom = $day->toDateString() >= self::SHECOM_COSTS_FROM;
+        $shecom = $fromShecom ? ShecomProductCost::costsOn($day->toDateString()) : [];
         $costs = [];
 
         foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {
@@ -235,7 +240,7 @@ class DailyIncomeStatement
                     continue;
                 }
                 $pieces = max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
-                $costs[$id] += $pieces * ($shecom[mb_strtolower(trim((string) $item['name']))] ?? (float) $product->unit_cost);
+                $costs[$id] += $pieces * ($fromShecom ? ($shecom[mb_strtolower(trim((string) $item['name']))] ?? 0) : (float) $product->unit_cost);
             }
         }
 

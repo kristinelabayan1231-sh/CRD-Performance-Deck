@@ -60,10 +60,10 @@
 
         @if ($missingCosts !== [])
             <div role="note" class="mt-4 rounded-lg border border-coral/40 bg-coral/10 px-4 py-3 text-sm">
-                <p class="font-semibold text-coral-700">{{ count($missingCosts) }} {{ Str::plural('item', count($missingCosts)) }} sold in the last {{ $missingDays }} days {{ count($missingCosts) === 1 ? 'has' : 'have' }} no cost in Shecom, so the Daily I.S. uses the product's unit cost in Product Consumption</p>
+                <p class="font-semibold text-coral-700">{{ count($missingCosts) }} {{ Str::plural('item', count($missingCosts)) }} sold in the last {{ $missingDays }} days {{ count($missingCosts) === 1 ? 'has' : 'have' }} no cost in Shecom, so {{ count($missingCosts) === 1 ? 'it counts' : 'they count' }} ₱0 in the Daily I.S.</p>
                 <ul class="mt-1 space-y-0.5 text-ink">
                     @foreach ($missingCosts as $missing)
-                        <li><span class="font-semibold">{{ $missing['item'] }}</span> <span class="text-muted">· {{ $missing['product'] }} · {{ number_format($missing['pieces']) }} {{ Str::plural('piece', $missing['pieces']) }} · uses {{ $missing['fallback'] === null ? '₱0 (no unit cost set)' : '₱'.number_format($missing['fallback'], 2) }}</span></li>
+                        <li><span class="font-semibold">{{ $missing['item'] }}</span> <span class="text-muted">· {{ $missing['product'] }} · {{ number_format($missing['pieces']) }} {{ Str::plural('piece', $missing['pieces']) }}</span></li>
                     @endforeach
                 </ul>
             </div>
