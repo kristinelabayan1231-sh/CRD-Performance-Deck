@@ -48,7 +48,7 @@
             <span class="font-semibold">How it fills in:</span> leads and engagements are the PC Report's Total Inquiries and Total Engagement on each product's pages; orders are the CRA's Pancake orders on those pages that day (canceled and deleted left out), and Gross Sales those orders' sales with the canceled ones too.
             Actual Cancelled = the orders that are Canceled or Waiting for goods now, so it changes when an order is resolved.
             Projected Returns = Gross Sales × the month's % Projected Returns; Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns.
-            Product Cost is each item's cost in Shecom × qty (₱0 when Shecom has no cost). Shipping Fee = orders × ₱75, COD Fee = Projected Delivered × 2.24%, Fulfillment Fee = orders × ₱25; Advertising Cost, Ads VAT and VAT on COD Fee are 0.
+            Product Cost is each item's cost per piece in Shecom × its pieces (a 5-bottle bundle = 5; ₱0 when Shecom has no cost). Shipping Fee = orders × ₱75, COD Fee = Projected Delivered × 2.24%, Fulfillment Fee = orders × ₱25; Advertising Cost, Ads VAT and VAT on COD Fee are 0.
             Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI ÷ 24, then ÷ the day's {{ count($data['products']) }} {{ Str::plural('product', count($data['products'])) }} on a product card.
         </div>
 
@@ -76,6 +76,15 @@
                     <p class="text-xs text-coral-700">{{ $message }}</p>
                 @enderror
                 <p class="text-xs text-muted">Applies to every product card this month.</p>
+                {{-- Shecom's product costs come in every hour; this fetches them now. --}}
+                <form method="POST" action="{{ route('daily-is.product-costs.refresh') }}" class="ml-auto flex items-center gap-2">
+                    @csrf
+                    <span class="text-xs text-muted">Product costs from Shecom{{ $productCostsAt ? ' · updated '.\Carbon\CarbonImmutable::parse($productCostsAt)->timezone(config('segmentation.timezone'))->format('M j, g:i A') : ' · none yet' }}</span>
+                    <button type="submit" class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-xs font-semibold text-ink hover:border-brand-400 hover:text-brand-700">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+                        Refresh product costs
+                    </button>
+                </form>
             @else
                 <span class="font-bold tabular-nums">{{ $data['returnsPct'] === null ? 'Not set (0%)' : rtrim(rtrim(number_format($data['returnsPct'], 2), '0'), '.').'%' }}</span>
                 <span class="text-xs text-muted">Set by your CRA Supervisor.</span>

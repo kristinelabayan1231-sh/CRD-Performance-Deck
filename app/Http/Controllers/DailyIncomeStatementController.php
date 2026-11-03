@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ShecomProductCost;
 use App\Services\DailyIncomeStatement;
 use App\Services\DailyIsConflicts;
 use App\Services\LeadGenerator;
+use App\Services\ShecomClient;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Throwable;
 
 /**
  * Daily I.S.: the department's and each CRA's income statement per product for a day. Anyone with
@@ -47,9 +50,27 @@ class DailyIncomeStatementController extends Controller
             'data' => $statement->day($cras, $day),
             'lines' => DailyIncomeStatement::LINES,
             'canSetReturns' => $canViewAll,
+            // When Shecom's product costs were last saved (the Refresh product costs button).
+            'productCostsAt' => $canViewAll ? ShecomProductCost::max('updated_at') : null,
             // Orders the Daily I.S. and the Report Summary count differently, for supervisors.
             'conflicts' => $canViewAll ? $conflicts->for($cras, $day) : null,
         ]);
+    }
+
+    /**
+     * Fetch Shecom's product costs now instead of waiting for the hourly sync (shecom:product-costs).
+     */
+    public function refreshProductCosts(ShecomClient $shecom): RedirectResponse
+    {
+        try {
+            $saved = ShecomProductCost::remember($shecom->productCosts());
+        } catch (Throwable $e) {
+            report($e);
+
+            return back()->with('status', 'Shecom did not send the product costs. Try again in a minute.');
+        }
+
+        return back()->with('status', "Product costs refreshed from Shecom: {$saved} items have a cost.");
     }
 
     /**
