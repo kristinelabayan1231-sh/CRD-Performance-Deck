@@ -29,7 +29,7 @@
         <tbody>
             @foreach ([['Total number of leads/inquiries', number_format($f['leads'], 2)], ['Total number of engagements', number_format($f['engagements'], 2)], ['Total number of orders', number_format($f['orders'], 2)], ['Overall conversion rate', $f['conversion'] === null ? '—' : number_format($f['conversion'] * 100, 2).'%'], ['Average Order Value', $f['aov'] === null ? '—' : $money($f['aov'])]] as [$label, $value])
                 <tr class="font-semibold">
-                    <td class="py-1 pr-1.5 pl-3">{{ $label }}</td>
+                    <td class="truncate py-1 pr-1.5 pl-3" title="{{ $label }}">{{ $label }}</td>
                     <td class="py-1 pr-1.5 text-right">{{ $value }}</td>
                     <td></td>
                 </tr>
@@ -38,7 +38,7 @@
             @foreach ($lines as [$label, $kind, $key])
                 @if ($kind === 'section')
                     <tr>
-                        <td colspan="3" class="px-3 pt-3 pb-1 text-xs font-bold tracking-wide text-muted uppercase">{{ $label }}</td>
+                        <td colspan="3" class="truncate px-3 pt-3 pb-1 text-xs font-bold tracking-wide text-muted uppercase">{{ $label }}</td>
                     </tr>
                     @continue
                 @endif
@@ -50,7 +50,7 @@
                     'border-y-[3px] border-double border-ink font-bold' => $kind === 'net',
                     'text-coral-700' => $kind === 'net' && $amount < 0,
                 ])>
-                    <td class="py-1 pr-1.5 pl-3">{{ $label }}</td>
+                    <td class="truncate py-1 pr-1.5 pl-3" title="{{ $label }}">{{ $label }}</td>
                     <td class="py-1 pr-1.5 text-right">{{ $money($amount) }}</td>
                     <td class="py-1 pr-3 text-right text-xs">{{ $share($amount) }}</td>
                 </tr>

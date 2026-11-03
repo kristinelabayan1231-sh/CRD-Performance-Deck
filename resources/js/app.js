@@ -2,6 +2,7 @@ import { initAccountLists } from './account-list';
 import { initCraOrders } from './cra-orders';
 import { initCustomers } from './customers';
 import { initCvrTracker } from './cvr-tracker';
+import { initDailyIsShot } from './daily-is-shot';
 import { initDutySchedule } from './duty-schedule';
 import { initLive } from './live';
 import { initMni } from './mni';
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDutySchedule();
     initSpiels();
     initPoster();
+    initDailyIsShot();
     initResultsFlip();
     initLive();
     initCustomers();

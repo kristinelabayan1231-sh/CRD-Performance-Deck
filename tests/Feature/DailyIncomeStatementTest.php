@@ -269,6 +269,15 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertSame([$julyAnn->id], array_keys($response->viewData('data')['cras']));
     }
 
+    public function test_each_row_has_a_screenshot_button_named_after_the_row_and_day(): void
+    {
+        $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+
+        $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))
+            ->assertOk()
+            ->assertSeeInOrder(['data-is-shot-file="Daily IS - Customer Retention Department - 2026-10-01.png"', 'data-is-shot-file="Daily IS - Regina - 2026-10-01.png"'], false);
+    }
+
     public function test_cra_without_daily_is_permission_is_refused(): void
     {
         $this->actingAs($this->user('Regina', Role::CRA, 'CRD Rej Vergara'))->get(route('daily-is.index'))->assertForbidden();
