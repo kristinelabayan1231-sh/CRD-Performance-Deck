@@ -16,9 +16,13 @@
         <p style="margin: 2px 0 0; font-size: 14px; color: #bdb6cf">Customer Retention Department · {{ $today['day']->format('D, M j, Y') }}</p>
     </div>
 
-    <section aria-label="Today, running" style="{{ $glass }}; background: rgb(58 49 87 / .55); border-color: rgb(195 155 255 / .35); border-radius: 18px; padding: 18px 20px 22px; box-shadow: 0 0 40px rgb(124 77 255 / .18)">
+    <section aria-label="{{ $asOf ? 'Today, running' : 'Yesterday, whole day' }}" style="{{ $glass }}; background: rgb(58 49 87 / .55); border-color: rgb(195 155 255 / .35); border-radius: 18px; padding: 18px 20px 22px; box-shadow: 0 0 40px rgb(124 77 255 / .18)">
         <p style="margin: 0; font-size: 14px; font-weight: 600; color: #c39bff">
-            <span aria-hidden="true" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #3fd1b9; margin-right: 8px"></span>Running sales today · as of {{ $asOf->format('g:i A') }}
+            @if ($asOf)
+                <span aria-hidden="true" style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #3fd1b9; margin-right: 8px"></span>Running sales today · as of {{ $asOf->format('g:i A') }}
+            @else
+                Sales yesterday · {{ $today['day']->format('D, M j') }}, whole day
+            @endif
         </p>
         <div class="mt-3 grid grid-cols-2">
             <div style="border-right: 1px solid rgb(255 255 255 / .14)">

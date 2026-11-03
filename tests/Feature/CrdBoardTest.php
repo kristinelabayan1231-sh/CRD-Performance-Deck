@@ -97,6 +97,25 @@ class CrdBoardTest extends TestCase
         $this->actingAs($supervisor)->get(route('product-photos.show', 'clearsight'))->assertNotFound();
     }
 
+    public function test_yesterday_shows_yesterday_as_a_whole_day_with_its_own_top_seller(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
+        $this->order($julyAnn, '2026-10-14', 'Clear Sight Hub', 900);
+        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 2000);
+        $this->order($julyAnn, '2026-10-16', 'Clear Sight Hub', 700);
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board', ['day' => 'yesterday']))
+            ->assertOk()
+            ->assertSeeInOrder(['Sales yesterday · Thu, Oct 15, whole day', 'Tue, Oct 13', 'Wed, Oct 14', 'Top seller · Oct 15', 'Regina'])
+            ->assertDontSee('Running sales today');
+
+        // Oct 15 is the big figure; today's (Oct 16) sale isn't on the board.
+        $this->assertEqualsWithDelta(2000, $response->viewData('today')['gross'], 0.001);
+        $this->assertEqualsWithDelta(900, $response->viewData('days')[1]['gross'], 0.001);
+        $this->assertSame('2026-10-15', $response->viewData('today')['day']->toDateString());
+    }
+
     public function test_board_says_so_when_yesterday_had_no_sales(): void
     {
         $this->user('Regina', Role::CRA, 'CRD Rej Vergara');

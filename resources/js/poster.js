@@ -1,6 +1,7 @@
 import { toPng } from 'html-to-image';
 
-// CRD Board on the dashboard: loads the Daily I.S. figures each time it opens, screenshot (PNG), full screen and close.
+// CRD Board on the dashboard: loads the Daily I.S. figures each time it opens (today or yesterday), screenshot (PNG),
+// full screen and close.
 export function initPoster() {
     const dialog = document.querySelector('[data-poster]');
     if (!dialog) return;
@@ -10,11 +11,17 @@ export function initPoster() {
     const shot = dialog.querySelector('[data-poster-shot]');
     const message = (text) => `<p class="rounded-2xl bg-[#211f2d] px-4 py-16 text-center text-sm text-[#bdb6cf]">${text}</p>`;
 
+    const dayButtons = [...dialog.querySelectorAll('[data-poster-day]')];
+    let day = 'today';
+
     const load = async () => {
         board.innerHTML = message('Loading the Daily I.S.…');
         shot.disabled = true;
+        dayButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.posterDay === day)));
         try {
-            const response = await fetch(board.dataset.url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const url = new URL(board.dataset.url, window.location.origin);
+            url.searchParams.set('day', day);
+            const response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             if (!response.ok) throw new Error(response.statusText);
             board.innerHTML = await response.text();
             shot.disabled = false;
@@ -25,7 +32,16 @@ export function initPoster() {
 
     document.querySelectorAll('[data-poster-open]').forEach((button) =>
         button.addEventListener('click', () => {
+            day = 'today';
             dialog.showModal();
+            load();
+        }),
+    );
+
+    // Today (running) or Yesterday (whole day).
+    dayButtons.forEach((button) =>
+        button.addEventListener('click', () => {
+            day = button.dataset.posterDay;
             load();
         }),
     );
