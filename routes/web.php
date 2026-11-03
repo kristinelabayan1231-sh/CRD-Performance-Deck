@@ -14,6 +14,7 @@ use App\Http\Controllers\CustomerDatabaseController;
 use App\Http\Controllers\CvrTrackerController;
 use App\Http\Controllers\DailyIncomeStatementController;
 use App\Http\Controllers\DailyIsSettingController;
+use App\Http\Controllers\DashboardBoardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
@@ -67,6 +68,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::redirect('/', '/dashboard');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
+    Route::get('/dashboard/board', DashboardBoardController::class)->middleware('can:daily_is.view_all')->name('dashboard.board');
     Route::post('/logout', [GoogleController::class, 'logout'])->name('logout');
     Route::post('/order-issues/recheck', OrderIssueRecheckController::class)->middleware('throttle:6,1')->name('order-issues.recheck');
 
