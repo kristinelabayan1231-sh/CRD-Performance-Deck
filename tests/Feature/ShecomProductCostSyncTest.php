@@ -30,4 +30,14 @@ class ShecomProductCostSyncTest extends TestCase
         $this->assertSame(['3 bottles sinuxyl' => 105.0], ShecomProductCost::costsOn('2026-10-31'));
         $this->assertSame(['3 bottles sinuxyl' => 120.0], ShecomProductCost::costsOn('2026-11-01'));
     }
+
+    public function test_a_day_before_an_items_first_cost_takes_that_first_cost(): void
+    {
+        ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-03']);
+        ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 32, 'effective_from' => '2026-11-10']);
+
+        $this->assertSame(['1 bottle sinuxyl' => 30.0], ShecomProductCost::costsOn('2026-11-01'));
+        $this->assertSame(['1 bottle sinuxyl' => 30.0], ShecomProductCost::costsOn('2026-11-09'));
+        $this->assertSame(['1 bottle sinuxyl' => 32.0], ShecomProductCost::costsOn('2026-11-10'));
+    }
 }

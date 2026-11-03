@@ -49,7 +49,8 @@ class ShecomProductCost extends Model
     }
 
     /**
-     * Each item's cost on $day: the one with the latest effective_from on or before it.
+     * Each item's cost on $day: the one with the latest effective_from on or before it. A day before an item's first
+     * cost takes that first cost (Shecom dated every cost from when it was entered, Nov 3 2026).
      *
      * @return array<string, float> lowercased item name => cost
      */
@@ -58,11 +59,14 @@ class ShecomProductCost extends Model
         $costs = [];
 
         static::query()
-            ->where(fn ($q) => $q->whereNull('effective_from')->orWhereDate('effective_from', '<=', $day))
             ->orderByRaw('effective_from is null desc')->orderBy('effective_from')
-            ->get(['product', 'cost'])
-            ->each(function (self $row) use (&$costs) {
-                $costs[mb_strtolower($row->product)] = (float) $row->cost;
+            ->get(['product', 'cost', 'effective_from'])
+            ->each(function (self $row) use (&$costs, $day) {
+                $product = mb_strtolower($row->product);
+                // Oldest first: the first cost seeds the item, a later one replaces it from its day.
+                if (! isset($costs[$product]) || $row->effective_from === null || $row->effective_from->toDateString() <= $day) {
+                    $costs[$product] = (float) $row->cost;
+                }
             });
 
         return $costs;
