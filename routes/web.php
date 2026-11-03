@@ -35,6 +35,7 @@ use App\Http\Controllers\PancakeReservationController;
 use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
+use App\Http\Controllers\ProductPhotoController;
 use App\Http\Controllers\ProductQtyDisplayController;
 use App\Http\Controllers\ProductStageController;
 use App\Http\Controllers\ProductTargetMarketController;
@@ -69,6 +70,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
     Route::get('/dashboard/board', DashboardBoardController::class)->middleware('can:daily_is.view_all')->name('dashboard.board');
+    Route::get('/product-photos/{key}', ProductPhotoController::class)->where('key', '[a-z]+')->name('product-photos.show');
     Route::post('/logout', [GoogleController::class, 'logout'])->name('logout');
     Route::post('/order-issues/recheck', OrderIssueRecheckController::class)->middleware('throttle:6,1')->name('order-issues.recheck');
 
