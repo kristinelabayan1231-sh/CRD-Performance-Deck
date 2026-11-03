@@ -27,7 +27,7 @@ use Illuminate\Support\Str;
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
  * item's cost per piece × its pieces (qty × pieces: a 5-bottle bundle bought once is 5). From SHECOM_COSTS_FROM the cost
- * is Shecom's on the order's day, by the item's Pancake name ("1 Bottle Sinuxyl"), ₱0 without one; before it, the
+ * is Shecom's current one (a change shows on earlier days too), by the item's Pancake name ("1 Bottle Sinuxyl"), ₱0 without one; before it, the
  * product's unit cost in Settings → Product Consumption, as the CRD Sales Report sheet had it. Items not on Product
  * Consumption are left out. Days in PRODUCT_COST_OVERRIDES_KEY (Nov 1–2, 2026) take the sheet's Product Cost instead. Pieces are
  * counted as Order Database → Product Report counts them; a TSD upsell add-on on an order with a CRD product isn't the
@@ -235,7 +235,7 @@ class DailyIncomeStatement
 
     /**
      * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
-     * cost per piece that day, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). Only the
+     * cost per piece now, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). Only the
      * card's own product counts: another product on the order (a TSD upsell add-on, or e.g. a CanPro on a Prime Man
      * order) is left out. An order with none of the card's product keeps its CRD products (or, with only TSD upsell
      * products, those).
@@ -247,7 +247,7 @@ class DailyIncomeStatement
     {
         $orderIds = array_keys($orderGroups);
         $fromShecom = $day->toDateString() >= self::SHECOM_COSTS_FROM;
-        $shecom = $fromShecom ? ShecomProductCost::costsOn($day->toDateString()) : [];
+        $shecom = $fromShecom ? ShecomProductCost::current() : [];
         $costs = [];
 
         foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {

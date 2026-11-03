@@ -31,8 +31,9 @@ class ShecomProductCostSyncTest extends TestCase
         $this->artisan('shecom:product-costs')->assertSuccessful();
 
         Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer test-key'));
-        $this->assertSame(['3 bottles sinuxyl' => 105.0], ShecomProductCost::costsOn('2026-10-31'));
-        $this->assertSame(['3 bottles sinuxyl' => 120.0], ShecomProductCost::costsOn('2026-11-01'));
+        // Both costs are kept; the latest is the current one.
+        $this->assertSame(2, ShecomProductCost::count());
+        $this->assertSame(['3 bottles sinuxyl' => 120.0], ShecomProductCost::current());
     }
 
     public function test_a_supervisor_refreshes_the_product_costs_from_the_daily_is(): void
@@ -47,7 +48,7 @@ class ShecomProductCostSyncTest extends TestCase
         $this->actingAs($supervisor)->from(route('daily-is.index'))->post(route('daily-is.product-costs.refresh'))
             ->assertRedirect(route('daily-is.index'))
             ->assertSessionHas('status', 'Product costs refreshed from Shecom: 1 items have a cost.');
-        $this->assertSame(['1 bottle sinuxyl' => 30.0], ShecomProductCost::costsOn('2026-11-03'));
+        $this->assertSame(['1 bottle sinuxyl' => 30.0], ShecomProductCost::current());
 
         // Shecom not answering: a message, and the saved costs stay.
         $this->actingAs($supervisor)->post(route('daily-is.product-costs.refresh'))
@@ -68,18 +69,12 @@ class ShecomProductCostSyncTest extends TestCase
         return User::create(['email' => strtolower($name).'@example.com', 'display_name' => $name, 'role_id' => Role::firstWhere('slug', $role)->id, 'is_active' => true]);
     }
 
-    public function test_a_cost_counts_from_its_day_and_never_before_the_day_it_came_in(): void
+    public function test_the_current_cost_is_the_latest_one_and_a_cost_added_later_counts_too(): void
     {
-        // Saved on Nov 3, from Nov 3; a raise saved on Nov 10 from Nov 10.
-        $this->travelTo(CarbonImmutable::parse('2026-11-03 09:00', 'Asia/Manila'));
         ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-03']);
-        $this->travelTo(CarbonImmutable::parse('2026-11-10 09:00', 'Asia/Manila'));
         ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 32, 'effective_from' => '2026-11-10']);
-        // AudiCure had none on Nov 4–9; a cost that came in on Nov 10 dated Nov 1 doesn't change those days.
-        ShecomProductCost::create(['product' => 'AudiCure', 'cost' => 30, 'effective_from' => '2026-11-01']);
+        ShecomProductCost::create(['product' => 'AudiCure', 'cost' => 30, 'effective_from' => '2026-11-12']);
 
-        $this->assertSame([], ShecomProductCost::costsOn('2026-11-02'));
-        $this->assertSame(['1 bottle sinuxyl' => 30.0], ShecomProductCost::costsOn('2026-11-09'));
-        $this->assertSame(['1 bottle sinuxyl' => 32.0, 'audicure' => 30.0], ShecomProductCost::costsOn('2026-11-10'));
+        $this->assertSame(['1 bottle sinuxyl' => 32.0, 'audicure' => 30.0], ShecomProductCost::current());
     }
 }
