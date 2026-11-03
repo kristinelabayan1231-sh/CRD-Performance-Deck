@@ -43,9 +43,10 @@ class DailyIsSettingController extends Controller
 
     /**
      * Each item's cost today (as the Daily I.S. reads it) with the product it counts as, and the items on Product
-     * Consumption sold by the CRAs in the last MISSING_COST_DAYS days that Shecom has no cost for, with their pieces.
+     * Consumption sold by the CRAs in the last MISSING_COST_DAYS days that Shecom has no cost for, with their pieces and
+     * the Settings unit cost used instead.
      *
-     * @return array{costs: list<array{item: string, cost: float, from: ?string, product: ?string}>, missingCosts: list<array{item: string, product: string, pieces: int}>, costsUpdatedAt: ?string}
+     * @return array{costs: list<array{item: string, cost: float, from: ?string, product: ?string}>, missingCosts: list<array{item: string, product: string, pieces: int, fallback: ?float}>, costsUpdatedAt: ?string}
      */
     private function shecomCosts(ProductCatalog $catalog, string $today): array
     {
@@ -62,7 +63,7 @@ class DailyIsSettingController extends Controller
                     $name = trim((string) ($item['name'] ?? ''));
                     $product = $name === '' || isset($costs[Str::lower($name)]) ? null : $catalog->matchSold($name, $today);
                     if ($product !== null) {
-                        $missing[$name] ??= ['item' => $name, 'product' => $product->name, 'pieces' => 0];
+                        $missing[$name] ??= ['item' => $name, 'product' => $product->name, 'pieces' => 0, 'fallback' => $product->unit_cost === null ? null : (float) $product->unit_cost];
                         $missing[$name]['pieces'] += max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
                     }
                 }
