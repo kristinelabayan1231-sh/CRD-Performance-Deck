@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Shecom's cost of one Pancake item (its name as on the order, e.g. "2 Bottles Sinuxyl") from effective_from on
- * (null: from the start). Each cost Shecom has sent is kept, so a change only counts from its day.
+ * (null: from the start), but never before the day it was saved. Each cost Shecom has sent is kept, so a change only
+ * counts from its day.
  */
 #[Fillable(['product', 'cost', 'effective_from'])]
 class ShecomProductCost extends Model
@@ -49,26 +50,25 @@ class ShecomProductCost extends Model
     }
 
     /**
-     * Each item's cost on $day: the one with the latest effective_from on or before it. A day before an item's first
-     * cost takes that first cost (Shecom dated every cost from when it was entered, Nov 3 2026).
+     * Each item's cost on $day: the one with the latest start on or before it. A cost starts on its effective_from or
+     * on the day the app first saved it, whichever is later, so a day that had no cost (₱0) keeps it when a cost comes
+     * later, even one Shecom dates back.
      *
      * @return array<string, float> lowercased item name => cost
      */
     public static function costsOn(string $day): array
     {
-        $costs = [];
+        $timezone = config('segmentation.timezone');
 
-        static::query()
-            ->orderByRaw('effective_from is null desc')->orderBy('effective_from')
-            ->get(['product', 'cost', 'effective_from'])
-            ->each(function (self $row) use (&$costs, $day) {
-                $product = mb_strtolower($row->product);
-                // Oldest first: the first cost seeds the item, a later one replaces it from its day.
-                if (! isset($costs[$product]) || $row->effective_from === null || $row->effective_from->toDateString() <= $day) {
-                    $costs[$product] = (float) $row->cost;
-                }
-            });
-
-        return $costs;
+        return static::query()->get(['product', 'cost', 'effective_from', 'created_at'])
+            ->map(fn (self $row) => [
+                'product' => mb_strtolower($row->product),
+                'cost' => (float) $row->cost,
+                'from' => max((string) $row->effective_from?->toDateString(), $row->created_at->timezone($timezone)->toDateString()),
+            ])
+            ->filter(fn (array $row) => $row['from'] <= $day)
+            ->sortBy('from')
+            ->mapWithKeys(fn (array $row) => [$row['product'] => $row['cost']])
+            ->all();
     }
 }

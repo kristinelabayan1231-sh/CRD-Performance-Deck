@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MniDepartment;
 use App\Models\PancakeOrder;
 use App\Models\PcReportEntry;
+use App\Models\Product;
 use App\Models\Setting;
 use App\Models\ShecomProductCost;
 use App\Models\User;
@@ -25,9 +26,10 @@ use Illuminate\Support\Str;
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
- * item's cost in Shecom on the order's day (a cost per piece) × its pieces (qty × pieces: a 5-bottle bundle bought once
- * is 5), by the item's Pancake name ("1 Bottle Sinuxyl"); an item without a Shecom cost takes the product's unit cost
- * in Settings → Product Consumption (₱0 without either), and items not on Product Consumption are left out. Pieces are
+ * item's cost per piece × its pieces (qty × pieces: a 5-bottle bundle bought once is 5). From SHECOM_COSTS_FROM the cost
+ * is Shecom's on the order's day, by the item's Pancake name ("1 Bottle Sinuxyl"), ₱0 without one; before it, the
+ * product's unit cost in Settings → Product Consumption, as the CRD Sales Report sheet had it. Items not on Product
+ * Consumption are left out. Days in PRODUCT_COST_OVERRIDES_KEY (Nov 1–2, 2026) take the sheet's Product Cost instead. Pieces are
  * counted as Order Database → Product Report counts them; a TSD upsell add-on on an order with a CRD product isn't the
  * card's product, so its cost is left out (an order of only TSD upsell products keeps theirs). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
@@ -48,6 +50,15 @@ class DailyIncomeStatement
     public const FULFILLMENT_PER_ORDER = 25;
 
     public const COD_RATE = 0.0224;
+
+    /** The first day Product Cost comes from Shecom; earlier days keep the Settings unit costs (the sheet's). */
+    public const SHECOM_COSTS_FROM = '2026-11-03';
+
+    /**
+     * Product Cost taken from the CRD Sales Report sheet for some days (Nov 1–2, 2026):
+     * {"Y-m-d": {"CRA display name": {"PRODUCT_ORDER key": amount}}}; a CRA or product not listed is ₱0 that day.
+     */
+    public const PRODUCT_COST_OVERRIDES_KEY = 'daily_is.product_cost_overrides';
 
     /** % Projected Returns per month (Y-m => percent as typed). */
     public const RETURNS_KEY = 'daily_is.returns_pct';
@@ -143,7 +154,8 @@ class DailyIncomeStatement
             });
 
         ['orders' => $orders, 'missingPage' => $missingPage] = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day);
-        $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->pluck('id')->all(), $day);
+        $groupNames = collect($groups)->pluck('name', 'slug');
+        $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->mapWithKeys(fn (array $order) => [$order['id'] => $groupNames[$groupOf[$order['page']]]])->all(), $day);
         foreach ($orders as $order) {
             $product = &$figures[$order['cra']][$groupOf[$order['page']]];
             $product['orders'] += $order['counted'] ? 1 : 0;
@@ -151,6 +163,17 @@ class DailyIncomeStatement
             $product['cancelled'] += in_array($order['status'], PancakeOrder::CANCELLED_OR_WAITING_STATUSES, true) ? $order['sales'] : 0;
             $product['product_cost'] += $costs[$order['id']] ?? 0;
             unset($product);
+        }
+
+        // A day whose Product Cost was set from the CRD Sales Report sheet: each CRA's card takes the sheet's figure.
+        $sheet = self::productCostOverrides()[$day->toDateString()] ?? null;
+        if ($sheet !== null) {
+            foreach ($figures as $craId => $products) {
+                $name = (string) $cras->firstWhere('id', $craId)?->display_name;
+                foreach (array_keys($products) as $slug) {
+                    $figures[$craId][$slug]['product_cost'] = (float) ($sheet[$name][self::productKey($groupNames[$slug]) ?? $slug] ?? 0);
+                }
+            }
         }
 
         $returnsPct = self::returnsPct($day);
@@ -212,15 +235,19 @@ class DailyIncomeStatement
 
     /**
      * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
-     * cost per piece that day, else the product's Settings unit cost (0 without either). TSD upsell add-ons on an order
-     * with a CRD product are left out.
+     * cost per piece that day, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). Only the
+     * card's own product counts: another product on the order (a TSD upsell add-on, or e.g. a CanPro on a Prime Man
+     * order) is left out. An order with none of the card's product keeps its CRD products (or, with only TSD upsell
+     * products, those).
      *
-     * @param  list<int>  $orderIds
+     * @param  array<int, string>  $orderGroups  order id => the name of the product group (card) it's on
      * @return array<int, float> order id => cost
      */
-    private function productCosts(array $orderIds, CarbonImmutable $day): array
+    private function productCosts(array $orderGroups, CarbonImmutable $day): array
     {
-        $shecom = ShecomProductCost::costsOn($day->toDateString());
+        $orderIds = array_keys($orderGroups);
+        $fromShecom = $day->toDateString() >= self::SHECOM_COSTS_FROM;
+        $shecom = $fromShecom ? ShecomProductCost::costsOn($day->toDateString()) : [];
         $costs = [];
 
         foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {
@@ -228,14 +255,17 @@ class DailyIncomeStatement
             $listed = collect($items ?? [])
                 ->map(fn (array $item) => [$item, $this->catalog->matchSold(trim((string) ($item['name'] ?? '')), $day->toDateString())])
                 ->filter(fn (array $line) => $line[1] !== null);
-            $hasCrdProduct = $listed->contains(fn (array $line) => ! $line[1]->is_tsd);
+            $cardKey = self::productKey($orderGroups[$id]);
+            $isCards = fn (Product $product) => $cardKey !== null && str_contains((string) preg_replace('/[^a-z0-9]/', '', strtolower($product->name)), $cardKey);
+            $counted = match (true) {
+                $listed->contains(fn (array $line) => $isCards($line[1])) => $listed->filter(fn (array $line) => $isCards($line[1])),
+                $listed->contains(fn (array $line) => ! $line[1]->is_tsd) => $listed->filter(fn (array $line) => ! $line[1]->is_tsd),
+                default => $listed,
+            };
 
-            foreach ($listed as [$item, $product]) {
-                if ($product->is_tsd && $hasCrdProduct) {
-                    continue;
-                }
+            foreach ($counted as [$item, $product]) {
                 $pieces = max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
-                $costs[$id] += $pieces * ($shecom[mb_strtolower(trim((string) $item['name']))] ?? (float) $product->unit_cost);
+                $costs[$id] += $pieces * ($fromShecom ? ($shecom[mb_strtolower(trim((string) $item['name']))] ?? 0) : (float) $product->unit_cost);
             }
         }
 
@@ -283,6 +313,14 @@ class DailyIncomeStatement
         $squashed = preg_replace('/[^a-z0-9]/', '', strtolower($group));
 
         return collect(array_keys(self::PRODUCT_ORDER))->first(fn (string $key) => str_starts_with($squashed, $key));
+    }
+
+    /**
+     * @return array<string, array<string, array<string, float>>>
+     */
+    public static function productCostOverrides(): array
+    {
+        return json_decode((string) Setting::value(self::PRODUCT_COST_OVERRIDES_KEY), true) ?? [];
     }
 
     /**
