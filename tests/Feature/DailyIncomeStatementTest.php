@@ -8,6 +8,7 @@ use App\Models\PancakePage;
 use App\Models\PcReportEntry;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\ShecomProductCost;
 use App\Models\User;
 use App\Services\DailyIncomeStatement;
@@ -209,6 +210,33 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta(70 + 50, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
     }
 
+    public function test_a_card_counts_only_its_own_product_not_another_crd_product_on_the_order(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        Product::create(['name' => 'CanPro Guyabano Herbal Drink', 'unit_cost' => 200]);
+        // A Sinuxyl order with a CanPro: Sinuxyl's card counts 2 × ₱35 only.
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1200, ['items' => [['qty' => 1, 'pieces' => 2, 'name' => 'Sinuxyl'], ['qty' => 1, 'name' => 'CanPro Guyabano Herbal Drink']]]);
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
+
+        $this->assertEqualsWithDelta(70, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+    }
+
+    public function test_a_day_with_product_costs_from_the_sheet_uses_them(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'pieces' => 5, 'name' => 'Sinuxyl']]]);
+        $this->order($julyAnn, 'Sinuxyl Nasal Spray', 499, ['items' => [['qty' => 1, 'name' => 'Sinuxyl']]]);
+        Setting::put(DailyIncomeStatement::PRODUCT_COST_OVERRIDES_KEY, json_encode([self::DAY => ['Regina' => ['sinuxyl' => 123]]]));
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
+
+        // Regina's Sinuxyl is the sheet's ₱123 (not 5 × ₱35); July Ann isn't on the sheet that day, so ₱0.
+        $this->assertEqualsWithDelta(123, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+        $this->assertEqualsWithDelta(0, $data['cras'][$julyAnn->id]['products']['sinuxyl']['product_cost'], 0.001);
+    }
+
     public function test_from_nov_3_product_cost_is_shecoms_and_zero_without_one(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
@@ -218,14 +246,14 @@ class DailyIncomeStatementTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-04 09:00', 'Asia/Manila'));
         // "1 Sinuxyl" got its cost on Nov 4: Nov 3 keeps ₱0.
         ShecomProductCost::create(['product' => '1 Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-03']);
-        foreach (['2026-11-02', '2026-11-03'] as $day) {
+        foreach (['2026-10-30', '2026-11-03'] as $day) {
             $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => $day, 'items' => [['qty' => 1, 'pieces' => 3, 'name' => '3 Bottles Sinuxyl'], ['qty' => 1, 'name' => '1 Sinuxyl']]]);
         }
 
         $cost = fn (string $day) => $this->actingAs($supervisor)->get(route('daily-is.index', ['date' => $day]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['product_cost'];
 
-        // Nov 2: Settings' ₱35 × 4 pieces. Nov 3: Shecom's ₱30 × 3, and ₱0 for "1 Sinuxyl".
-        $this->assertEqualsWithDelta(140, $cost('2026-11-02'), 0.001);
+        // Oct 30: Settings' ₱35 × 4 pieces. Nov 3: Shecom's ₱30 × 3, and ₱0 for "1 Sinuxyl".
+        $this->assertEqualsWithDelta(140, $cost('2026-10-30'), 0.001);
         $this->assertEqualsWithDelta(90, $cost('2026-11-03'), 0.001);
     }
 
