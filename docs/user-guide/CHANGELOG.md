@@ -8,6 +8,7 @@ never needs to re-read the whole PDF. Newest first.
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
 - 2026-11-03 · Dashboard · CRD Board redesigned and filled in from the Daily I.S. (every CRA, worked out each time it opens): a dark glass card with today's running Gross Sales and Net Income side by side, the two days before (Gross Sales | Net Income), and yesterday's Top seller (Google photo, highest Net Income) and Top product, all centred; nothing to type, the hand-written poster, mascot and Clear button are gone. Only those who see every CRA's Daily I.S. (CRA Supervisors) get the button · shots: crd-board
+- 2026-11-03 · Dashboard · CRD Board: new Screenshot button beside Full screen saves the board as a PNG ("CRD Board - <date>.png") to post in the group chat · shots: crd-board
 - 2026-11-03 · Daily I.S. · New Screenshot button beside each row's name (Customer Retention Department and every CRA): saves that row — the department's or CRA's card and all its product cards, including the ones scrolled out of view — as one wide PNG named "Daily IS - <name> - <date>.png" · shots: daily-is
 - 2026-11-03 · Daily I.S. · Every card is the same width (350px) and each line stays on one line, so the rows line up across the CRA card and the product cards · shots: daily-is
 

@@ -14,6 +14,10 @@
             class="m-auto w-[min(800px,calc(100vw-2rem))] max-w-none overflow-visible bg-transparent p-0 backdrop:bg-ink/70 backdrop:backdrop-blur-sm">
         <div data-poster-stage class="flex flex-col gap-3 bg-transparent p-2 [&:fullscreen]:items-center [&:fullscreen]:justify-center [&:fullscreen]:bg-[#16141f]">
             <div class="flex w-full max-w-[800px] items-center justify-end gap-2 text-xs font-semibold">
+                <button type="button" data-poster-shot disabled class="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-ink shadow-sm hover:bg-white disabled:opacity-60">
+                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                    <span data-poster-shot-label>Screenshot</span>
+                </button>
                 <button type="button" data-poster-fullscreen class="rounded-full bg-white/90 px-3 py-1 text-ink shadow-sm hover:bg-white">Full screen</button>
                 <button type="button" data-poster-close class="grid size-7 place-items-center rounded-full bg-white/90 text-ink shadow-sm hover:bg-white" aria-label="Close board">
                     <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>

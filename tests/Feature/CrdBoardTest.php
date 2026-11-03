@@ -77,7 +77,8 @@ class CrdBoardTest extends TestCase
 
         $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board'))
             ->assertOk()
-            ->assertSeeText('No sales on Oct 15.');
+            ->assertSeeText('No sales on Oct 15.')
+            ->assertSee('data-board-file="CRD Board - 2026-10-16.png"', false);
     }
 
     public function test_only_users_who_see_every_cras_daily_is_get_the_board(): void
