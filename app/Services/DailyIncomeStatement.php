@@ -27,7 +27,9 @@ use Illuminate\Support\Str;
  * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
  * item's cost in Shecom on the order's day (a cost per piece) × its pieces (qty × pieces: a 5-bottle bundle bought once
  * is 5), by the item's Pancake name ("1 Bottle Sinuxyl"); an item without a Shecom cost takes the product's unit cost
- * in Settings → Product Consumption (₱0 without either), and items not on Product Consumption are left out. Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
+ * in Settings → Product Consumption (₱0 without either), and items not on Product Consumption are left out. Pieces are
+ * counted as Order Database → Product Report counts them; a TSD upsell add-on on an order with a CRD product isn't the
+ * card's product, so its cost is left out (an order of only TSD upsell products keeps theirs). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
  * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
  * Fulfillment Fee = orders × ₱25.
  * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
@@ -210,7 +212,8 @@ class DailyIncomeStatement
 
     /**
      * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
-     * cost per piece that day, else the product's Settings unit cost (0 without either).
+     * cost per piece that day, else the product's Settings unit cost (0 without either). TSD upsell add-ons on an order
+     * with a CRD product are left out.
      *
      * @param  list<int>  $orderIds
      * @return array<int, float> order id => cost
@@ -222,13 +225,17 @@ class DailyIncomeStatement
 
         foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {
             $costs[$id] = 0.0;
-            foreach ($items ?? [] as $item) {
-                $name = trim((string) ($item['name'] ?? ''));
-                $product = $this->catalog->matchSold($name, $day->toDateString());
-                if ($product !== null) {
-                    $pieces = max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
-                    $costs[$id] += $pieces * ($shecom[mb_strtolower($name)] ?? (float) $product->unit_cost);
+            $listed = collect($items ?? [])
+                ->map(fn (array $item) => [$item, $this->catalog->matchSold(trim((string) ($item['name'] ?? '')), $day->toDateString())])
+                ->filter(fn (array $line) => $line[1] !== null);
+            $hasCrdProduct = $listed->contains(fn (array $line) => ! $line[1]->is_tsd);
+
+            foreach ($listed as [$item, $product]) {
+                if ($product->is_tsd && $hasCrdProduct) {
+                    continue;
                 }
+                $pieces = max(1, (int) ($item['qty'] ?? 1)) * max(1, (int) ($item['pieces'] ?? 1));
+                $costs[$id] += $pieces * ($shecom[mb_strtolower(trim((string) $item['name']))] ?? (float) $product->unit_cost);
             }
         }
 
