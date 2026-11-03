@@ -8,7 +8,7 @@
 @endphp
 
 {{-- CRD Board: the Daily I.S. figures (every CRA) on a dark glass card. --}}
-<div class="relative isolate flex flex-col gap-4 overflow-hidden p-5 text-center tabular-nums sm:p-7"
+<div data-board-file="CRD Board - {{ $today['day']->toDateString() }}.png" class="relative isolate flex flex-col gap-4 overflow-hidden p-5 text-center tabular-nums sm:p-7"
      style="background-color: #211f2d; color: #f1eef8; border-radius: 22px;
             background-image: radial-gradient(circle at 15% 12%, rgb(124 77 255 / .5), transparent 45%), radial-gradient(circle at 95% 25%, rgb(27 207 180 / .22), transparent 40%), radial-gradient(circle at 70% 92%, rgb(160 90 255 / .35), transparent 45%)">
     <div>
