@@ -196,6 +196,19 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertSame([], DailyIncomeStatement::deactivated());
     }
 
+    public function test_product_cost_leaves_out_tsd_add_ons_but_keeps_an_order_of_only_a_tsd_product(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        Product::create(['name' => 'Haplunas', 'is_tsd' => true, 'unit_cost' => 50]);
+        // Sinuxyl 2 pieces with a Haplunas add-on: only Sinuxyl's 2 × ₱35. Haplunas alone: its ₱50.
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1300, ['items' => [['qty' => 1, 'pieces' => 2, 'name' => 'Sinuxyl'], ['qty' => 1, 'name' => 'Haplunas Balm']]]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 500, ['items' => [['qty' => 1, 'name' => 'Haplunas Balm']], 'tsd_upsell' => true]);
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
+
+        $this->assertEqualsWithDelta(70 + 50, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+    }
+
     public function test_settings_lists_shecoms_product_costs_and_the_sold_items_without_one(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
