@@ -7,6 +7,6 @@
                 <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
             </button>
         </div>
-        <div data-customer-body class="min-h-0 overflow-y-auto p-5"></div>
+        <div data-customer-body class="float-in min-h-0 overflow-y-auto p-5"></div>
     </div>
 </dialog>

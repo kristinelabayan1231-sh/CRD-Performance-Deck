@@ -220,7 +220,7 @@
             <p class="text-sm font-semibold tabular-nums" aria-live="polite" data-pp-trend-headline></p>
             <div class="flex flex-wrap gap-1.5" role="group" aria-label="Lines on the graph" data-pp-trend-chips></div>
             <div class="relative min-h-65 sm:min-h-95" data-pp-trend-plot>
-                <p class="py-24 text-center text-sm text-muted" data-pp-trend-status>Loading the graph… the first load can take up to a minute or two.</p>
+                <p class="py-24 text-center text-sm text-muted" data-pp-trend-status><span class="spinner mr-2 align-[-0.2em]" aria-hidden="true"></span>Loading the graph… the first load can take up to a minute or two.</p>
             </div>
             <details class="text-sm">
                 <summary class="cursor-pointer font-semibold">See the figures</summary>

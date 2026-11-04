@@ -1,3 +1,5 @@
+import { reloadQuietly } from './page-loader';
+
 // Live pages: [data-live-url] returns a stamp of the page's data and starts stale syncs. It is
 // polled every minute while the tab is visible; when the stamp changes the page reloads, but not
 // while someone is typing or has a dialog open (it waits for the next check).
@@ -25,7 +27,7 @@ export function initLive() {
             }
         }
 
-        if (changed && !busy()) location.reload();
+        if (changed && !busy()) reloadQuietly();
     };
 
     setInterval(check, EVERY_MS);

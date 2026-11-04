@@ -17,7 +17,7 @@
             </a>
 
             <div class="flex flex-1 items-center justify-center py-12">
-                <div class="w-full max-w-sm">
+                <div class="float-in w-full max-w-sm">
                     <h1 class="text-4xl font-bold tracking-tight">Welcome back</h1>
                     <p class="mt-3 text-muted">Sign in with your Google account to continue.</p>
 
