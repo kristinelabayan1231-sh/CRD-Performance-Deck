@@ -88,24 +88,58 @@ class ProductPerformance
     }
 
     /**
-     * The past days, weeks (Monday–Sunday) and months up to $to: gross sales, orders and RTS (%) per slot, for all the
-     * products together and for each one, most sales first. Slots before the first order are left off, so a product list
-     * that started lately doesn't show months of nothing. Partial = the last slot isn't over yet.
+     * The past days, weeks (Monday–Sunday) and months up to $to for each tab, from one read of the orders: gross sales,
+     * orders and RTS (%) per slot, for all the tab's products together and for each one, most sales first. Slots before
+     * the first order are left off, so a product list that started lately doesn't show months of nothing. Partial = the
+     * last slot isn't over yet. With the overall ('index') and the CRD, TSD and Testing tabs given, the overall's lines are
+     * those three instead of its products, to compare them.
      *
      * @param  array<string, string>  $sellers  staff key => name, the CRD accounts
-     * @param  ?list<string>  $only  only these products, null for every product CRD handles
-     * @return array<string, array{labels: list<string>, partial: bool, total: array{sales: list<float>, orders: list<int>, rts: list<?float>}, products: list<array{name: string, sales: list<float>, orders: list<int>, rts: list<?float>}>}>
+     * @param  array<string, ?list<string>>  $tabs  tab => only these products, null for every product CRD handles
+     * @return array<string, array<string, array{labels: list<string>, partial: bool, total: array{sales: list<float>, orders: list<int>, rts: list<?float>}, products: list<array{name: string, sales: list<float>, orders: list<int>, rts: list<?float>}>}>>
      */
-    public function trend(array $sellers, CarbonImmutable $to, CarbonImmutable $today, ?array $only = null): array
+    public function trend(array $sellers, CarbonImmutable $to, CarbonImmutable $today, array $tabs): array
     {
         $months = $to->startOfMonth()->subMonths(self::TREND_MONTHS - 1);
-        $lines = $this->report->lines($sellers, $months, $to)->filter(self::handled($only))->values();
+        $all = $this->report->lines($sellers, $months, $to);
 
-        return [
-            'day' => self::trendView($lines, 'day', $to->subDays(self::TREND_DAYS - 1), $to, $today),
-            'week' => self::trendView($lines, 'week', $to->startOfWeek(CarbonImmutable::MONDAY)->subWeeks(self::TREND_WEEKS - 1), $to, $today),
-            'month' => self::trendView($lines, 'month', $months, $to, $today),
-        ];
+        $trends = collect($tabs)->map(function (?array $only) use ($all, $months, $to, $today) {
+            $lines = $all->filter(self::handled($only))->values();
+
+            return [
+                'day' => self::trendView($lines, 'day', $to->subDays(self::TREND_DAYS - 1), $to, $today),
+                'week' => self::trendView($lines, 'week', $to->startOfWeek(CarbonImmutable::MONDAY)->subWeeks(self::TREND_WEEKS - 1), $to, $today),
+                'month' => self::trendView($lines, 'month', $months, $to, $today),
+            ];
+        })->all();
+
+        return isset($trends['index'], $trends['crd'], $trends['tsd'], $trends['testing']) ? self::compared($trends) : $trends;
+    }
+
+    /**
+     * The overall tab's lines as CRD, TSD and Testing, on its slots: null before a group's first order, so a group that
+     * started lately has no line there.
+     *
+     * @param  array<string, array<string, array<string, mixed>>>  $trends
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    private static function compared(array $trends): array
+    {
+        foreach ($trends['index'] as $unit => $view) {
+            $trends['index'][$unit]['comparison'] = true;
+            $trends['index'][$unit]['products'] = collect(['crd' => 'CRD products', 'tsd' => 'TSD products', 'testing' => 'Testing products'])
+                ->map(function (string $name, string $tab) use ($trends, $unit, $view) {
+                    $group = $trends[$tab][$unit];
+                    $places = array_flip($group['labels']);
+                    $values = fn (string $metric) => array_map(fn (string $label) => isset($places[$label]) ? $group['total'][$metric][$places[$label]] : null, $view['labels']);
+
+                    return ['name' => $name, 'sales' => $values('sales'), 'orders' => $values('orders'), 'rts' => $values('rts')];
+                })
+                ->values()
+                ->all();
+        }
+
+        return $trends;
     }
 
     /**

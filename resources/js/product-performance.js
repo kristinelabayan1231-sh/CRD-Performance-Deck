@@ -89,8 +89,8 @@ function niceScale(max, wholeNumbers) {
     return { top: Math.ceil(max / step) * step, step };
 }
 
-// Per tab: the past days, weeks and months as lines (the tab's total and up to six products), by gross sales, orders or
-// RTS. A hover shows every line's figure for that slot; a hollow dot is a slot that isn't over yet.
+// Per tab: the past days, weeks and months as lines (the tab's total and up to six products; on the overall CRD, TSD and
+// Testing to compare, together or side by side), by gross sales, orders or RTS. A hover shows every line's figure for that slot; a hollow dot is a slot that isn't over yet.
 function initTrend() {
     const panel = document.querySelector('[data-pp-trend]');
     if (!panel) return;
@@ -109,6 +109,7 @@ function initTrend() {
     let view = panel.querySelector('[data-pp-trend-view][aria-pressed="true"]').dataset.ppTrendView;
     let metric = 'sales';
     let showAll = true;
+    let apart = false;
     // Product name => its colour's place in TREND_COLORS.
     const shown = new Map();
 
@@ -162,7 +163,9 @@ function initTrend() {
                 const change = Math.round(((values[done] - before) / before) * 100);
                 html('span', `ml-2 ${change >= 0 ? 'text-teal-700' : 'text-coral-700'}`, `${change >= 0 ? '▲' : '▼'} ${Math.abs(change)}% vs ${name(done - 1)}`, headline);
             } else if (metric === 'rts' && before !== null && before !== undefined) {
-                html('span', 'ml-2 font-normal text-muted', `${format(before)} in ${name(done - 1)}`, headline);
+                // RTS: higher is worse.
+                const change = +(values[done] - before).toFixed(1);
+                html('span', `ml-2 ${change > 0 ? 'text-coral-700' : change < 0 ? 'text-teal-700' : 'text-muted'}`, `${change > 0 ? '▲' : change < 0 ? '▼' : '='} ${Math.abs(change).toFixed(1)} pts vs ${name(done - 1)}`, headline);
             }
         }
         if (current.partial && values[last] !== null) {
@@ -185,9 +188,9 @@ function initTrend() {
         table.replaceChildren(element);
     };
 
-    const drawPlot = (current, series) => {
+    const drawPlot = (target, current, series) => {
         const count = current.labels.length;
-        const width = Math.max(plot.clientWidth, 280);
+        const width = Math.max(target.clientWidth, 280);
         const height = width < 640 ? 260 : 380;
         const labelled = series.length <= 4 && width >= 640;
         const margin = { top: 14, right: labelled ? 150 : 16, bottom: 30, left: 62 };
@@ -296,13 +299,13 @@ function initTrend() {
             tooltip.style.top = `${margin.top}px`;
         });
 
-        plot.replaceChildren(root, tooltip);
+        target.replaceChildren(root, tooltip);
     };
 
     function draw() {
         const current = data[view];
         const startsLate = current.labels.length > 0 && current.labels.length < TREND_SLOTS[view];
-        note.textContent = `${TREND_NOTES[view].charAt(0).toUpperCase()}${TREND_NOTES[view].slice(1)}, up to ${panel.dataset.ppTrendEnd}${startsLate ? ` · first orders: ${current.labels[0].replace('Week of ', 'week of ')}` : ''}${current.partial ? ' · hollow dot = not over yet' : ''}${metric === 'rts' ? ' · recent dates read low until parcels arrive or come back' : ''}`;
+        note.textContent = `${TREND_NOTES[view].charAt(0).toUpperCase()}${TREND_NOTES[view].slice(1)}, up to ${panel.dataset.ppTrendEnd}${startsLate ? ` · first orders: ${current.labels[0].replace('Week of ', 'week of ')}` : ''}${current.partial ? ' · hollow dot = not over yet' : ''}${metric === 'rts' ? ' · recent dates read low until parcels arrive or come back' : ''}${current.comparison ? ' · Testing products are also in CRD' : ''}`;
         if (current.labels.length === 0) {
             chips.replaceChildren();
             headline.replaceChildren();
@@ -322,11 +325,26 @@ function initTrend() {
             status('Pick a line above to show it.');
             return;
         }
-        drawPlot(current, series);
+        if (current.comparison && apart) {
+            // Each group on its own scale, so the small ones can be read.
+            const grid = html('div', 'grid gap-4 lg:grid-cols-3');
+            plot.replaceChildren(grid);
+            series.filter((line) => line.color).forEach((line) => {
+                const box = html('div', 'min-w-0', '', grid);
+                html('p', 'mb-1 text-sm font-semibold', line.name, box);
+                drawPlot(html('div', 'relative', '', box), current, [line]);
+            });
+            return;
+        }
+        drawPlot(plot, current, series);
     }
 
     initSwitch('[data-pp-trend-view]', 'ppTrendView', (value) => {
         view = value;
+        if (data) draw();
+    });
+    initSwitch('[data-pp-trend-layout]', 'ppTrendLayout', (value) => {
+        apart = value === 'apart';
         if (data) draw();
     });
     initSwitch('[data-pp-trend-metric]', 'ppTrendMetric', (value) => {
@@ -338,6 +356,8 @@ function initTrend() {
         .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
         .then((loaded) => {
             data = loaded;
+            // Comparing the groups: the total would lie on top of CRD, so it starts off.
+            showAll = !data.month.comparison;
             const finished = (candidate) => candidate.labels.length - (candidate.partial ? 1 : 0);
             if (finished(data[view]) < TREND_MIN_FINISHED) {
                 view = ['month', 'week', 'day'].find((candidate) => finished(data[candidate]) >= TREND_MIN_FINISHED) ?? view;

@@ -12,6 +12,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
@@ -21,8 +22,13 @@ use Illuminate\View\View;
  */
 class ProductPerformanceController extends Controller
 {
-    /** A tab's graph of the past days, weeks and months reads a year of orders, so it is kept this long. */
-    private const TREND_CACHE_MINUTES = 10;
+    /**
+     * The graph of the past days, weeks and months reads a year of orders. Its result stays fresh for the first number of
+     * seconds; after that, up to the second, it still shows at once while a new one is worked out behind the scenes.
+     */
+    private const TREND_CACHE_SECONDS = [600, 86400];
+
+    private const TABS = ['index', 'crd', 'tsd', 'testing'];
 
     public function index(Request $request, ProductPerformance $productPerformance): View
     {
@@ -45,21 +51,25 @@ class ProductPerformanceController extends Controller
     }
 
     /**
-     * A tab's graph of the past days, weeks and months up to ?to, loaded after the page opens.
+     * A tab's graph of the past days, weeks and months up to ?to, loaded after the page opens. One read of the orders
+     * fills every tab's, so switching tabs doesn't wait again.
      */
     public function trend(Request $request, ProductPerformance $productPerformance): JsonResponse
     {
         $today = WorkingDate::realToday();
         $filters = $request->validate([
-            'tab' => ['required', 'in:index,crd,tsd,testing'],
+            'tab' => ['required', Rule::in(self::TABS)],
             'to' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.$today->toDateString()],
         ]);
 
-        return response()->json(Cache::remember(
-            "product-performance.trend.{$filters['tab']}.{$filters['to']}",
-            now()->addMinutes(self::TREND_CACHE_MINUTES),
-            fn () => $productPerformance->trend($this->sellers(), CarbonImmutable::parse($filters['to']), $today, $this->tab($filters['tab'])['only']),
-        ));
+        $trends = Cache::flexible("product-performance.trends.{$filters['to']}", self::TREND_CACHE_SECONDS, function () use ($productPerformance, $filters, $today) {
+            set_time_limit(0);
+            $tabs = collect(self::TABS)->mapWithKeys(fn (string $tab) => [$tab => $this->tab($tab)['only']])->all();
+
+            return $productPerformance->trend($this->sellers(), CarbonImmutable::parse($filters['to']), $today, $tabs);
+        });
+
+        return response()->json($trends[$filters['tab']]);
     }
 
     private function page(Request $request, ProductPerformance $productPerformance, string $tab): View

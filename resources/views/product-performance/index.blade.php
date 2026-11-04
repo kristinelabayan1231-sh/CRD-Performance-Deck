@@ -190,7 +190,7 @@
                  data-pp-trend-all="{{ $allProducts }}" data-pp-trend-empty="{{ $noOrders }}" data-pp-trend-end="{{ $trendTo->format('M j, Y') }}">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div class="min-w-0">
-                    <h2 id="pp-over-time-title" class="text-lg font-semibold">{{ $scope === null ? 'Performance' : $productsName }} over time</h2>
+                    <h2 id="pp-over-time-title" class="text-lg font-semibold">{{ $scope === null ? 'CRD, TSD and Testing' : $productsName }} over time</h2>
                     <p class="text-sm text-muted" data-pp-trend-note></p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -200,6 +200,14 @@
                                     class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $viewName }}</button>
                         @endforeach
                     </div>
+                    @if ($scope === null)
+                        <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Graph layout">
+                            @foreach (['together' => 'Together', 'apart' => 'Side by side'] as $value => $layoutName)
+                                <button type="button" data-pp-trend-layout="{{ $value }}" aria-pressed="{{ $value === 'together' ? 'true' : 'false' }}"
+                                        class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $layoutName }}</button>
+                            @endforeach
+                        </div>
+                    @endif
                     <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Graph shows">
                         @foreach (['sales' => 'Gross sales', 'orders' => 'Orders', 'rts' => 'RTS'] as $value => $metricName)
                             <button type="button" data-pp-trend-metric="{{ $value }}" aria-pressed="{{ $value === 'sales' ? 'true' : 'false' }}"
@@ -212,7 +220,7 @@
             <p class="text-sm font-semibold tabular-nums" aria-live="polite" data-pp-trend-headline></p>
             <div class="flex flex-wrap gap-1.5" role="group" aria-label="Lines on the graph" data-pp-trend-chips></div>
             <div class="relative min-h-65 sm:min-h-95" data-pp-trend-plot>
-                <p class="py-24 text-center text-sm text-muted" data-pp-trend-status>Loading the graph…</p>
+                <p class="py-24 text-center text-sm text-muted" data-pp-trend-status>Loading the graph… the first load can take up to a minute or two.</p>
             </div>
             <details class="text-sm">
                 <summary class="cursor-pointer font-semibold">See the figures</summary>
@@ -239,7 +247,7 @@
                         <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <h2 id="pp-ranking-title" class="font-semibold">Ranking</h2>
-                                <p class="text-sm text-muted">▲ / ▼ = places up or down since {{ $previousLabel }}</p>
+                                <p class="text-sm text-muted">▲ / ▼ = places up or down since {{ $previousLabel }}; by RTS, the rate's change (higher is red, lower is green)</p>
                             </div>
                             <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Rank by">
                                 @foreach (['sales' => 'Gross sales', 'rts' => 'RTS'] as $by => $byLabel)
@@ -276,6 +284,9 @@
                                             @foreach ($rows as $row)
                                                 @php
                                                     $move = $row['place'] !== null && $row['was'] !== null ? $row['was'] - $row['place'] : null;
+                                                    // By RTS: how much the rate itself changed, in points; higher is worse.
+                                                    $wasRate = ProductPerformance::rtsRate($row['previous']);
+                                                    $rtsChange = $by === 'rts' && $row['rts_rate'] !== null && $wasRate !== null ? round(($row['rts_rate'] - $wasRate) * 100, 1) : null;
                                                     $done = $row['delivered'] + $row['rts'];
                                                     $rate = $row['rts_rate'];
                                                 @endphp
@@ -284,7 +295,9 @@
                                                         <span @class(['grid size-6 place-items-center rounded-md text-xs font-bold', 'bg-brand-600 text-white' => $row['place'] !== null && $row['place'] <= 3, 'bg-brand-50 text-brand-700' => $row['place'] === null || $row['place'] > 3])>{{ $row['place'] ?? '–' }}</span>
                                                     </td>
                                                     <td class="px-2.5 py-1.5 text-xs font-bold whitespace-nowrap">
-                                                        @if ($move === null)
+                                                        @if ($rtsChange !== null)
+                                                            <span @class(['text-coral-700' => $rtsChange > 0, 'text-teal-700' => $rtsChange < 0, 'text-muted' => $rtsChange == 0])>{{ $rtsChange > 0 ? '▲' : ($rtsChange < 0 ? '▼' : '=') }} @if ($rtsChange != 0){{ number_format(abs($rtsChange), 1) }} pts @endif</span>
+                                                        @elseif ($move === null)
                                                             <span class="text-muted">{{ $row['place'] !== null && $row['was'] === null ? 'New' : '–' }}</span>
                                                         @elseif ($move > 0)
                                                             <span class="text-teal-700">▲ {{ $move }}</span>
@@ -508,7 +521,7 @@
                 <div><dt class="font-semibold text-ink">Delivered and RTS</dt><dd>Orders, not pesos: delivered (incl. payment collected) ÷ delivered + RTS (returning, returned, partially returned). E.g. 80/95 = 84%. Shipped orders count once they arrive or come back.</dd></div>
                 <div><dt class="font-semibold text-ink">Cancelled</dt><dd>Cancelled orders ÷ every order of the product. Below the boxes: the product's orders in every Pancake status it has at least one order in.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Ranking</dt><dd>Each product's place by gross sales (#1 = the most), or by lowest RTS (#1 = the fewest returns), in these dates; ▲ / ▼ = places up or down against its place in {{ $previousLabel }}. New = no sales (or no delivered or returned orders) then. The ranking's RTS is green at or below {{ Str::lcfirst($allProducts) }}' RTS and red above it. The Rank graph shows the place by gross sales in every {{ $unitName }}; the RTS graph shows each product's RTS of the orders created that {{ $unitName }}.</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Over time</dt><dd>The past 30 days, 12 weeks (Monday–Sunday) or 12 months up to the last day picked above, by the day the orders were created, starting at the first order. A hollow dot means that day, week or month isn't over yet, so it has no line to it. RTS reads low for recent dates until the parcels on the way arrive or come back.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Over time</dt><dd>The past 30 days, 12 weeks (Monday–Sunday) or 12 months up to the last day picked above, by the day the orders were created, starting at the first order. A hollow dot means that day, week or month isn't over yet, so it has no line to it. RTS reads low for recent dates until the parcels on the way arrive or come back. The Products tab compares CRD, TSD and Testing (Testing products are also in CRD); Side by side gives each its own scale.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Compared with</dt><dd>The same number of days just before ({{ $previousLabel }}). The chart shows each product's gross sales per hour for a day, per day up to two months, and per week beyond; click a product above the chart to show or hide its line.</dd></div>
             </dl>
         </details>
