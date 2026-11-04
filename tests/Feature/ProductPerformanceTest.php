@@ -218,10 +218,49 @@ class ProductPerformanceTest extends TestCase
             ->assertJsonPath('day.labels.0', 'Sep 28')
             ->assertJsonCount(13, 'day.labels')
             ->assertJsonPath('day.total.sales.7', 100)
-            ->assertJsonPath('day.total.rts.1', null)
+            ->assertJsonPath('day.total.rts.1', null);
+
+        $this->actingAs($this->owner)->getJson(route('product-performance.trend', ['tab' => 'crd', 'to' => '2026-10-10']))
             ->assertJsonPath('month.products.0.name', 'Sinuxyl')
             ->assertJsonPath('month.products.0.sales', [350, 100])
             ->assertJsonPath('month.products.1.sales', [0, 200]);
+    }
+
+    public function test_products_tab_graph_compares_crd_tsd_and_testing_with_no_line_before_a_groups_first_order(): void
+    {
+        Product::create(['name' => 'Haplunas', 'srp' => 500, 'is_tsd' => true]);
+        Product::create(['name' => 'Lumicare', 'srp' => 700, 'is_testing' => true]);
+        $this->order('CRD LHEI', 3, 900, 'Canpro', '2026-09-28');
+        $this->order('CRD LHEI', 3, 700, 'Lumicare', '2026-10-05');
+        $this->order('CRD LHEI', 5, 500, 'Haplunas', '2026-10-05');
+
+        $this->actingAs($this->owner)->getJson(route('product-performance.trend', ['tab' => 'index', 'to' => '2026-10-10']))
+            ->assertJsonPath('month.comparison', true)
+            ->assertJsonPath('month.labels', ['Sep 2026', 'Oct 2026'])
+            ->assertJsonPath('month.total.sales', [900, 1200])
+            ->assertJsonPath('month.products.0.name', 'CRD products')
+            ->assertJsonPath('month.products.0.sales', [900, 700])
+            ->assertJsonPath('month.products.1.name', 'TSD products')
+            ->assertJsonPath('month.products.1.sales', [null, 500])
+            ->assertJsonPath('month.products.1.rts', [null, 100])
+            ->assertJsonPath('month.products.2.name', 'Testing products')
+            ->assertJsonPath('month.products.2.orders', [null, 1]);
+    }
+
+    public function test_ranking_by_rts_shows_a_higher_rate_in_red_and_a_lower_one_in_green(): void
+    {
+        // Sinuxyl: 0% in Sep 21-30, 25% in Oct 1-10. Canpro: 50% then 0%.
+        foreach ([3, 3, 3, 5] as $status) {
+            $this->order('CRD LHEI', $status, 100, 'Sinuxyl');
+        }
+        $this->order('CRD LHEI', 3, 100, 'Sinuxyl', '2026-09-25');
+        $this->order('CRD LHEI', 3, 100, 'Canpro');
+        $this->order('CRD LHEI', 3, 100, 'Canpro', '2026-09-25');
+        $this->order('CRD LHEI', 5, 100, 'Canpro', '2026-09-26');
+
+        $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
+            ->assertOk()
+            ->assertSeeInOrder(['data-pp-ranking="rts"', 'text-teal-700', '▼ 50.0 pts', 'Canpro', 'text-coral-700', '▲ 25.0 pts', 'Sinuxyl'], false);
     }
 
     public function test_trend_counts_only_the_tabs_products(): void
@@ -237,6 +276,19 @@ class ProductPerformanceTest extends TestCase
         $this->assertEquals([1600], $sales('crd'));
         $this->assertEquals([500], $sales('tsd'));
         $this->assertEquals([700], $sales('testing'));
+    }
+
+    public function test_one_read_fills_every_tab_and_a_later_order_waits_for_the_next_one(): void
+    {
+        Product::create(['name' => 'Haplunas', 'srp' => 500, 'is_tsd' => true]);
+        $this->order('CRD LHEI', 3, 900, 'Canpro');
+        $sales = fn (string $tab) => $this->actingAs($this->owner)->getJson(route('product-performance.trend', ['tab' => $tab, 'to' => '2026-10-10']))->json('month.total.sales');
+        $this->assertEquals([900], $sales('crd'));
+
+        $this->order('CRD LHEI', 3, 500, 'Haplunas');
+
+        $this->assertEquals([], $sales('tsd'));
+        $this->assertEquals([900], $sales('index'));
     }
 
     public function test_trend_stops_at_the_day_picked_and_a_finished_month_is_not_partial(): void
