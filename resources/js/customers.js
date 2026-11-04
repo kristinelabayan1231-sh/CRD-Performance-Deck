@@ -1,3 +1,5 @@
+import { loadingMarkup } from './spinner';
+
 // Customer Database: a row opens the customer's details (status breakdown, product CLTV, orders) in a pop-up.
 export function initCustomers() {
     const dialog = document.getElementById('customer-dialog');
@@ -7,7 +9,7 @@ export function initCustomers() {
 
     const open = async (url) => {
         current = url;
-        body.innerHTML = '<p class="py-10 text-center text-sm text-muted">Loading…</p>';
+        body.innerHTML = loadingMarkup();
         dialog.showModal();
 
         try {

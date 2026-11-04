@@ -7,6 +7,7 @@ import { initDutySchedule } from './duty-schedule';
 import { initLive } from './live';
 import { initMni } from './mni';
 import { initMonthlyCost } from './monthly-cost';
+import { initPageLoader } from './page-loader';
 import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
 import { initProductPerformance } from './product-performance';
@@ -20,6 +21,7 @@ import { initTooltips } from './tooltip';
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    initPageLoader();
     initTabs();
     initTooltips();
     initSegmentation();

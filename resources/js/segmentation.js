@@ -499,6 +499,7 @@ function initOrderHistory() {
         const url = button.dataset.ordersUrl;
         if (!cache.has(url)) {
             render('Loading…');
+            box.insertAdjacentHTML('afterbegin', '<span class="spinner mr-1.5 align-[-0.2em]" aria-hidden="true"></span>');
             box.hidden = false;
             place(button);
             cache.set(url, fetch(url, { headers: { Accept: 'application/json' } })

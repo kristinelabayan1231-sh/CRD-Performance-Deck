@@ -14,6 +14,8 @@
     <x-favicons />
     {{-- Light / Dark (top bar switch): set before the page paints, remembered on this browser --}}
     <script>try { document.documentElement.dataset.theme = localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'; } catch (e) { document.documentElement.dataset.theme = 'light'; }</script>
+    {{-- A live reload (page-loader.js) comes back without the float-up --}}
+    <script>try { if (sessionStorage.getItem('quietReload')) { sessionStorage.removeItem('quietReload'); document.documentElement.dataset.quietLoad = ''; } } catch (e) {}</script>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @if (is_file(public_path('build/assets/theme-dark.css')))
         <link rel="stylesheet" href="{{ asset('build/assets/theme-dark.css') }}?v={{ filemtime(public_path('build/assets/theme-dark.css')) }}">
@@ -155,7 +157,7 @@
                 </div>
             </header>
 
-            <main @class(['flex-1 p-4 sm:p-8', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:py-5' => $fit])>
+            <main @class(['float-in flex-1 p-4 sm:p-8', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:py-5' => $fit])>
                 {{-- Only the Segmentation Tracker runs on the working date; every other page is the real date. --}}
                 @if (request()->routeIs('segmentation.*') && ($workingDate = \App\Support\WorkingDate::get()))
                     <div role="note" class="mb-4 flex flex-wrap items-center gap-x-2 rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
@@ -176,6 +178,12 @@
                 {{ $slot }}
             </main>
         </div>
+    </div>
+
+    {{-- Shown while the next page loads (page-loader.js); moved over by half the sidebar so it sits over the content --}}
+    <div data-page-loader role="status" hidden class="pointer-events-none fixed top-1/2 left-1/2 z-50 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 rounded-full bg-white px-5 py-3 text-sm font-semibold text-brand-600 shadow-lg ring-1 ring-line lg:left-[calc(50%+8rem)]">
+        <span class="spinner" aria-hidden="true"></span>
+        Loading…
     </div>
 
     {{-- A CRA's on-duty pop-up (log in for today + My schedule): opens by itself until they log in, and after saving the schedule --}}
