@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Services\PosLeads;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -398,6 +399,62 @@ class ConversionBreakdownTest extends TestCase
         app(PancakeSync::class)->sync(CarbonImmutable::parse('2026-10-10'));
 
         $this->assertEqualsWithDelta(999.0, (float) PancakeOrder::sole()->total_price, 0.001);
+    }
+
+    public function test_a_sales_date_changed_in_pancake_moves_the_order_and_its_shecom_sales_to_that_day(): void
+    {
+        $this->orders = [$order = $this->order('CRD JULY ANN', [self::SEGMENTATION], 799)];
+        app(PancakeSync::class)->sync(Lead::today());
+        $this->assertSame('2026-10-01', PancakeOrder::sole()->ordered_on->toDateString());
+
+        // The next day a supervisor changes the order's sales date to Sep 30; Shecom now lists it on that day.
+        $this->travelTo(CarbonImmutable::parse('2026-10-02 12:00', 'Asia/Manila'));
+        $this->orders = [];
+        $this->changed = [[...$order, 'inserted_at' => '2026-09-30T07:37:00.000000']];
+        $this->sales = [['order_id' => (string) $order['display_id'], 'date' => '2026-09-30', 'sales' => '749']];
+        app(PancakeSync::class)->refreshTags(CarbonImmutable::parse('2026-10-02'));
+
+        $saved = PancakeOrder::sole();
+        $this->assertSame('2026-09-30', $saved->ordered_on->toDateString());
+        $this->assertSame('2026-09-30 07:37:00', $saved->ordered_at->format('Y-m-d H:i:s'));
+        $this->assertEqualsWithDelta(749.0, (float) $saved->shecom_sales, 0.001);
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales') && $request['date_from'] === '2026-09-30');
+    }
+
+    public function test_a_changed_sales_date_counts_near_midnight_on_the_manila_day(): void
+    {
+        $this->orders = [$order = $this->order('CRD JULY ANN', [self::SEGMENTATION], 799)];
+        app(PancakeSync::class)->sync(Lead::today());
+
+        // 16:30 UTC on Sep 29 is 00:30 on Sep 30 in Manila.
+        $this->changed = [[...$order, 'inserted_at' => '2026-09-29T16:30:00']];
+        app(PancakeSync::class)->refreshTags(Lead::today());
+
+        $this->assertSame('2026-09-30', PancakeOrder::sole()->ordered_on->toDateString());
+    }
+
+    public function test_a_changed_sales_date_moves_the_customers_repeat_purchase_day_unless_they_bought_again_that_day(): void
+    {
+        $this->cra('July', 'CRD JULY ANN');
+        $moved = $this->order('CRD JULY ANN', [self::SEGMENTATION], 799);
+        $this->orders = [$moved];
+        app(PancakeSync::class)->sync(Lead::today());
+        app(PosLeads::class)->record(Lead::today());
+        $lead = Lead::where('order_id', Lead::POS_PREFIX.$moved['display_id'])->sole();
+        $this->assertSame('2026-10-01', $lead->repeat_purchase_on->toDateString());
+
+        // A second sale to the customer stays on Oct 1, so that day's purchase stands while the first order moves.
+        $this->orders = [$second = [...$this->order('CRD JULY ANN', [self::SEGMENTATION], 499), 'bill_phone_number' => $moved['bill_phone_number']]];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+        $this->changed = [[...$moved, 'inserted_at' => '2026-09-30T07:37:00']];
+        app(PancakeSync::class)->refreshTags(Lead::today());
+        $this->assertSame('2026-10-01', $lead->fresh()->repeat_purchase_on->toDateString());
+
+        // With the second order moved as well nothing is left on Oct 1.
+        $this->changed = [[...$second, 'inserted_at' => '2026-09-30T08:00:00']];
+        $this->travel(11)->minutes();
+        app(PancakeSync::class)->refreshTags(Lead::today());
+        $this->assertSame('2026-09-30', $lead->fresh()->repeat_purchase_on->toDateString());
     }
 
     public function test_the_nightly_sales_refresh_picks_up_amounts_corrected_in_shecom(): void
