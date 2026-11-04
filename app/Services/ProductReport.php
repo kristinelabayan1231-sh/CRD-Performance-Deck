@@ -6,6 +6,7 @@ use App\Models\CvrOrderEntry;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
+use App\Models\ShecomProductCost;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
 use DateTimeZone;
@@ -17,7 +18,8 @@ use Illuminate\Support\Collection;
  * name, after the listed ones ("Other products" in the filter shows them all). Deleted orders (status 7) are left out.
  *
  * As Pancake's own Product Performance: Total qty is the pieces sold (a "5 Pterygium Drops" bundle is 5; 3 + 5 bottles
- * in two orders = 8), sales are each item at its Pancake price and Product cost the pieces × the product's unit cost
+ * in two orders = 8) and sales are each item at its Pancake price. Product cost follows the Daily I.S.: from its
+ * SHECOM_COSTS_FROM each item's pieces × its Shecom cost, 0 without one; before that the pieces × the product's unit cost
  * (Settings → Product Consumption). Orders saved before item prices were kept split their sale (before
  * Pancake's discount) by SRP × qty, or by qty when a product has no SRP; Shecom's sales cover only the listed
  * products, so with both kinds in an order the items not on the list get the rest of the price.
@@ -67,6 +69,7 @@ class ProductReport
     public function lines(array $sellers, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
         $costs = Product::pluck('unit_cost', 'name');
+        $shecom = $to->toDateString() >= DailyIncomeStatement::SHECOM_COSTS_FROM ? ShecomProductCost::current() : [];
         $timezone = new DateTimeZone(config('segmentation.timezone'));
         $lines = [];
 
@@ -79,12 +82,12 @@ class ProductReport
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
             ->toBase()->select(['id', 'pancake_order_id', 'seller_name', 'status', 'items', 'total_price', 'shecom_sales', 'total_discount', 'ordered_on', 'ordered_at'])
             ->lazyById(2000, 'id')
-            ->each(function (object $order) use (&$lines, $costs, $timezone, $claimed, $sellers) {
+            ->each(function (object $order) use (&$lines, $costs, $shecom, $timezone, $claimed, $sellers) {
                 $seller = $claimed[$order->pancake_order_id] ?? null;
                 if ($seller !== null && ! isset($sellers[$seller])) {
                     return;
                 }
-                foreach ($this->linesOf($order, $costs, $timezone, $seller) as $line) {
+                foreach ($this->linesOf($order, $costs, $shecom, $timezone, $seller) as $line) {
                     $lines[] = $line;
                 }
             });
@@ -153,9 +156,10 @@ class ProductReport
      * The order's products with their pieces and share of the sale.
      *
      * @param  Collection<string, ?string>  $costs  product name => unit cost
+     * @param  array<string, float>  $shecom  lowercased item name => Shecom's cost per piece
      * @return list<array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool}>
      */
-    private function linesOf(object $order, Collection $costs, DateTimeZone $timezone, ?string $seller = null): array
+    private function linesOf(object $order, Collection $costs, array $shecom, DateTimeZone $timezone, ?string $seller = null): array
     {
         $products = [];
         foreach (json_decode((string) $order->items, true) ?? [] as $item) {
@@ -165,10 +169,11 @@ class ProductReport
             // Not on the list: its own row under its Pancake name.
             $name = $product?->name ?? ($itemName === '' ? CraPerformance::OTHER_PRODUCTS : $itemName);
             $qty = max(1, (int) ($item['qty'] ?? 1));
-            $products[$name] ??= ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => $product !== null, 'price' => 0.0, 'cost' => 0.0];
+            $products[$name] ??= ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => $product !== null, 'price' => 0.0, 'cost' => 0.0, 'shecom_cost' => 0.0];
             $products[$name]['units'] += $qty;
             // Pieces: a 5-piece bundle bought twice is 10.
             $products[$name]['qty'] += $qty * (int) ($item['pieces'] ?? 1);
+            $products[$name]['shecom_cost'] += $qty * max(1, (int) ($item['pieces'] ?? 1)) * ($shecom[mb_strtolower($itemName)] ?? 0);
             $products[$name]['weight'] += $qty * (float) ($product?->srp ?? 0);
             // Pancake's price and cost of the variation; null once an item has none (saved before they were kept).
             $products[$name]['price'] = isset($item['price'], $products[$name]['price']) ? $products[$name]['price'] + $qty * (float) $item['price'] : null;
@@ -176,12 +181,13 @@ class ProductReport
         }
 
         if ($products === []) {
-            $products[CraPerformance::OTHER_PRODUCTS] = ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => false, 'price' => null, 'cost' => null];
+            $products[CraPerformance::OTHER_PRODUCTS] = ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => false, 'price' => null, 'cost' => null, 'shecom_cost' => 0.0];
         }
 
         $salesOf = self::salesOf($order, $products);
         // The CRA's account the order counts for: the CVR Tracker's, else its seller's.
         $seller ??= self::$sellerKeys[$order->seller_name] ??= PancakeEngagement::staffKey($order->seller_name);
+        $fromShecom = substr((string) $order->ordered_on, 0, 10) >= DailyIncomeStatement::SHECOM_COSTS_FROM;
         $hour = $order->ordered_at === null ? 0 : (int) (new DateTimeImmutable($order->ordered_at, new DateTimeZone('UTC')))->setTimezone($timezone)->format('G');
 
         $lines = [];
@@ -193,11 +199,14 @@ class ProductReport
                 'product' => (string) $name,
                 'qty' => $product['qty'],
                 'sales' => $salesOf[$name],
-                // A listed product: its pieces × its unit cost in Settings → Product Consumption (as the CRAs' sheet; Pancake's
-                // variation costs can be off or 0). Not on the list: Pancake's variation cost.
-                'cost' => $product['listed']
-                    ? (isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null)
-                    : $product['cost'],
+                // A listed product: Shecom's cost from SHECOM_COSTS_FROM, as the Daily I.S.; before that its pieces × its unit
+                // cost in Settings → Product Consumption (as the CRAs' sheet; Pancake's variation costs can be off or 0). Not on
+                // the list: Pancake's variation cost.
+                'cost' => match (true) {
+                    ! $product['listed'] => $product['cost'],
+                    $fromShecom => $product['shecom_cost'],
+                    default => isset($costs[$name]) ? $product['qty'] * (float) $costs[$name] : null,
+                },
                 'day' => substr((string) $order->ordered_on, 0, 10),
                 'hour' => $hour,
                 'listed' => $product['listed'],
