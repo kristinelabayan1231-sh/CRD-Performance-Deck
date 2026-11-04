@@ -315,7 +315,8 @@ class PancakeSync
      * Save Pancake's current tags, status, seller and amount on the saved orders among $orders. Each order keeps its
      * own tags, so a customer can be broadcast on one order and segmentation on the next. An order assigned
      * to another seller after it was saved moves to them; one with no assigned seller has none (never the creator).
-     * A price or item edited after the order's day is saved too (when Pancake sends the order's amount).
+     * A price or item edited after the order's day is saved too (when Pancake sends the order's amount). A sales date
+     * a supervisor changed in Pancake (its inserted_at) moves the order to that day in every module.
      *
      * @param  list<array<string, mixed>>  $orders
      * @return int orders updated
@@ -349,22 +350,26 @@ class PancakeSync
                         'total_discount' => (float) ($order['total_discount'] ?? 0),
                         'items' => $order['items'] ?? [],
                     ] : []),
+                    // Orders sent without the field stay on their saved day.
+                    ...(empty($order['inserted_at']) ? [] : self::orderDates($order['inserted_at'])),
                 ]];
             });
 
         $updated = 0;
+        $movedOrders = [];
 
         foreach ($changed->keys()->chunk(500) as $ids) {
             PancakeOrder::whereIn('pancake_order_id', $ids->values())
-                ->get(['id', 'pancake_order_id', 'ordered_on', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name',
+                ->get(['id', 'pancake_order_id', 'ordered_on', 'ordered_at', 'phone_key', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name',
                     'total_price', 'total_discount', 'items', 'non_crd', 'tsd_upsell'])
-                ->each(function (PancakeOrder $order) use ($changed, &$updated) {
+                ->each(function (PancakeOrder $order) use ($changed, &$updated, &$movedOrders) {
                     $fresh = $changed[$order->pancake_order_id];
+                    $savedDay = $order->ordered_on;
+                    $day = $fresh['ordered_on'] ?? $savedDay?->toDateString();
 
-                    if (array_key_exists('items', $fresh)) {
+                    if (array_key_exists('items', $fresh) || $day !== $savedDay?->toDateString()) {
                         // As toOrder() files them, from the order's own day.
-                        $names = array_column($fresh['items'], 'name');
-                        $day = $order->ordered_on?->toDateString();
+                        $names = array_column($fresh['items'] ?? $order->items ?? [], 'name');
                         $fresh['non_crd'] = ($this->catalog ??= new ProductCatalog)->unlisted($names, $day);
                         $fresh['tsd_upsell'] = $this->catalog->tsdUpsell($names, $day);
                     }
@@ -380,10 +385,37 @@ class PancakeSync
 
                     $order->save();
                     $updated++;
+
+                    if ($savedDay && $day !== $savedDay->toDateString()) {
+                        $movedOrders[] = [$order, $savedDay];
+                    }
                 });
         }
 
+        foreach ($movedOrders as [$order, $savedDay]) {
+            rescue(fn () => app(PosLeads::class)->moveBoughtDay($order, $savedDay));
+        }
+
+        // Shecom lists an order under its changed date too, which the day's sales refresh doesn't read.
+        collect($movedOrders)->map(fn (array $moved) => $moved[0]->ordered_on)->unique(fn (CarbonImmutable $day) => $day->toDateString())
+            ->each(fn (CarbonImmutable $day) => rescue(fn () => $this->syncSales($day, $day)));
+
         return $updated;
+    }
+
+    /**
+     * The order's day (segmentation timezone) and UTC time. Pancake sends inserted_at in UTC without an offset.
+     *
+     * @return array{ordered_on: string, ordered_at: string}
+     */
+    private static function orderDates(string $insertedAt): array
+    {
+        $orderedAt = CarbonImmutable::parse($insertedAt, 'UTC');
+
+        return [
+            'ordered_on' => $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString(),
+            'ordered_at' => $orderedAt->toDateTimeString(),
+        ];
     }
 
     /**
@@ -573,8 +605,7 @@ class PancakeSync
             return null;
         }
 
-        // Pancake sends inserted_at in UTC without an offset.
-        $orderedAt = CarbonImmutable::parse($order['inserted_at'], 'UTC');
+        $dates = self::orderDates($order['inserted_at']);
         // The assigned seller only: the creator isn't who the order counts for.
         $seller = $order['assigning_seller'] ?? null;
         $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
@@ -586,8 +617,7 @@ class PancakeSync
 
         return [
             'pancake_order_id' => (string) $orderId,
-            'ordered_on' => $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString(),
-            'ordered_at' => $orderedAt->toDateTimeString(),
+            ...$dates,
             'seller_pancake_id' => $seller['id'] ?? null,
             'seller_name' => isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null,
             'customer_name' => $order['bill_full_name'] ?? ($order['customer']['name'] ?? null),
@@ -600,9 +630,9 @@ class PancakeSync
             'items' => json_encode($order['items'] ?? []),
             // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
             // (A product added later counts from its day: ProductCatalog.)
-            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name'), $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString()),
+            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name'), $dates['ordered_on']),
             // Only a TSD upsell product (Settings → Product Consumption): counted in the CRA's sales only.
-            'tsd_upsell' => $this->catalog->tsdUpsell(array_column($order['items'] ?? [], 'name'), $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString()),
+            'tsd_upsell' => $this->catalog->tsdUpsell(array_column($order['items'] ?? [], 'name'), $dates['ordered_on']),
             'page_name' => $order['page']['name'] ?? null,
             'page_id' => isset($order['page_id']) ? (string) $order['page_id'] : null,
             'conversation_id' => $order['conversation_id'] ?? null,

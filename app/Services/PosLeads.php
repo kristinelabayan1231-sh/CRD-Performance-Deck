@@ -76,6 +76,28 @@ class PosLeads
     }
 
     /**
+     * A CRA's order moved to another sales date: the customer's Repeat Purchase on $from moves with it, unless
+     * they have another sale on $from.
+     */
+    public function moveBoughtDay(PancakeOrder $order, CarbonImmutable $from): void
+    {
+        if (! $order->phone_key || ! PancakeOrder::isCrdAccount($order->seller_name, PancakeOrder::crdAccounts())) {
+            return;
+        }
+
+        $stillBought = PancakeOrder::whereDate('ordered_on', $from)->where('phone_key', $order->phone_key)
+            ->whereKeyNot($order->getKey())->crdProducts()->counted()->exists();
+
+        if ($stillBought) {
+            return;
+        }
+
+        collect($this->trackedLeads([$order->phone_key])[$order->phone_key] ?? [])
+            ->filter(fn (Lead $lead) => $lead->repeat_purchase === 'yes' && $lead->repeat_purchase_on?->isSameDay($from))
+            ->each(fn (Lead $lead) => $lead->forceFill(['repeat_purchase_on' => $order->ordered_on->toDateString()])->save());
+    }
+
+    /**
      * Repeat Purchase = Yes on the order day for the customer's latest lead up to that day (else their
      * earliest later one); false when that lead is Yes already.
      *

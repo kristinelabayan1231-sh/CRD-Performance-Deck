@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-04 · All sales modules · A sales date a supervisor changes in Pancake now moves the order to that date everywhere (within minutes), with its Shecom sales and the customer's Repeat Purchase day · shots: none
+
 - 2026-11-03 · Dashboard · CRD Board redesigned and filled in from the Daily I.S. (every CRA, worked out each time it opens): a dark glass card with today's running Gross Sales and Net Income side by side, the two days before (Gross Sales | Net Income), and yesterday's Top seller (Google photo, highest Net Income) and Top product, all centred; nothing to type, the hand-written poster, mascot and Clear button are gone. Only those who see every CRA's Daily I.S. (CRA Supervisors) get the button · shots: crd-board
 - 2026-11-03 · Daily I.S. · Product Cost counts only the card's own product: a TSD upsell add-on on the order (e.g. Haplunas Balm on a Clear Sight order) is left out; an order of only a TSD product keeps its cost. Pieces match Order Database → Product Report (Nov 1 Clear Sight 34 pcs × ₱35 = ₱1,190) · shots: daily-is
 - 2026-11-04 · Daily I.S. · From Nov 3, 2026 Product Cost uses Shecom's current cost on every day: a cost added or changed in Shecom also updates earlier days (a day that was ₱0 picks it up). Before Nov 3 still the Settings unit costs; Nov 1–2 still the sheet · shots: daily-is
