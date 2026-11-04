@@ -247,6 +247,13 @@ function initTrend() {
                 .sort((a, b) => a.at - b.at);
             ends.forEach((end, place) => {
                 if (place > 0) end.at = Math.max(end.at, ends[place - 1].at + 16);
+            });
+            // Lines ending near zero push the names past the bottom of the graph, so move them back up to fit.
+            ends.reduceRight((below, end) => {
+                end.at = Math.min(end.at, below === null ? height - 4 : below.at - 16);
+                return end;
+            }, null);
+            ends.forEach((end) => {
                 const name = end.line.name.length > 21 ? `${end.line.name.slice(0, 20)}…` : end.line.name;
                 svg('text', { x: margin.left + innerWidth + 10, y: end.at, 'font-size': 12, 'font-weight': end.line.color ? 500 : 700, fill: 'currentColor', class: 'text-ink' }, root).textContent = name;
             });

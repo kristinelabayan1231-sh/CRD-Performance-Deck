@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-05 · Product Performance · Over time graph: the names beside the lines (e.g. Testing products) stay fully on the graph when the lines end near zero, instead of being cut off at the bottom · shots: none
 - 2026-11-04 · All pages · Pages float up as they load, a spinner shows while the next page, a pop-up or the Product Performance graph is loading, and tabs that switch on the page fade their content in · shots: none
 - 2026-11-04 · Dashboard · CRD Board: Top seller and Top product follow the day shown. Today shows today's leaders so far (they can change during the day) instead of yesterday's; Yesterday still shows yesterday's · shots: crd-board
 - 2026-11-04 · Order Database · Product Report: Product cost follows the Daily I.S.: from Nov 3, 2026 each item's pieces × its Shecom cost (₱0 without one), before that the unit cost in Settings → Product Consumption · shots: order-database-product-report
