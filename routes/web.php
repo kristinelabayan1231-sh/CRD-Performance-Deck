@@ -158,6 +158,10 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
     Route::prefix('product-performance')->name('product-performance.')->middleware('can:product_performance.view')->group(function () {
         Route::get('/', [ProductPerformanceController::class, 'index'])->name('index');
+        Route::get('/crd', [ProductPerformanceController::class, 'crd'])->name('crd');
+        Route::get('/tsd', [ProductPerformanceController::class, 'tsd'])->name('tsd');
+        Route::get('/testing', [ProductPerformanceController::class, 'testing'])->name('testing');
+        Route::get('/trend', [ProductPerformanceController::class, 'trend'])->name('trend');
         Route::get('/segmentation-summary', [SegmentationSummaryController::class, 'index'])->name('segmentation-summary');
     });
     Route::prefix('product-target-market')->name('product-target-market.')->middleware('can:product_target_market.view')->group(function () {

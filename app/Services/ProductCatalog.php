@@ -22,6 +22,8 @@ use Illuminate\Support\Collection;
  *
  * TSD upsell products (is_tsd) are kept apart: match() and the "unlisted" checks see only the CRD products, so leads, the
  * Customer Database and churn are unchanged; matchSold() and tsdUpsell() also see the TSD ones, for the CRAs' sales.
+ * In sales a TSD product wins from its starting day, so "Sinuxyl Nasal Inhaler" can be a TSD product from then on while
+ * earlier orders, leads and customers keep it under Sinuxyl.
  */
 class ProductCatalog
 {
@@ -37,11 +39,11 @@ class ProductCatalog
     }
 
     /**
-     * The CRD product the item is, else the TSD upsell product: how the CRAs' sales file an item.
+     * The TSD upsell product the item is on $on, else the CRD product: how the CRAs' sales file an item.
      */
     public function matchSold(string $raw, ?string $on = null): ?Product
     {
-        return $this->match($raw, $on) ?? $this->matchIn($this->tsdKeywords(), $raw, $on);
+        return $this->matchIn($this->tsdKeywords(), $raw, $on) ?? $this->match($raw, $on);
     }
 
     /**

@@ -23,13 +23,21 @@ class ProductPerformance
     /** A product needs this many delivered or returned orders before its RTS rate is called out. */
     private const MIN_FINISHED = 5;
 
+    /** How far back the graph of the past days, weeks and months goes. */
+    private const TREND_DAYS = 30;
+
+    private const TREND_WEEKS = 12;
+
+    private const TREND_MONTHS = 12;
+
     public function __construct(private ProductReport $report) {}
 
     /**
      * @param  array<string, string>  $sellers  staff key => name, the CRD accounts
+     * @param  ?list<string>  $only  only these products (the totals, ranks and insights too), null for every product CRD handles
      * @return array{unit: string, previousFrom: CarbonImmutable, previousTo: CarbonImmutable, total: array<string, int|float>, previousTotal: array<string, int|float>, labels: list<string>, series: list<float>, products: Collection<int, array<string, mixed>>, rts: array{rts: int, finished: int, rate: ?float}, insights: list<array{tone: string, title: string, body: string}>}
      */
-    public function build(array $sellers, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $today): array
+    public function build(array $sellers, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $today, ?array $only = null): array
     {
         $days = (int) $from->diffInDays($to) + 1;
         $previousTo = $from->subDay();
@@ -41,7 +49,7 @@ class ProductPerformance
         };
 
         // Only the products CRD handles (Settings → Product Consumption); orders' other items are left out.
-        $handled = fn (array $line) => $line['listed'];
+        $handled = self::handled($only);
         $lines = $this->report->lines($sellers, $from, $to)->filter($handled)->values();
         $previous = $this->report->lines($sellers, $previousFrom, $previousTo)->filter($handled)->values();
         $buckets = self::buckets($unit, $from, $to);
@@ -77,6 +85,93 @@ class ProductPerformance
                 ...self::lowestRtsInsight($products),
             ],
         ];
+    }
+
+    /**
+     * The past days, weeks (Monday–Sunday) and months up to $to: gross sales, orders and RTS (%) per slot, for all the
+     * products together and for each one, most sales first. Slots before the first order are left off, so a product list
+     * that started lately doesn't show months of nothing. Partial = the last slot isn't over yet.
+     *
+     * @param  array<string, string>  $sellers  staff key => name, the CRD accounts
+     * @param  ?list<string>  $only  only these products, null for every product CRD handles
+     * @return array<string, array{labels: list<string>, partial: bool, total: array{sales: list<float>, orders: list<int>, rts: list<?float>}, products: list<array{name: string, sales: list<float>, orders: list<int>, rts: list<?float>}>}>
+     */
+    public function trend(array $sellers, CarbonImmutable $to, CarbonImmutable $today, ?array $only = null): array
+    {
+        $months = $to->startOfMonth()->subMonths(self::TREND_MONTHS - 1);
+        $lines = $this->report->lines($sellers, $months, $to)->filter(self::handled($only))->values();
+
+        return [
+            'day' => self::trendView($lines, 'day', $to->subDays(self::TREND_DAYS - 1), $to, $today),
+            'week' => self::trendView($lines, 'week', $to->startOfWeek(CarbonImmutable::MONDAY)->subWeeks(self::TREND_WEEKS - 1), $to, $today),
+            'month' => self::trendView($lines, 'month', $months, $to, $today),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $lines
+     * @return array{labels: list<string>, partial: bool, total: array{sales: list<float>, orders: list<int>, rts: list<?float>}, products: list<array{name: string, sales: list<float>, orders: list<int>, rts: list<?float>}>}
+     */
+    private static function trendView(Collection $lines, string $unit, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $today): array
+    {
+        $lines = $lines->filter(fn (array $line) => $line['day'] >= $from->toDateString());
+        if ($lines->isEmpty()) {
+            return ['labels' => [], 'partial' => false, 'total' => ['sales' => [], 'orders' => [], 'rts' => []], 'products' => []];
+        }
+
+        $first = $lines->map(fn (array $line) => self::slotOf($line, $unit))->min();
+        $buckets = array_values(array_filter(self::buckets($unit, $from, $to), fn (string $bucket) => $bucket >= $first));
+        $metrics = function (Collection $group) use ($unit, $buckets) {
+            $counts = $group->groupBy(fn (array $line) => self::slotOf($line, $unit))->map(fn (Collection $slot) => self::counts($slot));
+            $rate = fn (string $bucket) => isset($counts[$bucket]) ? self::rtsRate($counts[$bucket]) : null;
+
+            return [
+                'sales' => array_map(fn (string $bucket) => round($counts[$bucket]['sales'] ?? 0, 2), $buckets),
+                'orders' => array_map(fn (string $bucket) => $counts[$bucket]['orders'] ?? 0, $buckets),
+                'rts' => array_map(fn (string $bucket) => $rate($bucket) === null ? null : round($rate($bucket) * 100, 1), $buckets),
+            ];
+        };
+        $lastDay = match ($unit) {
+            'week' => CarbonImmutable::parse(end($buckets))->addDays(6),
+            'month' => CarbonImmutable::parse(end($buckets))->endOfMonth(),
+            default => CarbonImmutable::parse(end($buckets)),
+        };
+
+        return [
+            'labels' => self::labels($unit, $buckets),
+            'partial' => $lastDay->toDateString() > $to->toDateString() || $lastDay->toDateString() >= $today->toDateString(),
+            'total' => $metrics($lines),
+            'products' => $lines->groupBy('product')
+                ->sortByDesc(fn (Collection $group) => $group->sum('sales'))
+                ->map(fn (Collection $group, string $name) => ['name' => $name, ...$metrics($group)])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * Only the products CRD handles (Settings → Product Consumption), and of those only $only when given.
+     *
+     * @param  ?list<string>  $only
+     */
+    private static function handled(?array $only): callable
+    {
+        return fn (array $line) => $line['listed'] && ($only === null || in_array($line['product'], $only, true));
+    }
+
+    /**
+     * The slot of the chart a line falls in: its hour, day, week (by its Monday) or month (by its 1st).
+     *
+     * @param  array{day: string, hour: int}  $line
+     */
+    private static function slotOf(array $line, string $unit): int|string
+    {
+        return match ($unit) {
+            'hour' => $line['hour'],
+            'week' => CarbonImmutable::parse($line['day'])->startOfWeek(CarbonImmutable::MONDAY)->toDateString(),
+            'month' => substr($line['day'], 0, 8).'01',
+            default => $line['day'],
+        };
     }
 
     /**
@@ -130,11 +225,7 @@ class ProductPerformance
      */
     private static function rtsSeries(Collection $lines, string $unit, array $buckets): array
     {
-        $rates = $lines->groupBy(fn (array $line) => match ($unit) {
-            'hour' => $line['hour'],
-            'week' => CarbonImmutable::parse($line['day'])->startOfWeek(CarbonImmutable::MONDAY)->toDateString(),
-            default => $line['day'],
-        })->map(fn (Collection $group) => self::rtsRate(self::counts($group)));
+        $rates = $lines->groupBy(fn (array $line) => self::slotOf($line, $unit))->map(fn (Collection $group) => self::rtsRate(self::counts($group)));
 
         return array_map(fn (int|string $bucket) => $rates[$bucket] ?? null, $buckets);
     }
@@ -228,7 +319,7 @@ class ProductPerformance
     }
 
     /**
-     * The chart's slots: the day's hours, the days, or the weeks (by their Monday).
+     * The chart's slots: the day's hours, the days, the weeks (by their Monday) or the months (by their 1st).
      *
      * @return list<int|string>
      */
@@ -238,7 +329,11 @@ class ProductPerformance
             return range(0, 23);
         }
 
-        $step = $unit === 'week' ? 'addWeek' : 'addDay';
+        $step = match ($unit) {
+            'week' => 'addWeek',
+            'month' => 'addMonth',
+            default => 'addDay',
+        };
         $buckets = [];
         for ($slot = $unit === 'week' ? $from->startOfWeek(CarbonImmutable::MONDAY) : $from; $slot->lessThanOrEqualTo($to); $slot = $slot->{$step}()) {
             $buckets[] = $slot->toDateString();
@@ -256,6 +351,7 @@ class ProductPerformance
         return array_map(fn (int|string $bucket) => match ($unit) {
             'hour' => CarbonImmutable::today()->setTime((int) $bucket, 0)->format('g A'),
             'week' => 'Week of '.CarbonImmutable::parse($bucket)->format('M j'),
+            'month' => CarbonImmutable::parse($bucket)->format('M Y'),
             default => CarbonImmutable::parse($bucket)->format('M j'),
         }, $buckets);
     }
@@ -269,11 +365,7 @@ class ProductPerformance
      */
     private static function series(Collection $lines, string $unit, array $buckets): array
     {
-        $sums = $lines->groupBy(fn (array $line) => match ($unit) {
-            'hour' => $line['hour'],
-            'week' => CarbonImmutable::parse($line['day'])->startOfWeek(CarbonImmutable::MONDAY)->toDateString(),
-            default => $line['day'],
-        })->map(fn (Collection $group) => (float) $group->sum('sales'));
+        $sums = $lines->groupBy(fn (array $line) => self::slotOf($line, $unit))->map(fn (Collection $group) => (float) $group->sum('sales'));
 
         return array_map(fn (int|string $bucket) => $sums[$bucket] ?? 0.0, $buckets);
     }

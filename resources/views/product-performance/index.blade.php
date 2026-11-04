@@ -1,6 +1,11 @@
 @php
     use App\Services\ProductPerformance;
 
+    // The Products tab (the overall), or the CRD, TSD or Testing tab: the same page for those products only.
+    $productsName = $scope === null ? 'Products' : "{$scope} products";
+    $allProducts = $scope === null ? 'All products' : "All {$scope} products";
+    $noOrders = $scope === null ? 'No CRD orders in these dates.' : "No {$scope} product orders in these dates.";
+
     $control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
     $peso = fn (float $amount) => '₱'.number_format($amount);
     $previousLabel = \App\Support\OrderPeriod::label($previousFrom, $previousTo);
@@ -62,7 +67,7 @@
     ];
     $graphs['rts'] = [
         'label' => 'RTS', 'title' => "RTS per {$unitName}, by product",
-        'note' => "Returned ÷ delivered + returned, of the orders created that {$unitName}".($overallRts === null ? '' : ' · dashed line = all products, '.$percent($overallRts)),
+        'note' => "Returned ÷ delivered + returned, of the orders created that {$unitName}".($overallRts === null ? '' : ' · dashed line = '.Str::lcfirst($allProducts).', '.$percent($overallRts)),
         'grid' => [[20, $percent($rtsTop)], [95, $percent($rtsTop / 2)], [170, '0%']],
         'paths' => $paths(fn ($product, $j) => $product['rts_series'][$j] === null ? null : [$x($j), $rtsY($product['rts_series'][$j]), $labels[$j].': '.$percent($product['rts_series'][$j]).' RTS']),
     ];
@@ -90,11 +95,11 @@
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">Product Performance</h1>
-                <p class="text-sm text-muted">{{ $label }} · every CRD account's Pancake POS orders (Settings → Pancake Accounts), by the day the order was created</p>
+                <p class="text-sm text-muted">{{ $label }} · @if ($scopeSource){{ $scopeSource }} on @endif every CRD account's Pancake POS orders (Settings → Pancake Accounts), by the day the order was created</p>
             </div>
 
             {{-- Day, week (Monday–Sunday), month, last 3 months or From–To; switching keeps the dates shown as the starting point --}}
-            <form method="GET" action="{{ route('product-performance.index') }}" class="flex flex-wrap items-end gap-3" aria-label="Dates">
+            <form method="GET" action="{{ url()->current() }}" class="flex flex-wrap items-end gap-3" aria-label="Dates">
                 @if ($period !== 'range')
                     <input type="hidden" name="from" value="{{ $from->toDateString() }}">
                     <input type="hidden" name="to" value="{{ $to->toDateString() }}">
@@ -175,6 +180,46 @@
             </div>
         </section>
 
+        {{-- The past days, weeks and months as lines, for presenting; loaded after the page opens (resources/js/product-performance.js) --}}
+        @php
+            $trendTo = $to->greaterThan($today) ? $today : $to;
+            $trendView = ['day' => 'day', 'week' => 'week', 'quarter' => 'week', 'range' => 'day'][$period] ?? 'month';
+        @endphp
+        <section class="grid grid-cols-[minmax(0,1fr)] gap-3 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="pp-over-time-title"
+                 data-pp-trend="{{ route('product-performance.trend', ['tab' => $tab, 'to' => $trendTo->toDateString()]) }}"
+                 data-pp-trend-all="{{ $allProducts }}" data-pp-trend-empty="{{ $noOrders }}" data-pp-trend-end="{{ $trendTo->format('M j, Y') }}">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h2 id="pp-over-time-title" class="text-lg font-semibold">{{ $scope === null ? 'Performance' : $productsName }} over time</h2>
+                    <p class="text-sm text-muted" data-pp-trend-note></p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Graph by">
+                        @foreach (['day' => 'Daily', 'week' => 'Weekly', 'month' => 'Monthly'] as $value => $viewName)
+                            <button type="button" data-pp-trend-view="{{ $value }}" aria-pressed="{{ $trendView === $value ? 'true' : 'false' }}"
+                                    class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $viewName }}</button>
+                        @endforeach
+                    </div>
+                    <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Graph shows">
+                        @foreach (['sales' => 'Gross sales', 'orders' => 'Orders', 'rts' => 'RTS'] as $value => $metricName)
+                            <button type="button" data-pp-trend-metric="{{ $value }}" aria-pressed="{{ $value === 'sales' ? 'true' : 'false' }}"
+                                    class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $metricName }}</button>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-sm font-semibold tabular-nums" aria-live="polite" data-pp-trend-headline></p>
+            <div class="flex flex-wrap gap-1.5" role="group" aria-label="Lines on the graph" data-pp-trend-chips></div>
+            <div class="relative min-h-65 sm:min-h-95" data-pp-trend-plot>
+                <p class="py-24 text-center text-sm text-muted" data-pp-trend-status>Loading the graph…</p>
+            </div>
+            <details class="text-sm">
+                <summary class="cursor-pointer font-semibold">See the figures</summary>
+                <div class="mt-2 max-h-80 overflow-auto" data-pp-trend-table></div>
+            </details>
+        </section>
+
         {{-- Ranking, then graph & insights: one panel at a time, slid with ‹ › (resources/js/product-performance.js) --}}
         <section class="grid gap-2.5" aria-roledescription="carousel" aria-label="Ranking, graph and insights" data-pp-slider>
             <div class="flex items-center justify-end gap-2">
@@ -205,7 +250,7 @@
                         </div>
 
                         @if ($products->isEmpty())
-                            <p class="py-8 text-center text-sm text-muted">No CRD orders in these dates.</p>
+                            <p class="py-8 text-center text-sm text-muted">{{ $noOrders }}</p>
                         @else
                             @php
                                 $maxSales = max(1, $products->max('sales'));
@@ -261,7 +306,7 @@
                                                         @if ($rate === null)
                                                             <span class="text-muted">None delivered yet</span>
                                                         @else
-                                                            {{-- Green at or below all products' RTS, red above it --}}
+                                                            {{-- Green at or below the page's products' RTS, red above it --}}
                                                             <span class="mr-1.5 text-[0.6875rem] text-muted">{{ number_format($row['rts']) }} of {{ number_format($done) }}</span>
                                                             <span @class(['rounded-full px-2 py-0.5 text-xs font-bold',
                                                                 'bg-[#dff6f1] text-[#0b6e60]' => $rate <= $overallRts,
@@ -317,7 +362,7 @@
                                         @endforeach
                                         @if ($mode === 'rts' && $overallRts !== null)
                                             <line x1="0" y1="{{ $rtsY($overallRts) }}" x2="640" y2="{{ $rtsY($overallRts) }}" stroke="#343a40" stroke-width="1.5" stroke-dasharray="5 4"/>
-                                            <text x="640" y="{{ $rtsY($overallRts) - 5 }}" font-size="11" font-weight="600" fill="#343a40" text-anchor="end">All products {{ $percent($overallRts) }}</text>
+                                            <text x="640" y="{{ $rtsY($overallRts) - 5 }}" font-size="11" font-weight="600" fill="#343a40" text-anchor="end">{{ $allProducts }} {{ $percent($overallRts) }}</text>
                                         @endif
                                         @foreach ($lines as $i => $line)
                                             <g data-pp-line="{{ $i }}" @unless ($line['shown']) display="none" @endunless>
@@ -367,7 +412,7 @@
 
         <section aria-labelledby="pp-products-title" class="space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <h2 id="pp-products-title" class="font-semibold">Products <span class="text-sm font-normal text-muted">· by gross sales</span></h2>
+                <h2 id="pp-products-title" class="font-semibold">{{ $productsName }} <span class="text-sm font-normal text-muted">· by gross sales</span></h2>
                 <div class="flex flex-wrap gap-3 text-xs text-muted">
                     @foreach ($segments as [$name, $color])
                         <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm" style="background: {{ $color }}"></span>{{ $name }}</span>
@@ -376,7 +421,7 @@
             </div>
 
             @if ($products->isEmpty())
-                <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">No CRD orders in these dates.</p>
+                <p class="rounded-xl bg-white px-4 py-10 text-center text-sm text-muted shadow-sm">{{ $noOrders }}</p>
             @endif
 
             <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -458,11 +503,12 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Orders</dt><dd>Pancake POS orders assigned to a CRD account (Settings → Pancake Accounts), by the day they were created, for the products CRD handles (Settings → Product Consumption); items not on that list are left out. Deleted orders are left out. An order with two products counts under each.</dd></div>
+                <div><dt class="font-semibold text-ink">Orders</dt><dd>Pancake POS orders assigned to a CRD account (Settings → Pancake Accounts), by the day they were created, for the {{ $scopeSource ?? 'CRD and TSD upsell products (Settings → Product Consumption)' }}; items not on that list are left out. Deleted orders are left out. An order with two products counts under each.</dd></div>
                 <div><dt class="font-semibold text-ink">Gross sales</dt><dd>The order's sale before Pancake's discount (Shecom's sale once synced), every status. An order with several products splits it by SRP × qty, else by qty (same as Order Database → Product Report).</dd></div>
                 <div><dt class="font-semibold text-ink">Delivered and RTS</dt><dd>Orders, not pesos: delivered (incl. payment collected) ÷ delivered + RTS (returning, returned, partially returned). E.g. 80/95 = 84%. Shipped orders count once they arrive or come back.</dd></div>
                 <div><dt class="font-semibold text-ink">Cancelled</dt><dd>Cancelled orders ÷ every order of the product. Below the boxes: the product's orders in every Pancake status it has at least one order in.</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Ranking</dt><dd>Each product's place by gross sales (#1 = the most), or by lowest RTS (#1 = the fewest returns), in these dates; ▲ / ▼ = places up or down against its place in {{ $previousLabel }}. New = no sales (or no delivered or returned orders) then. The ranking's RTS is green at or below all products' RTS and red above it. The Rank graph shows the place by gross sales in every {{ $unitName }}; the RTS graph shows each product's RTS of the orders created that {{ $unitName }}.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Ranking</dt><dd>Each product's place by gross sales (#1 = the most), or by lowest RTS (#1 = the fewest returns), in these dates; ▲ / ▼ = places up or down against its place in {{ $previousLabel }}. New = no sales (or no delivered or returned orders) then. The ranking's RTS is green at or below {{ Str::lcfirst($allProducts) }}' RTS and red above it. The Rank graph shows the place by gross sales in every {{ $unitName }}; the RTS graph shows each product's RTS of the orders created that {{ $unitName }}.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Over time</dt><dd>The past 30 days, 12 weeks (Monday–Sunday) or 12 months up to the last day picked above, by the day the orders were created, starting at the first order. A hollow dot means that day, week or month isn't over yet, so it has no line to it. RTS reads low for recent dates until the parcels on the way arrive or come back.</dd></div>
                 <div class="sm:col-span-2"><dt class="font-semibold text-ink">Compared with</dt><dd>The same number of days just before ({{ $previousLabel }}). The chart shows each product's gross sales per hour for a day, per day up to two months, and per week beyond; click a product above the chart to show or hide its line.</dd></div>
             </dl>
         </details>

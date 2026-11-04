@@ -6,8 +6,10 @@ use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\Setting;
+use App\Models\ShecomProductCost;
 use App\Models\User;
 use App\Services\ProductCatalog;
+use App\Services\ProductReport;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +46,23 @@ class ProductReportTest extends TestCase
             'total_price' => $total, 'total_discount' => 0,
             'items' => collect($items)->map(fn (int $qty, string $name) => ['qty' => $qty, 'name' => $name])->values()->all(),
         ]);
+    }
+
+    public function test_product_cost_comes_from_shecom_from_its_first_day_and_settings_before_it(): void
+    {
+        Product::create(['name' => 'Roll On', 'srp' => 500, 'unit_cost' => 40]);
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 50]);
+        $items = [['name' => '3 Bottles Sinuxyl', 'qty' => 2, 'pieces' => 3, 'price' => 300], ['name' => 'Roll On', 'qty' => 1, 'price' => 500]];
+        foreach (['2026-11-02' => '1', '2026-11-03' => '2'] as $day => $id) {
+            PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => $day, 'ordered_at' => $day.' 02:00:00', 'seller_name' => 'CRD LHEI', 'status' => 3, 'total_price' => 1100, 'items' => $items]);
+        }
+        $costs = fn (string $day) => app(ProductReport::class)
+            ->rows(['CRD LHEI' => 'CRD Lhei'], CarbonImmutable::parse($day), CarbonImmutable::parse($day))
+            ->pluck('cost', 'product')->all();
+
+        $this->assertEqualsCanonicalizing(['Sinuxyl' => 210.0, 'Roll On' => 40.0], $costs('2026-11-02'));
+        // 2 × 3 pieces × ₱50; Roll On has no Shecom cost, so ₱0 as in the Daily I.S.
+        $this->assertEqualsCanonicalizing(['Sinuxyl' => 300.0, 'Roll On' => 0.0], $costs('2026-11-03'));
     }
 
     public function test_qty_counts_every_piece_and_rates_go_by_sales(): void

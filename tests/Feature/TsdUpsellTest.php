@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\CraProductSales;
 use App\Services\PosLeads;
+use App\Services\ProductCatalog;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -81,6 +82,26 @@ class TsdUpsellTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertFalse($order->fresh()->tsd_upsell);
+    }
+
+    public function test_an_item_matching_a_crd_product_moves_to_the_tsd_product_in_sales_only_from_its_starting_date(): void
+    {
+        Product::create(['name' => 'Sinuxyl', 'srp' => 499]);
+        $lead = Lead::create([
+            'order_id' => '1', 'customer_name' => 'Customer 1', 'phone_number' => '9170001', 'product_name' => 'Sinuxyl', 'product_raw' => 'Sinuxyl, Sinuxyl Nasal Inhaler',
+            'qty' => 1, 'delivered_date' => '2026-09-25', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-10-09', 'lead_type' => Lead::TYPE_FSD,
+        ]);
+
+        $this->actingAs($this->owner)
+            ->post(route('settings.product-consumption.store'), ['is_tsd' => '1', 'name' => 'Sinuxyl Inhaler', 'keywords' => 'Sinuxyl Nasal Inhaler', 'counts_from' => '2026-10-26'])
+            ->assertSessionHasNoErrors();
+        $catalog = app(ProductCatalog::class);
+
+        $this->assertSame('Sinuxyl', $catalog->matchSold('Sinuxyl Nasal Inhaler', '2026-10-25')->name);
+        $this->assertSame('Sinuxyl Inhaler', $catalog->matchSold('Sinuxyl Nasal Inhaler', '2026-10-26')->name);
+        $this->assertSame('Sinuxyl', $catalog->matchSold('Sinuxyl Spray', '2026-10-26')->name);
+        $this->assertSame('Sinuxyl', $lead->fresh()->product_name);
+        $this->assertSame('Sinuxyl', $catalog->match('Sinuxyl Nasal Inhaler', '2026-10-26')->name);
     }
 
     public function test_several_tsd_products_are_added_in_one_submission(): void
