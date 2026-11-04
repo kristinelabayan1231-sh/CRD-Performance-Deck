@@ -19,7 +19,7 @@ class DashboardBoardController extends Controller
         $day = WorkingDate::realToday();
 
         return view('dashboard.board', [
-            ...$board->for($yesterday ? $day->subDay() : $day, $yesterday),
+            ...$board->for($yesterday ? $day->subDay() : $day),
             'asOf' => $yesterday ? null : now(config('segmentation.timezone')),
         ]);
     }
