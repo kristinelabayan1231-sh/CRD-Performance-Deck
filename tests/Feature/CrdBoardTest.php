@@ -59,18 +59,19 @@ class CrdBoardTest extends TestCase
         ]);
     }
 
-    public function test_board_shows_the_daily_is_for_today_and_the_two_days_before_with_yesterdays_top_seller_and_product(): void
+    public function test_board_shows_the_daily_is_for_today_and_the_two_days_before_with_todays_top_seller_and_product(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
         $julyAnn = $this->user('July Ann', Role::CRA, 'CRD July Ann');
-        $this->order($regina, '2026-10-14', 'Sinuxyl Nasal Spray', 500);
-        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 2000);
-        $this->order($julyAnn, '2026-10-15', 'Clear Sight Hub', 300);
-        $this->order($julyAnn, '2026-10-16', 'Clear Sight Hub', 700);
+        $this->order($julyAnn, '2026-10-14', 'Clear Sight Hub', 500);
+        $this->order($julyAnn, '2026-10-15', 'Clear Sight Hub', 2000);
+        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 300);
+        $this->order($regina, '2026-10-16', 'Sinuxyl Nasal Spray', 700);
 
         $board = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board'))
             ->assertOk()
-            ->assertSeeInOrder(['Running sales today', 'Wed, Oct 14', 'Thu, Oct 15', 'Top seller · Oct 15', 'Regina', 'Top product · Oct 15', 'SINUXYL NASAL SPRAY'])
+            ->assertSeeInOrder(['Running sales today', 'Wed, Oct 14', 'Thu, Oct 15', 'Top seller · Oct 16', 'Regina', 'Top product · Oct 16', 'SINUXYL NASAL SPRAY'])
+            ->assertDontSee('July Ann')
             ->viewData('today');
 
         // Gross Sales and Net Income are the Daily I.S. department totals for each day.
@@ -86,7 +87,7 @@ class CrdBoardTest extends TestCase
     {
         $this->driveFiles = ['Sinuxyl.jpg' => ['file-sinuxyl', 'sinuxyl-photo'], 'Notes.txt' => ['file-notes', 'text']];
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
-        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 2000);
+        $this->order($regina, '2026-10-16', 'Sinuxyl Nasal Spray', 2000);
         $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
 
         $this->actingAs($supervisor)->get(route('dashboard.board'))->assertOk()->assertSee(route('product-photos.show', 'sinuxyl'));
@@ -116,13 +117,13 @@ class CrdBoardTest extends TestCase
         $this->assertSame('2026-10-15', $response->viewData('today')['day']->toDateString());
     }
 
-    public function test_board_says_so_when_yesterday_had_no_sales(): void
+    public function test_board_says_so_when_today_has_no_sales_yet(): void
     {
         $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
 
         $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board'))
             ->assertOk()
-            ->assertSeeText('No sales on Oct 15.')
+            ->assertSeeText('No sales on Oct 16.')
             ->assertSee('data-board-file="CRD Board - 2026-10-16.png"', false);
     }
 
