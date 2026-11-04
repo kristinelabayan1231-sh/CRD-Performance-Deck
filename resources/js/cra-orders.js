@@ -1,3 +1,5 @@
+import { loadingMarkup } from './spinner';
+
 // Conversion Breakdown: clicking a CRA's gross sales opens the orders behind it in a pop-up.
 export function initCraOrders() {
     const dialog = document.getElementById('cra-orders-dialog');
@@ -11,7 +13,7 @@ export function initCraOrders() {
 
         const url = button.dataset.craOrders;
         current = url;
-        body.innerHTML = '<p class="py-10 text-center text-sm text-muted">Loading…</p>';
+        body.innerHTML = loadingMarkup();
         dialog.showModal();
 
         try {

@@ -69,3 +69,83 @@
 .spiel-rich div {
     min-height: 1lh;
 }
+
+/* Page load: the content floats up, one block after the other. A wrapper that is the only child stands aside so its
+   blocks float instead; tab bars (nav) stay put, and dialogs and spinners keep their own behaviour. "backwards" drops the transform once
+   finished, because a lasting one would break fixed and sticky children. Live reloads (data-quiet-load) don't animate. */
+@keyframes float-up {
+    from {
+        opacity: 0;
+        transform: translateY(14px);
+    }
+}
+.float-in > :where(:not(:only-child, dialog, nav)),
+.float-in > :only-child > :where(:not(dialog, nav, .spinner)) {
+    animation: float-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.float-in > :nth-child(2),
+.float-in > :only-child > :nth-child(2) {
+    animation-delay: 40ms;
+}
+.float-in > :nth-child(3),
+.float-in > :only-child > :nth-child(3) {
+    animation-delay: 80ms;
+}
+.float-in > :nth-child(4),
+.float-in > :only-child > :nth-child(4) {
+    animation-delay: 120ms;
+}
+.float-in > :nth-child(n + 5),
+.float-in > :only-child > :nth-child(n + 5) {
+    animation-delay: 160ms;
+}
+html[data-quiet-load] .float-in > *,
+html[data-quiet-load] .float-in > :only-child > :where(:not(.spinner)) {
+    animation: none;
+}
+
+/* Tabs that switch on the page: a panel's animation runs each time it stops being hidden. */
+@keyframes tab-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+[data-tab-panel],
+[data-pp-ranking] {
+    animation: tab-in 0.22s ease-out backwards;
+}
+
+/* Takes the size and colour of the text around it. */
+@keyframes spinner-turn {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.spinner {
+    display: inline-block;
+    flex-shrink: 0;
+    width: 1.15em;
+    height: 1.15em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spinner-turn 0.7s linear infinite;
+}
+
+/* Waiting for the next page (page-loader.js): the current one fades back behind the spinner. */
+main {
+    transition: opacity 0.2s;
+}
+html[data-page-loading] main {
+    opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .float-in > *,
+    .float-in > :only-child > :where(:not(.spinner)),
+    [data-tab-panel],
+    [data-pp-ranking] {
+        animation: none;
+    }
+}

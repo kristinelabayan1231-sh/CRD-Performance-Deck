@@ -15,7 +15,7 @@ export function initPoster() {
     let day = 'today';
 
     const load = async () => {
-        board.innerHTML = message('Loading the Daily I.S.…');
+        board.innerHTML = message('<span class="spinner mr-2 align-[-0.2em]" aria-hidden="true"></span>Loading the Daily I.S.…');
         shot.disabled = true;
         dayButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.posterDay === day)));
         try {
