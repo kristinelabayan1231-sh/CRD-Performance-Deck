@@ -237,8 +237,8 @@ class DailyIncomeStatement
      * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
      * cost per piece now, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). Only the
      * card's own product counts: another product on the order (a TSD upsell add-on, or e.g. a CanPro on a Prime Man
-     * order) is left out. An order with none of the card's product keeps its CRD products (or, with only TSD upsell
-     * products, those).
+     * order) is left out, even a TSD product named after the card's (a Sinuxyl Inhaler on a Sinuxyl order). An order with
+     * none of the card's product keeps its CRD products (or, with only TSD upsell products, those).
      *
      * @param  array<int, string>  $orderGroups  order id => the name of the product group (card) it's on
      * @return array<int, float> order id => cost
@@ -256,7 +256,7 @@ class DailyIncomeStatement
                 ->map(fn (array $item) => [$item, $this->catalog->matchSold(trim((string) ($item['name'] ?? '')), $day->toDateString())])
                 ->filter(fn (array $line) => $line[1] !== null);
             $cardKey = self::productKey($orderGroups[$id]);
-            $isCards = fn (Product $product) => $cardKey !== null && str_contains((string) preg_replace('/[^a-z0-9]/', '', strtolower($product->name)), $cardKey);
+            $isCards = fn (Product $product) => ! $product->is_tsd && $cardKey !== null && str_contains((string) preg_replace('/[^a-z0-9]/', '', strtolower($product->name)), $cardKey);
             $counted = match (true) {
                 $listed->contains(fn (array $line) => $isCards($line[1])) => $listed->filter(fn (array $line) => $isCards($line[1])),
                 $listed->contains(fn (array $line) => ! $line[1]->is_tsd) => $listed->filter(fn (array $line) => ! $line[1]->is_tsd),

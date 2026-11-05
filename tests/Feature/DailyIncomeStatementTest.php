@@ -210,6 +210,19 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta(70 + 50, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
     }
 
+    public function test_product_cost_leaves_out_a_tsd_add_on_named_after_the_cards_product_but_keeps_it_alone(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        Product::create(['name' => 'Sinuxyl Nasal Inhaler', 'is_tsd' => true, 'unit_cost' => 36]);
+        // Sinuxyl 2 pieces with 2 inhalers: only Sinuxyl's 2 × ₱35. One inhaler alone: its ₱36.
+        $this->order($regina, 'Sinuxyl Nasal Spray', 1300, ['items' => [['qty' => 1, 'pieces' => 2, 'name' => 'Sinuxyl'], ['qty' => 1, 'pieces' => 2, 'name' => 'Sinuxyl Nasal Inhaler']]]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 500, ['items' => [['qty' => 1, 'name' => 'Sinuxyl Nasal Inhaler']], 'tsd_upsell' => true]);
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
+
+        $this->assertEqualsWithDelta(70 + 36, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+    }
+
     public function test_a_card_counts_only_its_own_product_not_another_crd_product_on_the_order(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
