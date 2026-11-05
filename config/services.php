@@ -34,29 +34,35 @@ return [
         'redirect' => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
     ],
 
+    // Call recordings: the Drive is connected in Settings → Call Recordings with the Google client above.
+    'google_drive' => [
+        'folder_name' => env('GOOGLE_DRIVE_FOLDER_NAME', 'CRD Call Recordings'),
+        // CRD Board: the "Product Photos" folder (shared with anyone with the link), one photo per product named after it.
+        'product_photos_folder' => env('PRODUCT_PHOTOS_FOLDER_ID', '1HwPfaK0M35IgT0qVV18hYTqKz0QmVjmg'),
+    ],
+
     'shecom' => [
         'url' => env('SHECOM_API_URL', 'https://gm-shecom.up.railway.app/api'),
         'key' => env('SHECOM_API_KEY'),
+        // A separate key for the sales endpoint (per-order sales without the child TSD row).
+        'sales_key' => env('SHECOM_SALES_API_KEY'),
+        // GM Logistics dashboard's external API: product costs for the Daily I.S.
+        'external_url' => env('SHECOM_EXTERNAL_API_URL', 'https://gm-logisticsdashboard.up.railway.app/api/external/v1'),
+        'product_cost_key' => env('SHECOM_PRODUCT_COST_API_KEY'),
+        // Memory for reading the retention report (about 150 MB decoded).
+        'memory_limit' => env('SHECOM_MEMORY_LIMIT', '512M'),
     ],
 
     'pancake' => [
         'pos_url' => env('PANCAKE_API_BASE_URL_ONE', 'https://pos.pages.fm/api/v1'),
         'chat_url' => env('PANCAKE_CHAT_API_URL', 'https://pages.fm/api/public_api/v1'),
+        // Pancake's inbox, where a lead's chat opens: {inbox_url}/{page_id}?c_id={conversation_id}.
+        'inbox_url' => env('PANCAKE_INBOX_URL', 'https://pancake.ph'),
         'key' => env('PANCAKE_API_KEY'),
         // A POS user access token; used instead of the API key when set.
         'access_token' => env('PANCAKE_ACCESS_TOKEN'),
         'shop_id' => env('PANCAKE_SHOP_ID'),
-        // Every PANCAKE_PAGE_<NAME>_ID / _TOKEN pair, from .env or real environment
-        // variables (e.g. Render's), so a new page only needs two lines.
-        'pages' => collect($_ENV + $_SERVER + getenv())
-            ->filter(fn ($value, $key) => is_string($key) && preg_match('/^PANCAKE_PAGE_(.+)_ID$/', $key) && $value)
-            ->map(fn ($id, $key) => [
-                'id' => (string) $id,
-                'token' => env(preg_replace('/_ID$/', '_TOKEN', $key)),
-            ])
-            ->filter(fn (array $page) => $page['token'])
-            ->values()
-            ->all(),
+        // Facebook pages for chat engagements live in Settings → Pancake Pages (pancake_pages table).
     ],
 
     'slack' => [

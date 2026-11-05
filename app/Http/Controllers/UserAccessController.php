@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
+use App\Support\PancakeAccounts;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -100,7 +101,9 @@ class UserAccessController extends Controller
     {
         $data = $request->validate(['pancake_name' => ['present', 'nullable', 'string', 'max:100']]);
 
+        $previous = $user->pancake_name;
         $user->update(['pancake_name' => $this->cleanName($data['pancake_name'])]);
+        PancakeAccounts::switchOwnAccount($user, $previous, $request->user());
 
         if ($request->expectsJson()) {
             return response()->json(['saved' => true]);

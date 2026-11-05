@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
-use App\Models\LeadTransfer;
 use App\Services\LeadGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +14,8 @@ class BacklogTransferController extends Controller
     /**
      * Move unprocessed (backlog) leads to another CRA. Only backlog can be
      * transferred; today's fresh leads and handled leads stay where they are.
+     * The move is from today on: the lead is listed on today for the new CRA and its old day keeps counting it
+     * for the old CRA (LeadMove), so past days and months read the same as before.
      */
     public function store(Request $request): RedirectResponse
     {
@@ -42,16 +43,11 @@ class BacklogTransferController extends Controller
         $to = LeadGenerator::cras()->firstWhere('id', (int) $data['to']);
         $from = $leads->map(fn (Lead $lead) => $lead->assignee?->displayName() ?? 'Unassigned')->unique()->join(', ');
 
-        DB::transaction(function () use ($leads, $to, $request) {
-            foreach ($leads as $lead) {
-                LeadTransfer::create([
-                    'lead_id' => $lead->id,
-                    'from_user_id' => $lead->assigned_to,
-                    'to_user_id' => $to->id,
-                    'transferred_by' => $request->user()->id,
-                ]);
+        $today = Lead::today();
 
-                $lead->forceFill(['assigned_to' => $to->id, 'assigned_at' => now()])->save();
+        DB::transaction(function () use ($leads, $to, $request, $today) {
+            foreach ($leads as $lead) {
+                $lead->transferTo($to, $request->user(), $today);
             }
         });
 

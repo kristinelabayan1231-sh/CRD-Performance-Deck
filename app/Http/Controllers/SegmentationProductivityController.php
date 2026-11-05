@@ -2,22 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Lead;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
+use App\Support\DutyGoals;
 use App\Support\MonthWeeks;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use Throwable;
-
-use function Illuminate\Support\defer;
 
 class SegmentationProductivityController extends Controller
 {
@@ -42,7 +39,8 @@ class SegmentationProductivityController extends Controller
     {
         $user = $request->user();
         $canViewAll = $user->can('productivity.view_all');
-        $today = Lead::today();
+        // Results are on real days (the tracker alone runs on the working date).
+        $today = WorkingDate::realToday();
 
         $filters = $request->validate([
             'view' => ['nullable', Rule::in(['day', 'week'])],
@@ -75,7 +73,7 @@ class SegmentationProductivityController extends Controller
         // day takes minutes, so it runs after the page has been sent.
         if ($period['from']->lessThanOrEqualTo($today) && $period['to']->greaterThanOrEqualTo($today)
             && PancakeSync::isStale($today) && ! PancakeSync::isRunning($today)) {
-            $this->syncLater($pancake, $today);
+            $pancake->syncLater($today);
         }
         $syncDay = $period['to']->min($today);
 
@@ -97,12 +95,20 @@ class SegmentationProductivityController extends Controller
                 'from' => $w['start'], 'to' => $w['end'], 'label' => 'Wk '.$w['number'],
             ])->values();
 
-        $rows = $shown->map(function (User $cra) use ($monthDays, $compareDays, $period, $compare, $points, $slice, $colors, $metric) {
+        // Each CRA's days off in the period so far: Rest Day or Absent / Leave (DutyGoals).
+        $duty = DutyGoals::for($allCras, $period['from'], $period['to']->min($today)->max($period['from']));
+        $periodDays = (int) $period['from']->diffInDays($period['to']->min($today)->max($period['from'])) + 1;
+
+        $rows = $shown->map(function (User $cra) use ($monthDays, $compareDays, $period, $compare, $points, $slice, $colors, $metric, $duty, $periodDays) {
             $days = $monthDays[$cra->id] ?? [];
 
             return [
                 'cra' => $cra,
                 'color' => $colors[$cra->id],
+                'absent_days' => $duty[$cra->id]['absent_days'] ?? 0,
+                'rest_days' => $duty[$cra->id]['rest_days'] ?? 0,
+                'leave_days' => $duty[$cra->id]['leave_days'] ?? 0,
+                'absent_all' => ($duty[$cra->id]['absent_days'] ?? 0) === $periodDays,
                 'now' => SegmentationProductivity::sum($slice($days, $period)),
                 'before' => SegmentationProductivity::sum($slice($compareDays[$cra->id] ?? [], $compare)),
                 'spark' => $points->map(fn (array $p) => [
@@ -161,7 +167,12 @@ class SegmentationProductivityController extends Controller
             ];
         })->values();
 
+        // Backlog progress for the day or week picked.
+        $backlog = $productivity->backlog($shown, $period['from'], $period['to']);
+
         return view('productivity.index', [
+            'backlog' => $rows->map(fn (array $r) => ['cra' => $r['cra'], 'color' => $r['color'], ...$backlog[$r['cra']->id]])->all(),
+            'backlogTotal' => SegmentationProductivity::sumBacklog($backlog),
             'view' => $view,
             'metric' => $metric,
             'metrics' => self::METRICS,
@@ -202,27 +213,13 @@ class SegmentationProductivityController extends Controller
             return back()->with('status', "Pancake is already syncing {$day->format('M j, Y')}. Refresh in a few minutes.");
         }
 
-        $this->syncLater($pancake, $day, force: true);
+        $pancake->syncLater($day, force: true);
 
         return back()->with('status', "Syncing Pancake for {$day->format('M j, Y')}. It takes a few minutes; refresh to see the new numbers.");
     }
 
     /**
-     * Sync after the response is sent; failures are logged, and the page shows the last good sync time.
-     */
-    private function syncLater(PancakeSync $pancake, CarbonImmutable $day, bool $force = false): void
-    {
-        defer(function () use ($pancake, $day, $force) {
-            try {
-                $pancake->syncIfStale($day, $force ? 0 : 60);
-            } catch (Throwable $e) {
-                Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
-            }
-        }, 'pancake-sync-'.$day->toDateString());
-    }
-
-    /**
-     * Day view: the chosen day and the day to compare it with (default: the day before).
+     * Day view: the chosen day (default: today) and the day to compare it with (default: the same day).
      *
      * @return array{0: array{from: CarbonImmutable, to: CarbonImmutable, label: string, key: string}, 1: array{from: CarbonImmutable, to: CarbonImmutable, label: string, key: string}, 2: CarbonImmutable}
      */
@@ -231,7 +228,7 @@ class SegmentationProductivityController extends Controller
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString())->min($today);
         $other = isset($filters['compare']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $filters['compare'])
             ? CarbonImmutable::parse($filters['compare'])->min($today)
-            : $day->subDay();
+            : $day;
 
         $make = fn (CarbonImmutable $d) => ['from' => $d, 'to' => $d, 'label' => $d->format('D, M j'), 'key' => $d->toDateString()];
 

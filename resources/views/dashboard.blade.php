@@ -1,34 +1,147 @@
-<x-layouts.app title="Dashboard">
-    <div class="mb-6 flex items-center gap-3">
-        <span class="grid size-10 place-items-center rounded-lg bg-gradient-to-br from-brand-500 to-violet text-white shadow">
-            <svg class="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 12h3v8h5v-6h4v6h5v-8h3z"/></svg>
-        </span>
-        <div>
-            <h1 class="text-2xl font-semibold">Dashboard</h1>
-            <p class="text-sm text-muted">Welcome, {{ auth()->user()->displayName() }}.</p>
-        </div>
-    </div>
+<x-layouts.app title="Performance Deck">
+    {{--
+        Three groups for one month (to date) or From–To range: results (real date) ·
+        logistics (company-wide) · leads (the tracker's working date, paired lead days).
+    --}}
+    <div class="space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <h1 class="text-xl font-semibold">Performance Deck</h1>
+                <x-dashboard.poster />
+                {{-- Checks every minute and reloads when a sync has saved new data (resources/js/live.js). --}}
+                <span data-live-url="{{ route('dashboard.live') }}" data-live-version="{{ $version }}"
+                      title="Updates by itself when new data comes in. Pancake syncs every 10 minutes."
+                      class="inline-flex items-center gap-1.5 rounded-full bg-teal/10 px-2.5 py-1 text-xs font-semibold text-teal-700">
+                    <span class="size-2 animate-pulse rounded-full bg-teal" aria-hidden="true"></span>
+                    Live{{ $pancakeSyncedAt ? ' · Pancake '.$pancakeSyncedAt->timezone(config('segmentation.timezone'))->format('g:i A') : '' }}
+                </span>
+            </div>
 
-    <div class="space-y-8">
-        @if ($segmentation)
-            <x-dashboard.segmentation :periods="$segmentation" />
+            {{-- One month (to date by default) or From–To range for every section below. --}}
+            @php($control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
+            <form method="GET" action="{{ route('dashboard') }}" class="flex flex-wrap items-center gap-2" aria-label="Dashboard month and dates">
+                <label>
+                    <span class="sr-only">Month</span>
+                    {{-- Picking a month clears the range, which would otherwise win. --}}
+                    <select name="month" onchange="this.form.from.value = ''; this.form.to.value = ''; this.form.submit()"
+                            @class([$control, 'font-semibold', 'border-brand-500 ring-2 ring-brand-200' => ! $range->custom])>
+                        @for ($m = 1; $m <= 12; $m++)
+                            @php($option = $realToday->setDate($realToday->year, $m, 1))
+                            <option value="{{ $option->format('Y-m') }}" @selected(! $range->custom && $range->month->isSameMonth($option)) @disabled($option->greaterThan($realToday))>{{ $option->format('F') }}</option>
+                        @endfor
+                        @if ($range->custom)
+                            <option value="" selected disabled>Custom dates</option>
+                        @endif
+                    </select>
+                </label>
+                <div class="flex items-center gap-1.5">
+                    <input type="date" name="from" value="{{ $range->custom ? $range->from->toDateString() : '' }}" max="{{ $realToday->toDateString() }}" aria-label="From"
+                           onchange="this.form.month.value = ''; this.form.submit()" @class([$control, 'border-brand-500 ring-2 ring-brand-200' => $range->custom])>
+                    <span class="text-sm text-muted">to</span>
+                    <input type="date" name="to" value="{{ $range->custom ? $range->to->toDateString() : '' }}" max="{{ $realToday->toDateString() }}" aria-label="To"
+                           onchange="this.form.month.value = ''; this.form.submit()" @class([$control, 'border-brand-500 ring-2 ring-brand-200' => $range->custom])>
+                </div>
+                @if ($range->custom || ! $range->month->isSameMonth($realToday))
+                    <a href="{{ route('dashboard') }}" class="grid h-9 place-items-center rounded-lg border border-line bg-white px-3 text-xs font-semibold text-muted hover:border-brand-400 hover:text-brand-600">This month</a>
+                @endif
+                <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white">Apply</button></noscript>
+            </form>
+        </div>
+
+        @if ($qtyUnknown->isNotEmpty())
+            <details role="alert" class="rounded-xl border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-3 text-sm text-[#473821]">
+                <summary class="cursor-pointer font-semibold">
+                    {{ $qtyUnknown->count() }} FSD {{ Str::plural('lead', $qtyUnknown->count()) }} with no quantity in Pancake: qty 1 assumed, so the out-of-stock date may be early.
+                </summary>
+                <ul class="mt-2 space-y-1">
+                    @foreach ($qtyUnknown->take(50) as $lead)
+                        <li>{{ $lead->est_out_of_stock_date->format('M j') }} · {{ $lead->customer_name }} · {{ $lead->product_name }} · order {{ $lead->order_id }} · {{ $lead->assignee?->displayName() ?? 'Unassigned' }}</li>
+                    @endforeach
+                    @if ($qtyUnknown->count() > 50)
+                        <li class="text-muted">…and {{ $qtyUnknown->count() - 50 }} more.</li>
+                    @endif
+                </ul>
+            </details>
         @endif
 
-        {{-- Other modules --}}
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            @can('user_access.view')
-                <a href="{{ route('user-access.index') }}"
-                   class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-brand-500 to-violet p-5 text-white shadow-sm transition hover:shadow-lg">
-                    <div aria-hidden="true" class="absolute -top-10 -right-10 size-32 rounded-full bg-white/15"></div>
-                    <p class="relative text-sm font-medium">User Access</p>
-                    <p class="relative mt-2 text-3xl font-bold">{{ \App\Models\User::count() }} <span class="text-sm font-medium">accounts</span></p>
-                    <p class="relative mt-2 text-xs font-semibold">Manage &rarr;</p>
-                </a>
-            @endcan
+        @if ($errors->any())
+            <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
+        @endif
 
-            @if (! $segmentation && ! auth()->user()->can('user_access.view'))
-                <div class="rounded-xl bg-white p-6 text-muted shadow-sm">No modules are available to you yet.</div>
-            @endif
-        </div>
+        @if ($results)
+            <x-panel title="Results" icon="target" title-id="results-title">
+                <x-slot:badges>
+                    <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' · month to date' : '' }}</span>
+                    <span class="text-xs text-muted">Pancake sales and conversion by the real date</span>
+                </x-slot:badges>
+                <x-slot:actions>
+                    {{-- Turns every Results tile over to its graph and back (resources/js/results-flip.js) --}}
+                    <button type="button" data-results-graphs aria-pressed="false" title="Show as graphs" aria-label="Show as graphs"
+                            class="grid size-8 place-items-center rounded-lg border border-brand-200 bg-white text-brand-700 shadow-sm transition hover:border-brand-400 hover:text-brand-600 aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">
+                        <svg data-graphs-icon="chart" class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                        <svg data-graphs-icon="tiles" hidden class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+                    </button>
+                </x-slot:actions>
+                <x-dashboard.results :results="$results" :customers="$customers" :query="array_filter($filters)" />
+            </x-panel>
+        @endif
+
+        {{-- Segmentation Tracker, then goal & conversion per CRA, both full width --}}
+        @if ($segmentation)
+            @php($pairedNote = \App\Support\WorkingDate::lagDays() > 0 ? 'Paired with '.$range->label().': lead '.($leadFrom->equalTo($leadTo) ? 'day '.$leadFrom->format('D, M j') : 'days '.\App\Support\WorkingDate::leadDaysLabel($range->from, $range->to)) : null)
+            <x-dashboard.segmentation :periods="['range' => $segmentation]" active="range" :note="$pairedNote" />
+        @endif
+
+        @if ($results)
+            <x-dashboard.per-cra :results="$results" />
+        @endif
+
+        @if ($logistics)
+            <x-dashboard.logistics :periods="$logisticsPeriod ? ['range' => $logisticsPeriod] : null" :fetched-at="$logisticsFetchedAt" active="range" />
+        @endif
+
+        {{-- Churn: a short strip of its own, below the sections --}}
+        @if ($results)
+            <x-dashboard.churn :churn="$churn" :range="$results['range']" :query="array_filter($filters)" />
+        @endif
+
+
+        @if (! $segmentation && ! $results)
+            <div class="rounded-xl bg-white p-6 text-muted shadow-sm">No modules are available to you yet.</div>
+        @endif
+
+        @if ($results || $segmentation)
+            @php($grace = config('customers.churn_grace_days'))
+            <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
+                <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
+                <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
+                    <div class="sm:col-span-2"><dt class="font-semibold text-ink">Dates</dt><dd>Every section uses the month picked (January–December, from the 1st to today for the current month) or the From–To range. Sales, orders and logistics are by the real date; the Segmentation Tracker uses the paired lead days (Settings → Working Date).</dd></div>
+                    @if ($results)
+                        <div><dt class="font-semibold text-ink">CRD monthly goal (Gross Sales)</dt><dd>Gross sales of every CRA ÷ the CRD monthly goal ({{ '₱'.number_format(\App\Support\SalesGoals::crdMonthly()) }}, Settings → Sales Goals). Pace = day of the month ÷ days in the month. For a From–To range that isn't a whole month, the goal is prorated: monthly goal × days picked ÷ days in the month.</dd></div>
+                        <div><dt class="font-semibold text-ink">Gross sales</dt><dd>Totals of the CRAs' own Pancake POS orders tagged CRD - BROADCAST or CRD - SEGMENTATION, every status (canceled and returned included) except deleted, using Shecom's sales per order (without the child TSD row) once synced, else Pancake's total.</dd></div>
+                        <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRAs' own Pancake POS orders tagged CRD - BROADCAST (BC) or CRD - SEGMENTATION (SC), by order date. Canceled and deleted orders don't count. Click the tile to see them.</dd></div>
+                        <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>Counts customers (one each, not orders). Broadcast + Segmentation = every customer who bought, counted once ÷ (Pancake engagements + Segmentation Tracker leads). Segmentation CVR = Retained + Repeat customers ÷ Segmentation Tracker leads, the same as the Segmentation Tracker's Converted. Broadcast CVR = customers with a Broadcast order ÷ Pancake engagements. A tracker customer who bought through Broadcast counts in both CVRs, but once in Broadcast + Segmentation.</dd></div>
+                        <div><dt class="font-semibold text-ink">AOV (average order value)</dt><dd>Gross sales ÷ total confirmed orders.</dd></div>
+                        <div><dt class="font-semibold text-ink">Churn rate</dt><dd>
+                            Customers lost ÷ customers due × 100, for CRD, FSD and overall. A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $grace }} days to order again.
+                            CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; overall counts a customer on both lists once, by their latest delivery.
+                            Due = customers whose {{ $grace }} days ended in the dates picked. Lost = no Pancake order (not canceled) and no new delivery in that time.
+                            Cold leads the CRAs are still retrying in the Segmentation Tracker (attempts left, no Active status) are left out until all {{ config('segmentation.cold_attempts') }} attempts are made.
+                            Example: 6,000 due and 50 lost = 50 ÷ 6,000 × 100 = 0.83%. Lower is better.
+                        </dd></div>
+                        @if ($customers)
+                            <div><dt class="font-semibold text-ink">Retained and Repeat Customers</dt><dd>From the Segmentation Tracker, one per customer: Retained = FSD Leads (orders, but none handled by a CRA before) with Repeat Purchase = Yes; Repeat = CRD Leads (an earlier CRA-handled order) with Repeat Purchase = Yes. A purchase counts on the day Repeat Purchase was set to Yes, whatever its lead day (a Sept lead who buys on Oct 16 counts on Oct 16). A CRA's Pancake POS sale to a customer not in the tracker is added there as a catered lead with Repeat Purchase = Yes, on the lead day the CRAs were working that day, so it counts in the leads too. Each is shown out of its own leads in the tracker for these dates: Retained out of the FSD Leads, Repeat out of the CRD Leads, with the % beside it. Each is compared with its monthly goal ({{ rtrim(rtrim(number_format(\App\Support\SalesGoals::retainedRate(), 1), '0'), '.') }}% Retained, {{ rtrim(rtrim(number_format(\App\Support\SalesGoals::repeatRate(), 1), '0'), '.') }}% Repeat of their leads, Settings → Sales Goals): goal customers = leads × goal %, rounded up; "more to reach" = goal customers − customers so far. Click a tile to see them.</dd></div>
+                        @endif
+                        <div><dt class="font-semibold text-ink">Goal per CRA</dt><dd>The CRA's gross sales ÷ (their daily goal × days in the dates picked). Daily goal = their own, else the general {{ '₱'.number_format(\App\Support\SalesGoals::craDaily()) }}. On a CRA's day off (Rest Day or Absent / Leave set in My schedule, or not logged in on duty while others were) they have no goal, and their daily goal is split equally among the CRAs on duty. Left = goal − sales.</dd></div>
+                        <div><dt class="font-semibold text-ink">Top product sales per CRA</dt><dd>The product with the most of the CRA's gross sales in the dates picked. Each order item is matched to a Settings → Product Consumption product; an order with several products is split by quantity × SRP.</dd></div>
+                        <div><dt class="font-semibold text-ink">Conv % per CRA</dt><dd>The CRA's (Broadcast + Segmentation orders) ÷ (their engagements + their leads) × 100, the same as Conversion Breakdown. Supervisors see every CRA; a CRA sees only their own numbers.</dd></div>
+                    @endif
+                    @if ($segmentation)
+                        <div><dt class="font-semibold text-ink">Live from Logistics</dt><dd>From the logistics retention report, by delivered date. Retention rate = Retained by CRD ÷ FB delivered. Repeat rate = Actual Order (CRD-delivered customers who placed another CRD order) ÷ CRD delivered.</dd></div>
+                        <div><dt class="font-semibold text-ink">Segmentation Tracker</dt><dd>Leads = leads for the lead days. Catered = leads in the tracker's Catered list (a status, a contact date, or marked as processed) ÷ leads. Converted = Retained + Repeat customers (as the tiles above: Repeat Purchase = Yes bought in the dates picked, one per customer) ÷ all the leads (FSD + CRD), so it's the two tiles combined, not their average (e.g. 667 + 491 = 1,158 of 4,569 + 1,074 = 5,643 leads = 20.5%); under it, Retained (of the FSD Leads) and Repeat (of the CRD Leads), the same % as the tiles. Top CRAs' Conv. counts them the same way. Went cold = leads tagged Cold or CanPro Cold ÷ leads.</dd></div>
+                    @endif
+                </dl>
+            </details>
+        @endif
     </div>
 </x-layouts.app>

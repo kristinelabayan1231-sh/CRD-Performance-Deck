@@ -1,0 +1,129 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Lead;
+use App\Models\LogisticsOrder;
+use App\Models\PancakeOrder;
+use App\Models\Product;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\ConversionBreakdown;
+use Carbon\CarbonImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
+use Tests\TestCase;
+
+class UnlistedProductsTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $owner;
+
+    private Product $nutrilay;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-10 10:00', 'Asia/Manila'));
+        $this->withoutDefer();
+        $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+        $this->nutrilay = Product::create(['name' => 'NutriLay', 'consumption_days' => 15]);
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
+    }
+
+    /**
+     * A CRD-delivered order with its Pancake copy (items, total), sold by CRA Lhea's account.
+     */
+    private function order(string $id, string $name, string $phone, array $items, float $total): void
+    {
+        LogisticsOrder::remember([['order_id' => $id, 'team' => 'crd', 'customer_name' => $name, 'phone_number' => $phone,
+            'product' => implode(', ', array_column($items, 'name')), 'qty' => 1, 'delivered_date' => '2026-10-05']]);
+        PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => '2026-10-02', 'phone_key' => $phone, 'seller_name' => 'CRD LHEI',
+            'status' => 3, 'total_price' => $total, 'items' => $items, 'conversion_type' => PancakeOrder::SEGMENTATION]);
+    }
+
+    private function lead(string $orderId, string $product, array $fields = []): Lead
+    {
+        return Lead::create([
+            'order_id' => $orderId, 'customer_name' => 'Customer '.$orderId, 'phone_number' => '917000'.$orderId, 'product_name' => $product, 'product_raw' => $product,
+            'qty' => 1, 'delivered_date' => '2026-09-25', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-10-09', 'lead_type' => Lead::TYPE_FSD,
+            ...$fields,
+        ]);
+    }
+
+    private function deleteNutrilay(): TestResponse
+    {
+        return $this->actingAs($this->owner)->delete(route('settings.product-consumption.destroy', $this->nutrilay));
+    }
+
+    public function test_deleting_a_product_tags_orders_with_no_listed_product_and_removes_their_untouched_leads(): void
+    {
+        $this->order('1', 'Nora Only', '9171111111', [['name' => 'NutriLay Powder', 'qty' => 2]], 3000);
+        $this->order('2', 'Mia Mixed', '9172222222', [['name' => 'NutriLay', 'qty' => 1], ['name' => 'Pterygium', 'qty' => 1]], 2500);
+        $untouched = $this->lead('3', 'NutriLay');
+        $worked = $this->lead('4', 'NutriLay', ['status' => 'active']);
+        $mixed = $this->lead('5', 'NutriLay, Pterygium');
+
+        $this->deleteNutrilay()->assertSessionHas('status', 'Product "NutriLay" deleted. Removed 1 untouched lead whose product is no longer on the list.');
+
+        $this->assertSame(['1'], PancakeOrder::where('non_crd', true)->pluck('pancake_order_id')->all());
+        $this->assertSame(['1'], LogisticsOrder::where('non_crd', true)->pluck('order_id')->all());
+        $this->assertNull($untouched->fresh());
+        $this->assertNotNull($worked->fresh());
+        $this->assertNotNull($mixed->fresh());
+
+        // New orders are tagged as they're saved.
+        $this->order('6', 'Nora Only', '9171111111', [['name' => 'NutriLay', 'qty' => 1]], 1500);
+        $this->assertTrue(LogisticsOrder::firstWhere('order_id', '6')->non_crd);
+
+        // Adding it back to the list counts from today (Oct 10): its earlier orders stay out.
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['is_testing' => '0', 'name' => 'NutriLay', 'consumption_days' => 15]);
+        $this->assertSame('2026-10-10', Product::firstWhere('name', 'NutriLay')->counts_from->toDateString());
+        $this->assertSame(['1', '6'], PancakeOrder::where('non_crd', true)->orderBy('pancake_order_id')->pluck('pancake_order_id')->all());
+    }
+
+    public function test_a_product_added_today_counts_from_today_only(): void
+    {
+        $lhea = User::create(['email' => 'lhea@example.com', 'display_name' => 'Lhea', 'pancake_name' => 'CRD Lhei', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        $primeMan = fn (string $id, string $day) => PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => $day, 'seller_name' => 'CRD LHEI', 'status' => 3,
+            'total_price' => 499, 'items' => [['name' => 'Prime Man Herbal Tea', 'qty' => 1]], 'conversion_type' => PancakeOrder::SEGMENTATION,
+            'non_crd' => true]);
+        $primeMan('yesterday', '2026-10-09');
+        $primeMan('today', '2026-10-10');
+        LogisticsOrder::remember([
+            ['order_id' => 'L-yesterday', 'team' => 'crd', 'customer_name' => 'A', 'phone_number' => '9173333333', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-09'],
+            ['order_id' => 'L-today', 'team' => 'crd', 'customer_name' => 'B', 'phone_number' => '9174444444', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-10'],
+        ]);
+
+        $this->actingAs($this->owner)->post(route('settings.product-consumption.store'), ['is_testing' => '0', 'name' => 'Prime Man', 'consumption_days' => 15]);
+
+        // Today's order and delivery count; yesterday's stay out.
+        $this->assertSame(['yesterday'], PancakeOrder::where('non_crd', true)->pluck('pancake_order_id')->all());
+        $this->assertSame(['L-yesterday'], LogisticsOrder::where('non_crd', true)->pluck('order_id')->all());
+        $orders = app(ConversionBreakdown::class)->orders(ConversionBreakdown::accounts(collect([$lhea])), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-10'));
+        $this->assertSame(['2026-10-10'], array_keys($orders[$lhea->id]));
+        // New ones are tagged by their own day as they're saved.
+        LogisticsOrder::remember([['order_id' => 'L-old', 'team' => 'crd', 'customer_name' => 'C', 'phone_number' => '9175555555', 'product' => 'Prime Man Herbal Tea', 'qty' => 1, 'delivered_date' => '2026-10-08']]);
+        $this->assertTrue(LogisticsOrder::firstWhere('order_id', 'L-old')->non_crd);
+    }
+
+    public function test_orders_with_no_listed_product_are_left_out_of_the_customer_database_and_sales(): void
+    {
+        $lhea = User::create(['email' => 'lhea@example.com', 'pancake_name' => 'CRD Lhei', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        $this->order('1', 'Nora Only', '9171111111', [['name' => 'NutriLay', 'qty' => 1]], 3000);
+        $this->order('2', 'Mia Mixed', '9172222222', [['name' => 'NutriLay', 'qty' => 1], ['name' => 'Pterygium', 'qty' => 1]], 2500);
+        $this->deleteNutrilay();
+
+        $this->actingAs($this->owner)->get(route('customers.index'))->assertOk()
+            ->assertSee('Mia Mixed')->assertSee('₱2,500.00')->assertDontSee('Nora Only')
+            ->assertViewHas('counts', fn (array $counts) => $counts['all'] === 1);
+        $this->get(route('customers.show', '9171111111'))->assertNotFound();
+
+        // Gross sales: only the mixed order.
+        $sales = app(ConversionBreakdown::class)->orders(collect(['CRD LHEI' => $lhea->id]), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
+        $this->assertSame(2500.0, (float) $sales[$lhea->id]['2026-10-02']['sc_gross']);
+        $this->assertSame(1, $sales[$lhea->id]['2026-10-02']['sc_orders']);
+    }
+}

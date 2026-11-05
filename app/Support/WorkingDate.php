@@ -1,0 +1,101 @@
+<?php
+
+namespace App\Support;
+
+use App\Models\Setting;
+use App\Models\User;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Once;
+
+/**
+ * The day the team is working on, from Settings → Working Date: a fixed gap
+ * behind the real date (e.g. one month, to work through a month's backlog).
+ * While set, the whole app treats it as "today" (leads, backlog, Pancake,
+ * dashboard) and it moves forward one day with each real day. Blank = the
+ * real date.
+ */
+class WorkingDate
+{
+    /** The working date on the anchor day. */
+    public const KEY = 'working_date';
+
+    /** The real date the working date was anchored on. */
+    public const ANCHOR = 'working_date.anchor';
+
+    public static function get(): ?CarbonImmutable
+    {
+        return once(function () {
+            $setting = Setting::firstWhere('key', self::KEY);
+
+            if (! $setting?->value) {
+                return null;
+            }
+
+            // Older saves have no anchor: they were anchored on the day they were saved.
+            $anchor = Setting::value(self::ANCHOR)
+                ?? $setting->updated_at->timezone(config('segmentation.timezone'))->toDateString();
+
+            return CarbonImmutable::parse($setting->value)->startOfDay()
+                ->addDays((int) CarbonImmutable::parse($anchor)->diffInDays(self::realToday(), false));
+        });
+    }
+
+    /**
+     * Start the working date at $start tomorrow (today shows the day before),
+     * then follow the real date day by day. Null = follow the real date again.
+     */
+    public static function startTomorrow(?CarbonImmutable $start, ?User $by = null): void
+    {
+        Setting::put(self::KEY, $start?->subDay()->toDateString(), $by);
+        Setting::put(self::ANCHOR, $start ? self::realToday()->toDateString() : null, $by);
+        Once::flush();
+    }
+
+    /**
+     * How many days the working date is behind the real date (0 when not set).
+     * Results (sales, conversion) happen on real days; the leads worked that day
+     * are from the lead day this many days earlier.
+     */
+    public static function lagDays(): int
+    {
+        $working = self::get();
+
+        return $working ? (int) $working->diffInDays(self::realToday(), false) : 0;
+    }
+
+    /**
+     * The lead day whose leads the CRAs work on real day $day.
+     */
+    public static function leadDayFor(CarbonImmutable $day): CarbonImmutable
+    {
+        return $day->subDays(self::lagDays());
+    }
+
+    /**
+     * "Sep 8" / "Sep 1–7" / "Sep 1 – Oct 1": the lead days paired with real days
+     * $from–$to, or null when no working date is set.
+     */
+    public static function leadDaysLabel(CarbonImmutable $from, ?CarbonImmutable $to = null): ?string
+    {
+        if (self::lagDays() === 0) {
+            return null;
+        }
+
+        $to = self::leadDayFor($to ?? $from);
+        $from = self::leadDayFor($from);
+
+        return match (true) {
+            $from->isSameDay($to) => $from->format('M j'),
+            $from->isSameMonth($to) => $from->format('M j').'–'.$to->format('j'),
+            default => $from->format('M j').' – '.$to->format('M j'),
+        };
+    }
+
+    /**
+     * Today's date in the segmentation timezone, ignoring the working date.
+     */
+    public static function realToday(): CarbonImmutable
+    {
+        return CarbonImmutable::parse(CarbonImmutable::now(config('segmentation.timezone'))->toDateString());
+    }
+}

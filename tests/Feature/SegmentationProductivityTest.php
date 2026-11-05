@@ -2,9 +2,16 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
+use App\Models\DeliveredOrder;
+use App\Models\DutyLogin;
 use App\Models\Lead;
+use App\Models\PancakePage;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\BacklogFill;
+use App\Services\CvrTracker;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\SegmentationProductivity;
@@ -39,10 +46,10 @@ class SegmentationProductivityTest extends TestCase
             'services.shecom.key' => 'test-key',
             'services.pancake.key' => 'pos-key',
             'services.pancake.shop_id' => '1',
-            'services.pancake.pages' => [['id' => 'page-1', 'token' => 'page-token']],
         ]);
         $this->travelTo(CarbonImmutable::parse('2026-10-01 18:00', 'Asia/Manila'));
         $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
+        PancakePage::create(['name' => 'Trusted Eye Care', 'page_id' => '1001', 'access_token' => 'page-token']);
 
         Http::fake(function (Request $request) {
             return match (true) {
@@ -76,14 +83,14 @@ class SegmentationProductivityTest extends TestCase
         ]);
     }
 
-    private function order(string $phone, string $seller, int $status = 3, float $total = 800): array
+    private function order(string $phone, string $seller, int $status = 3, float $total = 800, array $tags = []): array
     {
         $this->seq++;
 
         // 2026-10-01 10:00 UTC = 6 PM in Manila.
         return [
             'id' => 360301022569000 + $this->seq, 'display_id' => $this->seq === 1 ? 1374947 : 9000 + $this->seq, 'inserted_at' => '2026-10-01T10:00:00.000000', 'status' => $status, 'status_name' => 'delivered',
-            'bill_phone_number' => $phone, 'bill_full_name' => 'Buyer', 'total_price' => $total, 'account_name' => 'Trusted Eye Care',
+            'bill_phone_number' => $phone, 'bill_full_name' => 'Buyer', 'total_price' => $total, 'account_name' => 'Trusted Eye Care', 'tags' => $tags,
             'assigning_seller' => ['id' => 'seller-'.md5($seller), 'name' => $seller],
         ];
     }
@@ -105,16 +112,19 @@ class SegmentationProductivityTest extends TestCase
             ['user_id' => 'u-x', 'name' => 'Someone Else', 'total_engagement' => 40],
         ];
         $this->orders = [
-            // Repeat Purchase = Yes lead buys, even through another seller: assigned lead conversion.
-            $this->order('+63 917 000 0001', 'Someone Else'),
-            // Lhea's own orders for a customer outside every leads list, twice: one Pancake conversion.
-            $this->order('09998887777', 'CRD  Lhei'),
-            $this->order('639998887777', 'CRD Lhei'),
-            // Another CRA's lead and Lhea's lead without Repeat Purchase = Yes: neither conversion.
-            $this->order('09170000004', 'CRD Lhei'),
-            $this->order('09170000002', 'CRD Lhei'),
-            // Canceled orders don't count.
-            $this->order('09111111111', 'CRD Lhei', status: 6),
+            // Confirmed = Lhea's own orders tagged CRD - SEGMENTATION or CRD - BROADCAST.
+            // Assigned lead conversion (as on the CVR Tracker): broadcast orders from her own lead and from another CRA's lead,
+            // and every CRD - SEGMENTATION order, even from a customer on no list.
+            $this->order('09170000002', 'CRD Lhei', tags: [397]),
+            $this->order('09170000004', 'CRD Lhei', tags: [397]),
+            $this->order('639998887777', 'CRD Lhei', tags: [398]),
+            $this->order('09998887777', 'CRD  LHEI', tags: [398]),
+            // Pancake conversion: a broadcast order from a customer on no list.
+            $this->order('09998887777', 'CRD Lhei', tags: [397]),
+            // Not Lhea's: another seller's sale to her Repeat Purchase = Yes lead. Untagged doesn't count; canceled is gross sales only.
+            $this->order('+63 917 000 0001', 'Someone Else', tags: [398]),
+            $this->order('09170000003', 'CRD Lhei'),
+            $this->order('09111111111', 'CRD Lhei', status: 6, tags: [398]),
         ];
 
         app(PancakeSync::class)->sync(Lead::today());
@@ -125,14 +135,45 @@ class SegmentationProductivityTest extends TestCase
         $this->assertSame(2, $day['calls']);
         $this->assertSame(5, $day['chat']);
         $this->assertSame(7, $day['answered']);
-        $this->assertSame(1, $day['alc']);
+        $this->assertSame(4, $day['alc']);
         $this->assertSame(1, $day['pc']);
-        $this->assertSame(2, $day['confirmed']);
-        $this->assertEqualsWithDelta(2 / 7, $day['conversion_rate'], 1e-9);
+        $this->assertSame(5, $day['confirmed']);
+        $this->assertEqualsWithDelta(5 / 7, $day['conversion_rate'], 1e-9);
         $this->assertEqualsWithDelta(7 / 4, $day['pickup_rate'], 1e-9);
-        // Sales: the Repeat Purchase customer's order + Lhea's two Pancake-conversion orders, 800 each; canceled and unmatched orders add nothing.
-        $this->assertEqualsWithDelta(2400.0, $day['gross'], 0.001);
-        $this->assertEqualsWithDelta(1200.0, $day['aov'], 0.001);
+        // Sales: Lhea's six tagged orders, 800 each, the canceled one included (every status); untagged adds nothing.
+        // AOV = gross ÷ the five confirmed orders.
+        $this->assertEqualsWithDelta(4800.0, $day['gross'], 0.001);
+        $this->assertEqualsWithDelta(960.0, $day['aov'], 0.001);
+    }
+
+    public function test_conversions_match_the_cvr_trackers_orders_and_assigned_column(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+
+        $this->orders = [
+            // Made under another account, counted for Lhea on the CVR Tracker: a broadcast order from no list.
+            $this->order('09998887771', 'AJ Dela Cruz', tags: [397]),
+            // Lhea's own, but counted for Regina there.
+            $this->order('09998887772', 'CRD Lhei', tags: [397]),
+            // Lhea's own broadcast order the CRA's sheet marked Assigned.
+            $this->order('09998887773', 'CRD Lhei', tags: [397]),
+        ];
+        app(PancakeSync::class)->sync(Lead::today());
+        [$claimed, $given, $marked] = collect($this->orders)->pluck('display_id')->map(fn ($id) => (string) $id)->all();
+        CvrOrderEntry::create(['pancake_order_id' => $claimed, 'user_id' => $lhea->id]);
+        CvrOrderEntry::create(['pancake_order_id' => $given, 'user_id' => $regina->id]);
+        CvrOrderEntry::create(['pancake_order_id' => $marked, 'lead_source' => CvrOrderEntry::ASSIGNED]);
+
+        $cras = collect([$lhea, $regina]);
+        $days = app(SegmentationProductivity::class)->days($cras, Lead::today(), Lead::today());
+
+        foreach ($cras as $cra) {
+            $summary = app(CvrTracker::class)->day($cra, Lead::today())['summary'];
+            $this->assertSame([$summary['assigned_leads'], $summary['pancake_leads']], [$days[$cra->id]['2026-10-01']['alc'], $days[$cra->id]['2026-10-01']['pc']]);
+        }
+        $this->assertSame([1, 1], [$days[$lhea->id]['2026-10-01']['alc'], $days[$lhea->id]['2026-10-01']['pc']]);
+        $this->assertSame([0, 1], [$days[$regina->id]['2026-10-01']['alc'], $days[$regina->id]['2026-10-01']['pc']]);
     }
 
     public function test_rates_are_blank_without_assigned_or_answered(): void
@@ -174,7 +215,10 @@ class SegmentationProductivityTest extends TestCase
             ->assertSee('Assigned base 70 per CRA per day')
             ->assertSee('Sales per CRA')
             ->assertSee('Lhea')
-            ->assertSee('Regina');
+            ->assertSee('Regina')
+            // By default today is shown and compared with today.
+            ->assertViewHas('period', fn ($period) => $period['key'] === now()->toDateString())
+            ->assertViewHas('compare', fn ($compare) => $compare['key'] === now()->toDateString());
 
         $this->actingAs($this->owner)->get(route('productivity.index', ['cras' => [$regina->id], 'view' => 'week']))
             ->assertOk()
@@ -187,9 +231,9 @@ class SegmentationProductivityTest extends TestCase
         $this->cra('Lhea', 'CRD Lhei');
         $this->cra('Regina', 'CRD Rej Vergara');
         $this->orders = [
-            $this->order('09990000001', 'CRD Lhei', total: 1500),
-            $this->order('09990000002', 'CRD Rej Vergara', total: 900),
-            $this->order('09990000003', 'CRD Rej Vergara', total: 900),
+            $this->order('09990000001', 'CRD Lhei', total: 1500, tags: [397]),
+            $this->order('09990000002', 'CRD Rej Vergara', total: 900, tags: [398]),
+            $this->order('09990000003', 'CRD Rej Vergara', total: 900, tags: [397]),
         ];
         app(PancakeSync::class)->sync(Lead::today());
 
@@ -202,6 +246,36 @@ class SegmentationProductivityTest extends TestCase
                     return $selected['top']['name'] === 'Regina' && $selected['top']['value'] === 1800.0 && $selected['total'] === 3300.0;
                 });
         }
+    }
+
+    public function test_pancake_delivered_orders_are_saved_for_the_lead_fallback(): void
+    {
+        $delivered = fn (int $display, int $status, array $items) => [
+            'id' => 5000 + $display, 'display_id' => $display, 'status' => $status, 'bill_phone_number' => '0917000'.$display,
+            'bill_full_name' => "Buyer {$display}", 'partner' => ['extend_code' => "JT{$display}"], 'items' => $items,
+        ];
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
+        $this->orders = [
+            // Two lines of the tracked product plus a freebie: 3 units of Pterygium.
+            $delivered(101, 3, [['variation_info' => ['name' => 'Free Pouch'], 'quantity' => 1], ['variation_info' => ['name' => 'Pterygium Eye Drops'], 'quantity' => 2], ['variation_info' => ['name' => 'Pterygium'], 'quantity' => 1]]),
+            // Returned after delivery: not saved.
+            $delivered(102, 5, [['variation_info' => ['name' => 'Pterygium'], 'quantity' => 1]]),
+            // Already saved from the retention API: left alone.
+            $delivered(103, 3, [['variation_info' => ['name' => 'Pterygium'], 'quantity' => 9]]),
+        ];
+        DeliveredOrder::create(['order_id' => '103', 'customer_name' => 'From Shecom', 'phone_number' => '0917000103', 'product_raw' => 'Pterygium Drops',
+            'qty' => 1, 'delivered_date' => '2026-09-30', 'consumption_days_per_unit' => 15, 'source' => DeliveredOrder::SOURCE_SHECOM]);
+
+        $this->assertSame(1, app(PancakeSync::class)->syncDelivered(Lead::today()));
+
+        $order = DeliveredOrder::firstWhere('order_id', '101');
+        $this->assertSame(3, $order->qty);
+        $this->assertSame('Pterygium Eye Drops', $order->product_raw);
+        $this->assertSame('2026-10-01', $order->delivered_date->toDateString());
+        $this->assertSame('JT101', $order->tracking_number);
+        $this->assertNull(DeliveredOrder::firstWhere('order_id', '102'));
+        $this->assertSame(1, DeliveredOrder::firstWhere('order_id', '103')->qty);
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'updateStatus=3'));
     }
 
     public function test_supervisor_syncs_a_day_from_pancake(): void
@@ -218,6 +292,37 @@ class SegmentationProductivityTest extends TestCase
         $this->assertDatabaseHas('pancake_orders', ['pancake_order_id' => '1374947']);
         $this->assertDatabaseHas('pancake_engagements', ['staff_name' => 'CRD LHEI', 'engagements' => 12]);
         $this->assertNotNull(PancakeSync::lastSync(Lead::today()));
+    }
+
+    public function test_engagements_backfill_saves_only_engagements_and_dry_run_saves_nothing(): void
+    {
+        $this->orders = [$this->order('09998887777', 'CRD Lhei')];
+        $this->engagements = [['user_id' => 'u-lhea', 'name' => 'CRD Lhei', 'total_engagement' => 12]];
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--dry-run' => true, '--from' => '2026-07-01', '--to' => '2026-07-02'])
+            ->expectsOutputToContain('1 staff, 12 engagements (not saved)')
+            ->assertSuccessful();
+        $this->assertDatabaseCount('pancake_engagements', 0);
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--from' => '2026-07-01', '--to' => '2026-07-02'])->assertSuccessful();
+
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-01', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-02', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseMissing('pancake_orders', ['phone_key' => '9998887777']);
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm'));
+    }
+
+    public function test_engagements_backfill_leaves_out_skipped_staff(): void
+    {
+        $this->engagements = [
+            ['user_id' => 'u-lhea', 'name' => 'CRD Lhei', 'total_engagement' => 12],
+            ['user_id' => 'u-gatdula', 'name' => 'Lhea  Gatdula', 'total_engagement' => 8498],
+        ];
+
+        $this->artisan('pancake:sync', ['--engagements' => true, '--skip' => ['Lhea Gatdula'], '--date' => '2026-07-15'])->assertSuccessful();
+
+        $this->assertDatabaseHas('pancake_engagements', ['date' => '2026-07-15', 'staff_name' => 'CRD LHEI', 'engagements' => 12]);
+        $this->assertDatabaseMissing('pancake_engagements', ['staff_name' => 'LHEA GATDULA']);
     }
 
     public function test_orders_use_the_access_token_when_set_and_ask_only_for_needed_fields(): void
@@ -241,6 +346,45 @@ class SegmentationProductivityTest extends TestCase
         $this->artisan('connections:check')
             ->expectsOutputToContain('api_key is invalid')
             ->assertFailed();
+    }
+
+    public function test_backlog_progress_counts_leads_handed_out_catered_and_reordered(): void
+    {
+        $ana = $this->cra('Ana', null);
+        $old = fn (?User $cra, string $name) => Lead::create([
+            'order_id' => $name, 'customer_name' => $name, 'phone_number' => '0917'.crc32($name), 'product_name' => 'Pterygium', 'qty' => 1,
+            'delivered_date' => '2026-08-01', 'consumption_days' => 15, 'est_out_of_stock_date' => '2026-09-20', 'lead_type' => 'fsd', 'assigned_to' => $cra?->id,
+        ]);
+        $own = $old($ana, 'Own A');
+        $old($ana, 'Own B');
+        $pool = $old(null, 'Pool C');
+        $old($ana, 'Worked D')->update(['status' => 'active']);
+
+        app(BacklogFill::class)->fill(Lead::today(), collect([$ana]));
+        $own->update(['status' => 'pjr_drop_call', 'contact_date' => '2026-10-01']);
+        $pool->update(['status' => 'active', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-01']);
+
+        $today = CarbonImmutable::parse('2026-10-01');
+        $backlog = app(SegmentationProductivity::class)->backlog(collect([$ana]), $today, $today)[$ana->id];
+
+        // 3 handed out (2 own, 1 pool; the worked one stays put), 2 catered, 1 reordered.
+        $this->assertSame(['handed' => 3, 'catered' => 2, 'reordered' => 1], array_slice($backlog, 0, 3));
+        $this->assertEqualsWithDelta(2 / 3, $backlog['progress'], 0.0001);
+        $this->assertEqualsWithDelta(1 / 3, $backlog['rate'], 0.0001);
+
+        $this->actingAs($ana)->get('/segmentation-productivity')->assertOk()
+            ->assertSee('Backlog progress')->assertSeeInOrder(['Ana', '3', '2', '66.67%', '1', '33.33%']);
+    }
+
+    public function test_a_cra_not_on_duty_while_others_were_is_labeled_absent(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $regina = $this->cra('Regina', 'CRD Rej Vergara');
+        DutyLogin::factory()->create(['user_id' => $lhea->id]);
+
+        $this->actingAs($this->owner)->get(route('productivity.index'))
+            ->assertViewHas('rows', fn ($rows) => $rows->pluck('absent_days', 'cra.display_name')->all() === ['Lhea' => 0, 'Regina' => 1])
+            ->assertSeeTextInOrder(['Regina', 'Absent / Leave', 'Confirmed orders']);
     }
 
     public function test_cra_sees_only_their_own_numbers(): void

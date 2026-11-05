@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Support\MonthWeeks;
@@ -41,21 +42,24 @@ class WeeklySegmentationController extends Controller
         $ids = $shownCras->pluck('id');
 
         $weekLeads = Lead::whereIn('assigned_to', $ids)
-            ->whereDate('est_out_of_stock_date', '>=', $week['start'])
-            ->whereDate('est_out_of_stock_date', '<=', $week['end']);
+            ->whereDate('listed_on', '>=', $week['start'])
+            ->whereDate('listed_on', '<=', $week['end']);
 
         // assigned_to => day => [assigned, handled]
         $grid = (clone $weekLeads)
-            ->selectRaw('assigned_to, date(est_out_of_stock_date) as day, count(*) as assigned, sum(case when status is not null then 1 else 0 end) as handled')
+            ->selectRaw('assigned_to, date(listed_on) as day, count(*) as assigned, sum(case when status is not null then 1 else 0 end) as handled')
             ->groupBy('assigned_to', 'day')
             ->get()
             ->groupBy('assigned_to')
             ->map(fn ($rows) => $rows->keyBy(fn ($row) => CarbonImmutable::parse($row->day)->toDateString()));
 
-        $rows = $shownCras->map(function (User $cra) use ($grid, $days, $today) {
-            $cells = $days->map(function (CarbonImmutable $day) use ($grid, $cra, $today) {
+        // Leads the backlog fill moved off a day still count as assigned (not handled) there.
+        $departed = LeadMove::countsByCraAndDay(LeadMove::departed($week['start'], $week['end'], $ids));
+
+        $rows = $shownCras->map(function (User $cra) use ($grid, $days, $today, $departed) {
+            $cells = $days->map(function (CarbonImmutable $day) use ($grid, $cra, $today, $departed) {
                 $row = $grid[$cra->id][$day->toDateString()] ?? null;
-                $assigned = (int) ($row->assigned ?? 0);
+                $assigned = (int) ($row->assigned ?? 0) + ($departed[$cra->id][$day->toDateString()] ?? 0);
                 $handled = (int) ($row->handled ?? 0);
 
                 return [
@@ -92,7 +96,7 @@ class WeeklySegmentationController extends Controller
         // This week's carry-over customers, grouped per CRA.
         $unprocessed = (clone $weekLeads)->carryOver($today)
             ->with(['assignee', 'transfers.fromUser'])
-            ->orderBy('est_out_of_stock_date')
+            ->orderBy('listed_on')
             ->orderBy('customer_name')
             ->get()
             ->groupBy('assigned_to');

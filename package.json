@@ -16,5 +16,8 @@
     },
     "optionalDependencies": {
         "@laravel/multiplex": "^0.4.1"
+    },
+    "dependencies": {
+        "html-to-image": "1.11.11"
     }
 }

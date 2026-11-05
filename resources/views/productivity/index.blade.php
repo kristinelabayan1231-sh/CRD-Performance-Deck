@@ -20,12 +20,9 @@
 @endphp
 
 <x-layouts.app title="Segmentation Productivity">
-    <div class="space-y-6">
-        <header class="flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <h1 class="text-2xl font-bold">Segmentation Productivity</h1>
-                <p class="mt-1 text-sm text-muted">{{ $period['label'] }} <span class="text-muted/80">· compared with {{ $compare['label'] }}</span></p>
-            </div>
+    <div class="space-y-4">
+        <header class="flex flex-wrap items-center justify-between gap-4">
+            <h1 class="text-xl font-semibold">Segmentation Productivity <span class="text-sm font-normal text-muted">· {{ $period['label'] }} <span class="text-muted/80">· compared with {{ $compare['label'] }}</span></span></h1>
             <div class="flex flex-wrap items-center gap-3 text-xs text-muted">
                 <span>
                     @if ($syncing)
@@ -76,51 +73,7 @@
                 </fieldset>
             @endif
 
-            <fieldset>
-                <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
-                <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
-                    @foreach (['day' => 'Day', 'week' => 'Week'] as $value => $label)
-                        <label class="cursor-pointer">
-                            <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
-                            <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
-                        </label>
-                    @endforeach
-                </div>
-            </fieldset>
-
             @php($control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
-            @if ($view === 'day')
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Day
-                    <input type="date" name="date" value="{{ $period['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Compare with
-                    <input type="date" name="compare" value="{{ $compare['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-            @else
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Month
-                    <input type="month" name="month" value="{{ $month->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Week
-                    <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                        @foreach ($weeks->filter(fn ($w) => $w['from']->isSameMonth($month)) as $w)
-                            <option value="{{ $w['number'] }}" @selected($w['key'] === $period['key'])>{{ $w['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Compare with
-                    <select name="compare" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
-                        @foreach ($weeks as $w)
-                            <option value="{{ $w['key'] }}" @selected($w['key'] === $compare['key'])>{{ $w['label'] }}</option>
-                        @endforeach
-                    </select>
-                </label>
-            @endif
-
             <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
                 Trend shows
                 <select name="metric" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
@@ -129,34 +82,86 @@
                     @endforeach
                 </select>
             </label>
+            {{-- Dates on the right --}}
+            <div class="ml-auto flex flex-wrap items-end gap-x-6 gap-y-4">
+                <fieldset>
+                    <legend class="mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">View by</legend>
+                    <div class="flex rounded-lg border border-line p-0.5 text-sm font-semibold">
+                        @foreach (['day' => 'Day', 'week' => 'Week'] as $value => $label)
+                            <label class="cursor-pointer">
+                                <input type="radio" name="view" value="{{ $value }}" class="peer sr-only" onchange="this.form.submit()" @checked($view === $value)>
+                                <span class="block rounded-md px-3 py-1 text-muted peer-checked:bg-brand-600 peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-brand-200">{{ $label }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
+
+                @if ($view === 'day')
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Day
+                        <input type="date" name="date" value="{{ $period['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Compare with
+                        <input type="date" name="compare" value="{{ $compare['key'] }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                @else
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Month
+                        <input type="month" name="month" value="{{ $month->format('Y-m') }}" max="{{ $today->format('Y-m') }}" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Week
+                        <select name="week" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                            @foreach ($weeks->filter(fn ($w) => $w['from']->isSameMonth($month)) as $w)
+                                <option value="{{ $w['number'] }}" @selected($w['key'] === $period['key'])>{{ $w['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
+                        Compare with
+                        <select name="compare" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
+                            @foreach ($weeks as $w)
+                                <option value="{{ $w['key'] }}" @selected($w['key'] === $compare['key'])>{{ $w['label'] }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                @endif
+            </div>
             <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white">Apply</button></noscript>
         </form>
 
         {{-- CRA cards --}}
-        <section aria-label="CRA profiles" class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <section aria-label="CRA profiles" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             @forelse ($rows as $row)
                 @php($now = $row['now'])
                 @php($d = $delta($now['confirmed'], $row['before']['confirmed']))
                 @php($max = max(1, $now['assigned'], $now['answered']))
                 @php($focusUrl = $canViewAll ? $query(['cras' => [$row['cra']->id]]) : null)
-                <article class="relative flex min-w-0 flex-col gap-3 rounded-xl border-t-4 bg-white p-4 shadow-sm" style="border-top-color: {{ $row['color'] }}">
+                {{-- Off the whole period: everything below the name is faded --}}
+                <article @class(['relative flex min-w-0 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm', '[&>*:not(:first-child)]:opacity-50' => $row['absent_all']])>
                     <div class="flex items-start justify-between gap-2">
-                        <h2 class="font-semibold">
+                        {{-- The dot is the CRA's colour in the charts --}}
+                        <h2 class="flex items-center gap-2 font-semibold">
+                            <span aria-hidden="true" class="size-2.5 shrink-0 rounded-full" style="background: {{ $row['color'] }}"></span>
                             @if ($focusUrl && count($selected) > 1)
                                 <a href="{{ $focusUrl }}" class="after:absolute after:inset-0 hover:text-brand-600" title="Show only {{ $row['cra']->displayName() }}">{{ $row['cra']->displayName() }}</a>
                             @else
                                 {{ $row['cra']->displayName() }}
                             @endif
                         </h2>
-                        @if ($now['assigned'] === 0 && $now['answered'] === 0)
-                            <span class="rounded-full bg-canvas px-2 py-0.5 text-[11px] font-semibold text-muted">No activity</span>
+                        @if ($row['absent_days'] > 0)
+                            {{-- Days off: Rest Day or Absent / Leave (DutyGoals) --}}
+                            <span class="flex flex-col items-end gap-1"><x-day-off-label :rest="$row['rest_days']" :leave="$row['leave_days']" :counts="! $row['absent_all']" /></span>
+                        @elseif ($now['assigned'] === 0 && $now['answered'] === 0)
+                            <span class="rounded-full bg-canvas px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">No activity</span>
                         @endif
                     </div>
 
                     <div>
                         <p class="text-xs font-semibold tracking-wide text-muted uppercase">Confirmed orders</p>
                         <p class="flex items-baseline gap-2">
-                            <span class="text-3xl font-bold tabular-nums">{{ number_format($now['confirmed']) }}</span>
+                            <span class="text-2xl font-bold tabular-nums">{{ number_format($now['confirmed']) }}</span>
                             <span @class(['text-xs font-semibold tabular-nums', 'text-teal-700' => $d['dir'] === 'up', 'text-coral-700' => $d['dir'] === 'down', 'text-muted' => $d['dir'] === 'flat'])>
                                 {{ $d['dir'] === 'up' ? '▲' : ($d['dir'] === 'down' ? '▼' : '') }} {{ $d['text'] }}
                             </span>
@@ -177,17 +182,17 @@
                                 <span class="text-right font-semibold tabular-nums">{{ number_format($value + ($extra ?? 0)) }}</span>
                             </div>
                         @endforeach
-                        <p class="text-[11px] text-muted">
+                        <p class="text-[0.6875rem] text-muted">
                             Answered: {{ number_format($now['calls']) }} calls + {{ number_format($now['chat']) }} chat ·
                             Confirmed: {{ number_format($now['alc']) }} assigned lead + {{ number_format($now['pc']) }} Pancake
                         </p>
                     </div>
 
                     <dl class="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-line pt-3 text-sm">
-                        <div><dt class="text-[11px] text-muted">Conversion</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['conversion_rate'], 'percent') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">Pick-up</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['pickup_rate'], 'percent') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">AOV</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['aov'], 'money') }}</dd></div>
-                        <div><dt class="text-[11px] text-muted">Gross sales</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['gross'], 'money') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Conversion</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['conversion_rate'], 'percent') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Pick-up</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['pickup_rate'], 'percent') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">AOV</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['aov'], 'money') }}</dd></div>
+                        <div><dt class="text-[0.6875rem] text-muted">Gross sales</dt><dd class="font-semibold tabular-nums">{{ $fmt($now['gross'], 'money') }}</dd></div>
                     </dl>
 
                     {{-- Sparkline of the chosen metric --}}
@@ -198,7 +203,7 @@
                     @php($sx = fn ($i) => round(4 + ($n > 1 ? $i * 192 / ($n - 1) : 96), 1))
                     @php($sy = fn ($v) => round(40 - $v / $top * 34, 1))
                     <div class="border-t border-line pt-3">
-                        <p class="text-[11px] font-semibold tracking-wide text-muted uppercase">{{ $metricLabel }}, {{ $view === 'day' ? 'daily' : 'weekly' }}</p>
+                        <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">{{ $metricLabel }}, {{ $view === 'day' ? 'daily' : 'weekly' }}</p>
                         <svg viewBox="0 0 200 46" class="mt-1 h-12 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="{{ $metricLabel }} trend for {{ $row['cra']->displayName() }}">
                             <line x1="0" x2="200" y1="40" y2="40" stroke="#ebe6ee" stroke-width="1" vector-effect="non-scaling-stroke" />
                             @php($path = '')
@@ -249,7 +254,7 @@
                     <svg viewBox="0 0 320 156" class="h-auto w-full" role="img" aria-label="Confirmed orders per week by CRA, {{ $month->format('F Y') }}">
                         @foreach ([0, $wMax / 2, $wMax] as $tick)
                             <line x1="30" x2="312" y1="{{ $wy($tick) }}" y2="{{ $wy($tick) }}" stroke="#ebe6ee" stroke-width="1" />
-                            <text x="24" y="{{ $wy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[9px]">{{ (int) $tick }}</text>
+                            <text x="24" y="{{ $wy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[0.5625rem]">{{ (int) $tick }}</text>
                         @endforeach
                         @foreach ($weekly as $i => $w)
                             @php($cx = 30 + $slot * ($i + 0.5))
@@ -266,8 +271,8 @@
                                     @php($stacked += $seg['value'])
                                 @endif
                             @endforeach
-                            <text x="{{ $cx }}" y="{{ $wy($stacked) - 4 }}" text-anchor="middle" class="fill-ink text-[9px] font-semibold">{{ number_format($stacked) }}</text>
-                            <text x="{{ $cx }}" y="148" text-anchor="middle" class="fill-muted text-[9px]">{{ $w['label'] }}</text>
+                            <text x="{{ $cx }}" y="{{ $wy($stacked) - 4 }}" text-anchor="middle" class="fill-ink text-[0.5625rem] font-semibold">{{ number_format($stacked) }}</text>
+                            <text x="{{ $cx }}" y="148" text-anchor="middle" class="fill-muted text-[0.5625rem]">{{ $w['label'] }}</text>
                         @endforeach
                     </svg>
                 </figure>
@@ -301,7 +306,7 @@
                     <svg viewBox="0 0 320 166" class="h-auto w-full" role="img" aria-label="Gross sales per CRA by {{ $salesBy }}">
                         @foreach ([0, $sStep, $sTop] as $tick)
                             <line x1="34" x2="312" y1="{{ $sy($tick) }}" y2="{{ $sy($tick) }}" stroke="#ebe6ee" stroke-width="1" />
-                            <text x="30" y="{{ $sy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[8px]">{{ $tick >= 1000 ? '₱'.rtrim(rtrim(number_format($tick / 1000, 1), '0'), '.').'k' : '₱'.$tick }}</text>
+                            <text x="30" y="{{ $sy($tick) + 3 }}" text-anchor="end" class="fill-muted text-[0.5rem]">{{ $tick >= 1000 ? '₱'.rtrim(rtrim(number_format($tick / 1000, 1), '0'), '.').'k' : '₱'.$tick }}</text>
                         @endforeach
                         @foreach ($sales as $i => $b)
                             @php($cx = 34 + $sslot * ($i + 0.5))
@@ -325,10 +330,10 @@
                                 @endif
                             </g>
                         @endforeach
-                        <text x="34" y="135" dy="3" text-anchor="end" class="fill-muted text-[7px]" dx="-4">Top</text>
+                        <text x="34" y="135" dy="3" text-anchor="end" class="fill-muted text-[0.4375rem]" dx="-4">Top</text>
                         @foreach ($sn > 8 ? array_unique([0, intdiv($sn - 1, 2), $sn - 1]) : range(0, $sn - 1) as $i)
                             @if (isset($sales[$i]))
-                                <text x="{{ 34 + $sslot * ($i + 0.5) }}" y="158" text-anchor="middle" class="fill-muted text-[9px]">{{ $sales[$i]['label'] }}</text>
+                                <text x="{{ 34 + $sslot * ($i + 0.5) }}" y="158" text-anchor="middle" class="fill-muted text-[0.5625rem]">{{ $sales[$i]['label'] }}</text>
                             @endif
                         @endforeach
                     </svg>
@@ -347,14 +352,13 @@
             </div>
 
             {{-- The report as in the sheet --}}
-            <section class="overflow-hidden rounded-xl bg-white shadow-sm" aria-labelledby="sheet-title">
-                <header class="flex flex-wrap items-baseline justify-between gap-2 px-4 pt-4 pb-3">
-                    <h2 id="sheet-title" class="font-semibold">Segmentation Productivity Report · {{ $period['label'] }}</h2>
-                    <p class="text-xs text-muted">Assigned base {{ $base }} per CRA per day; the actual count is shown.</p>
-                </header>
+            <x-panel :title="'Segmentation Productivity Report · '.$period['label']" icon="table" title-id="sheet-title" :tinted="false" body-class="">
+                <x-slot:actions>
+                    <p class="text-muted">Assigned base {{ $base }} per CRA per day; the actual count is shown.</p>
+                </x-slot:actions>
                 <div class="overflow-x-auto">
-                    <table class="w-full min-w-[920px] text-sm">
-                        <thead class="bg-canvas/60 text-[11px] tracking-wide text-muted uppercase">
+                    <table class="w-full min-w-[57.5rem] text-sm">
+                        <thead class="bg-canvas/60 text-[0.6875rem] tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-2.5 text-left font-semibold">Team</th>
                                 <th class="px-3 py-2.5 text-right font-semibold">Assigned transactions</th>
@@ -399,19 +403,71 @@
                         </tbody>
                     </table>
                 </div>
-            </section>
+            </x-panel>
+
+            {{-- Older leads handed to each CRA (daily fill or transfer): how many they worked and how many reordered --}}
+            <x-panel :title="'Backlog progress · '.$period['label']" icon="clock" title-id="backlog-title" :tinted="false" body-class="">
+                <x-slot:actions>
+                    <p class="text-muted">Older leads handed to each CRA (daily fill or transfer): how many they worked and how many reordered.</p>
+                </x-slot:actions>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[53.75rem] text-sm">
+                        <thead class="bg-canvas/60 text-[0.6875rem] tracking-wide text-muted uppercase">
+                            <tr>
+                                <th class="px-4 py-2.5 text-left font-semibold">CRA</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Backlog handed out</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Catered</th>
+                                <th class="w-64 px-3 py-2.5 text-left font-semibold">Progress</th>
+                                <th class="px-3 py-2.5 text-right font-semibold">Reordered</th>
+                                <th class="px-4 py-2.5 text-right font-semibold">Reorder rate</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-line whitespace-nowrap tabular-nums">
+                            @foreach ([...$backlog, ['total' => true, ...$backlogTotal]] as $b)
+                                @php($isTotal = $b['total'] ?? false)
+                                <tr @class(['bg-ink font-semibold text-white' => $isTotal])>
+                                    <td class="px-4 py-2.5 font-medium">
+                                        @if ($isTotal)
+                                            TOTAL
+                                        @else
+                                            <span class="flex items-center gap-2"><span class="size-2.5 shrink-0 rounded-full" style="background: {{ $b['color'] }}"></span>{{ $b['cra']->displayName() }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-3 py-2.5 text-right">{{ $fmt($b['handed']) }}</td>
+                                    <td class="px-3 py-2.5 text-right">{{ $fmt($b['catered']) }}</td>
+                                    <td class="px-3 py-2.5">
+                                        <span class="flex items-center gap-2.5">
+                                            <span @class(['h-2 flex-1 overflow-hidden rounded-full', 'bg-white/20' => $isTotal, 'bg-brand-100' => ! $isTotal])>
+                                                <span @class(['block h-full rounded-full', 'bg-brand-200' => $isTotal, 'bg-brand-600' => ! $isTotal]) style="width: {{ round(($b['progress'] ?? 0) * 100, 1) }}%"></span>
+                                            </span>
+                                            <span class="min-w-14 text-right font-semibold">{{ $fmt($b['progress'], 'percent') }}</span>
+                                        </span>
+                                    </td>
+                                    <td class="px-3 py-2.5 text-right font-semibold">{{ $fmt($b['reordered']) }}</td>
+                                    <td class="px-4 py-2.5 text-right">{{ $fmt($b['rate'], 'percent') }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-panel>
         @endif
 
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
+                <div><dt class="font-semibold text-ink">Backlog handed out</dt><dd>Leads from earlier lead days given to the CRA on the lead days paired with the dates picked (Settings → Working Date): by the daily fill (their own untouched leads or the pool) or a transfer. Counted from Oct 20, 2026, when this started being recorded.</dd></div>
+                <div><dt class="font-semibold text-ink">Backlog catered</dt><dd>Of those, leads with a status, a date of contact, or marked catered.</dd></div>
+                <div><dt class="font-semibold text-ink">Backlog progress</dt><dd>Backlog catered ÷ Backlog handed out.</dd></div>
+                <div><dt class="font-semibold text-ink">Reordered · Reorder rate</dt><dd>Of those, customers with Repeat Purchase = Yes bought on or after the day they were handed out (the same purchases the dashboard's Retained and Repeat count), and that count ÷ Backlog handed out.</dd></div>
                 <div><dt class="font-semibold text-ink">Assigned transactions</dt><dd>Segmentation Tracker leads assigned to the CRA for that lead day. The base is {{ $base }}; the actual count is used.</dd></div>
                 <div><dt class="font-semibold text-ink">Answered (calls &amp; chat)</dt><dd>Tracker leads with that Contact Date, plus the CRA's Pancake customer engagements (Chat → Analytics → Engagements) across all pages.</dd></div>
-                <div><dt class="font-semibold text-ink">Assigned lead conversion</dt><dd>Customers with a Pancake order that day who are in the CRA's assigned leads with Repeat Purchase = Yes.</dd></div>
-                <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>Customers on the CRA's own Pancake orders that day who aren't on any assigned leads list. Canceled and deleted orders don't count.</dd></div>
+                <div><dt class="font-semibold text-ink">Total confirmed orders</dt><dd>The CRA's orders that day as the CVR Tracker lists them: Pancake orders tagged CRD - BROADCAST or CRD - SEGMENTATION, counted for the CRA picked there when made under another account. Canceled and deleted orders don't count.</dd></div>
+                <div><dt class="font-semibold text-ink">Assigned lead conversion</dt><dd>Confirmed orders that are Assigned on the CVR Tracker: Type of Order is Segmentation, or the customer is an assigned lead in the Segmentation Tracker (or the CRA's sheet says Assigned).</dd></div>
+                <div><dt class="font-semibold text-ink">Pancake conversion</dt><dd>All other confirmed orders.</dd></div>
                 <div><dt class="font-semibold text-ink">Conversion rate</dt><dd>Total confirmed orders ÷ Answered.</dd></div>
                 <div><dt class="font-semibold text-ink">Pick-up rate</dt><dd>Answered ÷ Assigned transactions.</dd></div>
-                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales are the Pancake order totals behind the confirmed orders (all orders of an assigned-lead customer that day, plus the CRA's Pancake-conversion orders). AOV = Gross sales ÷ Total confirmed orders. These will switch to the conversion breakdown once it is built.</dd></div>
+                <div><dt class="font-semibold text-ink">AOV and Gross sales</dt><dd>Gross sales come from Conversion Breakdown: the CRA's own orders tagged CRD - BROADCAST plus CRD - SEGMENTATION, at Shecom's sales (without the child TSD row). Canceled and deleted orders don't count. AOV = Gross sales ÷ Total confirmed orders.</dd></div>
             </dl>
         </details>
     </div>

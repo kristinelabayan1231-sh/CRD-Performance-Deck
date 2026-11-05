@@ -17,6 +17,9 @@ class Role extends Model
 
     public const CRA_SUPERVISOR = 'cra-supervisor';
 
+    /** Created from Settings → roles as "CRA Team Lead" (not a system role). */
+    public const CRA_TEAM_LEAD = 'cra-team-lead';
+
     protected function casts(): array
     {
         return [

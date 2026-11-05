@@ -1,0 +1,290 @@
+@php
+    $money = fn (?float $value) => $value === null ? '—' : '₱'.number_format($value, 2);
+    // Orders list "1 × Product" only for users a Super Admin turned it on for (Settings → Product Qty).
+    $showQty = (bool) auth()->user()?->show_product_qty;
+@endphp
+
+@php
+    // Product CLTV overall: spend on Product Consumption products that have an SRP, against their CLTVs.
+    $priced = collect($customer['products'])->whereNotNull('cltv');
+    $productSpent = $priced->sum('spent');
+    $productCltv = $priced->sum('cltv');
+    $reachedCount = $priced->where('reached', true)->count();
+    // VIP per product: every product whose CLTV they reached.
+    $vipProducts = $priced->where('reached', true)->pluck('name');
+    $since = \Carbon\CarbonImmutable::parse(\App\Models\LogisticsOrder::coveredFrom())->format('M j, Y');
+    // High AOV: AOV (total spent ÷ priced CRA-handled orders) of at least the minimum; below it, the next order that gets them there.
+    $minAov = (float) config('customers.high_aov_min');
+    $pricedOrders = $customer['priced_cra_orders'];
+    $aov = $pricedOrders > 0 ? $customer['total_spent'] / $pricedOrders : null;
+    $nextOrderForAov = $aov !== null && $aov < $minAov ? $minAov * ($pricedOrders + 1) - $customer['total_spent'] : null;
+    // VIP: the product they're closest to reaching the CLTV on.
+    $closestVip = $priced->where('reached', false)->sortBy(fn (array $p) => $p['cltv'] - $p['spent'])->first();
+    $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
+    $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
+@endphp
+
+<div class="space-y-6">
+    {{-- Who --}}
+    <div class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-canvas/40 p-4">
+        <div class="min-w-0">
+            <h2 class="text-lg font-bold">
+                {{ $customer['name'] }}
+                @if ($customer['segment'])
+                    <span @class([
+                        'ml-1 rounded-full px-2 py-0.5 align-middle text-xs font-semibold',
+                        'bg-teal/15 text-teal-700' => $customer['segment'] === 'Retained',
+                        'bg-sky/20 text-[#156c8c]' => $customer['segment'] !== 'Retained',
+                    ])>{{ $customer['segment'] }}</span>
+                @else
+                    <span class="ml-1 rounded-full bg-white px-2 py-0.5 align-middle text-xs font-semibold text-muted">FSD only</span>
+                @endif
+            </h2>
+            <p class="text-sm text-muted tabular-nums">{{ $customer['phone'] }}</p>
+            <p class="mt-1 text-xs text-muted">
+                @if ($customer['prior_cra_orders'] === null)
+                    Orders before {{ $since }} not checked in Pancake yet.
+                @elseif ($customer['prior_cra_orders'] > 0)
+                    Before {{ $since }}: <span class="font-semibold text-ink">{{ $customer['prior_cra_orders'] }} CRA-handled {{ Str::plural('order', $customer['prior_cra_orders']) }}</span>
+                    (last {{ $customer['prior_last_ordered_on']?->format('M j, Y') }})
+                @else
+                    No CRA-handled orders before {{ $since }}.
+                @endif
+            </p>
+        </div>
+        <div class="flex items-center gap-4">
+            <dl class="flex gap-5 text-right">
+                <div>
+                    <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Purchase Frequency</dt>
+                    <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['purchases']) }}</dd>
+                </div>
+                <div>
+                    <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">By a CRA</dt>
+                    <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['cra_orders']) }}</dd>
+                </div>
+            </dl>
+        </div>
+    </div>
+
+    @if ($vipProducts->isNotEmpty())
+        <div class="flex flex-wrap items-center gap-3 rounded-xl bg-[#fbf3e0] px-4 py-3 text-[#6e5214] ring-1 ring-[#f3dca3]">
+            <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-xs font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+            <span class="text-sm font-semibold">VIP in {{ $vipProducts->join(', ') }}</span>
+            <span class="text-xs text-[#6e5214]/75">Spent the CLTV (SRP × {{ config('customers.cltv_units') }}) on {{ $vipProducts->count() === 1 ? 'this product' : 'each of these products' }}</span>
+        </div>
+    @endif
+
+    {{-- A merged customer's numbers, and other customers with the same name to confirm as this person --}}
+    @if (count($customer['numbers']) > 1 || $customer['possible_matches'])
+        @php($canMerge = auth()->user()->can('customers.merge'))
+        <section aria-label="Contact numbers" class="space-y-3 rounded-xl border border-line p-4">
+            @if (count($customer['numbers']) > 1)
+                <div>
+                    <h3 class="{{ $heading }}">{!! $bar !!}Contact numbers</h3>
+                    <ul class="flex flex-wrap gap-2 text-sm">
+                        @foreach ($customer['numbers'] as $number)
+                            <li class="flex items-center gap-2 rounded-full bg-canvas px-3 py-1 tabular-nums">
+                                {{ $number['phone'] }}
+                                @if ($number['main'])
+                                    <span class="text-[0.6875rem] font-semibold text-muted">main</span>
+                                @elseif ($canMerge)
+                                    <form method="POST" action="{{ route('customers.separate', $number['phone_key']) }}">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" class="text-[0.6875rem] font-semibold text-coral-700 hover:underline" title="Make this number its own customer again">Separate</button>
+                                    </form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            @if ($customer['possible_matches'])
+                <div>
+                    <h3 class="{{ $heading }}">{!! $bar !!}Possibly the same customer</h3>
+                    <p class="mb-2 text-xs text-muted">Other customers named {{ $customer['name'] }}. If one is this same person, merge them: they'll show as one row with both numbers and their orders combined.</p>
+                    <ul class="divide-y divide-line overflow-hidden rounded-lg border border-line text-sm">
+                        @foreach ($customer['possible_matches'] as $match)
+                            <li class="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+                                <span class="tabular-nums">
+                                    <span class="font-medium">{{ $match['phone'] }}</span>
+                                    <span class="text-xs text-muted">· {{ $match['purchases'] }} {{ Str::plural('delivery', $match['purchases']) }}{{ $match['last_delivered'] ? ', last '.\Carbon\CarbonImmutable::parse($match['last_delivered'])->format('M j, Y') : '' }}</span>
+                                </span>
+                                @if ($canMerge)
+                                    <form method="POST" action="{{ route('customers.merge', $customer['phone_key']) }}">
+                                        @csrf
+                                        <input type="hidden" name="other" value="{{ $match['phone_key'] }}">
+                                        <button type="submit" class="rounded-lg bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700">Same customer</button>
+                                    </form>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                    @unless ($canMerge)
+                        <p class="mt-2 text-xs text-muted">Ask a supervisor to merge them.</p>
+                    @endunless
+                </div>
+            @endif
+        </section>
+    @endif
+
+    {{-- The two CLTVs, highlighted --}}
+    <section aria-label="Customer lifetime value" class="grid gap-3 sm:grid-cols-2">
+        <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
+            <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
+            <p class="relative text-xs font-semibold tracking-wide uppercase">Customer CLTV · Total spent</p>
+            <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($customer['total_spent']) }}</p>
+            <p class="relative text-xs text-white/90">Total spent on {{ number_format($customer['cra_orders']) }} CRA-handled delivered {{ Str::plural('order', $customer['cra_orders']) }} (Pancake POS)</p>
+        </div>
+        <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#0e8f7c] to-[#0b6b5d] p-4 text-white shadow-sm">
+            <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
+            <p class="relative text-xs font-semibold tracking-wide uppercase">Product CLTV</p>
+            @if ($priced->isEmpty())
+                <p class="relative mt-1 text-3xl font-bold">—</p>
+                <p class="relative text-xs text-white/90">No Product Consumption products with an SRP</p>
+            @else
+                <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($productSpent) }} <span class="text-sm font-semibold text-white/90">of {{ $money($productCltv) }}</span></p>
+                <div class="relative mt-1.5 h-2 overflow-hidden rounded-full bg-white/25" role="progressbar" aria-label="Product CLTV reached" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round(min(1, $productSpent / max(1, $productCltv)) * 100) }}">
+                    <div class="h-full rounded-full bg-white" style="width: {{ round(min(1, $productSpent / max(1, $productCltv)) * 100, 1) }}%"></div>
+                </div>
+                <p class="relative mt-1 text-xs text-white/90">{{ $reachedCount }} of {{ $priced->count() }} {{ Str::plural('product', $priced->count()) }} reached CLTV</p>
+            @endif
+        </div>
+    </section>
+
+    {{-- How far from High AOV and from VIP --}}
+    @if ($aov !== null || $closestVip)
+        <section aria-label="High AOV and VIP" class="grid gap-3 sm:grid-cols-2">
+            @if ($aov !== null)
+                <div class="rounded-xl border border-line bg-white p-4">
+                    <p class="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
+                        <span aria-hidden="true" @class(['size-2 rounded-full', 'bg-brand-600' => $nextOrderForAov === null, 'bg-brand-300' => $nextOrderForAov !== null])></span>
+                        {{ $nextOrderForAov === null ? 'High AOV' : 'Potential High AOV' }}
+                    </p>
+                    <p class="mt-1 text-xl font-bold tabular-nums">AOV {{ $money($aov) }} <span class="text-sm font-semibold text-muted">of {{ $money($minAov) }}</span></p>
+                    @if ($nextOrderForAov === null)
+                        <p class="text-xs text-muted">Total spent {{ $money($customer['total_spent']) }} ÷ {{ $pricedOrders }} CRA-handled {{ Str::plural('order', $pricedOrders) }}</p>
+                    @else
+                        <p class="text-sm"><span class="font-bold text-brand-700 tabular-nums">{{ $money($nextOrderForAov) }}</span> remaining: a next order of at least this makes them High AOV</p>
+                    @endif
+                </div>
+            @endif
+            @if ($closestVip)
+                <div class="rounded-xl border border-[#f3dca3] bg-[#fffaf0] p-4 text-[#6e5214]">
+                    <p class="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase">
+                        <span aria-hidden="true" class="size-2 rounded-full bg-[#c9a24a]"></span>
+                        {{ $vipProducts->isEmpty() ? 'To become VIP' : 'Next VIP product' }}
+                    </p>
+                    <p class="mt-1 text-xl font-bold tabular-nums text-[#1a1814]">{{ $money($closestVip['cltv'] - $closestVip['spent']) }} <span class="text-sm font-semibold text-[#6e5214]">remaining on {{ $closestVip['name'] }}</span></p>
+                    <p class="text-xs">Spent {{ $money($closestVip['spent']) }} of its CLTV {{ $money($closestVip['cltv']) }} (SRP × {{ config('customers.cltv_units') }})</p>
+                </div>
+            @endif
+        </section>
+    @endif
+
+    {{-- Status breakdown --}}
+    <section>
+        <h3 class="{{ $heading }}">{!! $bar !!}Orders by status</h3>
+        <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            @foreach ($customer['statuses'] as $status)
+                <div class="rounded-lg border border-line bg-white p-3">
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold {{ $status['classes'] }}">{{ $status['label'] }}</span>
+                    <p class="mt-1.5 text-lg font-bold tabular-nums">{{ number_format($status['orders']) }} <span class="text-sm font-normal text-muted">{{ Str::plural('order', $status['orders']) }}</span></p>
+                    <p class="text-sm font-semibold tabular-nums text-muted">{{ $money($status['amount']) }}</p>
+                    @if ($status['unpriced'])
+                        <p class="text-xs text-muted">{{ $status['unpriced'] }} not in Pancake yet (no amount)</p>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+    </section>
+
+    {{-- Product CLTV --}}
+    <section>
+        <h3 class="{{ $heading }} !mb-0.5">{!! $bar !!}Product CLTV per product</h3>
+        <p class="mb-2 text-xs text-muted">What they spent on each Product Consumption product in CRA-handled orders (order amounts; a mixed order split by qty), against the product's CLTV (SRP × {{ config('customers.cltv_units') }}).</p>
+        @if (empty($customer['products']))
+            <p class="rounded-lg border border-dashed border-line px-3 py-4 text-center text-sm text-muted">No Product Consumption products in this customer's delivered orders.</p>
+        @else
+            <div class="overflow-x-auto rounded-lg border border-line">
+                <table class="w-full min-w-[35rem] text-left text-sm">
+                    <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                        <tr>
+                            <th class="py-2 pr-3 pl-3 font-semibold">Product</th>
+                            <th class="px-3 py-2 text-right font-semibold">Units</th>
+                            <th class="px-3 py-2 text-right font-semibold">Spent</th>
+                            <th class="bg-teal/10 px-3 py-2 text-right font-semibold text-teal-700">CLTV</th>
+                            <th class="py-2 pr-3 pl-3 font-semibold">Progress</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-line">
+                        @foreach ($customer['products'] as $product)
+                            <tr>
+                                <td class="py-2 pr-3 pl-3 font-medium">{{ $product['name'] }}</td>
+                                <td class="px-3 py-2 text-right tabular-nums">{{ number_format($product['units']) }}</td>
+                                <td class="px-3 py-2 text-right tabular-nums" title="{{ $product['srp'] !== null ? 'CLTV '.$money($product['cltv']) : 'No SRP yet' }}">{{ $money($product['spent']) }}</td>
+                                <td class="bg-teal/5 px-3 py-2 text-right font-semibold tabular-nums text-teal-700">{{ $money($product['cltv']) }}</td>
+                                <td class="py-2 pl-3">
+                                    @if ($product['cltv'] === null)
+                                        <span class="text-xs text-muted">No SRP set</span>
+                                    @elseif ($product['reached'])
+                                        <span class="rounded-full bg-[#d4edbc] px-2 py-0.5 text-xs font-semibold text-[#11734b]">Reached CLTV</span>
+                                    @else
+                                        <div class="flex items-center gap-2">
+                                            <div class="h-2 w-24 overflow-hidden rounded-full bg-canvas" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round($product['progress'] * 100) }}">
+                                                <div class="h-full rounded-full bg-brand-500" style="width: {{ round($product['progress'] * 100, 1) }}%"></div>
+                                            </div>
+                                            <span class="text-xs whitespace-nowrap text-muted tabular-nums">{{ $money($product['cltv'] - $product['spent']) }} to go</span>
+                                        </div>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        @endif
+    </section>
+
+    {{-- Orders --}}
+    <section>
+        <h3 class="{{ $heading }}">{!! $bar !!}Orders</h3>
+        <div class="overflow-x-auto rounded-lg border border-line">
+            <table class="w-full min-w-[40rem] text-left text-sm">
+                <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                    <tr>
+                        <th class="py-2 pr-3 pl-3 font-semibold">Ordered</th>
+                        <th class="px-3 py-2 font-semibold">Order #</th>
+                        <th class="px-3 py-2 font-semibold">Products</th>
+                        <th class="px-3 py-2 font-semibold">Status</th>
+                        <th class="px-3 py-2 font-semibold">Handled by</th>
+                        <th class="py-2 pr-3 pl-3 text-right font-semibold">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-line">
+                    @foreach ($customer['orders'] as $order)
+                        <tr class="align-top">
+                            <td class="py-2 pr-3 pl-3 whitespace-nowrap tabular-nums">
+                                {{ $order['date']?->format('M j, Y') ?? '—' }}
+                                @if ($order['delivered_on'])
+                                    <span class="block text-xs text-muted">delivered {{ $order['delivered_on']->format('M j') }}</span>
+                                @endif
+                            </td>
+                            <td class="px-3 py-2 tabular-nums">{{ $order['order_id'] }}</td>
+                            <td class="px-3 py-2">{{ collect($order['items'])->map(fn ($i) => ($showQty ? ($i['qty'] ?? 1).' × ' : '').$i['name'])->join(', ') ?: '—' }}</td>
+                            <td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap {{ $order['status_classes'] }}">{{ $order['status_label'] }}</span></td>
+                            <td class="px-3 py-2">
+                                {{ $order['seller'] ?? ($order['team'] === 'crd' ? 'CRD' : ($order['team'] === 'fsd' ? 'FSD' : '—')) }}
+                                @if ($order['by_cra'])
+                                    <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand-700">CRA</span>
+                                @endif
+                            </td>
+                            <td class="py-2 pr-3 pl-3 text-right tabular-nums">{{ $money($order['amount']) }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

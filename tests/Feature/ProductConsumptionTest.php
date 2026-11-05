@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use Database\Seeders\ProductConsumptionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -38,7 +39,7 @@ class ProductConsumptionTest extends TestCase
     public function test_product_can_be_created(): void
     {
         $this->actingAs($this->owner)
-            ->post('/settings/product-consumption', ['name' => '  Sinuxyl ', 'keywords' => 'Sinuvex'])
+            ->post('/settings/product-consumption', ['is_testing' => '0', 'name' => '  Sinuxyl ', 'keywords' => 'Sinuvex'])
             ->assertSessionHasNoErrors()->assertSessionHas('status');
 
         $product = Product::firstWhere('name', 'Sinuxyl');
@@ -48,9 +49,75 @@ class ProductConsumptionTest extends TestCase
         $this->actingAs($this->owner)->get('/settings/product-consumption')->assertSee('Sinuxyl')->assertSee('Sinuvex');
     }
 
+    public function test_srp_is_saved_and_sets_the_cltv(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'CanPro', 'srp' => '499'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame(14970.0, $product->cltv());
+
+        $this->actingAs($this->owner)->get('/settings/product-consumption')->assertSee('₱14,970');
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'srp' => '-1'])
+            ->assertSessionHasErrorsIn("product{$product->id}", ['srp']);
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'srp' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->cltv());
+    }
+
+    public function test_unit_cost_is_saved(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'CanPro', 'unit_cost' => '35.50'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame('35.50', $product->unit_cost);
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'unit_cost' => '-1'])
+            ->assertSessionHasErrorsIn("product{$product->id}", ['unit_cost']);
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'unit_cost' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->unit_cost);
+    }
+
+    public function test_a_supervisor_can_set_only_the_srp(): void
+    {
+        $product = Product::create(['name' => 'CanPro', 'keywords' => 'Can Pro', 'consumption_days' => 10]);
+        $supervisor = User::create(['email' => 'sup@gmail.com', 'role_id' => Role::where('slug', Role::CRA_SUPERVISOR)->value('id'), 'is_active' => true]);
+
+        $this->actingAs($supervisor)->get(route('settings.product-consumption.index', ['product' => $product->id]))
+            ->assertOk()->assertSee(route('settings.product-consumption.srp', $product))->assertDontSee('Add product');
+
+        $this->actingAs($supervisor)->patch(route('settings.product-consumption.srp', $product), ['srp' => '499', 'name' => 'Renamed'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame(['CanPro', '499.00'], [$product->fresh()->name, $product->fresh()->srp]);
+
+        $this->actingAs($supervisor)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Renamed'])->assertForbidden();
+    }
+
+    public function test_consumption_days_are_saved_and_must_be_a_sensible_number(): void
+    {
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'CanPro', 'consumption_days' => '10'])->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'CanPro');
+        $this->assertSame(10, $product->consumption_days);
+
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'CanPro', 'consumption_days' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($product->fresh()->consumption_days);
+
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Bad', 'consumption_days' => '0'])->assertSessionHasErrors('consumption_days');
+    }
+
+    public function test_seeder_adds_products_and_keeps_existing_keywords(): void
+    {
+        Product::create(['name' => 'Scar Erase', 'keywords' => 'Scar Gel', 'consumption_days' => 15]);
+
+        $this->seed(ProductConsumptionSeeder::class);
+        $this->seed(ProductConsumptionSeeder::class);
+
+        $this->assertSame(count(ProductConsumptionSeeder::PRODUCTS), Product::count());
+        $scar = Product::firstWhere('name', 'Scar Erase');
+        $this->assertSame(10, $scar->consumption_days);
+        $this->assertSame('Scar Gel', $scar->keywords);
+    }
+
     public function test_product_name_is_required(): void
     {
-        $this->actingAs($this->owner)->post('/settings/product-consumption', ['name' => '  '])->assertSessionHasErrors('name');
+        $this->actingAs($this->owner)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => '  '])->assertSessionHasErrors('name');
         $this->assertSame(0, Product::count());
     }
 
@@ -59,8 +126,29 @@ class ProductConsumptionTest extends TestCase
         Product::create(['name' => 'Audicure']);
 
         $this->actingAs($this->owner)
-            ->post('/settings/product-consumption', ['name' => 'Audicure'])
+            ->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Audicure'])
             ->assertSessionHasErrors('name');
+    }
+
+    public function test_a_product_counts_from_its_starting_date(): void
+    {
+        $this->actingAs($this->owner)
+            ->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Rose Soap', 'counts_from' => '2026-10-21'])
+            ->assertSessionHasNoErrors();
+        $product = Product::firstWhere('name', 'Rose Soap');
+        $this->assertSame('2026-10-21', $product->counts_from->toDateString());
+
+        // Changed on its row; blank = from the start; an edit without the field keeps it.
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => '2026-10-01']);
+        $this->assertSame('2026-10-01', $product->fresh()->counts_from->toDateString());
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap']);
+        $this->assertSame('2026-10-01', $product->fresh()->counts_from->toDateString());
+        $this->actingAs($this->owner)->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => '']);
+        $this->assertNull($product->fresh()->counts_from);
+
+        $this->actingAs($this->owner)
+            ->patch("/settings/product-consumption/{$product->id}", ['name' => 'Rose Soap', 'counts_from' => 'Oct 21'])
+            ->assertSessionHasErrorsIn("product{$product->id}", 'counts_from');
     }
 
     public function test_product_can_be_updated_and_deleted(): void
@@ -96,11 +184,11 @@ class ProductConsumptionTest extends TestCase
 
         $viewer = $this->userWith(['product_consumption.view']);
         $this->actingAs($viewer)->get('/settings/product-consumption')->assertOk()->assertSee('Canpro')->assertDontSee('Add product');
-        $this->actingAs($viewer)->post('/settings/product-consumption', ['name' => 'X'])->assertForbidden();
+        $this->actingAs($viewer)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'X'])->assertForbidden();
         $this->actingAs($viewer)->delete("/settings/product-consumption/{$product->id}")->assertForbidden();
 
         $editor = $this->userWith(['product_consumption.view', 'product_consumption.manage']);
-        $this->actingAs($editor)->post('/settings/product-consumption', ['name' => 'Y'])->assertSessionHasNoErrors();
+        $this->actingAs($editor)->post('/settings/product-consumption', ['is_testing' => '0', 'name' => 'Y'])->assertSessionHasNoErrors();
         $this->assertDatabaseHas('products', ['name' => 'Y']);
     }
 

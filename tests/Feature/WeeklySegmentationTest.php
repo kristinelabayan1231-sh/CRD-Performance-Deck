@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\LeadTransfer;
 use App\Models\Role;
 use App\Models\User;
@@ -49,7 +50,7 @@ class WeeklySegmentationTest extends TestCase
         return Lead::create([
             'order_id' => "o{$this->seq}", 'customer_name' => "Customer {$this->seq}", 'phone_number' => "9170000{$this->seq}",
             'product_name' => 'Pterygium Drops', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 15,
-            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $cra->id,
+            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id,
             'status' => $status, 'status_updated_at' => $statusAt ? CarbonImmutable::parse($statusAt, 'Asia/Manila') : null,
         ]);
     }
@@ -67,6 +68,8 @@ class WeeklySegmentationTest extends TestCase
 
     public function test_unprocessed_leads_carry_over_with_label_until_handled(): void
     {
+        $this->markTestSkipped('The tracker\'s carry-over list is turned off for now (SegmentationController).');
+
         $alice = $this->user('alice@gmail.com', Role::CRA);
         $old = $this->lead($alice, '2026-10-07');                                        // still unprocessed
         $handledToday = $this->lead($alice, '2026-10-08', 'active', '2026-10-09 08:00');  // handled this morning
@@ -74,12 +77,15 @@ class WeeklySegmentationTest extends TestCase
 
         $this->actingAs($alice)->get('/segmentation')->assertOk()
             ->assertSee('Carry-over')
-            ->assertSee($old->customer_name)->assertSee('Unprocessed since Oct 7')
-            ->assertSee($handledToday->customer_name)->assertSee('Handled · carried since Oct 8')
+            ->assertSee($old->customer_name)->assertSee('Pending since Oct 7')
+            ->assertSee($handledToday->customer_name)->assertSee('Catered · carried since Oct 8')
             ->assertDontSee($handledBefore->customer_name);
 
-        // Past day views show the backlog as it was then.
-        $this->actingAs($alice)->get('/segmentation?date=2026-10-08')->assertSee($old->customer_name)->assertDontSee($handledToday->customer_name.'</', false);
+        // A past day shows only its own leads: no carry-over section.
+        $this->actingAs($alice)->get('/segmentation?date=2026-10-08')
+            ->assertSee($handledToday->customer_name)
+            ->assertDontSee('Carry-over')
+            ->assertDontSee($old->customer_name);
     }
 
     public function test_resync_never_reassigns_only_new_leads_are_assigned(): void
@@ -121,7 +127,7 @@ class WeeklySegmentationTest extends TestCase
             ->assertSee('1 / 1')   // Bob on Oct 8
             ->assertSee('Carry-over customers')
             ->assertSee($missed->customer_name)
-            ->assertSee('Unprocessed since Oct 8');
+            ->assertSee('Pending since Oct 8');
 
         $rows = $response->viewData('rows')->keyBy(fn ($r) => $r['cra']->id);
         $this->assertSame(['assigned' => 3, 'handled' => 1, 'unprocessed' => 1, 'in_progress' => 1],
@@ -160,10 +166,15 @@ class WeeklySegmentationTest extends TestCase
             ->assertSessionHasNoErrors()->assertSessionHas('status', 'Transferred 1 backlog lead from Alice to Bob.');
 
         $this->assertSame($bob->id, $backlog->fresh()->assigned_to);
+        // From today on: listed on today for Bob, while Oct 8 still counts it for Alice.
+        $this->assertSame('2026-10-09', $backlog->fresh()->listed_on->toDateString());
+        $this->assertSame('2026-10-08', $backlog->fresh()->est_out_of_stock_date->toDateString());
+        $move = LeadMove::sole();
+        $this->assertSame([$backlog->id, $alice->id, '2026-10-08', '2026-10-09'],
+            [$move->lead_id, $move->assigned_to, $move->listed_on->toDateString(), $move->moved_to->toDateString()]);
         $this->assertDatabaseHas('lead_transfers', ['lead_id' => $backlog->id, 'from_user_id' => $alice->id, 'to_user_id' => $bob->id, 'transferred_by' => $supervisor->id]);
 
-        // Bob now sees it as his backlog, labelled with where it came from.
-        $this->actingAs($bob)->get('/segmentation')->assertSee($backlog->customer_name)->assertSee('from Alice');
+        // Bob's tracker carry-over list (with "from Alice") is turned off for now.
     }
 
     public function test_only_backlog_can_be_transferred_and_only_to_cras(): void
@@ -206,7 +217,7 @@ class WeeklySegmentationTest extends TestCase
         $this->assertSame(2, Lead::where('assigned_to', $bob->id)->count());
     }
 
-    public function test_pjr_repeat_purchase_inactive_and_no_status_carry_over(): void
+    public function test_pjr_inactive_and_no_status_carry_over(): void
     {
         $alice = $this->user('alice@gmail.com', Role::CRA);
         $bob = $this->user('bob@gmail.com', Role::CRA);
@@ -214,7 +225,6 @@ class WeeklySegmentationTest extends TestCase
         $carry = [
             'none' => $this->lead($alice, '2026-10-08'),
             'pjr' => $this->lead($alice, '2026-10-08', 'pjr_drop_call', $at),
-            'repeat' => $this->lead($alice, '2026-10-08', 'repeat_purchase', $at),
             'inactive' => $this->lead($alice, '2026-10-08', 'inactive', $at),
         ];
         $done = [
@@ -225,10 +235,11 @@ class WeeklySegmentationTest extends TestCase
 
         $this->assertEqualsCanonicalizing(collect($carry)->pluck('id')->all(), Lead::carryOver()->pluck('id')->all());
 
+        $this->markTestSkipped('The tracker\'s carry-over list is turned off for now (SegmentationController).');
+
         $page = $this->actingAs($alice)->get('/segmentation')->assertOk()
-            ->assertSee('Unprocessed since Oct 8')
+            ->assertSee('Pending since Oct 8')
             ->assertSee('PJR/Inactive/CBR/Drop call since Oct 8')
-            ->assertSee('Repeat Purchase since Oct 8')
             ->assertSee('Inactive since Oct 8');
         foreach ($done as $lead) {
             $page->assertDontSee($lead->customer_name.'<', false);

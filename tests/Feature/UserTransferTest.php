@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -30,11 +31,13 @@ class UserTransferTest extends TestCase
             'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true, 'granted_by' => $owner->id,
         ]);
         User::create(['email' => 'audit@example.com', 'role_id' => $custom->id, 'is_active' => false]);
+        PancakePage::create(['name' => 'Trusted Eye Care', 'page_id' => '1001', 'access_token' => 'secret-page-token', 'is_active' => false]);
 
         $this->artisan('users:export', ['path' => $this->file])->assertSuccessful();
 
         // A fresh server: only the built-in roles, no users.
         User::query()->delete();
+        PancakePage::query()->delete();
         $custom->delete();
 
         $this->artisan('users:import', ['path' => $this->file])->assertSuccessful();
@@ -45,6 +48,10 @@ class UserTransferTest extends TestCase
         $this->assertSame('kristinelabayan1231@gmail.com', $lhea->grantedBy->email);
         $this->assertSame(['segmentation.view'], User::firstWhere('email', 'audit@example.com')->role->permissions);
         $this->assertFalse(User::firstWhere('email', 'audit@example.com')->is_active);
+
+        $page = PancakePage::firstWhere('page_id', '1001');
+        $this->assertSame('secret-page-token', $page->access_token);
+        $this->assertFalse($page->is_active);
 
         // Running it again changes nothing.
         $this->artisan('users:import', ['path' => $this->file])->assertSuccessful();

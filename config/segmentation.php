@@ -18,9 +18,30 @@ return [
     // everyone's quota are spread evenly rather than left unassigned.
     'leads_per_cra' => (int) env('SEGMENTATION_LEADS_PER_CRA', 70),
 
-    // A customer is a CRD Lead from this many delivered orders: the 1st order
-    // is FSD (Facebook Sales), the 2nd Retention, the 3rd onwards CRD.
-    'crd_lead_min_orders' => 3,
+    // Most leads a CRA is listed for a day: after their own leads, the backlog fill (BacklogFill) tops each
+    // on-duty CRA up to this with their own oldest untouched backlog, then an even share of the unassigned pool.
+    'max_leads_per_cra' => (int) env('SEGMENTATION_MAX_LEADS_PER_CRA', 100),
+
+    // Pancake POS order tag ids that make an order a CRD conversion (Conversion
+    // Breakdown): "CRD - BROADCAST" and "CRD - SEGMENTATION". An order with
+    // both tags counts as segmentation.
+    'conversion_tags' => [
+        'broadcast' => (int) env('PANCAKE_TAG_BROADCAST', 397),
+        'segmentation' => (int) env('PANCAKE_TAG_SEGMENTATION', 398),
+    ],
+
+    // Default sales goals until they are set in Settings → Sales Goals (pesos).
+    'sales_goals' => [
+        'cra_daily' => 77000,
+        'crd_monthly' => 1000000,
+        // Monthly customer goals: % of all the leads delivered in the dates picked.
+        'retained_rate' => 30,
+        'repeat_rate' => 30,
+    ],
+
+    // Lead type normally comes from Shecom (CRD- or FSD-delivered order). Only
+    // when Shecom is down: a customer with this many delivered orders is a CRD Lead.
+    'crd_lead_min_orders' => 2,
 
     // "Recommended Replenishment Day" = estimated out-of-stock date minus this many days.
     'replenishment_days_before' => 7,
@@ -41,13 +62,28 @@ return [
         'pjr_drop_call' => ['PJR/Inactive/CBR/Drop call', 'bg-[#e6cff2] text-[#5a3286]'],
         'busy_callback' => ['Busy/Callback', 'bg-[#753800] text-[#ffcfc9]'],
         'reminders_ffup' => ['Reminders/FFUP', 'bg-[#c6dbe1] text-[#0a53a8]'],
-        'repeat_purchase' => ['Repeat Purchase', 'bg-[#ffcfc9] text-[#b10202]'],
         'blocked' => ['Blocked', 'bg-[#3d3d3d] text-white'],
+    ],
+
+    // Picking one of these statuses sets the lead's Customer's Feedback too: status => feedback key.
+    'status_feedback' => [
+        'pjr_drop_call' => 'no_verbal_conv',
     ],
 
     // Leads with no status, or one of these statuses, carry over to the next
     // day with the same CRA until their status changes to something else.
-    'carry_over_statuses' => ['pjr_drop_call', 'repeat_purchase', 'inactive'],
+    'carry_over_statuses' => ['pjr_drop_call', 'inactive'],
+
+    // Every status except these is a follow-up, listed under Reactivation in the Pending full view once the lead
+    // day has passed (so statuses added or renamed in Segmentation Options are included).
+    'reactivation_skip_statuses' => ['active', 'blocked'],
+
+    // Cold leads (these Customer Tagging keys) get cold_attempts contact attempts, logged by the CRA with the row's
+    // Attempt button (one per day, kept when the lead moves to another CRA). Once used up without an Active status
+    // the lead leaves Reactivation and counts in the churn rate; until then it's left out of the churn rate.
+    // cold_attempts is the default until it's set in Settings → Segmentation Tracker.
+    'cold_tags' => ['cold', 'canpro_cold'],
+    'cold_attempts' => 3,
 
     /*
     |--------------------------------------------------------------------------
@@ -107,6 +143,54 @@ return [
         'purchased' => ['PURCHASED', 'bg-[#d4edbc] text-[#11734b]'],
     ],
 
+    // Summary → NO VERBAL CONV reasons: a lead's note goes to the first group with a keyword in it
+    // (case-insensitive); notes matching none are "Other", leads with no note "No note". Unattended comes first
+    // because "unattended" contains "ended".
+    'no_verbal_reasons' => [
+        'unattended' => ['Unattended', ['unattended', 'uanttended', 'unatended']],
+        'ended' => ['Customer ended / dropped the call', ['ended', 'end call', 'call end', 'dropped', 'drop call', 'dropcall', 'hung up', 'didn\'t talk', 'did not talk']],
+        'wrong_number' => ['Wrong number / someone else answered', ['incorrect', 'wrong', 'not the customer', 'kapatid', 'anak', 'asawa', 'nanay', 'tatay']],
+        'busy' => ['Busy', ['busy']],
+        'cbr' => ['Cannot be reached / out of coverage', ['cbr', 'cannot be reached', 'can\'t be reached', 'out of coverage', 'not reachable', 'unreachable']],
+        'pjr' => ['Phone just rings (PJR)', ['pjr', 'ring', 'dialling', 'dialing', 'no answer']],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Editable dropdowns
+    |--------------------------------------------------------------------------
+    |
+    | Lists that Settings → Segmentation Tracker can change (saved choices
+    | replace the defaults above). 'column' is the lead field holding the key;
+    | 'locked' keys are used by the deck's rules, so they can be renamed and
+    | recoloured but not removed.
+    |
+    */
+
+    'editable_lists' => [
+        'statuses' => ['label' => 'Status', 'column' => 'status', 'locked' => ['inactive', 'pjr_drop_call']],
+        'repeat_purchase' => ['label' => 'Repeat Purchase?', 'column' => 'repeat_purchase', 'locked' => ['yes', 'no']],
+        'customer_tags' => ['label' => 'Customer Tagging', 'column' => 'customer_tag', 'locked' => ['hot', 'warm', 'cold', 'high_value', 'canpro_hot', 'canpro_warm', 'canpro_cold']],
+        'feedback' => ['label' => "Customer's Feedback", 'column' => 'feedback', 'locked' => ['no_verbal_conv', 'purchased', 'still_have_stocks']],
+    ],
+
+    // Badge colours an edited choice can use: name => badge classes.
+    'option_colors' => [
+        'Green' => 'bg-[#d4edbc] text-[#11734b]',
+        'Gray' => 'bg-[#e6e6e6] text-[#3d3d3d]',
+        'Lavender' => 'bg-[#e6cff2] text-[#5a3286]',
+        'Brown' => 'bg-[#753800] text-[#ffcfc9]',
+        'Dark brown' => 'bg-[#753800] text-[#ffe5a0]',
+        'Steel blue' => 'bg-[#c6dbe1] text-[#0a53a8]',
+        'Light blue' => 'bg-[#bfe1f6] text-[#0a53a8]',
+        'Blue' => 'bg-[#0a53a8] text-white',
+        'Pink' => 'bg-[#ffcfc9] text-[#b10202]',
+        'Red' => 'bg-[#b10202] text-[#ffcfc9]',
+        'Orange' => 'bg-[#ef6a3a] text-[#3b0d00]',
+        'Yellow' => 'bg-[#ffe5a0] text-[#473821]',
+        'Charcoal' => 'bg-[#3d3d3d] text-white',
+    ],
+
     /*
     | A lead counts as converted when Repeat Purchase is "yes", or Repeat
     | Purchase is "no" and Customer's Feedback is "purchased".
@@ -123,6 +207,23 @@ return [
     |
     */
 
+    /*
+     * The lead's own columns, Customer Name to Assigned to: shown by default, each can be hidden from the column
+     * picker like the optional columns (Status always shows).
+     */
+    'lead_columns' => [
+        'customer_name' => ['label' => 'Customer Name'],
+        'qty' => ['label' => 'Qty'],
+        'product' => ['label' => 'Product'],
+        'contact_number' => ['label' => 'Contact #'],
+        'delivered_date' => ['label' => 'Delivered Date'],
+        'days_since_delivered' => ['label' => 'Days since Delivered'],
+        'est_out_of_stock' => ['label' => 'Est. Out of Stock'],
+        'replenishment_day' => ['label' => 'Recommended Replenishment Day'],
+        'type' => ['label' => 'Type'],
+        'assigned_to' => ['label' => 'Assigned to'],
+    ],
+
     'optional_columns' => [
         'repeat_purchase' => ['label' => 'Repeat Purchase?'],
         'customer_tag' => ['label' => 'Customer Tagging'],
@@ -130,7 +231,8 @@ return [
         'contact_time' => ['label' => 'Time of Contact'],
         'feedback' => ['label' => "Customer's Feedback"],
         'callback_date' => ['label' => 'Callback Date'],
-        'call_recording_url' => ['label' => 'Call Recording Link', 'coming_soon' => true],
+        // The lead's calls from the CRAs' phones (Call Recordings), plus a link typed in the sheet before.
+        'call_recording_url' => ['label' => 'Call Recording'],
     ],
 
 ];

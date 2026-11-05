@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Sign in · CRD Performance Deck</title>
+    <x-favicons />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-white font-sans text-ink antialiased">
@@ -16,7 +17,7 @@
             </a>
 
             <div class="flex flex-1 items-center justify-center py-12">
-                <div class="w-full max-w-sm">
+                <div class="float-in w-full max-w-sm">
                     <h1 class="text-4xl font-bold tracking-tight">Welcome back</h1>
                     <p class="mt-3 text-muted">Sign in with your Google account to continue.</p>
 
@@ -49,6 +50,10 @@
 
                     <p class="mt-8 text-center text-sm text-muted">
                         Access is by invitation only. Ask a super admin to add your Google account.
+                    </p>
+                    <p class="mt-3 text-center text-xs text-muted">
+                        <a href="{{ route('privacy') }}" class="hover:text-brand-600 hover:underline">Privacy Policy</a>
+                        · <a href="{{ route('terms') }}" class="hover:text-brand-600 hover:underline">Terms of Service</a>
                     </p>
                 </div>
             </div>

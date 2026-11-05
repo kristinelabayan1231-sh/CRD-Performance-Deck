@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Lead;
 use App\Services\PancakeSync;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 use Throwable;
@@ -13,15 +13,30 @@ class SyncPancake extends Command
     protected $signature = 'pancake:sync
         {--date= : Day to sync (YYYY-MM-DD, or "yesterday"). Defaults to today in the segmentation timezone.}
         {--from= : First day of a range to backfill (YYYY-MM-DD)}
-        {--to= : Last day of the range (YYYY-MM-DD). Defaults to today.}';
+        {--to= : Last day of the range (YYYY-MM-DD). Defaults to today.}
+        {--last= : Instead of dates: the last this many days up to today}
+        {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
+        {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
+        {--gone : Only mark Deleted the saved orders both Shecom and Pancake no longer have}
+        {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
+        {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
+        {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}
+        {--ages : Only fetch the POS orders created on these days again to save the customer ages CRAs noted on them ("Age: 17"; Product Target Market)}
+        {--engagements : Only fetch the chat engagements (for backfilling past days without saving their orders again)}
+        {--dry-run : With --engagements, show what Pancake returns per staff without saving}
+        {--skip=* : With --engagements, a Pancake staff name to leave out (repeat for more)}';
 
     protected $description = 'Copy Pancake chat engagements and POS orders for Segmentation Productivity';
 
     public function handle(PancakeSync $sync): int
     {
-        $today = Lead::today();
+        // Pancake activity happens on real days, whatever the tracker's working date.
+        $today = WorkingDate::realToday();
 
-        if ($this->option('from')) {
+        if ($this->option('last')) {
+            $to = $today;
+            $from = $to->subDays(max(1, (int) $this->option('last')) - 1);
+        } elseif ($this->option('from')) {
             $from = CarbonImmutable::parse($this->option('from'));
             $to = $this->option('to') ? CarbonImmutable::parse($this->option('to')) : $today;
         } else {
@@ -32,12 +47,102 @@ class SyncPancake extends Command
             };
         }
 
+        if ($this->option('sales')) {
+            $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('gone')) {
+            $gone = $sync->markGoneOrders($from, $to);
+            $this->info("Gone orders {$from->toDateString()} to {$to->toDateString()}: ".count($gone).' marked Deleted.');
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('ages')) {
+            $result = $sync->syncAges($from, $to);
+            $this->info("Pancake noted ages {$from->toDateString()} to {$to->toDateString()}: {$result['customers']} customers with an age.");
+
+            if ($result['failedDays']) {
+                $this->warn('Pancake failed on: '.implode(', ', $result['failedDays']));
+            }
+
+            return $result['failedDays'] ? self::FAILURE : self::SUCCESS;
+        }
+
+        if ($this->option('engagements')) {
+            $save = ! $this->option('dry-run');
+            $failed = false;
+
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                try {
+                    $result = $sync->syncEngagements($day, $save, $this->option('skip'));
+                } catch (Throwable $e) {
+                    $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
+                    $failed = true;
+
+                    continue;
+                }
+
+                $total = array_sum(array_column($result['staff'], 'engagements'));
+                $this->info("Pancake {$day->toDateString()}: ".count($result['staff'])." staff, {$total} engagements".($save ? ' saved.' : ' (not saved).'));
+
+                if (! $save) {
+                    $this->table(['Staff', 'Engagements'], collect($result['staff'])->sortByDesc('engagements')->map(fn (array $row) => [$row['name'], $row['engagements']])->values()->all());
+                }
+
+                if ($result['skipped']) {
+                    $this->warn('Skipped pages: '.implode('; ', $result['skipped']));
+                }
+            }
+
+            return $failed ? self::FAILURE : self::SUCCESS;
+        }
+
+        if ($this->option('new')) {
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                $saved = $sync->syncNewOrders($day);
+                $this->info($saved === null ? "Pancake {$day->toDateString()}: new orders already being fetched." : "Pancake {$day->toDateString()}: {$saved} new orders saved.");
+            }
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('orders')) {
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                $this->info("Pancake {$day->toDateString()}: {$sync->syncOrders($day)} orders saved again.");
+            }
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('tags')) {
+            $this->info("Pancake flagged orders: {$sync->recheckIssues()} updated.");
+
+            for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+                $this->info("Pancake {$day->toDateString()}: {$sync->refreshTags($day)} orders with changed tags or status.");
+            }
+
+            return self::SUCCESS;
+        }
+
         $failed = false;
 
         for ($day = $from; $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
             try {
+                if ($this->option('delivered')) {
+                    $this->info("Pancake {$day->toDateString()}: {$sync->syncDelivered($day)} delivered orders saved.");
+
+                    continue;
+                }
+
                 $result = $sync->sync($day);
-                $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders.");
+                $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered, {$result['sales']} Shecom sales.");
+
+                if ($result['engagement_error']) {
+                    $this->warn("Pancake {$day->toDateString()}: ".($result['staff'] ? 'engagements saved without some pages.' : 'engagements kept from the last good sync.')." {$result['engagement_error']}");
+                }
             } catch (Throwable $e) {
                 $this->error("Pancake {$day->toDateString()}: {$e->getMessage()}");
                 $failed = true;

@@ -2,29 +2,73 @@
 
 namespace App\Services;
 
+use App\Models\CustomerAge;
+use App\Models\DeliveredOrder;
+use App\Models\LogisticsOrder;
+use App\Models\OrderStatusChange;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
+use Throwable;
+
+use function Illuminate\Support\defer;
 
 class PancakeSync
 {
-    public function __construct(private PancakeClient $client) {}
+    /** Tells which orders have no product from the list; built on first use. */
+    private ?ProductCatalog $catalog = null;
+
+    public function __construct(private PancakeClient $client, private ShecomClient $shecom) {}
+
+    /** How old (minutes) a day's sync may be before pages and the dashboard refresh it. */
+    public const FRESH_MINUTES = 10;
+
+    /** How often (seconds) a page visit may re-check the header's flagged orders in Pancake. */
+    public const ISSUES_RECHECK_SECONDS = 120;
+
+    private const AGES_KEY = 'pancake-ages-at';
+
+    private const AGES_RUNNING_KEY = 'pancake-ages-running';
 
     /**
      * Copy one day's chat engagements and POS orders from Pancake. Rows are
      * updated in place by their Pancake id; nothing is deleted.
      *
-     * @return array{staff: int, orders: int}
+     * @return array{staff: int, orders: int, delivered: int, sales: int, engagement_error: ?string}
      */
     public function sync(CarbonImmutable $day): array
     {
+        // The lead fallback's orders; a failure here mustn't stop the engagements and orders below.
+        $delivered = rescue(fn () => $this->syncDelivered($day), 0);
+
         $day = $day->startOfDay();
         Cache::put(self::runningKey($day), true, now()->addMinutes(15));
+        $engagementError = null;
 
         try {
-            $engagements = $this->client->engagements($day);
+            // A page whose chat statistics fail is skipped; if every page fails, the day keeps its last good
+            // engagements. Either way the orders and tags below still sync.
+            try {
+                $engagements = $this->client->engagements($day);
+
+                if ($this->client->lastEngagementFailures) {
+                    $engagementError = 'Skipped pages: '.implode('; ', $this->client->lastEngagementFailures);
+                    Log::warning('Pancake engagements skipped some pages', ['date' => $day->toDateString(), 'pages' => $this->client->lastEngagementFailures]);
+                }
+            } catch (Throwable $e) {
+                $engagements = [];
+                $engagementError = $e->getMessage();
+                Log::warning('Pancake engagements failed; orders still synced', ['date' => $day->toDateString(), 'message' => $engagementError]);
+            }
+
             $orders = collect($this->client->orders($day))->map(fn (array $order) => $this->toOrder($order))->filter()->values();
         } finally {
             Cache::forget(self::runningKey($day));
@@ -33,39 +77,462 @@ class PancakeSync
         $now = now();
 
         DB::transaction(function () use ($day, $engagements, $orders, $now) {
-            PancakeEngagement::upsert(
-                collect($engagements)->map(fn (array $row, string $id) => [
-                    'date' => $day->toDateString(),
-                    'pancake_user_id' => $id,
-                    'staff_name' => PancakeEngagement::staffKey($row['name']),
-                    'engagements' => $row['engagements'],
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ])->values()->all(),
-                ['date', 'pancake_user_id'],
-                ['staff_name', 'engagements', 'updated_at'],
-            );
-
-            foreach ($orders->chunk(200) as $chunk) {
-                PancakeOrder::upsert(
-                    $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
-                    ['pancake_order_id'],
-                    ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
-                        'phone_key', 'status', 'status_name', 'total_price', 'page_name', 'updated_at'],
-                );
-            }
+            $this->saveEngagements($day, $engagements, $now);
+            $this->saveOrders($orders, $now);
         });
+
+        // Gross sales without the child (TSD) row; Pancake's totals stay in use if Shecom is down.
+        $sales = rescue(fn () => $this->syncSales($day, $day), 0);
+
+        // The header's flagged orders, looked up one by one (seconds), so a fixed tag clears without waiting on the list below.
+        if ($day->isSameDay(WorkingDate::realToday())) {
+            rescue(fn () => $this->recheckIssues());
+            // Today's CRA sales show in the Segmentation Tracker as repeat purchases (a new catered lead when not in it).
+            rescue(fn () => app(PosLeads::class)->record($day));
+        }
+
+        // Older orders whose CRD tag or status changed on this day (tags are often added later).
+        rescue(fn () => $this->refreshTags($day));
 
         Cache::put(self::syncKey($day), now()->toIso8601String(), now()->addDays(40));
 
-        return ['staff' => count($engagements), 'orders' => $orders->count()];
+        return ['staff' => count($engagements), 'orders' => $orders->count(), 'delivered' => $delivered, 'sales' => $sales, 'engagement_error' => $engagementError];
+    }
+
+    /**
+     * Only one day's chat engagements, for backfilling past days without fetching their orders again. When $save is
+     * false nothing is written (a check of what Pancake returns). Staff named in $skipStaff are left out. Throws when
+     * every page fails.
+     *
+     * @param  list<string>  $skipStaff  Pancake staff names
+     * @return array{staff: array<string, array{name: string, engagements: int}>, skipped: list<string>}
+     */
+    public function syncEngagements(CarbonImmutable $day, bool $save = true, array $skipStaff = []): array
+    {
+        $day = $day->startOfDay();
+        $skip = array_map(PancakeEngagement::staffKey(...), $skipStaff);
+        $engagements = array_filter($this->client->engagements($day), fn (array $row) => ! in_array(PancakeEngagement::staffKey($row['name']), $skip, true));
+
+        if ($save) {
+            $this->saveEngagements($day, $engagements, now());
+        }
+
+        return ['staff' => $engagements, 'skipped' => $this->client->lastEngagementFailures];
+    }
+
+    /**
+     * @param  array<string, array{name: string, engagements: int}>  $engagements  by Pancake user id
+     */
+    private function saveEngagements(CarbonImmutable $day, array $engagements, CarbonInterface $now): void
+    {
+        PancakeEngagement::upsert(
+            collect($engagements)->map(fn (array $row, string $id) => [
+                'date' => $day->toDateString(),
+                'pancake_user_id' => $id,
+                'staff_name' => PancakeEngagement::staffKey($row['name']),
+                'engagements' => $row['engagements'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->values()->all(),
+            ['date', 'pancake_user_id'],
+            ['staff_name', 'engagements', 'updated_at'],
+        );
+    }
+
+    /**
+     * Copy only the POS orders created on $day (with their items), for backfilling the
+     * Customer Database or saving older orders again with their current seller, status and
+     * discount: no engagements or sales.
+     *
+     * @return int orders saved
+     */
+    public function syncOrders(CarbonImmutable $day): int
+    {
+        $orders = collect($this->client->orders($day->startOfDay()))->map(fn (array $order) => $this->toOrder($order))->filter()->values();
+
+        DB::transaction(fn () => $this->saveOrders($orders, now()));
+
+        return $orders->count();
+    }
+
+    /**
+     * The CVR Tracker's quick refresh: only the POS orders created on $day since the last quick refresh (with
+     * some overlap), then the day's tag and status changes. Seconds, where the full sync() takes minutes.
+     * Returns null when another quick refresh of $day is running.
+     *
+     * @return int|null new or re-saved orders
+     */
+    public function syncNewOrders(CarbonImmutable $day): ?int
+    {
+        $day = $day->startOfDay();
+
+        return Cache::lock('pancake-new-orders-'.$day->toDateString(), 120)->get(function () use ($day) {
+            $last = Cache::get(self::newOrdersKey($day));
+            $startedAt = now();
+
+            $orders = collect($this->client->orders($day, $last ? CarbonImmutable::parse($last)->subMinutes(10) : null))
+                ->map(fn (array $order) => $this->toOrder($order))->filter()->values();
+
+            DB::transaction(fn () => $this->saveOrders($orders, $startedAt));
+
+            // Tags are often added after the order is made.
+            rescue(fn () => $this->refreshTags($day));
+
+            Cache::put(self::newOrdersKey($day), $startedAt->toIso8601String(), now()->addDays(2));
+
+            return $orders->count();
+        });
+    }
+
+    /**
+     * When $day's orders were last fetched from Pancake, by the quick refresh or the full sync.
+     */
+    public static function ordersRefreshedAt(CarbonImmutable $day): ?CarbonImmutable
+    {
+        return collect([Cache::get(self::newOrdersKey($day->startOfDay())), Cache::get(self::syncKey($day->startOfDay()))])
+            ->filter()->map(fn (string $at) => CarbonImmutable::parse($at))->sortDesc()->first();
+    }
+
+    /**
+     * Save the POS orders delivered on $day as Customer Database deliveries (for days the
+     * logistics report doesn't cover), with their amounts and items. CRD = sold by a CRD account.
+     *
+     * @return int deliveries saved
+     */
+    public function syncDeliveredCustomers(CarbonImmutable $day): int
+    {
+        $orders = collect($this->client->deliveredOn($day->startOfDay()))->map(fn (array $order) => $this->toOrder($order))->filter()->values();
+
+        DB::transaction(fn () => $this->saveOrders($orders, now()));
+
+        $crdAccounts = PancakeOrder::crdAccounts();
+
+        return LogisticsOrder::remember($orders->map(fn (array $order) => [
+            'order_id' => $order['pancake_order_id'],
+            'team' => PancakeOrder::isCrdAccount($order['seller_name'], $crdAccounts) ? LogisticsOrder::TEAM_CRD : LogisticsOrder::TEAM_FSD,
+            'source' => LogisticsOrder::SOURCE_POS,
+            'customer_name' => trim((string) $order['customer_name']) ?: 'Unknown',
+            'phone_number' => (string) $order['phone_number'],
+            'product' => json_decode($order['items'], true)[0]['name'] ?? '',
+            'qty' => null,
+            'delivered_date' => $day->toDateString(),
+        ])->all());
+    }
+
+    /**
+     * Fetch these orders (order numbers) from Pancake and save them, e.g. delivered orders
+     * the backfill hasn't reached yet.
+     *
+     * @param  list<string>  $numbers
+     * @return int orders saved
+     */
+    public function syncOrdersByNumber(array $numbers): int
+    {
+        $orders = collect($this->client->ordersByNumber($numbers, full: true))->map(fn (array $order) => $this->toOrder($order))->filter()->values();
+
+        DB::transaction(fn () => $this->saveOrders($orders, now()));
+
+        return $orders->count();
+    }
+
+    /**
+     * Insert or update orders by their Pancake id, recording the ones that left Canceled or Waiting for goods.
+     *
+     * @param  Collection<int, array<string, mixed>>  $orders
+     */
+    private function saveOrders(Collection $orders, CarbonInterface $now): void
+    {
+        CustomerAge::remember($orders->filter(fn (array $row) => ($row['customer_age'] ?? null) && $row['phone_key'])
+            ->sortBy('ordered_on')
+            ->mapWithKeys(fn (array $row) => [$row['phone_key'] => ['age' => $row['customer_age'], 'noted_on' => $row['ordered_on']]])->all());
+        $orders = $orders->map(fn (array $row) => Arr::except($row, 'customer_age'));
+
+        foreach ($orders->chunk(200) as $chunk) {
+            $before = PancakeOrder::whereIn('pancake_order_id', $chunk->pluck('pancake_order_id'))->pluck('status', 'pancake_order_id')->all();
+            OrderStatusChange::recordLeaving($before, $chunk->pluck('status', 'pancake_order_id')->all());
+
+            PancakeOrder::upsert(
+                $chunk->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])->all(),
+                ['pancake_order_id'],
+                ['ordered_on', 'ordered_at', 'seller_pancake_id', 'seller_name', 'customer_name', 'phone_number',
+                    'phone_key', 'status', 'status_name', 'total_price', 'total_discount', 'items', 'non_crd', 'tsd_upsell', 'page_name', 'page_id', 'conversation_id', 'tags', 'conversion_type', 'updated_at'],
+            );
+        }
+    }
+
+    /**
+     * Update tags, status and seller on saved orders that Pancake shows as changed on $day: only the changes
+     * since the last refresh of $day (with some overlap), since a busy day has over a thousand.
+     *
+     * @return int orders updated
+     */
+    public function refreshTags(CarbonImmutable $day): int
+    {
+        $last = Cache::get(self::tagsKey($day));
+        $startedAt = now();
+
+        $updated = $this->applyChanges($this->client->updatedOrders($day, $last ? CarbonImmutable::parse($last)->subMinutes(10) : null));
+
+        Cache::put(self::tagsKey($day), $startedAt->toIso8601String(), now()->addDays(40));
+
+        return $updated;
+    }
+
+    /**
+     * Look up the orders the header flags this month (no CRD tag, or both) in Pancake again and save
+     * their current tags and status.
+     *
+     * @return int orders updated
+     */
+    public function recheckIssues(): int
+    {
+        return $this->recheckIssuesReport()['updated'];
+    }
+
+    /**
+     * recheckIssues() with what happened: orders flagged, found in Pancake, whose lookup failed, and updated.
+     *
+     * @return array{flagged: int, found: int, failed: int, updated: int}
+     */
+    public function recheckIssuesReport(): array
+    {
+        $numbers = app(CraIssues::class)->for(LeadGenerator::cras())->pluck('order_id')->filter()->unique()->values()->all();
+
+        if ($numbers === []) {
+            return ['flagged' => 0, 'found' => 0, 'failed' => 0, 'updated' => 0];
+        }
+
+        $orders = $this->client->ordersByNumber($numbers);
+
+        return [
+            'flagged' => count($numbers),
+            'found' => count($orders),
+            'failed' => $this->client->lastLookupFailures,
+            'updated' => $this->applyChanges($orders),
+        ];
+    }
+
+    /**
+     * Save Pancake's current tags, status, seller and amount on the saved orders among $orders. Each order keeps its
+     * own tags, so a customer can be broadcast on one order and segmentation on the next. An order assigned
+     * to another seller after it was saved moves to them; one with no assigned seller has none (never the creator).
+     * A price or item edited after the order's day is saved too (when Pancake sends the order's amount). A sales date
+     * a supervisor changed in Pancake (its inserted_at) moves the order to that day in every module.
+     *
+     * @param  list<array<string, mixed>>  $orders
+     * @return int orders updated
+     */
+    private function applyChanges(array $orders): int
+    {
+        // A note typed after the order was made changes the order, so its age arrives here.
+        CustomerAge::remember(self::noteAges($orders));
+
+        $changed = collect($orders)
+            ->filter(fn (array $order) => ! empty($order['display_id'] ?? $order['id'] ?? null))
+            ->mapWithKeys(function (array $order) {
+                $tagIds = collect($order['tags'] ?? [])
+                    ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
+                    ->filter()->values()->all();
+
+                $seller = $order['assigning_seller'] ?? null;
+
+                return [(string) ($order['display_id'] ?? $order['id']) => [
+                    'tags' => $tagIds,
+                    'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
+                    'status' => isset($order['status']) ? (int) $order['status'] : null,
+                    'status_name' => $order['status_name'] ?? null,
+                    // Orders sent without the field leave the seller as saved.
+                    ...(array_key_exists('assigning_seller', $order) ? [
+                        'seller_pancake_id' => $seller['id'] ?? null,
+                        'seller_name' => isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null,
+                    ] : []),
+                    ...(array_key_exists('total_price', $order) ? [
+                        'total_price' => (float) ($order['total_price'] ?? 0),
+                        'total_discount' => (float) ($order['total_discount'] ?? 0),
+                        'items' => $order['items'] ?? [],
+                    ] : []),
+                    // Orders sent without the field stay on their saved day.
+                    ...(empty($order['inserted_at']) ? [] : self::orderDates($order['inserted_at'])),
+                ]];
+            });
+
+        $updated = 0;
+        $movedOrders = [];
+
+        foreach ($changed->keys()->chunk(500) as $ids) {
+            PancakeOrder::whereIn('pancake_order_id', $ids->values())
+                ->get(['id', 'pancake_order_id', 'ordered_on', 'ordered_at', 'phone_key', 'tags', 'conversion_type', 'status', 'status_name', 'seller_pancake_id', 'seller_name',
+                    'total_price', 'total_discount', 'items', 'non_crd', 'tsd_upsell'])
+                ->each(function (PancakeOrder $order) use ($changed, &$updated, &$movedOrders) {
+                    $fresh = $changed[$order->pancake_order_id];
+                    $savedDay = $order->ordered_on;
+                    $day = $fresh['ordered_on'] ?? $savedDay?->toDateString();
+
+                    if (array_key_exists('items', $fresh) || $day !== $savedDay?->toDateString()) {
+                        // As toOrder() files them, from the order's own day.
+                        $names = array_column($fresh['items'] ?? $order->items ?? [], 'name');
+                        $fresh['non_crd'] = ($this->catalog ??= new ProductCatalog)->unlisted($names, $day);
+                        $fresh['tsd_upsell'] = $this->catalog->tsdUpsell($names, $day);
+                    }
+
+                    $before = $order->status;
+                    $order->forceFill($fresh);
+
+                    if (! $order->isDirty()) {
+                        return;
+                    }
+
+                    OrderStatusChange::recordLeaving([$order->pancake_order_id => $before], [$order->pancake_order_id => $fresh['status']]);
+
+                    $order->save();
+                    $updated++;
+
+                    if ($savedDay && $day !== $savedDay->toDateString()) {
+                        $movedOrders[] = [$order, $savedDay];
+                    }
+                });
+        }
+
+        foreach ($movedOrders as [$order, $savedDay]) {
+            rescue(fn () => app(PosLeads::class)->moveBoughtDay($order, $savedDay));
+        }
+
+        // Shecom lists an order under its changed date too, which the day's sales refresh doesn't read.
+        collect($movedOrders)->map(fn (array $moved) => $moved[0]->ordered_on)->unique(fn (CarbonImmutable $day) => $day->toDateString())
+            ->each(fn (CarbonImmutable $day) => rescue(fn () => $this->syncSales($day, $day)));
+
+        return $updated;
+    }
+
+    /**
+     * The order's day (segmentation timezone) and UTC time. Pancake sends inserted_at in UTC without an offset.
+     *
+     * @return array{ordered_on: string, ordered_at: string}
+     */
+    private static function orderDates(string $insertedAt): array
+    {
+        $orderedAt = CarbonImmutable::parse($insertedAt, 'UTC');
+
+        return [
+            'ordered_on' => $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString(),
+            'ordered_at' => $orderedAt->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * Save Shecom's sales on the orders dated $from–$to. Shecom's order id is
+     * Pancake's display_id, which pancake_order_id holds.
+     *
+     * @return int orders given a Shecom amount
+     */
+    public function syncSales(CarbonImmutable $from, CarbonImmutable $to): int
+    {
+        $sales = collect($this->shecom->sales($from, $to));
+
+        // One update per distinct amount; a day has only a few dozen.
+        return $sales->keys()->groupBy(fn (string $id) => (string) $sales[$id])
+            ->sum(fn ($ids, string $amount) => $ids->chunk(1000)->sum(
+                fn ($chunk) => PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update(['shecom_sales' => $amount])
+            ));
+    }
+
+    /**
+     * Mark Deleted the saved orders dated $from–$to that no longer exist: Pancake stops returning a removed order
+     * instead of sending a Deleted status, so it would stay saved as it last was and keep counting. An order counts as
+     * gone only when Shecom doesn't list it and Pancake's lookup doesn't find it. If Shecom or the lookup fails, nothing
+     * is marked. A marked order that comes back is saved with its real status by the next sync of its day.
+     *
+     * @return list<string> the order numbers marked Deleted
+     */
+    public function markGoneOrders(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $listedInShecom = $this->shecom->sales($from, $to);
+
+        $saved = PancakeOrder::whereBetween('ordered_on', [$from->toDateString(), $to->toDateString()])
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
+            ->pluck('status', 'pancake_order_id')
+            ->reject(fn (?int $status, string $number) => array_key_exists($number, $listedInShecom));
+
+        if ($saved->isEmpty()) {
+            return [];
+        }
+
+        $inPancake = collect($this->client->ordersByNumber($saved->keys()->map(fn ($number) => (string) $number)->all()))
+            ->map(fn (array $order) => (string) ($order['display_id'] ?? ''))
+            ->flip();
+
+        if ($this->client->lastLookupFailures > 0) {
+            throw new RuntimeException("Pancake order lookup failed for {$this->client->lastLookupFailures} orders; none marked Deleted.");
+        }
+
+        $gone = $saved->reject(fn (?int $status, string $number) => $inPancake->has($number));
+
+        DB::transaction(function () use ($gone) {
+            OrderStatusChange::recordLeaving($gone->all(), $gone->map(fn () => CraPerformance::DELETED)->all());
+
+            foreach ($gone->keys()->chunk(500) as $numbers) {
+                PancakeOrder::whereIn('pancake_order_id', $numbers->values())->update(['status' => CraPerformance::DELETED]);
+            }
+        });
+
+        if ($gone->isNotEmpty()) {
+            Log::info('Orders gone from Pancake and Shecom marked Deleted', ['orders' => $gone->keys()->all()]);
+        }
+
+        return $gone->keys()->map(fn ($number) => (string) $number)->all();
+    }
+
+    /**
+     * Save the orders delivered on $day for the lead fallback (used when the
+     * retention API is down). Orders the retention API already gave are left
+     * as they are, since those carry its consumption days.
+     */
+    public function syncDelivered(CarbonImmutable $day): int
+    {
+        $catalog = new ProductCatalog;
+        $orders = collect($this->client->deliveredOrders($day))->filter(fn (array $order) => $order['phone_number'] !== '' && $order['items']);
+        $fromRetentionApi = DeliveredOrder::whereIn('order_id', $orders->pluck('order_id'))
+            ->where('source', DeliveredOrder::SOURCE_SHECOM)->pluck('order_id')->flip();
+        $now = now();
+
+        $rows = $orders->reject(fn (array $order) => isset($fromRetentionApi[$order['order_id']]))->map(function (array $order) use ($catalog, $day, $now) {
+            // The tracked product: the first item that matches a Product Consumption product, else the first item.
+            $items = collect($order['items']);
+            $main = $items->first(fn (array $item) => $catalog->match($item['name'])) ?? $items->first();
+            $product = $catalog->match($main['name']);
+
+            return [
+                'order_id' => $order['order_id'],
+                'tracking_number' => $order['tracking_number'],
+                'customer_name' => $order['customer_name'] ?: 'Unknown',
+                'phone_number' => $order['phone_number'],
+                'product_raw' => $main['name'],
+                // All units of that product in the order.
+                'qty' => $product
+                    ? $items->filter(fn (array $item) => $catalog->match($item['name'])?->is($product))->sum('qty')
+                    : $main['qty'],
+                'delivered_date' => $day->toDateString(),
+                'consumption_days_per_unit' => null,
+                'source' => DeliveredOrder::SOURCE_PANCAKE,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        })->values();
+
+        foreach ($rows->chunk(500) as $chunk) {
+            DeliveredOrder::upsert($chunk->values()->all(), ['order_id'], [
+                'tracking_number', 'customer_name', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'updated_at',
+            ]);
+        }
+
+        return $rows->count();
     }
 
     /**
      * Sync $day unless it was synced within $maxAgeMinutes, or another sync
      * of it is running. Returns null when nothing was synced.
      */
-    public function syncIfStale(CarbonImmutable $day, int $maxAgeMinutes = 60): ?array
+    public function syncIfStale(CarbonImmutable $day, int $maxAgeMinutes = self::FRESH_MINUTES): ?array
     {
         if (! self::isStale($day, $maxAgeMinutes)) {
             return null;
@@ -73,6 +540,58 @@ class PancakeSync
 
         return Cache::lock('pancake-sync-'.$day->toDateString(), 300)
             ->get(fn () => $this->sync($day)) ?: null;
+    }
+
+    /**
+     * Sync $day after the response is sent (a full day takes minutes). Failures
+     * are logged, and pages keep showing the last good sync time.
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     */
+    public function syncLater(CarbonImmutable $day, bool $force = false): void
+    {
+        if (self::isBuiltInServer()) {
+            return;
+        }
+
+        defer(function () use ($day, $force) {
+            // The page is already sent: let the sync finish past the request time limit.
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            try {
+                $this->syncIfStale($day, $force ? 0 : self::FRESH_MINUTES);
+            } catch (Throwable $e) {
+                Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
+            }
+        }, 'pancake-sync-'.$day->toDateString());
+    }
+
+    /**
+     * Re-check the header's flagged orders after the response is sent, at most every
+     * ISSUES_RECHECK_SECONDS. Pages call it so fixed tags clear even when the scheduler
+     * is paused (Render's free plan sleeps when idle).
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     */
+    public function recheckIssuesLater(): void
+    {
+        if (self::isBuiltInServer()) {
+            return;
+        }
+
+        if (! Cache::add('pancake-issues-recheck', true, self::ISSUES_RECHECK_SECONDS)) {
+            return;
+        }
+
+        defer(function () {
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            try {
+                $this->recheckIssues();
+            } catch (Throwable $e) {
+                Log::warning('Pancake order issues re-check failed', ['message' => $e->getMessage()]);
+            }
+        }, 'pancake-issues-recheck');
     }
 
     public static function lastSync(CarbonImmutable $day): ?CarbonImmutable
@@ -93,7 +612,7 @@ class PancakeSync
     /**
      * Whether $day was last synced over $maxAgeMinutes ago, or never.
      */
-    public static function isStale(CarbonImmutable $day, int $maxAgeMinutes = 60): bool
+    public static function isStale(CarbonImmutable $day, int $maxAgeMinutes = self::FRESH_MINUTES): bool
     {
         $last = self::lastSync($day);
 
@@ -110,6 +629,16 @@ class PancakeSync
         return 'pancake.sync.'.$day->toDateString();
     }
 
+    private static function newOrdersKey(CarbonImmutable $day): string
+    {
+        return 'pancake.new_orders.'.$day->toDateString();
+    }
+
+    private static function tagsKey(CarbonImmutable $day): string
+    {
+        return 'pancake.tags.'.$day->toDateString();
+    }
+
     /**
      * The order's seller is the staff member it is assigned to, or whoever created it.
      */
@@ -123,16 +652,19 @@ class PancakeSync
             return null;
         }
 
-        // Pancake sends inserted_at in UTC without an offset.
-        $orderedAt = CarbonImmutable::parse($order['inserted_at'], 'UTC');
-        $seller = $order['assigning_seller'] ?? $order['creator'] ?? null;
+        $dates = self::orderDates($order['inserted_at']);
+        // The assigned seller only: the creator isn't who the order counts for.
+        $seller = $order['assigning_seller'] ?? null;
         $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
         $phoneKey = $phone ? LeadGenerator::normalizePhone((string) $phone) : '';
+        // POS order tags come as ids ([398, 17, …]); tolerate {id, name} objects too.
+        $tagIds = collect($order['tags'] ?? [])
+            ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
+            ->filter()->values()->all();
 
         return [
             'pancake_order_id' => (string) $orderId,
-            'ordered_on' => $orderedAt->setTimezone(config('segmentation.timezone'))->toDateString(),
-            'ordered_at' => $orderedAt->toDateTimeString(),
+            ...$dates,
             'seller_pancake_id' => $seller['id'] ?? null,
             'seller_name' => isset($seller['name']) ? PancakeEngagement::staffKey($seller['name']) : null,
             'customer_name' => $order['bill_full_name'] ?? ($order['customer']['name'] ?? null),
@@ -141,7 +673,143 @@ class PancakeSync
             'status' => isset($order['status']) ? (int) $order['status'] : null,
             'status_name' => $order['status_name'] ?? null,
             'total_price' => (float) ($order['total_price'] ?? 0),
-            'page_name' => $order['account_name'] ?? null,
+            'total_discount' => (float) ($order['total_discount'] ?? 0),
+            'items' => json_encode($order['items'] ?? []),
+            // No product from the Product Consumption list: left out of sales, conversions and the Customer Database.
+            // (A product added later counts from its day: ProductCatalog.)
+            'non_crd' => ($this->catalog ??= new ProductCatalog)->unlisted(array_column($order['items'] ?? [], 'name'), $dates['ordered_on']),
+            // Only a TSD upsell product (Settings → Product Consumption): counted in the CRA's sales only.
+            'tsd_upsell' => $this->catalog->tsdUpsell(array_column($order['items'] ?? [], 'name'), $dates['ordered_on']),
+            'page_name' => $order['page']['name'] ?? null,
+            'page_id' => isset($order['page_id']) ? (string) $order['page_id'] : null,
+            'conversation_id' => $order['conversation_id'] ?? null,
+            // upsert() skips model casts, so the list is stored as JSON here.
+            'tags' => json_encode($tagIds),
+            'conversion_type' => PancakeOrder::conversionTypeFor($tagIds),
+            // Not an order column: saveOrders() keeps it as the customer's CustomerAge.
+            'customer_age' => self::noteAge($order),
         ];
+    }
+
+    /**
+     * The customer's age a CRA typed in the order's internal POS note ("Age: 17" or "Age:17"), or null when there is
+     * none or it isn't 1–120. The printed note (on the waybill) isn't read.
+     *
+     * @param  array<string, mixed>  $order
+     */
+    public static function noteAge(array $order): ?int
+    {
+        if (! is_string($order['note'] ?? null) || ! preg_match('/\bage\s*[:=-]?\s*(\d{1,3})(?!\d)/iu', $order['note'], $match)) {
+            return null;
+        }
+
+        $age = (int) $match[1];
+
+        return $age >= 1 && $age <= 120 ? $age : null;
+    }
+
+    /**
+     * The noted ages on these Pancake orders, by customer: the newest order's when a customer has several.
+     *
+     * @param  iterable<array<string, mixed>>  $orders  as Pancake sends them
+     * @return array<string, array{age: int, noted_on: string}> phone key => age and the order's day (Y-m-d)
+     */
+    public static function noteAges(iterable $orders): array
+    {
+        $ages = [];
+
+        foreach ($orders as $order) {
+            $age = self::noteAge($order);
+            $phone = $order['bill_phone_number'] ?? ($order['customer']['phone_numbers'][0] ?? null);
+            $phoneKey = $phone ? LeadGenerator::normalizePhone((string) $phone) : '';
+
+            if ($age === null || $phoneKey === '' || empty($order['inserted_at'])) {
+                continue;
+            }
+
+            $day = CarbonImmutable::parse($order['inserted_at'], 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString();
+            if (! isset($ages[$phoneKey]) || $ages[$phoneKey]['noted_on'] <= $day) {
+                $ages[$phoneKey] = ['age' => $age, 'noted_on' => $day];
+            }
+        }
+
+        return $ages;
+    }
+
+    /**
+     * Product Target Market: fetch the POS orders created from $from to $to again, only to save the ages CRAs noted
+     * on them (often typed after the order was synced). Days Pancake fails are skipped.
+     *
+     * @return array{customers: int, failedDays: list<string>}
+     */
+    public function syncAges(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $found = [];
+        $failedDays = [];
+
+        for ($day = $from->startOfDay(); $day->lessThanOrEqualTo($to); $day = $day->addDay()) {
+            try {
+                $ages = self::noteAges($this->client->orders($day));
+            } catch (Throwable $e) {
+                $failedDays[] = $day->toDateString();
+                Log::warning('Pancake noted ages failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
+
+                continue;
+            }
+
+            CustomerAge::remember($ages);
+            $found += $ages;
+        }
+
+        Cache::put(self::AGES_KEY, now()->toIso8601String(), now()->addYear());
+
+        return ['customers' => count($found), 'failedDays' => $failedDays];
+    }
+
+    /**
+     * syncAges() for the last 3 months after the response is sent (it fetches every order, so it takes a while).
+     * Does nothing while one is already running.
+     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     */
+    public function syncAgesLater(CarbonImmutable $today): void
+    {
+        if (self::isBuiltInServer() || ! Cache::add(self::AGES_RUNNING_KEY, true, now()->addHour())) {
+            return;
+        }
+
+        defer(function () use ($today) {
+            set_time_limit(0);
+            ignore_user_abort(true);
+
+            try {
+                $this->syncAges($today->subMonths(3)->addDay(), $today);
+            } catch (Throwable $e) {
+                Log::warning('Pancake noted ages failed', ['message' => $e->getMessage()]);
+            } finally {
+                Cache::forget(self::AGES_RUNNING_KEY);
+            }
+        }, 'pancake-ages');
+    }
+
+    /** When the last 3 months' ages were last fetched, and whether a fetch is running. */
+    public static function agesFetchedAt(): ?CarbonImmutable
+    {
+        $at = Cache::get(self::AGES_KEY);
+
+        return $at ? CarbonImmutable::parse($at) : null;
+    }
+
+    public static function agesRunning(): bool
+    {
+        return Cache::has(self::AGES_RUNNING_KEY);
+    }
+
+    /**
+     * `php artisan serve` (PHP's built-in server) keeps the browser waiting until deferred work
+     * finishes, so local pages would hang for minutes; `php artisan schedule:work` syncs instead.
+     */
+    private static function isBuiltInServer(): bool
+    {
+        return PHP_SAPI === 'cli-server';
     }
 }

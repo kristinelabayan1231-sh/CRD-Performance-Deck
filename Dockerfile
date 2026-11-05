@@ -21,18 +21,29 @@ FROM dunglas/frankenphp:1-php8.4
 
 RUN install-php-extensions pdo_pgsql pdo_mysql intl zip bcmath opcache pcntl
 
+# The image gives frankenphp the cap_net_bind_service file capability (for ports
+# below 1024). Hosts like Render refuse to run binaries with file capabilities
+# ("exec: frankenphp: Operation not permitted"); we listen on $PORT, so drop it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libcap2-bin \
+    && setcap -r "$(command -v frankenphp)" \
+    && apt-get purge -y libcap2-bin \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY --from=vendor /app/vendor ./vendor
 COPY . .
 COPY --from=assets /app/public/build ./public/build
 
+# Pages get 120s (PHP's default is 30): working out the Customer Database without the cache can take longer on the free plan.
 RUN composer dump-autoload --optimize --no-dev --no-scripts \
     && php artisan package:discover --ansi \
     && mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && chmod -R ug+rwX storage bootstrap/cache \
     && chmod +x docker/entrypoint.sh \
-    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
+    && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
+    && printf 'max_execution_time = 120\n' > "$PHP_INI_DIR/conf.d/zz-app.ini"
 
 ENV APP_ENV=production \
     APP_DEBUG=false \

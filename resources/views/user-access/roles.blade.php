@@ -2,7 +2,7 @@
     @include('user-access._header')
 
     @if ($errors->any())
-        <ul role="alert" class="mb-6 space-y-1 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">
+        <ul role="alert" class="mb-4 space-y-1 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">
             @foreach ($errors->all() as $error)
                 <li>{{ $error }}</li>
             @endforeach
@@ -10,8 +10,8 @@
     @endif
 
     {{-- Create role --}}
-    <section class="mb-8 rounded-xl bg-white p-6 shadow-sm">
-        <h2 class="mb-4 text-lg font-semibold">Create role</h2>
+    <section class="mb-4 rounded-xl bg-white p-4 shadow-sm">
+        <h2 class="mb-4 text-base font-semibold">Create role</h2>
         <form method="POST" action="{{ route('roles.store') }}">
             @csrf
             @include('user-access._role-fields', ['role' => null])
@@ -25,8 +25,8 @@
 
     {{-- Existing roles --}}
     <section class="rounded-xl bg-white shadow-sm">
-        <div class="flex items-center justify-between border-b border-line px-6 py-4">
-            <h2 class="text-lg font-semibold">Roles</h2>
+        <div class="flex items-center justify-between border-b border-line px-4 py-4">
+            <h2 class="text-base font-semibold">Roles</h2>
             <span class="text-sm text-muted">{{ $roles->count() }} total</span>
         </div>
 
@@ -34,7 +34,7 @@
             @foreach ($roles as $role)
                 <li>
                     <details class="group">
-                        <summary class="flex cursor-pointer list-none items-center gap-4 px-6 py-4 hover:bg-canvas/40 [&::-webkit-details-marker]:hidden">
+                        <summary class="flex cursor-pointer list-none items-center gap-4 px-4 py-4 hover:bg-canvas/40 [&::-webkit-details-marker]:hidden">
                             <div class="min-w-0 flex-1">
                                 <p class="flex flex-wrap items-center gap-2 font-medium">
                                     {{ $role->name }}
@@ -55,7 +55,7 @@
                             <svg class="size-4 text-muted transition group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6"/></svg>
                         </summary>
 
-                        <div class="border-t border-line bg-canvas/30 px-6 py-5">
+                        <div class="border-t border-line bg-canvas/30 px-4 py-5">
                             @if ($role->isSuperAdmin())
                                 <p class="text-sm text-muted">Super Admins always have every permission, including creating and editing roles. This role can't be changed.</p>
                             @else

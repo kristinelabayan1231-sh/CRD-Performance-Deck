@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -32,6 +33,13 @@ class GoogleLoginTest extends TestCase
     public function test_login_page_renders(): void
     {
         $this->get('/login')->assertOk()->assertSee('Sign in with Google')->assertSee('CRD logo', false);
+    }
+
+    public function test_privacy_policy_and_terms_are_public_and_linked_from_the_login_page(): void
+    {
+        $this->get('/login')->assertSee(route('privacy'))->assertSee(route('terms'));
+        $this->get('/privacy')->assertOk()->assertSee('drive.file');
+        $this->get('/terms')->assertOk()->assertSee('Terms of Service');
     }
 
     public function test_guests_are_redirected_to_login(): void
@@ -76,6 +84,28 @@ class GoogleLoginTest extends TestCase
         $this->assertSame('Team Mate', User::firstWhere('email', 'teammate@gmail.com')->name);
         $this->get('/dashboard')->assertOk()->assertDontSee('Manage who can sign in');
         $this->get('/user-access')->assertForbidden();
+    }
+
+    public function test_remember_me_keeps_the_user_signed_in_after_the_session_ends(): void
+    {
+        $user = User::create(['email' => 'teammate@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('with')->andReturnSelf();
+        $provider->shouldReceive('redirect')->andReturn(redirect('https://accounts.google.com'));
+        $provider->shouldReceive('user')->andReturn((new SocialiteUser)->map(['id' => 'g-1', 'name' => 'Team Mate', 'email' => 'teammate@gmail.com']));
+        Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+        $this->get('/auth/google/redirect?remember=1')->assertRedirect();
+        $callback = $this->get('/auth/google/callback')->assertRedirect('/dashboard');
+
+        $recaller = Auth::guard()->getRecallerName();
+        $cookie = $callback->getCookie($recaller, decrypt: false);
+        $this->assertNotNull($cookie);
+        $this->flushSession();
+        Auth::forgetGuards();
+
+        $this->withUnencryptedCookie($recaller, $cookie->getValue())->get('/dashboard')->assertOk();
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_disabled_account_cannot_sign_in(): void

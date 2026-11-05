@@ -3,8 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\Lead;
+use App\Models\LeadMove;
+use App\Models\PancakeReservation;
+use App\Models\Product;
+use App\Models\Role;
+use App\Services\ChurnCustomerList;
 use App\Services\LeadGenerator;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -16,62 +23,113 @@ use Throwable;
 
 class SegmentationController extends Controller
 {
+    /** Customers per page in the Pending and Catered lists: 10 show at a time, the rest by scrolling. */
+    private const PER_PAGE = 30;
+
+    /** Customers per page in a list's full-view pop-up. */
+    private const FULL_PER_PAGE = 50;
+
     public function index(Request $request, LeadGenerator $generator): View
     {
         $user = $request->user();
         $canViewAll = $user->can('segmentation.view_all');
         $today = Lead::today();
 
-        // Keep today's leads fresh without anyone pressing a button.
-        $syncError = null;
-        try {
-            $generator->syncIfStale($today);
-        } catch (Throwable $e) {
-            Log::warning('Automatic lead sync failed', ['message' => $e->getMessage()]);
-            $syncError = $e->getMessage();
-        }
+        // Keep today's leads fresh without anyone pressing a button (after the page is sent).
+        $generator->syncLater($today);
+        $syncError = LeadGenerator::lastSyncError($today);
 
         [$filters, $from, $to] = $this->resolveFilters($request, $today);
         $scope = $this->scope($filters, $from, $to);
         $cras = LeadGenerator::cras();
 
-        $leads = (clone $scope)
+        // The selected day's leads in two lists: still to do (no status and no contact
+        // date, not marked as processed) and processed. "show" narrows the page to one of them.
+        $show = $filters['show'];
+        $listed = (clone $scope)
             ->when($filters['status'] ?? null, fn (Builder $q, $status) => $status === 'none' ? $q->whereNull('status') : $q->where('status', $status))
-            ->with(['assignee', 'notesAuthor'])
-            ->orderBy('est_out_of_stock_date')
+            ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
+            ->orderBy('listed_on')
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
-            ->orderBy('customer_name')
-            ->paginate(50)
-            ->withQueryString();
+            ->orderBy('customer_name');
 
-        // Carried-over (unprocessed) leads from earlier days, for single-day views.
-        $backlog = $from->equalTo($to)
-            ? Lead::backlogAsOf($from)
-                ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
-                ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
-                ->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
-                ->orderBy('est_out_of_stock_date')
-                ->orderBy('customer_name')
-                ->get()
-            : collect();
+        // full=1: one list on its own, for the section's full-view pop-up.
+        $full = $request->boolean('full') && $show !== 'all';
+        $perPage = $full ? self::FULL_PER_PAGE : self::PER_PAGE;
+
+        $unprocessed = in_array($show, ['all', 'unprocessed'], true)
+            ? (clone $listed)->unprocessed()->paginate($perPage)->withQueryString()
+            : null;
+        $processed = in_array($show, ['all', 'processed'], true)
+            ? (clone $listed)->processed()
+                ->paginate($perPage, ['*'], 'processed_page')->withQueryString()
+            : null;
+
+        if ($full) {
+            return view('segmentation.full', [
+                'leads' => $unprocessed ?? $processed,
+                ...($show === 'unprocessed' ? $this->followUps($filters, $today) : []),
+                'show' => $show,
+                'canManage' => $user->can('segmentation.manage'),
+                'canViewAll' => $canViewAll,
+                'cras' => LeadGenerator::cras(),
+                'statuses' => config('segmentation.statuses'),
+                'optionalColumns' => config('segmentation.optional_columns'),
+                'today' => $today,
+            ]);
+        }
+
+        // Carry-over (earlier days' unprocessed leads under today) is turned off for now
+        // to keep the page simple. To bring it back, restore this block and pass $backlog.
+        // $backlogQuery = $from->equalTo($to) && $from->isSameDay($today)
+        //     ? Lead::backlogAsOf($from)
+        //         ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+        //         ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+        //     : null;
+        // $backlog = $backlogQuery
+        //     ? (clone $backlogQuery)->with(['assignee', 'notesAuthor', 'transfers.fromUser'])
+        //         ->orderBy('listed_on')->orderBy('customer_name')
+        //         ->paginate(50, ['*'], 'backlog_page')->withQueryString()
+        //     : collect();
+        // $carryingOver = $backlogQuery
+        //     ? (clone $backlogQuery)->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))->count()
+        //     : 0;
 
         $canTransfer = $user->can('segmentation.transfer');
 
+        // A CRA's first visit of the day opens with a hello and their numbers for the lead day.
+        $greeting = null;
+        $greetedKey = 'segmentation.greeted.'.$today->toDateString();
+        if ($user->role?->slug === Role::CRA && ! $request->session()->has($greetedKey)) {
+            $request->session()->put($greetedKey, true);
+            $mine = Lead::where('assigned_to', $user->id)->whereDate('listed_on', $today);
+            $greeting = [
+                'name' => strtok($user->displayName(), ' ') ?: $user->displayName(),
+                'total' => (clone $mine)->count() + LeadMove::departed($today, $today, [$user->id])->count(),
+                'unprocessed' => (clone $mine)->unprocessed()->count(),
+                'day' => $today,
+            ];
+        }
+
         return view('segmentation.index', [
-            'leads' => $leads,
-            'backlog' => $backlog,
+            'unprocessed' => $unprocessed,
+            'processed' => $processed,
+            'greeting' => $greeting,
             'canTransfer' => $canTransfer,
             'workload' => $canTransfer ? LeadGenerator::workload($today) : [],
             'tiles' => $this->tiles($scope, $filters, $from, $to, $cras, $canViewAll),
             'singleDay' => $from->equalTo($to),
+            'period' => self::periodLabel($from, $to),
             'filters' => $filters,
             'cras' => $cras,
             'canViewAll' => $canViewAll,
             'canManage' => $user->can('segmentation.manage'),
             'statuses' => config('segmentation.statuses'),
+            'products' => Product::crd()->orderBy('name')->pluck('name'),
             'optionalColumns' => config('segmentation.optional_columns'),
             'today' => $today,
             'lastSync' => LeadGenerator::lastSync(CarbonImmutable::parse($filters['date'] ?? $today)),
+            'lastSyncResult' => LeadGenerator::lastSyncResult(CarbonImmutable::parse($filters['date'] ?? $today)),
             'syncError' => $syncError,
         ]);
     }
@@ -99,13 +157,29 @@ class SegmentationController extends Controller
         $filters = $request->validate([
             'month' => ['nullable', 'date_format:Y-m'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            // A date range (both ends, any order): the lead days from–to.
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
+            'product' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'string'],
+            'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
+            'q' => ['nullable', 'string', 'max:100'],
+            // From the dashboard's Retained / Repeat tiles: Repeat Purchase = Yes bought on the date or in the month.
+            'repeat' => ['nullable', Rule::in(['yes'])],
         ]);
+        $filters['show'] ??= 'all';
+        $filters['q'] = trim((string) ($filters['q'] ?? '')) ?: null;
 
-        // A specific date wins; otherwise a whole month; default is today.
-        if (! empty($filters['date'])) {
+        // A date range wins (one day when both ends match), then a specific date, then a whole month; default is today.
+        if (! empty($filters['from']) && ! empty($filters['to'])) {
+            [$from, $to] = collect([CarbonImmutable::parse($filters['from']), CarbonImmutable::parse($filters['to'])])->sort()->values()->all();
+            $filters['from'] = $from->toDateString();
+            $filters['to'] = $to->toDateString();
+            $filters['date'] = $from->equalTo($to) ? $from->toDateString() : null;
+            $filters['month'] = $from->format('Y-m');
+        } elseif (! empty($filters['date'])) {
             $from = $to = CarbonImmutable::parse($filters['date']);
             $filters['month'] = $from->format('Y-m');
         } elseif (! empty($filters['month'])) {
@@ -117,7 +191,13 @@ class SegmentationController extends Controller
             $filters['month'] = $today->format('Y-m');
         }
 
-        $filters['cra'] = $user->can('segmentation.view_all') ? ($filters['cra'] ?? 'all') : (string) $user->id;
+        // Everyone can look at all CRAs or one CRA's leads; without view_all it opens on their own, and Unassigned is managers' only.
+        $cra = $filters['cra'] ?? null;
+        $filters['cra'] = match (true) {
+            $user->can('segmentation.view_all') => $cra ?? 'all',
+            $cra === 'all', ctype_digit((string) $cra) && LeadGenerator::cras()->contains('id', (int) $cra) => $cra,
+            default => (string) $user->id,
+        };
 
         return [$filters, $from, $to];
     }
@@ -125,10 +205,66 @@ class SegmentationController extends Controller
     private function scope(array $filters, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return Lead::query()
-            ->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+            // A search looks through every lead day; repeat=yes, the repeat purchases bought on the date or in the month
+            // (any lead day); otherwise the lead days of the date or month picked.
+            ->when($filters['q'], fn (Builder $q, string $term) => $q->search($term),
+                fn (Builder $q) => ($filters['repeat'] ?? null)
+                    ? $q->repeatPurchasedBetween($from, $to)
+                    : $q->whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to))
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
-            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type));
+            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product));
+    }
+
+    /**
+     * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day): callbacks due
+     * today, Reactivation and Reserved. They're catered leads, so they're never in Pending itself.
+     *
+     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator, pancakeReserved: LengthAwarePaginator}
+     */
+    private function followUps(array $filters, CarbonImmutable $today): array
+    {
+        $realToday = WorkingDate::realToday();
+        $base = Lead::query()
+            ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereRaw('1 = 0'))
+            ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
+            ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings', 'attempts.user']);
+
+        // Callbacks and Reactivation never overlap: Reactivation leaves out leads with a callback date still to be followed, and Reserved ones.
+        return [
+            'callbacks' => (clone $base)->callbackDue($realToday)->orderBy('callback_date')->orderBy('customer_name')->paginate(self::FULL_PER_PAGE, ['*'], 'callback_page')->withQueryString(),
+            'reactivation' => (clone $base)->reactivation($today, $realToday)
+                ->orderBy('listed_on')->orderBy('customer_name')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'reactivation_page')->withQueryString(),
+            'reserved' => (clone $base)->reserved()
+                ->orderBy('listed_on')->orderBy('customer_name')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'reserved_page')->withQueryString(),
+            // Reserved in a Pancake conversation, added by the CRAs; latest first.
+            'pancakeReserved' => PancakeReservation::query()
+                ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
+                ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+                ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+                ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
+                ->with(['assignee', 'notesAuthor'])
+                ->latest('id')
+                ->paginate(self::FULL_PER_PAGE, ['*'], 'pancake_reserved_page')->withQueryString(),
+        ];
+    }
+
+    /**
+     * Moves off the lead days picked (LeadMove) for the same CRA, type and product filters; null for a search,
+     * repeat purchases or the unassigned list, which aren't lead-day totals.
+     */
+    private function departed(array $filters, CarbonImmutable $from, CarbonImmutable $to): ?Builder
+    {
+        if ($filters['q'] || ($filters['repeat'] ?? null) || $filters['cra'] === 'unassigned') {
+            return null;
+        }
+
+        return LeadMove::departed($from, $to, ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null);
     }
 
     /**
@@ -141,11 +277,21 @@ class SegmentationController extends Controller
         $summary = (clone $scope)
             ->selectRaw('count(*) as total')
             ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
-            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as new', [Lead::TYPE_NEW])
+            ->selectRaw('sum(case when lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
             ->selectRaw('sum(case when status is not null then 1 else 0 end) as updated')
             ->first();
 
         $converted = (clone $scope)->converted()->count();
+
+        // Leads the backlog fill moved off these days still count there, as pending.
+        $departed = $this->departed($filters, $from, $to)
+            ?->selectRaw('count(*) as total')
+            ->selectRaw('sum(case when leads.lead_type = ? then 1 else 0 end) as crd', [Lead::TYPE_CRD])
+            ->selectRaw('sum(case when leads.lead_type = ? then 1 else 0 end) as fsd', [Lead::TYPE_FSD])
+            ->toBase()->first();
+        foreach (['total', 'crd', 'fsd'] as $key) {
+            $summary->{$key} = (int) $summary->{$key} + (int) ($departed->{$key} ?? 0);
+        }
 
         $total = (int) $summary->total;
         $updated = (int) $summary->updated;
@@ -153,7 +299,7 @@ class SegmentationController extends Controller
         $tiles = [
             'total' => ['value' => number_format($total), 'note' => null],
             'crd' => ['value' => number_format((int) $summary->crd), 'note' => null],
-            'new' => ['value' => number_format((int) $summary->new), 'note' => null],
+            'fsd' => ['value' => number_format((int) $summary->fsd), 'note' => null],
         ];
 
         if ($canViewAll) {
@@ -179,10 +325,11 @@ class SegmentationController extends Controller
             $tiles['per_cra'] = [
                 'value' => $value,
                 'note' => $note,
-                // Shown in the Per CRA pop-up; always covers every CRA for the date/month and type filters.
+                // Shown in the Per CRA pop-up; always covers every CRA for the date/month, type and product filters.
                 'breakdown' => $breakdown,
-                'period' => ($from->equalTo($to) ? $from->format('M j, Y') : $from->format('F Y'))
-                    .(! empty($filters['type']) ? ' · '.Lead::TYPES[$filters['type']].'s' : ''),
+                'period' => self::periodLabel($from, $to)
+                    .(! empty($filters['type']) ? ' · '.Lead::TYPES[$filters['type']].'s' : '')
+                .(! empty($filters['product']) ? ' · '.$filters['product'] : ''),
             ];
         }
 
@@ -207,23 +354,29 @@ class SegmentationController extends Controller
      */
     private function perCraBreakdown(array $filters, CarbonImmutable $from, CarbonImmutable $to, $cras): array
     {
-        $rows = Lead::whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
+        // Assigned leads only: POS sales added to the tracker aren't part of a CRA's share.
+        $rows = Lead::whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to)->withoutPosSales()
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->whereIn('assigned_to', $cras->pluck('id'))
             ->selectRaw('assigned_to, lead_type, count(*) as total')
             ->groupBy('assigned_to', 'lead_type')
             ->get()
             ->groupBy('assigned_to');
+        // Plus leads the backlog fill moved off these days.
+        $departed = LeadMove::departed($from, $to, $cras->pluck('id'), $filters['type'] ?? null, $filters['product'] ?? null)
+            ->selectRaw('lead_moves.assigned_to, leads.lead_type, count(*) as total')
+            ->groupBy('lead_moves.assigned_to', 'leads.lead_type')->toBase()->get()->groupBy('assigned_to');
 
-        $breakdown = $cras->map(function ($cra) use ($rows) {
-            $mine = $rows[$cra->id] ?? collect();
+        $breakdown = $cras->map(function ($cra) use ($rows, $departed) {
+            $mine = collect($rows[$cra->id] ?? [])->concat($departed[$cra->id] ?? []);
 
             return [
                 'id' => $cra->id,
                 'name' => $cra->displayName(),
                 'total' => (int) $mine->sum('total'),
                 'crd' => (int) $mine->where('lead_type', Lead::TYPE_CRD)->sum('total'),
-                'new' => (int) $mine->where('lead_type', Lead::TYPE_NEW)->sum('total'),
+                'fsd' => (int) $mine->where('lead_type', Lead::TYPE_FSD)->sum('total'),
             ];
         });
 
@@ -257,16 +410,39 @@ class SegmentationController extends Controller
             'contact_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'contact_time' => $in('contact_times'),
             'feedback' => $in('feedback'),
+            'feedbacks' => ['sometimes', 'nullable', 'array'],
+            'feedbacks.*' => $in('feedback'),
             'callback_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
             'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'processed' => ['sometimes', 'boolean'],
         ], [
             'assigned_to.in' => 'Leads can only be assigned to active CRAs.',
             'feedback.in' => "That Customer's Feedback option isn't available.",
+            'feedbacks.*.in' => "That Customer's Feedback option isn't available.",
         ]);
 
         $lead->fill(array_intersect_key($data, array_flip([
             'repeat_purchase', 'customer_tag', 'contact_date', 'contact_time', 'feedback', 'callback_date',
         ])));
+
+        // Customer's Feedback: every choice ticked (several can be).
+        if (array_key_exists('feedbacks', $data)) {
+            $lead->pickFeedbacks(array_filter($data['feedbacks'] ?? []));
+        }
+
+        // Tagging a customer means they were just contacted: Date and Time of contact follow (now, Manila time),
+        // unless they were sent too. An hour outside the Time of contact choices leaves the time as it is.
+        if (! empty($data['customer_tag']) && $lead->isDirty('customer_tag')) {
+            $now = CarbonImmutable::now(config('segmentation.timezone'));
+            $hour = $now->format('H');
+
+            if (! array_key_exists('contact_date', $data)) {
+                $lead->contact_date = $now->toDateString();
+            }
+            if (! array_key_exists('contact_time', $data) && array_key_exists($hour, config('segmentation.contact_times'))) {
+                $lead->contact_time = $hour;
+            }
+        }
 
         if (array_key_exists('notes', $data)) {
             $notes = trim((string) $data['notes']);
@@ -292,6 +468,27 @@ class SegmentationController extends Controller
                 'status_updated_by' => $user->id,
                 'status_updated_at' => now(),
             ]);
+
+            // Some statuses imply the feedback (PJR → NO VERBAL CONV).
+            if ($feedback = config('segmentation.status_feedback')[$data['status']] ?? null) {
+                $lead->addFeedback($feedback);
+            }
+        }
+
+        // Right-click → Mark as processed / Unmark processed. Unmarking brings the lead back to
+        // Unprocessed, so it also clears what made it processed: the status and date of contact.
+        if (array_key_exists('processed', $data)) {
+            $lead->forceFill([
+                'processed_at' => $data['processed'] ? now() : null,
+                'processed_by' => $data['processed'] ? $user->id : null,
+            ]);
+
+            if (! $data['processed']) {
+                $lead->forceFill([
+                    'contact_date' => null,
+                    ...($lead->status !== null ? ['status' => null, 'status_updated_by' => $user->id, 'status_updated_at' => now()] : []),
+                ]);
+            }
         }
 
         $lead->save();
@@ -301,12 +498,48 @@ class SegmentationController extends Controller
 
             return response()->json([
                 'saved' => true,
+                // The page mirrors it into the row's Customer's Feedback cell (it can follow the status).
+                'feedback' => $lead->feedback,
+                'feedbacks' => $lead->feedbackKeys(),
+                // And into Date / Time of contact (a customer tag sets them).
+                'contact_date' => $lead->contact_date?->toDateString(),
+                'contact_time' => $lead->contact_time,
                 'notes' => $lead->notes,
                 'notes_meta' => $this->notesMeta($lead),
             ]);
         }
 
         return back()->with('status', "Updated {$lead->customer_name}.");
+    }
+
+    /**
+     * The order icon's hover pop-up: the customer's orders (all their merged numbers), latest first, as
+     * order date and products only. Canceled and returned orders are left out. Anyone who can see the tracker can see any lead's.
+     */
+    public function orders(Lead $lead, ChurnCustomerList $churn): JsonResponse
+    {
+        $returned = collect(config('customers.pos_statuses'))->only([4, 5, 6])->pluck(0)->all();
+        $orders = collect($churn->history(LeadGenerator::normalizePhone((string) $lead->phone_number))['orders'] ?? [])
+            ->reject(fn (array $order) => in_array($order['status_label'], $returned, true))
+            ->map(fn (array $order) => [
+                'date' => ($date = $order['ordered'] ?? $order['delivered']) ? CarbonImmutable::parse($date)->format('M j, Y') : '—',
+                'product' => $order['items'] ?: '—',
+            ])
+            ->values();
+
+        return response()->json(['orders' => $orders]);
+    }
+
+    /**
+     * The lead days picked, for labels: "Oct 5, 2026", "October 2026" (a whole month) or "Oct 5 – Oct 12, 2026".
+     */
+    public static function periodLabel(CarbonImmutable $from, CarbonImmutable $to): string
+    {
+        return match (true) {
+            $from->equalTo($to) => $from->format('M j, Y'),
+            $from->isSameDay($from->startOfMonth()) && $to->isSameDay($from->endOfMonth()) => $from->format('F Y'),
+            default => $from->format($from->isSameYear($to) ? 'M j' : 'M j, Y').' – '.$to->format('M j, Y'),
+        };
     }
 
     public static function notesMeta(Lead $lead): ?string
@@ -331,7 +564,7 @@ class SegmentationController extends Controller
             return back()->withErrors(['sync' => "Couldn't load leads from the API: {$e->getMessage()}"]);
         }
 
-        $message = "Synced {$date->format('M j, Y')}: {$result['found']} leads ({$result['crd']} CRD, {$result['new']} new), {$result['assigned']} newly assigned";
+        $message = "Synced {$date->format('M j, Y')}: {$result['found']} leads ({$result['crd']} CRD, {$result['fsd']} FSD), {$result['assigned']} newly assigned";
         $message .= $result['unassigned'] ? ", {$result['unassigned']} unassigned." : '.';
 
         if (LeadGenerator::cras()->isEmpty()) {

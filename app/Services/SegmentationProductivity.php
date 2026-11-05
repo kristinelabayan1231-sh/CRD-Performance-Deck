@@ -2,10 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\BacklogHandout;
+use App\Models\CvrOrderEntry;
 use App\Models\Lead;
+use App\Models\LeadMove;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
@@ -14,14 +18,15 @@ use Illuminate\Support\Collection;
  *
  * Assigned transactions = Segmentation Tracker leads assigned to the CRA for that lead day (base 70; actual count shown).
  * Answered = tracker leads with that Contact Date + Pancake customer engagements of the CRA's Pancake account.
- * Assigned lead conversion = customers with a Pancake order that day who are in the CRA's leads with Repeat Purchase = Yes.
- * Pancake conversion = customers on the CRA's own Pancake orders that day who are not in any CRA's assigned leads.
- * Total confirmed = both conversions. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
- * Gross sales = Pancake order totals behind those conversions (until the conversion breakdown replaces it). AOV = gross ÷ confirmed.
+ * Total confirmed = the CRA's orders that day on the CVR Tracker: Pancake orders tagged CRD - BROADCAST or CRD - SEGMENTATION, counted for the CRA picked there (canceled and deleted don't count).
+ * Of those, assigned lead conversion = Assigned on the CVR Tracker (Type of Order Segmentation, or an assigned lead); Pancake conversion = everyone else. Conversion rate = confirmed ÷ answered. Pick-up rate = answered ÷ assigned.
+ * Gross sales = Conversion Breakdown's gross: the CRA's orders tagged CRD - BROADCAST + CRD - SEGMENTATION. AOV = gross ÷ confirmed.
  */
 class SegmentationProductivity
 {
     public const COUNTS = ['assigned', 'calls', 'chat', 'answered', 'alc', 'pc', 'confirmed'];
+
+    public function __construct(private ConversionBreakdown $breakdown) {}
 
     /**
      * @param  Collection<int, User>  $cras
@@ -35,19 +40,29 @@ class SegmentationProductivity
             $days[] = $day->toDateString();
         }
 
+        // Leads worked on a real day are from its paired lead day (Settings → Working Date).
+        $lag = WorkingDate::lagDays();
         $assigned = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)->whereDate('est_out_of_stock_date', '>=', $from)->whereDate('est_out_of_stock_date', '<=', $to)
-                ->selectRaw('assigned_to as cra, date(est_out_of_stock_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
+            Lead::whereIn('assigned_to', $ids)->withoutPosSales()
+                ->whereDate('listed_on', '>=', $from->subDays($lag))->whereDate('listed_on', '<=', $to->subDays($lag))
+                ->selectRaw('assigned_to as cra, date(listed_on) as day, count(*) as n')->groupBy('cra', 'day')->get(),
+            $lag,
         );
+        // Plus leads the backlog fill moved off those lead days.
+        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($from->subDays($lag), $to->subDays($lag), $ids)) as $cra => $perDay) {
+            foreach ($perDay as $day => $n) {
+                $real = CarbonImmutable::parse($day)->addDays($lag)->toDateString();
+                $assigned[$cra][$real] = ($assigned[$cra][$real] ?? 0) + $n;
+            }
+        }
 
         $calls = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
+            Lead::whereIn('assigned_to', $ids)->withoutPosSales()->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
                 ->selectRaw('assigned_to as cra, date(contact_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
         );
 
         // Pancake account name => CRA id.
-        $accounts = $cras->filter(fn (User $cra) => $cra->pancake_name)
-            ->mapWithKeys(fn (User $cra) => [PancakeEngagement::staffKey($cra->pancake_name) => $cra->id]);
+        $accounts = ConversionBreakdown::accounts($cras);
 
         $chat = [];
         PancakeEngagement::whereIn('staff_name', $accounts->keys())
@@ -58,7 +73,8 @@ class SegmentationProductivity
                 $chat[$cra][$row->date->toDateString()] = ($chat[$cra][$row->date->toDateString()] ?? 0) + $row->engagements;
             });
 
-        [$alc, $pc, $gross] = $this->conversions($ids, $accounts, $from, $to);
+        [$alc, $pc] = $this->conversions($accounts, $from, $to);
+        $tagged = $this->breakdown->orders($accounts, $from, $to);
 
         $result = [];
         foreach ($cras as $cra) {
@@ -69,12 +85,79 @@ class SegmentationProductivity
                     'chat' => $chat[$cra->id][$day] ?? 0,
                     'alc' => $alc[$cra->id][$day] ?? 0,
                     'pc' => $pc[$cra->id][$day] ?? 0,
-                    'gross' => $gross[$cra->id][$day] ?? 0.0,
+                    'gross' => ($tagged[$cra->id][$day]['bc_gross'] ?? 0.0) + ($tagged[$cra->id][$day]['sc_gross'] ?? 0.0),
                 ]);
             }
         }
 
         return $result;
+    }
+
+    /**
+     * Backlog progress per CRA: older leads handed to them (BacklogHandout: daily fill or transfer) on the lead days
+     * paired with real days $from–$to, how many they've catered since, and how many reordered (Repeat Purchase = Yes
+     * bought on or after the real day it was handed out). A lead handed out more than once counts once, from its first day.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}>
+     */
+    public function backlog(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $lag = WorkingDate::lagDays();
+        $handouts = BacklogHandout::query()
+            ->join('leads', 'leads.id', '=', 'backlog_handouts.lead_id')
+            ->whereIn('backlog_handouts.user_id', $cras->pluck('id'))
+            ->whereDate('backlog_handouts.handed_on', '>=', $from->subDays($lag))
+            ->whereDate('backlog_handouts.handed_on', '<=', $to->subDays($lag))
+            ->orderBy('backlog_handouts.handed_on')
+            ->toBase()
+            ->get(['backlog_handouts.user_id', 'backlog_handouts.lead_id', 'backlog_handouts.handed_on', 'backlog_handouts.created_at',
+                'leads.status', 'leads.contact_date', 'leads.processed_at', 'leads.repeat_purchase', 'leads.repeat_purchase_on'])
+            ->groupBy('user_id');
+
+        return $cras->mapWithKeys(function (User $cra) use ($handouts) {
+            $leads = ($handouts[$cra->id] ?? collect())->unique('lead_id');
+
+            return [$cra->id => self::backlogRates([
+                'handed' => $leads->count(),
+                'catered' => $leads->filter(fn ($l) => $l->status !== null || $l->contact_date !== null || $l->processed_at !== null)->count(),
+                // Purchases are on real dates, so compared with the real day it was handed out (not the lead day).
+                'reordered' => $leads->filter(fn ($l) => $l->repeat_purchase === 'yes' && $l->repeat_purchase_on !== null
+                    && substr((string) $l->repeat_purchase_on, 0, 10) >= CarbonImmutable::parse($l->created_at, 'UTC')->setTimezone(config('segmentation.timezone'))->toDateString())->count(),
+            ])];
+        })->all();
+    }
+
+    /**
+     * Add up CRAs' backlog progress and work the rates out again.
+     *
+     * @param  iterable<array{handed: int, catered: int, reordered: int}>  $rows
+     * @return array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}
+     */
+    public static function sumBacklog(iterable $rows): array
+    {
+        $totals = ['handed' => 0, 'catered' => 0, 'reordered' => 0];
+
+        foreach ($rows as $row) {
+            foreach ($totals as $key => $value) {
+                $totals[$key] = $value + $row[$key];
+            }
+        }
+
+        return self::backlogRates($totals);
+    }
+
+    /**
+     * @param  array{handed: int, catered: int, reordered: int}  $counts
+     * @return array{handed: int, catered: int, reordered: int, progress: ?float, rate: ?float}
+     */
+    private static function backlogRates(array $counts): array
+    {
+        return [
+            ...$counts,
+            'progress' => $counts['handed'] ? $counts['catered'] / $counts['handed'] : null,
+            'rate' => $counts['handed'] ? $counts['reordered'] / $counts['handed'] : null,
+        ];
     }
 
     /**
@@ -116,70 +199,55 @@ class SegmentationProductivity
     }
 
     /**
-     * Customers converted per CRA per day, and the sales behind them:
-     * [assigned lead conversion, Pancake conversion, gross sales].
+     * Confirmed orders per CRA per day, split [assigned lead conversion, Pancake conversion]: the orders the CVR Tracker
+     * lists for the CRA (their own tagged CRD - BROADCAST or CRD - SEGMENTATION, moved to the CRA picked there), by its Assigned / Pancake column
+     * (Type of Order is Segmentation, the sheet says Assigned, or the number matches a lead assigned to any CRA).
      *
-     * @param  Collection<int, int>  $ids
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
-     * @return array{0: array<int, array<string, int>>, 1: array<int, array<string, int>>, 2: array<int, array<string, float>>}
+     * @return array{0: array<int, array<string, int>>, 1: array<int, array<string, int>>}
      */
-    private function conversions(Collection $ids, Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
+    private function conversions(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $orders = PancakeOrder::counted()
-            ->whereDate('ordered_on', '>=', $from)->whereDate('ordered_on', '<=', $to)
-            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'phone_key', 'total_price']);
-
-        if ($orders->isEmpty()) {
-            return [[], [], []];
+        if ($accounts->isEmpty()) {
+            return [[], []];
         }
 
-        // Customers the CRA marked Repeat Purchase = Yes; the most recent assignment wins a shared number.
-        $repeatBuyers = Lead::whereIn('assigned_to', $ids)->where('repeat_purchase', 'yes')
-            ->orderBy('assigned_at')->orderBy('id')
-            ->get(['phone_number', 'assigned_to'])
-            ->mapWithKeys(fn (Lead $lead) => [LeadGenerator::normalizePhone($lead->phone_number) => $lead->assigned_to])
-            ->forget('');
+        $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)
+            ->where(fn ($q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES))
+            ->get();
 
-        // Every customer on anyone's assigned leads list.
-        $assignedPhones = Lead::whereNotNull('assigned_to')->pluck('phone_number')
-            ->map(fn (string $phone) => LeadGenerator::normalizePhone($phone))
-            ->filter()->flip();
+        if ($orders->isEmpty()) {
+            return [[], []];
+        }
+
+        $entries = CvrOrderEntry::whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))->get()->keyBy('pancake_order_id');
+        $assigned = CvrTracker::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
 
         $alc = [];
         $pc = [];
-        $gross = [];
 
-        foreach ($orders->groupBy(fn (PancakeOrder $order) => $order->ordered_on->toDateString()) as $day => $dayOrders) {
-            // Assigned lead conversion: any seller, counted once per customer; every order of theirs is sales.
-            $dayOrders->filter(fn (PancakeOrder $order) => $order->phone_key && isset($repeatBuyers[$order->phone_key]))
-                ->groupBy('phone_key')
-                ->each(function (Collection $theirs, string $phone) use ($repeatBuyers, &$alc, &$gross, $day) {
-                    $cra = $repeatBuyers[$phone];
-                    $alc[$cra][$day] = ($alc[$cra][$day] ?? 0) + 1;
-                    $gross[$cra][$day] = ($gross[$cra][$day] ?? 0.0) + (float) $theirs->sum('total_price');
-                });
+        foreach ($orders as $order) {
+            $cra = ConversionBreakdown::craFor($order, $accounts);
+            $day = $order->ordered_on->toDateString();
 
-            // Pancake conversion: the CRA's own orders for customers outside every leads list.
-            $dayOrders->filter(fn (PancakeOrder $order) => isset($accounts[$order->seller_name])
-                    && ! ($order->phone_key && isset($assignedPhones[$order->phone_key])))
-                ->groupBy(fn (PancakeOrder $order) => $accounts[$order->seller_name])
-                ->each(function (Collection $mine, int $cra) use (&$pc, &$gross, $day) {
-                    $pc[$cra][$day] = $mine->map(fn (PancakeOrder $order) => $order->phone_key ?: 'order:'.$order->pancake_order_id)->unique()->count();
-                    $gross[$cra][$day] = ($gross[$cra][$day] ?? 0.0) + (float) $mine->sum('total_price');
-                });
+            if (CvrTracker::isAssignedLead($order, $entries[$order->pancake_order_id] ?? null, $assigned)) {
+                $alc[$cra][$day] = ($alc[$cra][$day] ?? 0) + 1;
+            } else {
+                $pc[$cra][$day] = ($pc[$cra][$day] ?? 0) + 1;
+            }
         }
 
-        return [$alc, $pc, $gross];
+        return [$alc, $pc];
     }
 
     /**
      * @return array<int, array<string, int>>
      */
-    private function grouped(Collection $rows): array
+    private function grouped(Collection $rows, int $shiftDays = 0): array
     {
         $out = [];
         foreach ($rows as $row) {
-            $out[(int) $row->cra][CarbonImmutable::parse($row->day)->toDateString()] = (int) $row->n;
+            $out[(int) $row->cra][CarbonImmutable::parse($row->day)->addDays($shiftDays)->toDateString()] = (int) $row->n;
         }
 
         return $out;

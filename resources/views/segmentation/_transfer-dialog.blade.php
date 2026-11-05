@@ -8,7 +8,7 @@
 
         <div class="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div class="min-w-0">
-                <h2 id="transfer-title" class="text-lg font-semibold">Transfer backlog</h2>
+                <h2 id="transfer-title" class="text-base font-semibold">Transfer backlog</h2>
                 <p class="truncate text-sm text-muted" data-transfer-summary></p>
             </div>
             <button type="button" data-transfer-close aria-label="Close" class="rounded-lg p-1.5 text-muted hover:bg-canvas hover:text-ink">

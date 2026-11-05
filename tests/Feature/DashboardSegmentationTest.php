@@ -46,7 +46,7 @@ class DashboardSegmentationTest extends TestCase
         return Lead::create([
             'order_id' => "o{$this->seq}", 'customer_name' => "Customer {$this->seq}", 'phone_number' => "9170000{$this->seq}",
             'product_name' => 'Pterygium Drops', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 15,
-            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_NEW, 'assigned_to' => $cra->id, ...$fields,
+            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_FSD, 'assigned_to' => $cra->id, ...$fields,
         ]);
     }
 
@@ -65,44 +65,62 @@ class DashboardSegmentationTest extends TestCase
         // Earlier this month, outside the week.
         $this->lead($this->alice, '2026-10-02', ['customer_tag' => 'canpro_cold']);
 
-        $today = app(SegmentationStats::class)->periods(LeadGenerator::cras())['today'];
+        $today = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-09'));
         $kpis = collect($today['kpis'])->keyBy('label');
 
         // Leads 5 vs 4 yesterday: +25%, up and good.
         $this->assertSame(['value' => '5', 'previous' => '4', 'change' => '+25%', 'direction' => 'up', 'good' => true],
             array_intersect_key($kpis['Leads'], array_flip(['value', 'previous', 'change', 'direction', 'good'])));
-        // Processed 40% vs 100%: -60 pts, down and bad.
-        $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Processed']['value'], $kpis['Processed']['previous'], $kpis['Processed']['change'], $kpis['Processed']['good']]);
-        // Converted 2 of 5 = 40%; retained 1 of 2 CRD = 50%; new 1 of 3 = 33%.
-        $this->assertSame('40%', $kpis['Converted']['value']);
-        $this->assertSame([50.0, 33.0], [$today['retained'], $today['new_converted']]);
+        // Catered 40% vs 100%: -60 pts, down and bad.
+        $this->assertSame(['40%', '100%', '-60 pts', false], [$kpis['Catered']['value'], $kpis['Catered']['previous'], $kpis['Catered']['change'], $kpis['Catered']['good']]);
+        // Converted = Retained + Repeat (Repeat Purchase = Yes bought that day; No + PURCHASED isn't one): 1 of 5 = 20%;
+        // Retained 0 of 3 FSD, Repeat 1 of 2 CRD = 50%.
+        $this->assertSame(['20.0%', '1/5'], [$kpis['Converted']['value'], $kpis['Converted']['count']]);
+        $this->assertSame([0.0, 50.0], [$today['retained'], $today['repeat']]);
         // Went cold 1 of 5 = 20%, up from 0: bad, since lower is better.
         $this->assertSame(['20%', false], [$kpis['Went cold']['value'], $kpis['Went cold']['good']]);
+        $this->assertSame('1/5', $kpis['Went cold']['count']);
 
         // Tags donut and untagged remainder.
         $this->assertSame(['Hot' => 1, 'Cold' => 1, 'Warm' => 1, 'High value' => 1], collect($today['tags'])->pluck('value', 'label')->all());
         $this->assertSame(1, $today['untagged']);
 
         // Top CRAs: Alice first with 2 processed.
-        $this->assertSame(['name' => 'Alice', 'processed' => 2, 'unprocessed' => 1, 'converted' => 2], $today['ranking'][0]);
+        $this->assertSame(['name' => 'Alice', 'processed' => 2, 'unprocessed' => 1, 'converted' => 1], $today['ranking'][0]);
 
-        // Today's trend covers the last 7 days, ending today.
+        // A single day's trend covers the 7 days up to it.
         $this->assertCount(7, $today['series']);
         $this->assertSame(['day' => '2026-10-08', 'label' => 'Oct 8', 'processed' => 4, 'unprocessed' => 0], $today['series'][5]);
     }
 
-    public function test_week_and_month_periods(): void
+    public function test_catered_counts_as_the_trackers_catered_list(): void
+    {
+        $this->lead($this->alice, '2026-10-09', ['status' => 'active']);
+        $this->lead($this->alice, '2026-10-09', ['contact_date' => '2026-10-09']);   // contacted, no status yet
+        $this->lead($this->alice, '2026-10-09')->forceFill(['processed_at' => now()])->save();   // marked as processed
+        $this->lead($this->alice, '2026-10-09');
+
+        $day = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-09'), CarbonImmutable::parse('2026-10-09'));
+
+        $this->assertSame(3, Lead::processed()->count());
+        $this->assertSame('75%', collect($day['kpis'])->firstWhere('label', 'Catered')['value']);
+        $this->assertSame([3, 1], [$day['series'][6]['processed'], $day['series'][6]['unprocessed']]);
+        $this->assertSame([3, 1], [$day['ranking'][0]['processed'], $day['ranking'][0]['unprocessed']]);
+    }
+
+    public function test_a_range_of_lead_days(): void
     {
         $this->lead($this->bob, '2026-10-08', ['status' => 'active']);
         $this->lead($this->alice, '2026-10-02');
 
-        $periods = app(SegmentationStats::class)->periods(LeadGenerator::cras());
+        $range = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-08'), CarbonImmutable::parse('2026-10-09'));
+        $month = app(SegmentationStats::class)->range(LeadGenerator::cras(), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-09'));
 
-        $this->assertSame('Oct 8–14', $periods['week']['label']);
-        $this->assertSame(1, $periods['week']['leads']);
-        $this->assertCount(2, $periods['week']['series']); // Oct 8 & 9 so far; future days left out
-        $this->assertSame(2, $periods['month']['leads']);
-        $this->assertSame('Bob', $periods['week']['ranking'][0]['name']);
+        $this->assertSame('Oct 8–9', $range['label']);
+        $this->assertSame(1, $range['leads']);
+        $this->assertCount(2, $range['series']);
+        $this->assertSame('Bob', $range['ranking'][0]['name']);
+        $this->assertSame(2, $month['leads']);
     }
 
     public function test_dashboard_shows_segmentation_card_for_supervisors(): void
@@ -112,8 +130,8 @@ class DashboardSegmentationTest extends TestCase
 
         $this->actingAs($this->owner)->get('/dashboard')->assertOk()
             ->assertSee('Segmentation Tracker')
-            ->assertSeeInOrder(['Today', 'Week', 'Month'])
-            ->assertSeeInOrder(['Leads', 'Processed', 'Converted', 'Went cold'])
+            ->assertSee('Lead days Oct 1–9')
+            ->assertSeeInOrder(['Leads', 'Catered', 'Converted', 'Went cold'])
             ->assertSee('Daily trend')->assertSee('Customer tags')->assertSee('Top CRAs')
             ->assertSee('Retained')
             ->assertSee('Alice')->assertSee('Bob')
@@ -126,8 +144,65 @@ class DashboardSegmentationTest extends TestCase
         $this->lead($this->bob, '2026-10-09');
 
         $response = $this->actingAs($this->alice)->get('/dashboard')->assertOk()->assertSee('Segmentation Tracker');
-        $this->assertSame(['Alice'], array_column($response->viewData('segmentation')['today']['ranking'], 'name'));
-        $this->assertSame(1, $response->viewData('segmentation')['today']['leads']);
+        $this->assertSame(['Alice'], array_column($response->viewData('segmentation')['ranking'], 'name'));
+        $this->assertSame(1, $response->viewData('segmentation')['leads']);
+    }
+
+    public function test_dashboard_retained_and_repeat_count_tracker_repeat_purchases_on_the_day_bought(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 09:00', 'Asia/Manila'));
+        // A September lead bought today: counts in October, not under its lead day.
+        $this->lead($this->alice, '2026-09-20', ['lead_type' => Lead::TYPE_CRD, 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-16']);
+        $this->lead($this->bob, '2026-10-05', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-10']);
+        $this->lead($this->bob, '2026-10-06', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-09-30']); // bought in September
+        $this->lead($this->alice, '2026-10-07', ['repeat_purchase' => 'no']);
+        // The same customer twice on October lead days: two leads, as the tracker counts them.
+        $this->lead($this->alice, '2026-10-08', ['phone_number' => '9179999999']);
+        $this->lead($this->bob, '2026-10-09', ['phone_number' => '9179999999']);
+        $this->lead($this->bob, '2026-10-09', ['lead_type' => Lead::TYPE_CRD]);
+
+        $response = $this->actingAs($this->owner)->get('/dashboard')->assertOk()
+            ->assertSee(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'repeat']));
+        // Each out of its own leads on October's lead days: Retained of the FSD Leads, Repeat of the CRD Leads.
+        $this->assertSame(['leads' => ['retained' => 5, 'repeat' => 1], 'retained' => 1, 'repeat' => 1], array_diff_key($response->viewData('customers'), ['goals' => 0]));
+        $this->assertSame(6, $response->viewData('segmentation')['leads']);
+        // The Segmentation Tracker panel agrees: Converted = Retained + Repeat, the same % as the tiles (1 of 5, 1 of 1).
+        $panel = $response->viewData('segmentation');
+        $this->assertSame('2/6', collect($panel['kpis'])->firstWhere('label', 'Converted')['count']);
+        $this->assertSame([20.0, 100.0], [$panel['retained'], $panel['repeat']]);
+        // The counts behind them, shown under Converted: 1 of 5 FSD + 1 of 1 CRD = 2 of 6.
+        $this->assertSame(['retained' => 1, 'fsd' => 5, 'repeat' => 1, 'crd' => 1], $panel['counts']);
+        $response->assertSeeInOrder(['Converted', '33.3%', '2/6', 'Retained', '1/5 · 20.0%', 'Repeat', '1/1 · 100.0%']);
+
+        // A CRA: only their own leads.
+        $mine = $this->actingAs($this->alice)->get('/dashboard')->viewData('customers');
+        $this->assertSame([2, 0, 0, 1], [$mine['leads']['retained'], $mine['leads']['repeat'], $mine['retained'], $mine['repeat']]);
+    }
+
+    public function test_a_tile_opens_its_customers_for_the_dashboards_dates(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 09:00', 'Asia/Manila'));
+        $this->lead($this->alice, '2026-09-20', ['customer_name' => 'Sept Sam', 'lead_type' => Lead::TYPE_CRD, 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-16']);
+        $this->lead($this->bob, '2026-10-05', ['customer_name' => 'Fsd Fay', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-10']);
+        $this->lead($this->bob, '2026-10-06', ['customer_name' => 'Old Olga', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-09-30']);
+        // The same customer bought twice in the dates: listed once.
+        $this->lead($this->bob, '2026-10-08', ['customer_name' => 'Fsd Fay', 'phone_number' => '91700002', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-12']);
+
+        $this->actingAs($this->owner)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'retained']))
+            ->assertOk()
+            ->assertViewHas('customers', fn ($customers) => $customers->pluck('customer_name')->all() === ['Fsd Fay'])
+            ->assertViewHas('counts', fn ($counts) => $counts->all() === ['retained' => 1, 'repeat' => 1])
+            ->assertSee('Oct 10, 2026')->assertDontSee('Old Olga');
+
+        // A supervisor picks a CRA: their customers and counts only.
+        $this->actingAs($this->owner)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'repeat', 'cra' => $this->alice->id]))
+            ->assertOk()
+            ->assertViewHas('customers', fn ($customers) => $customers->pluck('customer_name')->all() === ['Sept Sam'])
+            ->assertViewHas('counts', fn ($counts) => $counts->all() === ['retained' => 0, 'repeat' => 1]);
+
+        // A CRA: only their own, whatever CRA is asked for.
+        $this->actingAs($this->alice)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'retained', 'cra' => $this->bob->id]))
+            ->assertOk()->assertDontSee('Fsd Fay')->assertDontSee('All CRAs');
     }
 
     public function test_users_without_segmentation_access_see_no_card(): void
