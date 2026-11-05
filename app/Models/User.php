@@ -15,7 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
+#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'exclusive_from', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
 #[Hidden(['password', 'remember_token', 'recording_token', 'call_webhook_url'])]
 class User extends Authenticatable
 {
@@ -32,6 +32,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'exclusive_from' => 'immutable_date',
             'recording_token_created_at' => 'datetime',
             'call_webhook_url' => 'encrypted',
             'password' => 'hashed',
@@ -48,6 +49,19 @@ class User extends Authenticatable
     public function getAuthPassword(): string
     {
         return $this->password ?? '';
+    }
+
+    /**
+     * On the Exclusive Lead Tracker on $day, not the Segmentation Tracker (Settings, ExclusiveLeads).
+     */
+    public function isExclusiveOn(CarbonImmutable $day): bool
+    {
+        return $this->exclusive_from !== null && $this->exclusive_from->toDateString() <= $day->toDateString();
+    }
+
+    public function scopeExclusiveOn(Builder $query, CarbonImmutable $day): void
+    {
+        $query->whereNotNull('exclusive_from')->whereDate('exclusive_from', '<=', $day);
     }
 
     public function role(): BelongsTo

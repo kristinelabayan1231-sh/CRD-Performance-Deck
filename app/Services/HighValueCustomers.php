@@ -43,22 +43,26 @@ class HighValueCustomers
     public function __construct(private CustomerDatabase $customers) {}
 
     /**
-     * Every High AOV or VIP customer by main number, highest total spent first; kept for
+     * Every High AOV or VIP customer by main number, highest total spent first, at $minAov when given
+     * (else customers.high_aov_min); kept for
      * CustomerDatabase::CACHE_MINUTES like the rest of the Customer Database.
      *
      * @return array<string, array{phone_key: string, customer_name: string, phone_number: string, purchases: int, total_spent: float, aov: float, last_delivered: ?string, high_aov: bool, vip: bool, vip_products: list<string>}>
      */
-    public function all(): array
+    public function all(?float $minAov = null): array
     {
-        return CustomerDatabase::remember(CustomerDatabase::cacheKey('high_value', []), fn () => $this->build());
+        return CustomerDatabase::remember(
+            CustomerDatabase::cacheKey('high_value', $minAov === null ? [] : ['min_aov' => $minAov]),
+            fn () => $this->build($minAov),
+        );
     }
 
     /**
      * @return array<string, array<string, mixed>>
      */
-    private function build(): array
+    private function build(?float $minAov = null): array
     {
-        $minAov = (float) config('customers.high_aov_min');
+        $minAov ??= (float) config('customers.high_aov_min');
         // Nobody can have spent a product's CLTV on it with a smaller total, so only bigger spenders are checked for VIP.
         $minSrp = Product::crd()->where('srp', '>', 0)->min('srp');
         $minCltv = $minSrp === null ? null : (float) $minSrp * (int) config('customers.cltv_units');
@@ -533,9 +537,9 @@ class HighValueCustomers
      * @param  list<string>  $phoneKeys
      * @return array<string, array{high_aov: bool, vip: bool, vip_products: list<string>}>
      */
-    public function flagsForNumbers(array $phoneKeys): array
+    public function flagsForNumbers(array $phoneKeys, ?float $minAov = null): array
     {
-        $listed = $this->all();
+        $listed = $this->all($minAov);
 
         return collect($this->primariesOf($phoneKeys))
             ->filter(fn (string $primary) => isset($listed[$primary]))

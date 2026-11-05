@@ -48,6 +48,9 @@
                         <th data-col="type" class="px-4 py-3 font-semibold">Type</th>
                         <th data-col="assigned_to" class="px-4 py-3 font-semibold">Assigned to</th>
                         <th class="px-4 py-3 font-semibold">Status</th>
+                        @isset($sources)
+                            <th data-col="listed_as" class="px-4 py-3 font-semibold">Listed as</th>
+                        @endisset
                         @foreach ($visibleOptional as $key => $column)
                             <th data-col="{{ $key }}" class="bg-[#e3f1ea] px-4 py-3 font-semibold text-[#1d5b45]">{{ $column['label'] }}</th>
                         @endforeach

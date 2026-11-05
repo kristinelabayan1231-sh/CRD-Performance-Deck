@@ -90,7 +90,7 @@
         ])>{{ $lead->typeLabel() }}</span>
     </td>
     <td data-col="assigned_to" class="px-4 py-3">
-        @if ($canManage)
+        @if ($canManage && ! ($lockAssignee ?? false))
             <form method="POST" action="{{ route('segmentation.update', $lead) }}" data-autosave>
                 @csrf @method('PATCH')
                 <select name="assigned_to" aria-label="Assign {{ $lead->customer_name }}"
@@ -123,6 +123,21 @@
             @include('segmentation._attempt', ['lead' => $lead])
         </span>
     </td>
+    @isset($sources)
+        {{-- Exclusive Lead Tracker: why the lead is on the list --}}
+        @php($source = $sources[$lead->id] ?? null)
+        <td data-col="listed_as" class="px-4 py-3">
+            @if ($source)
+                <span @class([
+                    'rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap',
+                    'bg-brand-100 text-brand-700' => $source === 'high_value',
+                    'bg-teal/15 text-teal-700' => $source === 'handled',
+                    'bg-[#fff4d6] text-[#7a5a00]' => $source === 'leftover',
+                    'bg-canvas text-muted' => in_array($source, ['random', 'pos'], true),
+                ])>{{ \App\Http\Controllers\ExclusiveLeadController::SOURCE_LABELS[$source] ?? $source }}</span>
+            @endif
+        </td>
+    @endisset
     @foreach ($visibleOptional as $key => $column)
         <td data-col="{{ $key }}" class="px-4 py-3">
             @switch($key)

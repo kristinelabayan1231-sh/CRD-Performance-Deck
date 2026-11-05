@@ -40,6 +40,19 @@ class LeadMove extends Model
     }
 
     /**
+     * Moves the Segmentation Tracker counts: all but those off an exclusive CRA's days from their transfer day on.
+     */
+    public function scopeInSegmentationTracker(Builder $query): Builder
+    {
+        foreach (User::whereNotNull('exclusive_from')->get(['id', 'exclusive_from']) as $cra) {
+            $query->where(fn (Builder $q) => $q->where('lead_moves.assigned_to', '!=', $cra->id)
+                ->orWhereDate('lead_moves.listed_on', '<', $cra->exclusive_from));
+        }
+
+        return $query;
+    }
+
+    /**
      * Moved-off leads per CRA and lead day: [cra id][Y-m-d] => count.
      *
      * @return array<int, array<string, int>>

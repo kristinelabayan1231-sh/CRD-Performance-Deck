@@ -101,6 +101,20 @@ class Lead extends Model
     }
 
     /**
+     * Leads the Segmentation Tracker shows: all but those of an exclusive CRA from their transfer day on.
+     */
+    public function scopeInSegmentationTracker(Builder $query): Builder
+    {
+        foreach (User::whereNotNull('exclusive_from')->get(['id', 'exclusive_from']) as $cra) {
+            $query->where(fn (Builder $q) => $q->whereNull('leads.assigned_to')
+                ->orWhere('leads.assigned_to', '!=', $cra->id)
+                ->orWhereDate('leads.listed_on', '<', $cra->exclusive_from));
+        }
+
+        return $query;
+    }
+
+    /**
      * Still to do in the tracker: no status, no contact date, and not marked as processed.
      */
     public function scopeUnprocessed(Builder $query): Builder
