@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DutySchedule;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -39,6 +40,28 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertSee('₱895')
             ->assertSee('November plans 6,900 leads')
             ->assertDontSee('Settings · Exclusive Lead Tracker');
+    }
+
+    public function test_a_working_date_before_the_transfer_opens_the_transfer_month(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-08'));
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index'))
+            ->assertOk()
+            ->assertSee('Month goals · Joanna')
+            ->assertSee('November plans 6,900 leads')
+            ->assertSee('Sunday, Nov 1');
+    }
+
+    public function test_a_month_before_the_transfer_opens_the_transfer_month(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['month' => '2026-10']))
+            ->assertOk()
+            ->assertSee('November plans 6,900 leads')
+            ->assertSee('Friday, Nov 6');
     }
 
     public function test_the_confirmed_orders_target_reads_per_day_with_the_month_as_their_sum(): void
