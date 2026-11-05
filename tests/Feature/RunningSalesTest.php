@@ -64,7 +64,7 @@ class RunningSalesTest extends TestCase
     {
         // CanPro ×1 (₱1,000 SRP) and Sinux Spray ×2 (₱500): split 50/50.
         $this->order('CRD REJ VERGARA', 10000, [['name' => 'CanPro', 'qty' => 1], ['name' => 'Sinux Spray', 'qty' => 2]], type: PancakeOrder::BROADCAST);
-        // Canceled: in sales, not in orders.
+        // Canceled: in sales and in orders, as Shecom lists it.
         $this->order('CRD REJ VERGARA', 2000, [['name' => 'Haplunas', 'qty' => 1]], status: PancakeOrder::CANCELED);
         $this->order('CRD LHEI', 6000, [['name' => 'Sinuxyl', 'qty' => 3]]);
         $this->order('CRD LHEI', 9000, [['name' => 'CanPro', 'qty' => 1]], day: '2026-10-08');
@@ -76,12 +76,12 @@ class RunningSalesTest extends TestCase
             ->assertViewHas('snapshot', function (array $snapshot) {
                 [$regina, $lhea] = $snapshot['cras'];
 
-                return [$regina['name'], $regina['sales'], $regina['orders'], $regina['goal']] === ['Regina', 12000.0, 1, 20000.0]
+                return [$regina['name'], $regina['sales'], $regina['orders'], $regina['goal']] === ['Regina', 12000.0, 2, 20000.0]
                     && $regina['products'] === ['CanPro' => ['sales' => 5000.0, 'qty' => 1], 'Sinuxyl' => ['sales' => 5000.0, 'qty' => 2], 'Others' => ['sales' => 2000.0, 'qty' => 1]]
                     && [$lhea['name'], $lhea['sales'], $lhea['orders'], $lhea['goal']] === ['Lhea', 6000.0, 1, 5000.0]
                     // Best seller first, unsold after, Others last.
                     && array_keys($snapshot['products']) === ['Sinuxyl', 'CanPro', 'Rose Soap', 'Others']
-                    && $snapshot['team'] === ['sales' => 18000.0, 'orders' => 2, 'goal' => 25000.0];
+                    && $snapshot['team'] === ['sales' => 18000.0, 'orders' => 3, 'goal' => 25000.0];
             })
             ->assertSeeTextInOrder(['Updated 10:30 AM', 'next at 12:00 PM', 'Regina', '₱12,000', 'Daily goal', '₱20,000', 'Left to reach goal', '₱8,000',
                 'Lhea', '₱6,000', 'Goal reached', '+₱1,000 over']);

@@ -80,7 +80,7 @@ class DailyIncomeStatementTest extends TestCase
         ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 200, 'effective_from' => '2026-10-02']);
         // Regina's Sinuxyl: two pages of PC Report counts; two confirmed orders (before Nov 3 Product Cost is Settings'
         // ₱35 unit cost a piece, not Shecom's or Pancake's: "3 Bottles Sinuxyl" 3 pieces, "1 Sinuxyl" 1) and a canceled one
-        // (in Gross Sales and Actual Cancelled, not in orders); another day's is left out.
+        // (in orders as Shecom lists it, Gross Sales and Actual Cancelled; no Shipping or Fulfillment); another day's is left out.
         $this->entry($regina, 'Sinuxyl Nasal Spray', 100, 50);
         $this->entry($regina, 'Sinuxyl Nasal Care', 20, 10);
         $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['items' => [['qty' => 1, 'pieces' => 3, 'name' => '3 Bottles Sinuxyl', 'cost' => 100]]]);
@@ -105,7 +105,7 @@ class DailyIncomeStatementTest extends TestCase
         $operating = array_sum(array_map($share, array_keys(DailyIncomeStatement::OPERATING)));
         $selling = 2 * 75 + $delivered * 0.0224 + 2 * 25;
         $expected = [
-            'leads' => 120, 'engagements' => 60, 'orders' => 2, 'gross' => 2199.0, 'cancelled' => 700.0, 'returns' => 219.9,
+            'leads' => 120, 'engagements' => 60, 'orders' => 3, 'gross' => 2199.0, 'cancelled' => 700.0, 'returns' => 219.9,
             'delivered' => $delivered, 'tax' => $share('tax'), 'product_cost' => 140.0, 'gross_profit' => $delivered - $share('tax') - 140,
             'advertising' => 0.0, 'ads_vat' => 0.0, 'shipping' => 150, 'cod' => $delivered * 0.0224, 'vat_on_cod' => 0.0, 'fulfillment' => 50,
             'selling' => $selling, 'salaries' => $share('salaries'), 'hmo_expense' => $share('hmo_expense'), 'operating' => $operating,
@@ -118,7 +118,7 @@ class DailyIncomeStatementTest extends TestCase
         // Regina's card adds up her products: her operating costs are her MNI ÷ 24.
         $this->assertEqualsWithDelta($mni['salaries'] / 24, $data['cras'][$regina->id]['total']['salaries'], 0.001);
         $this->assertEqualsWithDelta(2199 + 800, $data['department']['total']['gross'], 0.001);
-        $this->assertSame(3, $data['department']['total']['orders']);
+        $this->assertSame(4, $data['department']['total']['orders']);
 
         // The canceled order is resolved: Oct 1's Actual Cancelled drops to 0.
         PancakeOrder::where('pancake_order_id', 'canceled-1')->update(['status' => 3]);

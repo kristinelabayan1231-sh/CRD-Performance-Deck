@@ -14,7 +14,7 @@ use Illuminate\Support\Str;
 
 /**
  * The CRAs' orders on a day per CRA and product page (Settings → Pancake Pages), deleted left out, for the Daily I.S.
- * counted = not canceled (PC Report's # of Orders counts those); status is the order's status now. As in the Conversion
+ * counted = not canceled (the Daily I.S. charges Shipping and Fulfillment on those); status is the order's status now. As in the Conversion
  * Breakdown, an order the CVR Tracker counts for a CRA goes to that CRA, also when made under another account.
  *
  * Matched on the Pancake page ID, since an order carries the page's name as Pancake shows it, which can differ from
