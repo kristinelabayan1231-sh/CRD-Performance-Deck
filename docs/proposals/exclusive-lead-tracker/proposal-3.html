@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proposal 3 · Daily timeline with tabs · Exclusive Lead Tracker</title>
+<link rel="stylesheet" href="shared.css"><script src="shared.js"></script>
+<style>
+.tl{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 10px}
+.day{flex:none;width:72px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:8px 6px;text-align:center;cursor:default;font-size:11px}
+.day .n{font-weight:700;font-size:15px}
+.day .col{height:70px;display:flex;align-items:flex-end;justify-content:center;margin:6px 0 4px}
+.day .col i{width:22px;border-radius:4px 4px 0 0;background:var(--brand-400);display:block}
+.day.today{border:2px solid var(--brand-600);background:var(--brand-50)}
+.day.tmr{border:2px dashed var(--coral-700);background:#fff7f3}
+.day.future{opacity:.55}
+.day.hist{background:#faf8fb}
+.goal-line{position:relative}
+.hr{display:grid;grid-template-columns:150px 1fr 120px;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+@media (max-width:700px){.hr{grid-template-columns:1fr}}
+</style></head>
+<body>
+<div class="mock-bar"><span><b>Proposal 3 of 3</b> · Daily timeline with progress bars and tabs</span><a href="index.html">← All proposals</a></div>
+<div class="app">
+  <aside class="side" data-sidebar></aside>
+  <div class="main-col">
+    <header class="top" data-topbar></header>
+    <main>
+      <div id="head"></div>
+      <div class="tabs" role="tablist" data-tabs="main" aria-label="Exclusive Lead Tracker sections">
+        <button role="tab" aria-selected="true" data-tab="timeline">Timeline</button>
+        <button role="tab" aria-selected="false" data-tab="leads">Leads</button>
+        <button role="tab" aria-selected="false" data-tab="history">Nov 1–4 history</button>
+        <button role="tab" aria-selected="false" data-tab="settings">Settings</button>
+      </div>
+
+      <!-- TIMELINE -->
+      <div data-panel-group="main" data-panel="timeline" style="display:grid;gap:20px">
+        <section class="card" aria-label="November timeline">
+          <div class="panel-h"><h2>November · each day against 250</h2>
+            <div class="legend"><span><i class="dot" style="background:var(--brand-400)"></i>Leads assigned</span><span><i class="dot" style="background:#fff;border:2px dashed var(--coral-700)"></i>Tomorrow</span></div></div>
+          <div class="pad"><div class="tl" id="tl" role="list"></div>
+            <p class="xs muted">Nov 1–4 ran at 100 leads a day. From Nov 5 each day is 250. Leads stay under Joanna for the whole month.</p></div>
+        </section>
+
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(360px,1fr))">
+          <section class="card">
+            <div class="panel-h"><h2>Targets</h2>
+              <div class="seg" role="tablist" data-tabs="period" aria-label="Period"><button role="tab" aria-selected="true" data-tab="month">Month</button><button role="tab" aria-selected="false" data-tab="day">Day · Nov 5</button></div></div>
+            <div class="pad" style="display:grid;gap:16px" data-panel-group="period" data-panel="month" id="pm"></div>
+            <div class="pad" style="display:grid;gap:16px" data-panel-group="period" data-panel="day" id="pd" hidden></div>
+          </section>
+
+          <section class="card">
+            <div class="panel-h"><h2>Tomorrow · Fri, Nov 6</h2><span class="chip" style="background:#fde3da;color:#a2391b">88 carried over</span></div>
+            <div class="pad" style="display:grid;gap:14px">
+              <p class="sm">Nov 5: <b>162</b> of 250 worked. The <b>88</b> left go first into tomorrow's 250.</p>
+              <div style="display:grid;gap:8px">
+                <div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px"><div class="row between"><span class="sm"><b>1.</b> <i class="dot d-vip"></i> High AOV / VIP</span><b class="num">50</b></div><p class="xs muted">12 carried + 38 fresh</p></div>
+                <div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px"><div class="row between"><span class="sm"><b>2.</b> <i class="dot d-twice"></i> Handled twice</span><b class="num">105</b></div><p class="xs muted">31 carried + 74 fresh</p></div>
+                <div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px"><div class="row between"><span class="sm"><b>3.</b> <i class="dot d-rand"></i> Random</span><b class="num">95</b></div><p class="xs muted">45 carried + 50 fresh</p></div>
+              </div>
+              <div id="tmix"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- LEADS -->
+      <div data-panel-group="main" data-panel="leads" hidden>
+        <div data-filters></div>
+        <div data-lead-table="24"></div>
+      </div>
+
+      <!-- HISTORY -->
+      <div data-panel-group="main" data-panel="history" hidden>
+        <section class="card">
+          <div class="panel-h"><h2>Nov 1–4 · her actuals against the 250 a day goal</h2></div>
+          <div class="pad" id="hist"></div>
+        </section>
+      </div>
+
+      <!-- SETTINGS -->
+      <div data-panel-group="main" data-panel="settings" hidden>
+        <section class="card" style="max-width:760px">
+          <div class="panel-h"><h2>Exclusive Lead Tracker settings</h2><span class="xs muted">Supervisors and leads only</span></div>
+          <div class="dlg-b" data-settings-body></div>
+          <div class="dlg-f" data-settings-foot></div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('head').outerHTML = pageHead('Joanna Paclibare · leads that stay with her all month.');
+  const days = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  let html = '';
+  for (let n = 1; n <= 30; n++) {
+    const dt = days[new Date(2026, 10, n).getDay()];
+    const rec = D.days.find((x) => x.d === n);
+    const cls = n < 5 ? 'hist' : n === 5 ? 'today' : n === 6 ? 'tmr' : 'future';
+    const leads = rec ? rec.leads : 250;
+    const lbl = n === 5 ? 'Today' : n === 6 ? 'Tomorrow' : rec ? `${rec.leads} leads` : '250 planned';
+    html += `<div class="day ${cls}" role="listitem" aria-label="Nov ${n}: ${lbl}"><span class="muted">${dt}</span><p class="n">${n}</p><div class="col"><i style="height:${leads / 250 * 100}%${n > 6 ? ';background:var(--line)' : ''}"></i></div><span class="${n === 6 ? 'b c-coral' : 'muted'}">${lbl}</span></div>`;
+  }
+  document.getElementById('tl').innerHTML = html;
+  const m = D.month, d = D.day;
+  document.getElementById('pm').innerHTML = [
+    progress('Leads', ...m.leads, '#8b3ff0', { pace: m.elapsed, tail: '7,000 a month · 250 a day' }),
+    progress('Repeat purchases', ...m.repeat, '#0e8f7c', { pace: m.elapsed, tail: '20% of leads = 1,400' }),
+    progress('Confirmed orders', ...m.orders, '#2f6fd6', { pace: m.elapsed }),
+    progress('AOV', ...m.aov, '#e0663f', { showPct: false, tail: 'Target ₱895 (replaces 900) · ₱15 short' }),
+    '<p class="xs muted">Black tick = where she should be by today.</p>',
+  ].join('');
+  document.getElementById('pd').innerHTML = [
+    progress('Leads worked', 162, 250, '#8b3ff0', { tail: '88 open → Nov 6' }),
+    progress('Repeat purchases', ...d.repeat, '#0e8f7c', { tail: '20% of 250' }),
+    progress('Confirmed orders', 4, 2, '#2f6fd6', { tail: '54 a month ≈ 2 a day' }),
+    progress('AOV', ...d.aov, '#e0663f', { showPct: false, tail: '₱6 short' }),
+  ].join('');
+  document.getElementById('tmix').innerHTML = mixBar(D.tomorrowMix) + `<p class="xs muted" style="margin-top:6px">250 total</p>`;
+  document.getElementById('hist').innerHTML = D.history.map((x) => `<div class="hr">
+      <div><p class="b">${x.d}</p><p class="xs muted">${x.leads} leads of 250 goal</p></div>
+      <div style="display:grid;gap:8px">
+        ${progress('Leads', x.leads, 250, '#8b3ff0')}
+        ${progress('Repeat purchases', x.repeat, 50, '#0e8f7c')}
+      </div>
+      <div class="sm" style="text-align:right"><p><b class="num">${x.orders}</b> <span class="muted">${x.orders === 1 ? "order" : "orders"}</span></p><p><b class="num">₱${x.aov}</b> <span class="muted">AOV</span></p></div></div>`).join('')
+    + `<p class="xs muted" style="margin-top:8px">100 leads a day, fetched from the Segmentation Tracker. The 250 goal starts Nov 5.</p>`;
+});
+</script>
+</body></html>

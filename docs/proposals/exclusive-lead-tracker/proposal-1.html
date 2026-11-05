@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Proposal 1 · KPI cards on top · Exclusive Lead Tracker</title>
+<link rel="stylesheet" href="shared.css"><script src="shared.js"></script></head>
+<body>
+<div class="mock-bar"><span><b>Proposal 1 of 3</b> · KPI cards on top, table below</span><a href="index.html">← All proposals</a></div>
+<div class="app">
+  <aside class="side" data-sidebar></aside>
+  <div class="main-col">
+    <header class="top" data-topbar></header>
+    <main>
+      <div id="head"></div>
+
+      <!-- Metrics: month / day toggle -->
+      <div class="row between mb">
+        <h2 style="font-size:16px;font-weight:600">Joanna's targets</h2>
+        <div class="seg" role="tablist" aria-label="Metric period">
+          <button role="tab" aria-selected="true" data-mode="month">Month · November</button>
+          <button role="tab" aria-selected="false" data-mode="day">Day · Nov 5</button>
+        </div>
+      </div>
+      <div class="grid kpis mb" id="kpis" aria-live="polite"></div>
+
+      <div class="grid mb" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+        <!-- Daily mix -->
+        <section class="card">
+          <div class="panel-h"><h2>Daily lead mix · tomorrow (Fri, Nov 6)</h2><span class="chip" style="background:#fff;color:var(--muted)">250 leads</span></div>
+          <div class="pad" id="mix"></div>
+        </section>
+        <!-- Carry-over -->
+        <section class="card">
+          <div class="panel-h"><h2>Carry-over from Nov 5</h2><span class="chip" style="background:#fde3da;color:#a2391b">88 left over</span></div>
+          <div class="pad" id="carry"></div>
+        </section>
+      </div>
+
+      <!-- Nov 1-4 history -->
+      <section class="card mb" style="overflow:hidden">
+        <div class="panel-h"><h2>History · Nov 1–4</h2><span class="xs muted">Joanna had 100 leads a day. Goal was 250 a day.</span></div>
+        <div class="tw" style="max-height:none"><table id="hist"></table></div>
+      </section>
+
+      <div data-filters></div>
+      <div data-lead-table="24"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Settings as a modal -->
+<dialog id="settings" aria-labelledby="st-title">
+  <div class="dlg-h"><div><h2 id="st-title" style="font-size:18px;font-weight:600">Exclusive Lead Tracker settings</h2><p class="sub">Transfer a CRA into the Exclusive Lead Tracker.</p></div><button class="x" data-close-dialog aria-label="Close">×</button></div>
+  <div class="dlg-b" data-settings-body></div>
+  <div class="dlg-f" data-settings-foot data-close="data-close-dialog"></div>
+</dialog>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('head').outerHTML = pageHead('Joanna Paclibare · leads that stay with her all month.',
+    '<button class="btn" data-open="settings" type="button">' + svg('gear', 'width:16px;height:16px') + 'Exclusive settings</button>');
+  document.querySelector('[data-open="settings"]').addEventListener('click', () => document.getElementById('settings').showModal());
+
+  const card = (l, v, tgt, foot, cls, a, t, color, pace) => `<div class="card kpi"><p class="l">${l}</p><p class="v ${cls}">${v} <small>${tgt}</small></p>
+    <div class="bar" style="margin-top:10px" role="progressbar" aria-label="${l}" aria-valuenow="${a}" aria-valuemax="${t}"><i style="width:${Math.min(100, a / t * 100)}%;background:${color}"></i>${pace ? `<span class="mark" style="left:${pace * 100}%" title="Where she should be by now"></span>` : ''}</div>
+    <div class="f">${foot}</div></div>`;
+  const kpis = {
+    month: () => { const m = D.month; return [
+      card('Leads assigned', fmt(m.leads[0]), '/ 7,000', `<span>${pct(...m.leads)}% of month</span><span>250 / day</span>`, 'c-brand', ...m.leads, '#8b3ff0', m.elapsed),
+      card('Repeat purchases', m.repeat[0], '/ 1,400', `<span>${pct(...m.repeat)}% · goal 20%</span><span class="c-coral b">Behind pace</span>`, 'c-teal', ...m.repeat, '#0e8f7c', m.elapsed),
+      card('Confirmed orders', m.orders[0], '/ 54', `<span>${pct(...m.orders)}%</span><span class="c-teal b">Ahead of pace</span>`, 'c-sky', ...m.orders, '#2f6fd6', m.elapsed),
+      card('AOV', '₱' + m.aov[0], '/ ₱895', `<span>Target ₱895 (was 900)</span><span class="c-coral b">−₱15</span>`, 'c-coral', ...m.aov, '#e0663f'),
+    ].join(''); },
+    day: () => { const d = D.day; return [
+      card('Leads worked', d.worked, '/ 250', `<span>${d.left} open</span><span>→ roll to Nov 6</span>`, 'c-brand', d.worked, 250, '#8b3ff0'),
+      card('Repeat purchases', d.repeat[0], '/ 50', `<span>20% of 250</span><span class="c-coral b">−${d.repeat[1] - d.repeat[0]}</span>`, 'c-teal', ...d.repeat, '#0e8f7c'),
+      card('Confirmed orders', d.orders[0], '/ 2', `<span>54 a month ≈ 2 a day</span><span class="c-teal b">Met</span>`, 'c-sky', 4, 4, '#2f6fd6'),
+      card('AOV', '₱' + d.aov[0], '/ ₱895', `<span>Target ₱895</span><span class="c-coral b">−₱6</span>`, 'c-coral', ...d.aov, '#e0663f'),
+    ].join(''); },
+  };
+  const paint = (mode) => { document.getElementById('kpis').innerHTML = kpis[mode](); };
+  paint('month');
+  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-mode]').forEach((x) => x.setAttribute('aria-selected', x === b)); paint(b.dataset.mode);
+  }));
+
+  document.getElementById('mix').innerHTML = `<p class="xs muted" style="margin-bottom:8px">Fills in this order: High AOV / VIP, then handled twice, then random.</p>
+    ${mixBar(D.tomorrowMix)}${mixLegend(D.tomorrowMix)}
+    <div class="note info" style="margin-top:12px"><b>88</b> carried over from Nov 5 + <b>162</b> fresh leads = <b>250</b>.</div>`;
+  document.getElementById('carry').innerHTML = `<p class="sm"><b class="num">88</b> leads Joanna didn't work today (162 of 250 done) go first into tomorrow's 250.</p>
+    <div style="margin:12px 0">${progress('Worked today', 162, 250, '#8b3ff0', { tail: '88 left → Fri, Nov 6' })}</div>
+    <div class="legend"><span><i class="dot d-vip"></i>VIP <b class="num">${D.carry.vip}</b></span><span><i class="dot d-twice"></i>Handled twice <b class="num">${D.carry.twice}</b></span><span><i class="dot d-rand"></i>Random <b class="num">${D.carry.rand}</b></span></div>
+    <p class="xs muted" style="margin-top:8px">They keep their priority and stay under Joanna.</p>`;
+
+  const row = (d) => `<tr><td class="stick">${d.d}</td><td class="r num">${d.leads} <span class="muted">/ 250</span></td><td class="r num">${d.repeat} <span class="muted">/ 50 · ${Math.round(d.repeat / d.leads * 100)}% of leads</span></td><td class="r num">${d.orders}</td><td class="r num">₱${d.aov}</td>
+    <td><div class="bar" style="width:110px" title="${d.leads} of 250"><i style="width:${d.leads / 250 * 100}%;background:#8b3ff0"></i></div></td></tr>`;
+  const H = D.history, sum = (k) => H.reduce((a, d) => a + d[k], 0);
+  document.getElementById('hist').innerHTML = `<thead><tr><th class="stick">Day</th><th class="r">Leads</th><th class="r">Repeat purchases</th><th class="r">Confirmed orders</th><th class="r">AOV</th><th>Of 250 goal</th></tr></thead>
+    <tbody>${H.map(row).join('')}<tr style="background:var(--brand-50)"><td class="stick" style="background:var(--brand-50)"><b>Nov 1–4</b></td><td class="r num"><b>${sum('leads')}</b> <span class="muted">/ 1,000</span></td><td class="r num"><b>${sum('repeat')}</b> <span class="muted">/ 200</span></td><td class="r num"><b>${sum('orders')}</b></td><td class="r num"><b>₱${Math.round(H.reduce((a, d) => a + d.aov, 0) / 4)}</b></td><td></td></tr></tbody>`;
+});
+</script>
+</body></html>
