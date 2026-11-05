@@ -18,6 +18,7 @@ use App\Http\Controllers\DashboardBoardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
+use App\Http\Controllers\ExclusiveLeadController;
 use App\Http\Controllers\ExclusiveLeadSettingController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
@@ -120,6 +121,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/on-duty', [OnDutyController::class, 'store'])->name('on-duty');
         Route::put('/schedule', DutyScheduleController::class)->name('schedule');
     });
+
+    Route::get('/exclusive-leads', [ExclusiveLeadController::class, 'index'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.index');
 
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
         Route::get('/', [SegmentationProductivityController::class, 'index'])->name('index');
