@@ -70,10 +70,10 @@ class ExclusiveLeadController extends Controller
         // The month and day: a date picks its month; never past today, never before the transfer.
         $date = isset($filters['date']) ? CarbonImmutable::parse($filters['date']) : null;
         $month = $date ?? (isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : $today);
-        $month = $month->startOfMonth();
+        $first = $cra->exclusive_from->startOfDay();
+        $month = $month->startOfMonth()->max($first->startOfMonth());
         $metrics = $exclusive->month($cra, $month);
 
-        $first = $cra->exclusive_from->startOfDay();
         $lastDay = $month->endOfMonth()->startOfDay()->min($today);
         $day = ($date ?? ($month->isSameMonth($today) ? $today : $lastDay))->startOfDay()->min($lastDay);
         $day = $day->max($month->max($first));
