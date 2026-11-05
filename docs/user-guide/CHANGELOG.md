@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-05 · Settings → Daily I.S. · Product costs from Shecom lists only the CRD and TSD products on Settings → Product Consumption; Shecom's other items are hidden · shots: none
 - 2026-11-04 · All pages · Pages float up as they load, a spinner shows while the next page, a pop-up or the Product Performance graph is loading, and tabs that switch on the page fade their content in · shots: none
 - 2026-11-05 · All sales modules · An order removed from Pancake that Shecom no longer lists either is marked Deleted each evening at 9:05 PM, so it stops counting and the sales tally with Logistics · shots: none
 - 2026-11-05 · All modules · Everything is up to date by 9:30 PM for the CRD team's 10 PM reports: Shecom corrections to the last 14 days at 9:00 PM, removed orders at 9:05 PM, Running Sales at 9:25 PM ("next at" on its page shows it) · shots: none
