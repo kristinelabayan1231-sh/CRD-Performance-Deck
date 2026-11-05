@@ -7,6 +7,7 @@ use App\Models\ExclusiveListLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
+use App\Support\DutyGoals;
 use App\Support\NicheRules;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -22,6 +23,11 @@ use Illuminate\Support\Facades\DB;
  * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers whose
  * two orders they handled (CustomerOwners), then random leads (the day's and the pool's unassigned leads no other CRA
  * owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
+ *
+ * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
+ * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
+ * Dashboard, Repeat Purchases and Segmentation Summary by assigned_to and listed_on; PC Report and Daily I.S. through the
+ * CVR Tracker's orders. Only the Segmentation Tracker pages leave them out (Lead::scopeInSegmentationTracker).
  */
 class ExclusiveLeads
 {
@@ -334,14 +340,16 @@ class ExclusiveLeads
     /**
      * Targets and actuals for the month and each of its days. Listed leads leave out POS sales. Repeat purchases follow
      * the tracker's rule (Repeat Purchase = Yes, on the day bought, one per customer: once in the month, once on a day).
-     * Confirmed orders, gross and AOV come from Segmentation Productivity. A lead carried over counts on each day's
-     * list; unique_leads counts it once. Worked = processed while on that day's list.
+     * Confirmed orders, gross and AOV come from Segmentation Productivity. The confirmed orders target is daily: a day
+     * off (DutyGoals) or a day before the transfer has none, and the month's is the sum of its days, the daily target
+     * × working_days. A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
+     * while on that day's list.
      *
      * @return array{
-     *     targets: array{leads: int, repeat: int, repeat_percent: int, confirmed_orders: int, high_aov_min: int},
+     *     targets: array{leads: int, repeat: int, repeat_percent: int, confirmed_orders: int, confirmed_orders_per_day: int, working_days: int, high_aov_min: int},
      *     planned: array{leads: int, target: int, short_of_target: int},
      *     actual: array{listed: int, unique_leads: int, repeat: int, confirmed: int, gross: float, aov: ?float, mix: array<string, int>},
-     *     days: list<array{date: string, quota: int, is_history: bool, listed: int, worked: int, left: int, pos: int, mix: array<string, int>, repeat: int, repeat_goal: int, confirmed: int, gross: float, aov: ?float}>
+     *     days: list<array{date: string, quota: int, is_history: bool, listed: int, worked: int, left: int, pos: int, mix: array<string, int>, repeat: int, repeat_goal: int, confirmed: int, confirmed_goal: int, is_day_off: bool, gross: float, aov: ?float}>
      * }
      */
     public function month(User $cra, CarbonImmutable $month): array
@@ -365,6 +373,9 @@ class ExclusiveLeads
 
         $sales = app(SegmentationProductivity::class)->days(collect([$cra]), $start, $end)[$cra->id] ?? [];
         $goalPercent = (int) config('exclusive_leads.repeat_goal_percent');
+        $confirmedPerDay = (int) config('exclusive_leads.confirmed_orders_per_day');
+        $offDays = DutyGoals::offDays(LeadGenerator::cras(), $start, $end);
+        $workingDays = 0;
         $mixOf = fn (Collection $rows) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $rows->where('source', $source)->count()])->all();
         $days = [];
         $planned = 0;
@@ -376,6 +387,9 @@ class ExclusiveLeads
             $counted = $rows->where('source', '!=', self::POS);
             $worked = $counted->filter(fn (ExclusiveListLead $entry) => $entry->lead?->isProcessed() && $entry->lead->listed_on->isSameDay($day))->count();
             $planned += $quota;
+            $isDayOff = isset($offDays[$date][$cra->id]);
+            $isWorkingDay = $quota > 0 && ! $isDayOff;
+            $workingDays += (int) $isWorkingDay;
 
             $days[] = [
                 'date' => $date,
@@ -389,6 +403,8 @@ class ExclusiveLeads
                 'repeat' => (int) ($repeatByDay[$date] ?? 0),
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
                 'confirmed' => (int) ($sales[$date]['confirmed'] ?? 0),
+                'confirmed_goal' => $isWorkingDay ? $confirmedPerDay : 0,
+                'is_day_off' => $isDayOff,
                 'gross' => (float) ($sales[$date]['gross'] ?? 0),
                 'aov' => $sales[$date]['aov'] ?? null,
             ];
@@ -404,7 +420,9 @@ class ExclusiveLeads
                 'leads' => $target,
                 'repeat' => self::repeatTarget(),
                 'repeat_percent' => $goalPercent,
-                'confirmed_orders' => (int) config('exclusive_leads.confirmed_orders_target'),
+                'confirmed_orders' => $confirmedPerDay * $workingDays,
+                'confirmed_orders_per_day' => $confirmedPerDay,
+                'working_days' => $workingDays,
                 'high_aov_min' => (int) config('exclusive_leads.high_aov_min'),
             ],
             'planned' => ['leads' => $planned, 'target' => $target, 'short_of_target' => max(0, $target - $planned)],

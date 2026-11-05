@@ -31,7 +31,8 @@ class WeeklySegmentationController extends Controller
         $week = $weeks[$weekNumber - 1];
         $days = collect(range(0, $week['start']->diffInDays($week['end'])))->map(fn ($i) => $week['start']->addDays($i));
 
-        $allCras = LeadGenerator::cras();
+        // An exclusive CRA leaves from their transfer day on: they stay on a week that started before it, with those days only.
+        $allCras = LeadGenerator::segmentationCras($week['start']);
         $cra = $canViewAll ? ($filters['cra'] ?? 'all') : (string) $user->id;
         // CRAs see only themselves; supervisors see everyone or one CRA.
         $shownCras = match (true) {
@@ -41,7 +42,7 @@ class WeeklySegmentationController extends Controller
         };
         $ids = $shownCras->pluck('id');
 
-        $weekLeads = Lead::whereIn('assigned_to', $ids)
+        $weekLeads = Lead::whereIn('assigned_to', $ids)->inSegmentationTracker()
             ->whereDate('listed_on', '>=', $week['start'])
             ->whereDate('listed_on', '<=', $week['end']);
 
@@ -54,7 +55,7 @@ class WeeklySegmentationController extends Controller
             ->map(fn ($rows) => $rows->keyBy(fn ($row) => CarbonImmutable::parse($row->day)->toDateString()));
 
         // Leads the backlog fill moved off a day still count as assigned (not handled) there.
-        $departed = LeadMove::countsByCraAndDay(LeadMove::departed($week['start'], $week['end'], $ids));
+        $departed = LeadMove::countsByCraAndDay(LeadMove::departed($week['start'], $week['end'], $ids)->inSegmentationTracker());
 
         $rows = $shownCras->map(function (User $cra) use ($grid, $days, $today, $departed) {
             $cells = $days->map(function (CarbonImmutable $day) use ($grid, $cra, $today, $departed) {
@@ -105,7 +106,7 @@ class WeeklySegmentationController extends Controller
             'assigned' => $rows->sum('assigned'),
             'handled' => $rows->sum('handled'),
             'unprocessed' => $rows->sum('unprocessed'),
-            'backlog' => Lead::carryOver($today)->whereIn('assigned_to', $ids)->count(),
+            'backlog' => Lead::carryOver($today)->inSegmentationTracker()->whereIn('assigned_to', $ids)->count(),
         ];
 
         return view('segmentation.weekly', [

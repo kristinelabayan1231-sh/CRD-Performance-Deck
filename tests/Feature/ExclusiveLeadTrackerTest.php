@@ -3,17 +3,23 @@
 namespace Tests\Feature;
 
 use App\Models\CustomerAccount;
+use App\Models\DutySchedule;
 use App\Models\ExclusiveListLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
+use App\Models\PcReportEntry;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BacklogFill;
+use App\Services\CvrTracker;
+use App\Services\DailyIncomeStatement;
 use App\Services\ExclusiveLeads;
 use App\Services\LeadGenerator;
+use App\Services\SegmentationProductivity;
+use App\Services\SegmentationStats;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -110,11 +116,32 @@ class ExclusiveLeadTrackerTest extends TestCase
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
 
         $this->assertSame(['leads' => 6900, 'target' => 7000, 'short_of_target' => 100], $month['planned']);
-        $this->assertSame(['leads' => 7000, 'repeat' => 1400, 'repeat_percent' => 20, 'confirmed_orders' => 54, 'high_aov_min' => 895], $month['targets']);
+        $this->assertSame(['leads' => 7000, 'repeat' => 1400, 'repeat_percent' => 20, 'confirmed_orders' => 1620, 'confirmed_orders_per_day' => 54, 'working_days' => 30, 'high_aov_min' => 895], $month['targets']);
         $this->assertSame(100, $month['days'][3]['quota']);
         $this->assertSame(20, $month['days'][3]['repeat_goal']);
         $this->assertSame(250, $month['days'][4]['quota']);
         $this->assertSame(50, $month['days'][4]['repeat_goal']);
+    }
+
+    public function test_confirmed_orders_target_is_54_per_working_day_and_the_month_adds_them_up(): void
+    {
+        $this->joanna->update(['exclusive_from' => '2026-11-03']);
+        DutySchedule::create(['user_id' => $this->joanna->id, 'date' => '2026-11-08', 'type' => DutySchedule::REST]);
+
+        $month = app(ExclusiveLeads::class)->month($this->joanna->fresh(), CarbonImmutable::parse('2026-11-01'));
+        $days = collect($month['days'])->keyBy('date');
+
+        $this->assertSame(0, $days['2026-11-02']['confirmed_goal']);
+        $this->assertSame(54, $days['2026-11-03']['confirmed_goal']);
+        $this->assertSame(54, $days['2026-11-07']['confirmed_goal']);
+        $this->assertSame(0, $days['2026-11-08']['confirmed_goal']);
+        $this->assertTrue($days['2026-11-08']['is_day_off']);
+        $this->assertSame(250, $days['2026-11-08']['quota']);
+        $this->assertSame(27, $month['targets']['working_days']);
+        $this->assertSame(54 * 27, $month['targets']['confirmed_orders']);
+        $this->assertSame($days->sum('confirmed_goal'), $month['targets']['confirmed_orders']);
+        $this->assertSame(1400, $month['targets']['repeat']);
+        $this->assertSame(7000, $month['targets']['leads']);
     }
 
     public function test_a_cra_transferred_mid_month_plans_only_from_their_day(): void
@@ -460,5 +487,83 @@ class ExclusiveLeadTrackerTest extends TestCase
 
         $migration->up();
         $this->assertNull($this->joanna->fresh()->exclusive_from);
+    }
+
+    public function test_the_other_modules_read_her_exclusive_list(): void
+    {
+        config(['exclusive_leads.daily_quota' => 3]);
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05']);
+        $worked = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05', 'status' => 'pjr_drop_call', 'contact_date' => '2026-11-05']);
+        $picked = $this->lead('2026-11-06', null, ['listed_on' => '2026-11-06']);
+        $this->lead('2026-11-06', $this->regina, ['listed_on' => '2026-11-06']);
+
+        $this->sync('2026-11-06');
+        $this->assertSame([$leftover->id, $picked->id], array_keys($this->listOn('2026-11-06')));
+        $picked->refresh()->forceFill(['contact_time' => '09:00', 'contact_date' => '2026-11-06', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-06'])->save();
+        $order = ['seller_name' => $this->joanna->pancake_name, 'status' => 3, 'total_price' => 1000, 'conversion_type' => PancakeOrder::SEGMENTATION, 'tags' => ['CRD - SEGMENTATION']];
+        PancakeOrder::create(['pancake_order_id' => 'S1', 'ordered_on' => '2026-11-06', 'ordered_at' => '2026-11-06 02:00:00', 'phone_key' => $this->phoneKey($picked), ...$order]);
+
+        $month = app(ExclusiveLeads::class)->month($this->joanna->fresh(), CarbonImmutable::parse('2026-11-01'));
+        $days = collect($month['days'])->keyBy('date');
+        $joanna = $this->joanna->fresh();
+
+        // Segmentation Productivity: each day's assigned is her list that day, the carried lead counted on both.
+        $productivity = app(SegmentationProductivity::class)->days(collect([$joanna]), CarbonImmutable::parse('2026-11-05'), CarbonImmutable::parse('2026-11-06'))[$joanna->id];
+        $this->assertSame($days['2026-11-05']['listed'], $productivity['2026-11-05']['assigned']);
+        $this->assertSame($days['2026-11-06']['listed'], $productivity['2026-11-06']['assigned']);
+        $this->assertSame($days['2026-11-06']['confirmed'], $productivity['2026-11-06']['confirmed']);
+
+        // CVR Tracker: the order is an assigned lead's, and the statuses come from each day's list.
+        $today = app(CvrTracker::class)->day($joanna, CarbonImmutable::parse('2026-11-06'));
+        $this->assertSame(1, $today['summary']['orders']);
+        $this->assertSame(1, $today['summary']['assigned_leads']);
+        $this->assertSame(1, $days['2026-11-06']['confirmed']);
+        $this->assertSame(1, $today['summary']['engaged']);
+        $this->assertSame(1, app(CvrTracker::class)->day($joanna, CarbonImmutable::parse('2026-11-05'))['summary']['not_answering']);
+
+        // Repeat Purchases: the same rows as her page's goal.
+        $this->assertSame(1, $month['actual']['repeat']);
+        $this->assertSame([$picked->id], app(SegmentationStats::class)->repeatPurchases(collect([$joanna]), 'repeat', CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-30'))->pluck('id')->all());
+
+        // The page's pickers still list her everywhere but the Segmentation Tracker.
+        $this->actingAs($this->supervisor)->get(route('pc-report.index', ['date' => '2026-11-06']))->assertOk()->assertSee('Joanna Rose');
+        $this->actingAs($this->supervisor)->get(route('cvr-tracker.index', ['date' => '2026-11-06', 'cra' => $joanna->id]))->assertOk()->assertViewHas('data', fn (array $data) => $data['summary']['orders'] === 1);
+    }
+
+    public function test_daily_is_counts_her_orders_and_typed_entries(): void
+    {
+        Product::create(['name' => 'Sinuxyl', 'unit_cost' => 35]);
+        $pageName = 'Sinuxyl Nasal Spray';
+
+        PcReportEntry::create(['user_id' => $this->joanna->id, 'page' => $pageName, 'category' => '', 'date' => '2026-11-05', 'inquiries' => 40, 'engagements' => 20]);
+        PancakeOrder::create(['pancake_order_id' => 'S2', 'ordered_on' => '2026-11-05', 'ordered_at' => '2026-11-05 02:00:00', 'seller_name' => strtoupper($this->joanna->pancake_name),
+            'customer_name' => 'Buyer', 'status' => 3, 'total_price' => 1000, 'page_name' => $pageName, 'tags' => [], 'non_crd' => false]);
+
+        $statement = app(DailyIncomeStatement::class)->day(LeadGenerator::cras(), CarbonImmutable::parse('2026-11-05'));
+
+        $this->assertArrayHasKey($this->joanna->id, $statement['cras']);
+        $this->assertSame(40, $statement['cras'][$this->joanna->id]['total']['leads']);
+        $this->assertEquals(1000, $statement['cras'][$this->joanna->id]['total']['gross']);
+    }
+
+    public function test_weekly_segmentation_drops_her_from_her_transfer_day_on(): void
+    {
+        $this->lead('2026-11-02', $this->joanna, ['listed_on' => '2026-11-02']);
+        $this->lead('2026-11-02', $this->regina, ['listed_on' => '2026-11-02']);
+
+        $november = $this->actingAs($this->supervisor)->get(route('segmentation.weekly', ['month' => '2026-11', 'week' => 1]))->assertOk();
+        $this->assertSame(['Regina'], $november->viewData('rows')->map(fn (array $row) => $row['cra']->displayName())->all());
+        $this->assertSame(1, $november->viewData('totals')['assigned']);
+
+        $this->lead('2026-10-15', $this->joanna, ['listed_on' => '2026-10-15']);
+        $october = $this->actingAs($this->supervisor)->get(route('segmentation.weekly', ['month' => '2026-10', 'week' => 3]))->assertOk();
+        $this->assertContains('Joanna Rose', $october->viewData('rows')->map(fn (array $row) => $row['cra']->displayName())->all());
+    }
+
+    public function test_opening_the_segmentation_tracker_takes_her_to_her_exclusive_page(): void
+    {
+        $this->actingAs($this->joanna)->get(route('segmentation.index'))->assertRedirect(route('exclusive-leads.index'));
+        $this->actingAs($this->joanna)->get(route('segmentation.index', ['date' => '2026-10-31']))->assertOk();
+        $this->actingAs($this->regina)->get(route('segmentation.index'))->assertOk();
     }
 }

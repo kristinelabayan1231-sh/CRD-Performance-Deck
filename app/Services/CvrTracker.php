@@ -27,7 +27,7 @@ use Illuminate\Support\Collection;
  * Total # of Orders = the customer's delivered orders before that day (Customer Database, merged numbers too) + this one.
  * Engaged / Reserved / Not answering = the CRA's Segmentation Tracker leads on that day's list (the paired lead day when
  * a working date is set): a Time of Contact and feedback other than PURCHASED / Repeat Purchase = Reserve /
- * status PJR/Inactive/CBR/Drop call.
+ * status PJR/Inactive/CBR/Drop call. An exclusive CRA's are their Exclusive Lead Tracker leads, the same rows on that day's list.
  */
 class CvrTracker
 {

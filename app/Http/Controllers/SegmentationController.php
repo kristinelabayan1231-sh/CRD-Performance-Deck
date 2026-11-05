@@ -29,11 +29,16 @@ class SegmentationController extends Controller
     /** Customers per page in a list's full-view pop-up. */
     private const FULL_PER_PAGE = 50;
 
-    public function index(Request $request, LeadGenerator $generator): View
+    public function index(Request $request, LeadGenerator $generator): View|RedirectResponse
     {
         $user = $request->user();
         $canViewAll = $user->can('segmentation.view_all');
         $today = Lead::today();
+
+        // A CRA moved to the Exclusive Lead Tracker works there; asking for a date still opens their earlier days here.
+        if ($request->query() === [] && $request->user()->isExclusiveOn($today) && $request->user()->can('exclusive_leads.view')) {
+            return redirect()->route('exclusive-leads.index');
+        }
 
         // Keep today's leads fresh without anyone pressing a button (after the page is sent).
         $generator->syncLater($today);

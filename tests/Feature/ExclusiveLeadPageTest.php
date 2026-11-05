@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DutySchedule;
 use App\Models\Role;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -38,6 +39,35 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertSee('₱895')
             ->assertSee('November plans 6,900 leads')
             ->assertDontSee('Settings · Exclusive Lead Tracker');
+    }
+
+    public function test_the_confirmed_orders_target_reads_per_day_with_the_month_as_their_sum(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index'))
+            ->assertOk()
+            ->assertSee('/ 54 today')
+            ->assertSee('Month: 0 of 1,620')
+            ->assertSee('54 a day × 30 working days')
+            ->assertSee('54 confirmed orders a day')
+            ->assertDontSee('Month target');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()
+            ->assertSee('/ 54')
+            ->assertDontSee('/ 54 today');
+    }
+
+    public function test_a_day_off_has_no_confirmed_orders_target(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+        DutySchedule::create(['user_id' => $joanna->id, 'date' => '2026-11-05', 'type' => DutySchedule::REST]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()
+            ->assertSee('Day off, no target · Month: 0 of 1,566')
+            ->assertSee('54 a day × 29 working days');
     }
 
     public function test_a_cra_not_on_the_page_is_pointed_to_the_segmentation_tracker(): void

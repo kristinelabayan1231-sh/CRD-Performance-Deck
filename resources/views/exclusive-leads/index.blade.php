@@ -90,12 +90,16 @@
                                     </span>
                                     <span class="text-xs text-muted tabular-nums">{{ number_format($cell['listed']) }}{{ $smallDay ? ' leads' : '/'.number_format($cell['quota']) }}</span>
                                     <span class="hidden text-xs text-muted tabular-nums sm:block">{{ number_format($cell['repeat']) }} repeat</span>
-                                    <span class="hidden text-xs text-muted tabular-nums sm:block">{{ number_format($cell['confirmed']) }} {{ \Illuminate\Support\Str::plural('order', $cell['confirmed']) }}</span>
+                                    <span class="hidden text-xs text-muted tabular-nums sm:block">{{ number_format($cell['confirmed']) }}{{ $cell['confirmed_goal'] > 0 ? '/'.number_format($cell['confirmed_goal']).' orders' : ' '.\Illuminate\Support\Str::plural('order', $cell['confirmed']) }}</span>
+                                    @if ($cell['is_day_off'])
+                                        <span class="hidden text-xs font-semibold text-muted sm:block">Day off</span>
+                                    @endif
                                 </a>
                             @endif
                         @endforeach
                     </div>
-                    <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day: leads listed out of the daily quota, repeat purchases, confirmed orders. Dashed days have not started.</p>
+                    <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day: leads listed out of the daily quota, repeat purchases, confirmed orders out of the daily target. Dashed days have not started.
+                        <a href="{{ route('segmentation.index', ['cra' => $cra->id, 'date' => $cra->exclusive_from->subDay()->toDateString()]) }}" class="font-medium text-brand-600 hover:underline">Days before the transfer are in the Segmentation Tracker.</a></p>
                 </x-panel>
 
                 {{-- Month goals --}}
@@ -104,7 +108,7 @@
                     <div class="grid grid-cols-3 gap-2 p-4">
                         @include('exclusive-leads._ring', ['label' => 'Leads', 'value' => $actual['listed'], 'target' => $targets['leads'], 'stroke' => 'stroke-brand-500', 'sub' => $standard.' a day'])
                         @include('exclusive-leads._ring', ['label' => 'Repeat purchases', 'value' => $actual['repeat'], 'target' => $targets['repeat'], 'stroke' => 'stroke-teal-700', 'sub' => 'Goal '.$targets['repeat_percent'].'% of leads'])
-                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => 'Month target'])
+                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => number_format($targets['confirmed_orders_per_day']).' a day × '.$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
                     </div>
                     <div class="grid gap-3 border-t border-line p-4 text-sm">
                         @php($aov = $actual['aov'])
@@ -124,6 +128,7 @@
                     </div>
                     <div class="border-t border-line bg-canvas/50 p-4 text-xs text-muted">
                         <strong class="text-ink">{{ number_format($targets['leads']) }} leads a month</strong> is the target, {{ $standard }} a day. Her leads stay with her all month.
+                        <br><strong class="text-ink">{{ number_format($targets['confirmed_orders_per_day']) }} confirmed orders a day</strong> is the target, {{ number_format($targets['confirmed_orders']) }} across {{ $month->format('F') }}'s working days. A day off has no target.
                         @if ($quotaNote)
                             <br><strong class="text-ink">{{ $quotaNote }}</strong>
                             Planned {{ number_format($metrics['planned']['leads']) }}, {{ number_format($metrics['planned']['short_of_target']) }} short of the target.
@@ -142,12 +147,12 @@
                     @endif
                 </x-slot:badges>
                 <x-slot:actions>
-                    <span class="text-xs text-muted">Daily goal: {{ number_format($dayMetrics['repeat_goal']) }} repeat purchases ({{ $targets['repeat_percent'] }}% of {{ number_format($quota) }}) · AOV ₱{{ number_format($targets['high_aov_min']) }}</span>
+                    <span class="text-xs text-muted">Daily goal: {{ number_format($dayMetrics['repeat_goal']) }} repeat purchases ({{ $targets['repeat_percent'] }}% of {{ number_format($quota) }}) · {{ $dayMetrics['is_day_off'] ? 'Day off, no order target' : number_format($dayMetrics['confirmed_goal']).' confirmed orders' }} · AOV ₱{{ number_format($targets['high_aov_min']) }}</span>
                 </x-slot:actions>
                 <div class="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
                     @foreach ([
                         ['Repeat purchases', number_format($dayMetrics['repeat']), '/ '.number_format($dayMetrics['repeat_goal']), $targets['repeat_percent'].'% of the day\'s '.number_format($quota)],
-                        ['Confirmed orders', number_format($dayMetrics['confirmed']), null, 'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders'])],
+                        ['Confirmed orders', number_format($dayMetrics['confirmed']), $dayMetrics['confirmed_goal'] > 0 ? '/ '.number_format($dayMetrics['confirmed_goal']).($day->isSameDay($today) ? ' today' : '') : null, ($dayMetrics['is_day_off'] ? 'Day off, no target · ' : '').'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders'])],
                         ['AOV', $dayAov !== null ? '₱'.number_format($dayAov) : '—', null, $dayAov === null ? 'No orders yet' : ($dayAov >= $targets['high_aov_min'] ? 'Meets ₱'.number_format($targets['high_aov_min']) : '₱'.number_format($targets['high_aov_min'] - $dayAov).' below ₱'.number_format($targets['high_aov_min']))],
                         ['Leads worked', number_format($dayMetrics['worked']), '/ '.number_format($dayMetrics['listed']), $dayMetrics['left'] > 0 ? number_format($dayMetrics['left']).' left'.($day->isSameDay($today) ? ' for tomorrow' : '') : ($dayMetrics['listed'] > 0 ? 'All handled' : 'Nothing listed')],
                     ] as [$label, $value, $of, $note])

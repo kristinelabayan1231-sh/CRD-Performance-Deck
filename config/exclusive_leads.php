@@ -30,7 +30,8 @@ return [
 
     'repeat_goal_percent' => 20,
 
-    'confirmed_orders_target' => 54,
+    // A daily target: the month's is this × her working days (days off have none).
+    'confirmed_orders_per_day' => 54,
 
     // This module's High AOV line. customers.high_aov_min stays the rule for every other CRA.
     'high_aov_min' => 895,
