@@ -257,21 +257,23 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta(120, $cost('2026-11-03'), 0.001);
     }
 
-    public function test_settings_lists_shecoms_product_costs_and_the_sold_items_without_one(): void
+    public function test_settings_lists_shecoms_costs_for_crd_and_tsd_products_only_and_the_sold_items_without_one(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        Product::create(['name' => 'Haplunas', 'is_tsd' => true]);
         ShecomProductCost::create(['product' => '1 Bottle Sinuxyl', 'cost' => 30, 'effective_from' => '2026-10-10']);
+        ShecomProductCost::create(['product' => 'Haplunas Balm', 'cost' => 35, 'effective_from' => null]);
         ShecomProductCost::create(['product' => 'Fungi Clear', 'cost' => 42, 'effective_from' => null]);
         // Sold lately: "1 Bottle Sinuxyl" has a cost; "Sinuxyl" (5 pieces × 2) has none. An older sale isn't listed.
         $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => '2026-10-15', 'items' => [['qty' => 2, 'pieces' => 5, 'name' => 'Sinuxyl'], ['qty' => 1, 'name' => '1 Bottle Sinuxyl']]]);
         $this->order($regina, 'Sinuxyl Nasal Spray', 500, ['ordered_on' => '2026-09-20', 'items' => [['qty' => 1, 'name' => 'Old Sinuxyl Bundle']]]);
 
         $view = $this->actingAs($this->user('Admin', Role::SUPER_ADMIN))->get(route('settings.daily-is.index'))
-            ->assertOk()->assertSeeText('Product costs from Shecom');
+            ->assertOk()->assertSeeText('Product costs from Shecom')->assertDontSeeText('Fungi Clear');
 
         $this->assertSame([
+            ['item' => 'Haplunas Balm', 'cost' => 35.0, 'from' => null, 'product' => 'Haplunas'],
             ['item' => '1 Bottle Sinuxyl', 'cost' => 30.0, 'from' => '2026-10-10', 'product' => 'Sinuxyl'],
-            ['item' => 'Fungi Clear', 'cost' => 42.0, 'from' => null, 'product' => null],
         ], $view->viewData('costs'));
         $this->assertSame([['item' => 'Sinuxyl', 'product' => 'Sinuxyl', 'pieces' => 10]], $view->viewData('missingCosts'));
     }

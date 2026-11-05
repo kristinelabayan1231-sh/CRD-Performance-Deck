@@ -42,10 +42,11 @@ class DailyIsSettingController extends Controller
     }
 
     /**
-     * Each item's cost today (as the Daily I.S. reads it) with the product it counts as, and the items on Product
-     * Consumption sold by the CRAs in the last MISSING_COST_DAYS days that Shecom has no cost for, with their pieces.
+     * The cost today (as the Daily I.S. reads it) of each item that counts as a product on Product Consumption (CRD or TSD
+     * upsell), with that product, and the items on Product Consumption sold by the CRAs in the last MISSING_COST_DAYS days
+     * that Shecom has no cost for, with their pieces. Shecom's items for any other product are left out.
      *
-     * @return array{costs: list<array{item: string, cost: float, from: ?string, product: ?string}>, missingCosts: list<array{item: string, product: string, pieces: int}>, costsUpdatedAt: ?string}
+     * @return array{costs: list<array{item: string, cost: float, from: ?string, product: string}>, missingCosts: list<array{item: string, product: string, pieces: int}>, costsUpdatedAt: ?string}
      */
     private function shecomCosts(ProductCatalog $catalog, string $today): array
     {
@@ -71,7 +72,8 @@ class DailyIsSettingController extends Controller
         return [
             'costs' => collect($costs)->map(fn (float $cost, string $key) => [
                 'item' => $names[$key] ?? $key, 'cost' => $cost, 'from' => $from[$key] ?? null, 'product' => $catalog->matchSold($names[$key] ?? $key, $today)?->name,
-            ])->sortBy(fn (array $row) => [$row['product'] === null, Str::lower((string) $row['product']), Str::lower($row['item'])])->values()->all(),
+            ])->filter(fn (array $row) => $row['product'] !== null)
+                ->sortBy(fn (array $row) => [Str::lower($row['product']), Str::lower($row['item'])])->values()->all(),
             'missingCosts' => collect($missing)->sortByDesc('pieces')->values()->all(),
             'costsUpdatedAt' => ShecomProductCost::max('updated_at'),
         ];

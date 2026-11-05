@@ -45,7 +45,7 @@
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
                 <h2 id="shecom-costs-title" class="text-base font-semibold">Product costs from Shecom</h2>
-                <p class="text-sm text-muted">The Daily I.S. Product Cost: each item's cost per piece × its pieces, matched by the item's name in Pancake. Synced every hour{{ $costsUpdatedAt ? ', last on '.\Carbon\CarbonImmutable::parse($costsUpdatedAt)->timezone(config('segmentation.timezone'))->format('M j, Y g:i A') : '' }}. To change a cost, change it in Shecom.</p>
+                <p class="text-sm text-muted">The Daily I.S. Product Cost: each item's cost per piece × its pieces, matched by the item's name in Pancake. Lists only the CRD and TSD products on Product Consumption. Synced every hour{{ $costsUpdatedAt ? ', last on '.\Carbon\CarbonImmutable::parse($costsUpdatedAt)->timezone(config('segmentation.timezone'))->format('M j, Y g:i A') : '' }}. To change a cost, change it in Shecom.</p>
             </div>
             @can('daily_is.view_all')
                 <form method="POST" action="{{ route('daily-is.product-costs.refresh') }}">
@@ -81,14 +81,14 @@
                 </thead>
                 <tbody class="divide-y divide-line">
                     @forelse ($costs as $row)
-                        <tr @class(['text-muted' => $row['product'] === null])>
+                        <tr>
                             <td class="px-3 py-1.5 font-medium">{{ $row['item'] }}</td>
-                            <td class="px-3 py-1.5">{{ $row['product'] ?? 'Not on Product Consumption' }}</td>
+                            <td class="px-3 py-1.5">{{ $row['product'] }}</td>
                             <td class="px-3 py-1.5 text-right">₱{{ number_format($row['cost'], 2) }}</td>
                             <td class="px-3 py-1.5">{{ $row['from'] ? \Carbon\CarbonImmutable::parse($row['from'])->format('M j, Y') : 'Start' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="4" class="px-3 py-4 text-muted">No product costs from Shecom yet. Use Refresh product costs.</td></tr>
+                        <tr><td colspan="4" class="px-3 py-4 text-muted">No costs from Shecom yet for the products on Product Consumption. Use Refresh product costs.</td></tr>
                     @endforelse
                 </tbody>
             </table>
