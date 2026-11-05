@@ -52,6 +52,11 @@ $modules = [
         'segmentation.manage' => 'Reassign leads, change any status and sync leads from the API',
         'segmentation.transfer' => 'Transfer backlog (unprocessed) leads between CRAs',
     ],
+    'Exclusive Lead Tracker' => [
+        'exclusive_leads.view' => 'View own exclusive leads and goals',
+        'exclusive_leads.view_all' => 'View every exclusive CRA',
+        'exclusive_leads.manage' => 'Transfer CRAs into and out of the Exclusive Lead Tracker',
+    ],
     'Segmentation Productivity' => [
         'productivity.view' => 'View own productivity numbers',
         'productivity.view_all' => 'View and compare every CRA, and sync Pancake data',

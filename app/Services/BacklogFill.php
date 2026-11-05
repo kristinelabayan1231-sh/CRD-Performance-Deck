@@ -37,7 +37,7 @@ class BacklogFill
     {
         $onDuty = OnDuty::today()->pluck('user_id')->all();
 
-        return $this->fill($day, LeadGenerator::cras()->whereIn('id', $onDuty)->values());
+        return $this->fill($day, LeadGenerator::segmentationCras($day)->whereIn('id', $onDuty)->values());
     }
 
     /**
@@ -47,7 +47,7 @@ class BacklogFill
     public function fill(CarbonImmutable $day, Collection $cras): array
     {
         $day = $day->startOfDay();
-        $cras = $cras->reject(fn (User $cra) => Cache::has(self::filledKey($day, $cra->id)))->values();
+        $cras = $cras->reject(fn (User $cra) => $cra->isExclusiveOn($day) || Cache::has(self::filledKey($day, $cra->id)))->values();
         $cras->each(fn (User $cra) => Cache::put(self::filledKey($day, $cra->id), true, now()->addDays(3)));
         $max = (int) config('segmentation.max_leads_per_cra');
         $listed = Lead::whereDate('listed_on', $day)->whereIn('assigned_to', $cras->pluck('id'))->withoutPosSales()
@@ -66,10 +66,13 @@ class BacklogFill
             ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
             ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date']);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
+        // An exclusive CRA's leads stay theirs.
+        $exclusive = User::exclusiveOn($day)->pluck('id')->flip();
+        $waiting = $waiting->reject(fn (Lead $lead) => $lead->assigned_to !== null && isset($exclusive[$lead->assigned_to]))->values();
         $waiting = $this->withoutReordered($waiting, $phoneOf);
         $owners = app(LeadGenerator::class)->ownersFor($waiting->map($phoneOf)->unique()->values()->all());
         $niches = NicheRules::current();
-        $active = LeadGenerator::cras()->pluck('id')->flip();
+        $active = LeadGenerator::segmentationCras($day)->pluck('id')->flip();
 
         // Three lists, each by out-of-stock month: a filled CRA's own customers (whoever has the lead now: their CRA
         // takes it back), then their backlog of customers no CRA owns, then the unowned pool. A lead whose CRA isn't
@@ -80,6 +83,11 @@ class BacklogFill
         foreach ($waiting as $lead) {
             $owner = LeadGenerator::ownerFor($owners, $phoneOf($lead), $lead->product_name, $niches);
             $month = $lead->est_out_of_stock_date->format('Y-m');
+
+            // An exclusive CRA's customer waits for their list (ExclusiveLeads).
+            if ($owner !== null && isset($exclusive[$owner])) {
+                continue;
+            }
 
             if ($owner !== null && isset($active[$owner])) {
                 if (isset($room[$owner])) {
@@ -150,7 +158,7 @@ class BacklogFill
      * @param  callable(Lead): string  $phoneOf
      * @return Collection<int, Lead>
      */
-    private function withoutReordered(Collection $waiting, callable $phoneOf): Collection
+    public function withoutReordered(Collection $waiting, callable $phoneOf): Collection
     {
         // Lead numbers are stored as entered: 9…, 09…, 639… or +639….
         $formats = $waiting->map($phoneOf)->filter()->unique()->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key]);

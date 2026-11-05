@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-05 · Segmentation Tracker · A CRA moved to the Exclusive Lead Tracker (Joanna Rose from Nov 1) no longer appears in the tracker, its CRA filter or its assignment from their transfer day on; their earlier days still show · shots: segmentation
 - 2026-11-05 · Settings → Product Consumption · TSD upsell text now says only orders with just TSD products count in gross sales; a TSD add-on on a CRD order isn't counted, as in Shecom · shots: settings-product-consumption
 - 2026-11-05 · Daily I.S. · Product Cost leaves out a TSD add-on named after the card's product (e.g. a Sinuxyl Inhaler on a Sinuxyl order); an order of only that TSD product keeps its cost · shots: none
 - 2026-11-05 · Settings → Daily I.S. · Product costs from Shecom lists only the CRD and TSD products on Settings → Product Consumption; Shecom's other items are hidden · shots: none

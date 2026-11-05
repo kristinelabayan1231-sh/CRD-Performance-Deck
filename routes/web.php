@@ -18,6 +18,7 @@ use App\Http\Controllers\DashboardBoardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
+use App\Http\Controllers\ExclusiveLeadSettingController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
 use App\Http\Controllers\LeadCallController;
@@ -219,6 +220,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
+        Route::prefix('exclusive-leads')->name('exclusive-leads.')->middleware('can:exclusive_leads.manage')->group(function () {
+            Route::post('/{user}', [ExclusiveLeadSettingController::class, 'store'])->name('store');
+            Route::delete('/{user}', [ExclusiveLeadSettingController::class, 'destroy'])->name('destroy');
+        });
+
         // The first Settings tab this user may open.
         Route::get('/', fn () => redirect()->route(
             match (true) {
