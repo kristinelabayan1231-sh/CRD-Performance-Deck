@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Cache;
  * canceled and deleted ones. Each order is split over its products as in CraProductSales; items not in Settings →
  * Product Consumption count under Others.
  *
- * Kept as a snapshot, taken every two hours by the scheduler (running-sales:refresh) and by the page's Refresh button;
+ * Kept as a snapshot, taken every two hours and at 9:25 PM by the scheduler (running-sales:refresh) and by the page's Refresh button;
  * the goals are added each time it is shown, so a CRA logging in on duty counts at once.
  */
 class RunningSales
@@ -28,6 +28,9 @@ class RunningSales
     public const PERIODS = ['today' => 'Today', 'week' => 'This week', 'month' => 'This month'];
 
     public const EVERY_HOURS = 2;
+
+    /** One more snapshot each evening, so it is up to date for the CRD team's 10 PM reports. */
+    public const BEFORE_REPORTS = '21:25';
 
     public const OTHERS = 'Others';
 
@@ -165,13 +168,15 @@ class RunningSales
     }
 
     /**
-     * When the scheduler takes the next snapshot: the next even hour.
+     * When the scheduler takes the next snapshot: the next even hour, or the evening one when that comes first.
      */
     public static function nextFetch(): CarbonImmutable
     {
         $now = CarbonImmutable::now(config('segmentation.timezone'));
+        $evenHour = $now->startOfHour()->addHours(self::EVERY_HOURS - $now->hour % self::EVERY_HOURS);
+        $beforeReports = $now->setTimeFromTimeString(self::BEFORE_REPORTS);
 
-        return $now->startOfHour()->addHours(self::EVERY_HOURS - $now->hour % self::EVERY_HOURS);
+        return $now->lessThan($beforeReports) && $beforeReports->lessThan($evenHour) ? $beforeReports : $evenHour;
     }
 
     private static function key(string $period): string

@@ -17,6 +17,7 @@ class SyncPancake extends Command
         {--last= : Instead of dates: the last this many days up to today}
         {--delivered : Only save delivered orders (for the lead fallback); quicker for backfills}
         {--sales : Only refresh the orders\' Shecom sales (gross without the child TSD row); one request for the whole range}
+        {--gone : Only mark Deleted the saved orders both Shecom and Pancake no longer have}
         {--orders : Only fetch the POS orders created on these days again and save their current seller, status, tags, items and discount}
         {--tags : Only re-check the flagged orders and pick up the day\'s tag and status changes; takes seconds}
         {--new : Only fetch the orders created since the last --new run and the day\'s tag changes (CVR Tracker); takes seconds}
@@ -48,6 +49,13 @@ class SyncPancake extends Command
 
         if ($this->option('sales')) {
             $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('gone')) {
+            $gone = $sync->markGoneOrders($from, $to);
+            $this->info("Gone orders {$from->toDateString()} to {$to->toDateString()}: ".count($gone).' marked Deleted.');
 
             return self::SUCCESS;
         }
