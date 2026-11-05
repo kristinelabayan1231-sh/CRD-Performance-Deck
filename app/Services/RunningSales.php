@@ -15,8 +15,8 @@ use Illuminate\Support\Facades\Cache;
  * Running Sales: every CRA's sales so far today, this week (MonthWeeks) or this month, overall and per product, against
  * their goal for the days so far (DutyGoals: daily goal, own else the general one, none on a day off, plus a share of
  * the goals of CRAs off on the days they were on duty). Sales are Conversion Breakdown's gross sales:
- * CRD - BROADCAST and CRD - SEGMENTATION orders, every status, with the CVR Tracker's corrections; orders leave out
- * canceled and deleted ones. Each order is split over its products as in CraProductSales; items not in Settings →
+ * CRD - BROADCAST and CRD - SEGMENTATION orders, every status but deleted, with the CVR Tracker's corrections; orders
+ * count the same ones, as Shecom lists them. Each order is split over its products as in CraProductSales; items not in Settings →
  * Product Consumption count under Others.
  *
  * Kept as a snapshot, taken every two hours and at 9:25 PM by the scheduler (running-sales:refresh) and by the page's Refresh button;
@@ -119,7 +119,7 @@ class RunningSales
                 ->each(function (PancakeOrder $order) use ($accounts, &$tally) {
                     $cra = ConversionBreakdown::craFor($order, $accounts);
                     $tally[$cra]['sales'] = ($tally[$cra]['sales'] ?? 0) + $order->sales();
-                    $tally[$cra]['orders'] = ($tally[$cra]['orders'] ?? 0) + ($order->isCounted() ? 1 : 0);
+                    $tally[$cra]['orders'] = ($tally[$cra]['orders'] ?? 0) + 1;
 
                     foreach ($this->productSales->split($order) as $item) {
                         $name = $item['listed'] ? $item['name'] : self::OTHERS;

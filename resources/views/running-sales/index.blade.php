@@ -68,7 +68,7 @@
             <div class="{{ $tile }}">
                 <span class="{{ $tileLabel }}">Orders</span>
                 <span class="text-2xl font-bold text-ink">{{ number_format($team['orders']) }}</span>
-                <span class="text-xs text-muted">canceled and deleted left out</span>
+                <span class="text-xs text-muted">canceled included, deleted left out</span>
             </div>
             <div class="{{ $tile }}">
                 <span class="{{ $tileLabel }}">Avg order value</span>
