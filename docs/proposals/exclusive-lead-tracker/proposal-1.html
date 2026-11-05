@@ -1,100 +1,62 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Proposal 1 · KPI cards on top · Exclusive Lead Tracker</title>
-<link rel="stylesheet" href="shared.css"><script src="shared.js"></script></head>
-<body>
-<div class="mock-bar"><span><b>Proposal 1 of 3</b> · KPI cards on top, table below</span><a href="index.html">← All proposals</a></div>
-<div class="app">
-  <aside class="side" data-sidebar></aside>
-  <div class="main-col">
-    <header class="top" data-topbar></header>
-    <main>
-      <div id="head"></div>
-
-      <!-- Metrics: month / day toggle -->
-      <div class="row between mb">
-        <h2 style="font-size:16px;font-weight:600">Joanna's targets</h2>
-        <div class="seg" role="tablist" aria-label="Metric period">
-          <button role="tab" aria-selected="true" data-mode="month">Month · November</button>
-          <button role="tab" aria-selected="false" data-mode="day">Day · Nov 5</button>
-        </div>
-      </div>
-      <div class="grid kpis mb" id="kpis" aria-live="polite"></div>
-
-      <div class="grid mb" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
-        <!-- Daily mix -->
-        <section class="card">
-          <div class="panel-h"><h2>Daily lead mix · tomorrow (Fri, Nov 6)</h2><span class="chip" style="background:#fff;color:var(--muted)">250 leads</span></div>
-          <div class="pad" id="mix"></div>
-        </section>
-        <!-- Carry-over -->
-        <section class="card">
-          <div class="panel-h"><h2>Carry-over from Nov 5</h2><span class="chip" style="background:#fde3da;color:#a2391b">88 left over</span></div>
-          <div class="pad" id="carry"></div>
-        </section>
-      </div>
-
-      <!-- Nov 1-4 history -->
-      <section class="card mb" style="overflow:hidden">
-        <div class="panel-h"><h2>History · Nov 1–4</h2><span class="xs muted">Joanna had 100 leads a day. Goal was 250 a day.</span></div>
-        <div class="tw" style="max-height:none"><table id="hist"></table></div>
-      </section>
-
-      <div data-filters></div>
-      <div data-lead-table="24"></div>
-    </main>
+<title>Exclusive Lead Tracker · Proposal 1 · Scoreboard strip</title><link rel="stylesheet" href="shared.css">
+<style>
+.strip{position:sticky;top:0;z-index:15;margin-bottom:16px}
+.cells{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.cell{padding:12px 16px;border-left:1px solid var(--line);min-width:0}.cell:first-child{border-left:0}
+.cell .l{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.cell .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.cell .v small{font-size:13px;font-weight:600;color:var(--muted)}
+.mixrow{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;padding:10px 16px;border-top:1px solid var(--line)}
+.hist td,.hist th{padding:8px 14px}
+@media (max-width:1279px){.cells{grid-template-columns:repeat(3,1fr)}.cell:nth-child(4){border-left:0}.mixrow{grid-template-columns:1fr}}
+</style></head>
+<body><div class="app"><aside class="side" data-sidebar></aside><div class="main-col"><header class="top" data-topbar></header>
+<main>
+  <div id="head"></div>
+  <div id="view-leads">
+    <form class="card filters mb" id="filters" onsubmit="return false"></form>
+    <section class="card strip" aria-label="Joanna Paclibare targets">
+      <div class="panel-h"><h2>Joanna Paclibare · November targets</h2><span class="xs muted">Same 7,000 leads all month · her leads stay hers even when not worked</span></div>
+      <div class="cells" id="cells"></div>
+      <div class="mixrow" id="mixrow"></div>
+    </section>
+    <div id="table"></div>
+    <details class="card mt" open><summary class="panel-h" style="cursor:pointer;list-style:none"><h2>Month so far · Nov 1–6</h2><span class="xs muted">Click a row to open that day</span></summary>
+      <div style="overflow:auto"><table class="hist" id="hist"></table></div>
+      <div class="pad xs muted" style="border-top:1px solid var(--line)">Nov 1–4 were 100-lead days. Full 250-lead days start Nov 6. Totals: 400 + 250 (Nov 5) = 650 leads so far. Confirmed orders target 54/month is <b>to be confirmed</b>.</div></details>
   </div>
-</div>
-
-<!-- Settings as a modal -->
-<dialog id="settings" aria-labelledby="st-title">
-  <div class="dlg-h"><div><h2 id="st-title" style="font-size:18px;font-weight:600">Exclusive Lead Tracker settings</h2><p class="sub">Transfer a CRA into the Exclusive Lead Tracker.</p></div><button class="x" data-close-dialog aria-label="Close">×</button></div>
-  <div class="dlg-b" data-settings-body></div>
-  <div class="dlg-f" data-settings-foot data-close="data-close-dialog"></div>
-</dialog>
-
+  <div id="view-settings" hidden><div class="card" style="max-width:820px"><div class="panel-h"><h2>Transfer CRAs into the Exclusive Lead Tracker</h2></div><div class="dlg-b" data-settings-body></div><div class="dlg-f" data-settings-foot></div></div></div>
+</main></div></div>
+<script src="shared.js"></script>
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('head').outerHTML = pageHead('Joanna Paclibare · leads that stay with her all month.',
-    '<button class="btn" data-open="settings" type="button">' + svg('gear', 'width:16px;height:16px') + 'Exclusive settings</button>');
-  document.querySelector('[data-open="settings"]').addEventListener('click', () => document.getElementById('settings').showModal());
-
-  const card = (l, v, tgt, foot, cls, a, t, color, pace) => `<div class="card kpi"><p class="l">${l}</p><p class="v ${cls}">${v} <small>${tgt}</small></p>
-    <div class="bar" style="margin-top:10px" role="progressbar" aria-label="${l}" aria-valuenow="${a}" aria-valuemax="${t}"><i style="width:${Math.min(100, a / t * 100)}%;background:${color}"></i>${pace ? `<span class="mark" style="left:${pace * 100}%" title="Where she should be by now"></span>` : ''}</div>
-    <div class="f">${foot}</div></div>`;
-  const kpis = {
-    month: () => { const m = D.month; return [
-      card('Leads assigned', fmt(m.leads[0]), '/ 7,000', `<span>${pct(...m.leads)}% of month</span><span>250 / day</span>`, 'c-brand', ...m.leads, '#8b3ff0', m.elapsed),
-      card('Repeat purchases', m.repeat[0], '/ 1,400', `<span>${pct(...m.repeat)}% · goal 20%</span><span class="c-coral b">Behind pace</span>`, 'c-teal', ...m.repeat, '#0e8f7c', m.elapsed),
-      card('Confirmed orders', m.orders[0], '/ 54', `<span>${pct(...m.orders)}%</span><span class="c-teal b">Ahead of pace</span>`, 'c-sky', ...m.orders, '#2f6fd6', m.elapsed),
-      card('AOV', '₱' + m.aov[0], '/ ₱895', `<span>Target ₱895 (was 900)</span><span class="c-coral b">−₱15</span>`, 'c-coral', ...m.aov, '#e0663f'),
-    ].join(''); },
-    day: () => { const d = D.day; return [
-      card('Leads worked', d.worked, '/ 250', `<span>${d.left} open</span><span>→ roll to Nov 6</span>`, 'c-brand', d.worked, 250, '#8b3ff0'),
-      card('Repeat purchases', d.repeat[0], '/ 50', `<span>20% of 250</span><span class="c-coral b">−${d.repeat[1] - d.repeat[0]}</span>`, 'c-teal', ...d.repeat, '#0e8f7c'),
-      card('Confirmed orders', d.orders[0], '/ 2', `<span>54 a month ≈ 2 a day</span><span class="c-teal b">Met</span>`, 'c-sky', 4, 4, '#2f6fd6'),
-      card('AOV', '₱' + d.aov[0], '/ ₱895', `<span>Target ₱895</span><span class="c-coral b">−₱6</span>`, 'c-coral', ...d.aov, '#e0663f'),
-    ].join(''); },
-  };
-  const paint = (mode) => { document.getElementById('kpis').innerHTML = kpis[mode](); };
-  paint('month');
-  document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
-    document.querySelectorAll('[data-mode]').forEach((x) => x.setAttribute('aria-selected', x === b)); paint(b.dataset.mode);
-  }));
-
-  document.getElementById('mix').innerHTML = `<p class="xs muted" style="margin-bottom:8px">Fills in this order: High AOV / VIP, then handled twice, then random.</p>
-    ${mixBar(D.tomorrowMix)}${mixLegend(D.tomorrowMix)}
-    <div class="note info" style="margin-top:12px"><b>88</b> carried over from Nov 5 + <b>162</b> fresh leads = <b>250</b>.</div>`;
-  document.getElementById('carry').innerHTML = `<p class="sm"><b class="num">88</b> leads Joanna didn't work today (162 of 250 done) go first into tomorrow's 250.</p>
-    <div style="margin:12px 0">${progress('Worked today', 162, 250, '#8b3ff0', { tail: '88 left → Fri, Nov 6' })}</div>
-    <div class="legend"><span><i class="dot d-vip"></i>VIP <b class="num">${D.carry.vip}</b></span><span><i class="dot d-twice"></i>Handled twice <b class="num">${D.carry.twice}</b></span><span><i class="dot d-rand"></i>Random <b class="num">${D.carry.rand}</b></span></div>
-    <p class="xs muted" style="margin-top:8px">They keep their priority and stay under Joanna.</p>`;
-
-  const row = (d) => `<tr><td class="stick">${d.d}</td><td class="r num">${d.leads} <span class="muted">/ 250</span></td><td class="r num">${d.repeat} <span class="muted">/ 50 · ${Math.round(d.repeat / d.leads * 100)}% of leads</span></td><td class="r num">${d.orders}</td><td class="r num">₱${d.aov}</td>
-    <td><div class="bar" style="width:110px" title="${d.leads} of 250"><i style="width:${d.leads / 250 * 100}%;background:#8b3ff0"></i></div></td></tr>`;
-  const H = D.history, sum = (k) => H.reduce((a, d) => a + d[k], 0);
-  document.getElementById('hist').innerHTML = `<thead><tr><th class="stick">Day</th><th class="r">Leads</th><th class="r">Repeat purchases</th><th class="r">Confirmed orders</th><th class="r">AOV</th><th>Of 250 goal</th></tr></thead>
-    <tbody>${H.map(row).join('')}<tr style="background:var(--brand-50)"><td class="stick" style="background:var(--brand-50)"><b>Nov 1–4</b></td><td class="r num"><b>${sum('leads')}</b> <span class="muted">/ 1,000</span></td><td class="r num"><b>${sum('repeat')}</b> <span class="muted">/ 200</span></td><td class="r num"><b>${sum('orders')}</b></td><td class="r num"><b>₱${Math.round(H.reduce((a, d) => a + d.aov, 0) / 4)}</b></td><td></td></tr></tbody>`;
-});
-</script>
-</body></html>
+let day = 6;
+function page(){
+  document.getElementById('head').innerHTML = pageHead('Joanna Paclibare · exclusive leads · she updates statuses here',
+    `<div class="seg" role="tablist" id="views"><button role="tab" aria-selected="true" data-v="leads">Leads</button><button role="tab" aria-selected="false" data-v="settings">Settings</button></div>`);
+  document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#views button').forEach(x=>x.setAttribute('aria-selected',x===b));
+    document.getElementById('view-leads').hidden=b.dataset.v!=='leads';document.getElementById('view-settings').hidden=b.dataset.v!=='settings';});
+  const f=document.getElementById('filters');f.outerHTML=filters(day).replace('<form class="card filters mb"','<form id="filters" class="card filters mb"');
+  document.getElementById('filters').querySelector('input[type=date]').onchange=e=>{day=Math.min(6,Math.max(1,+e.target.value.slice(-2)||6));draw();};
+  draw();
+  if(location.hash==='#settings')document.querySelector('[data-v=settings]').click();
+}
+function cell(l,v,sub,meterHtml){return `<div class="cell"><div class="l">${l}</div><div class="v">${v}</div>${meterHtml}<p class="xs muted" style="margin-top:4px">${sub}</p></div>`;}
+function slim(a,b,c,pace){return `<div class="bar" style="margin-top:6px"><i style="width:${Math.min(100,a/b*100)}%;background:${c}"></i>${pace?`<span class="mark" style="left:${pace*100}%"></span>`:''}</div>`;}
+function draw(){
+  const d=DAYS[day], paceNow=5/30;
+  document.getElementById('cells').innerHTML=
+    cell('Leads this month',`${fmt(MONTH.leads)} <small>/ 7,000</small>`,`${GOAL.leadsDay} a day · ${pct(MONTH.leads,7000)}% assigned`,slim(MONTH.leads,7000,'var(--brand-500)'))+
+    cell('Repeat purchases',`${MONTH.repeat} <small>/ 1,400</small>`,`Goal 20% of leads · pace line = day 5 of 30`,slim(MONTH.repeat,1400,'var(--twice)',paceNow))+
+    cell('Confirmed orders',`${MONTH.orders} <small>/ 54</small>`,`Monthly target · <b>to confirm</b>`,slim(MONTH.orders,54,'var(--rand)',paceNow))+
+    cell('AOV',`₱${MONTH.aov} <small>/ ₱895</small>`,`<span class="bad">₱15 below</span> the 895 threshold`,slim(MONTH.aov,895,'var(--carry)'))+
+    cell(`${dLong(day)}`,d.hist||d.today?`${d.repeat} <small>/ ${d.hist?'—':'50'} repeat</small>`:`0 <small>/ 50 repeat</small>`,d.hist?`${d.orders} orders · AOV ₱${d.aov} · 100 leads`:d.today?`${d.orders} orders · AOV ₱${d.aov} · ${d.worked} of 250 worked`:'Day not started',slim(d.repeat,d.hist?100:50,'var(--twice)'));
+  const m=d.mix, c=d.carry;
+  document.getElementById('mixrow').innerHTML=`<span class="sm b">${dLong(day)} mix</span><div>${mixBar(m)}</div>${c?`<span class="chip" style="background:#fde3da;color:#a2391b">${c.reduce((a,b)=>a+b)} left over from Nov 5 + 162 fresh = 250</span>`:`<span class="xs muted">${d.left!=null?d.left+' still open → roll into next day':'100 leads · history'}</span>`}`;
+  document.getElementById('table').innerHTML=leadTable({day,rows:25,maxH:520});
+  document.getElementById('hist').innerHTML=`<thead><tr><th>Day</th><th class="r">Leads</th><th>Mix (VIP / twice / random)</th><th class="r">Repeat</th><th class="r">Confirmed orders</th><th class="r">AOV</th><th>vs ₱895</th></tr></thead><tbody>`+
+   [1,2,3,4,5,6].map(n=>{const x=DAYS[n];return `<tr style="cursor:pointer;${n===day?'background:var(--soft)':''}" onclick="day=${n};document.querySelector('#filters input[type=date]').value='2026-11-0${n}';draw()"><td class="b">${dLong(n)}${x.next?' <span class="chip" style="background:#fde3da;color:#a2391b">first 250 day</span>':''}</td><td class="r num">${x.leads}</td><td class="num">${x.mix.join(' / ')}</td><td class="r num">${x.next?'—':x.repeat}</td><td class="r num">${x.next?'—':x.orders}</td><td class="r num">${x.aov?'₱'+x.aov:'—'}</td><td>${x.aov?(x.aov>=895?'<span class="good b">● met</span>':'<span class="bad b">● below</span>'):'—'}</td></tr>`}).join('')+'</tbody>';
+}
+</script></body></html>
