@@ -20,6 +20,7 @@ use App\Services\ExclusiveLeads;
 use App\Services\LeadGenerator;
 use App\Services\SegmentationProductivity;
 use App\Services\SegmentationStats;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -43,7 +44,11 @@ class ExclusiveLeadTrackerTest extends TestCase
         parent::setUp();
 
         $this->travelTo(CarbonImmutable::parse('2026-11-06 09:00', 'Asia/Manila'));
-        config(['services.shecom.key' => 'test-key']);
+        config([
+            'services.shecom.key' => 'test-key',
+            'exclusive_leads.quota_overrides' => ['2026-11-01' => 100, '2026-11-02' => 100, '2026-11-03' => 100, '2026-11-04' => 100],
+            'exclusive_leads.build_from' => '2026-11-06',
+        ]);
         Product::create(['name' => 'Pterygium', 'srp' => 499]);
         $this->joanna = $this->cra('Joanna Rose', 'CRD ANNA PACLIBARE 2', '2026-11-01');
         $this->regina = $this->cra('Regina', 'CRD REJ VERGARA');
@@ -438,6 +443,25 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame(2, $month['actual']['repeat']);
         $this->assertSame(2, collect($month['days'])->firstWhere('date', '2026-11-03')['repeat']);
         $this->assertSame(1, collect($month['days'])->firstWhere('date', '2026-11-04')['repeat']);
+    }
+
+    public function test_repeat_purchases_sales_and_days_off_count_on_the_lead_day_paired_with_their_real_day(): void
+    {
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-08'));
+        $this->joanna->update(['exclusive_from' => '2026-10-02']);
+        $this->lead('2026-09-01', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-05']);
+        PancakeOrder::create(['pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => '2026-11-05', 'ordered_at' => '2026-11-05 02:00:00',
+            'seller_name' => $this->joanna->pancake_name, 'phone_key' => '91700'.$this->seq, 'status' => 3, 'total_price' => 800,
+            'conversion_type' => PancakeOrder::SEGMENTATION]);
+        DutySchedule::create(['user_id' => $this->joanna->id, 'date' => '2026-11-05', 'type' => DutySchedule::REST]);
+
+        $days = collect(app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-10-01'))['days'])->keyBy('date');
+
+        $this->assertSame(1, $days['2026-10-06']['repeat']);
+        $this->assertSame(1, $days['2026-10-06']['confirmed']);
+        $this->assertTrue($days['2026-10-06']['is_day_off']);
+        $this->assertSame(0, $days['2026-10-06']['confirmed_goal']);
+        $this->assertSame(0, $days['2026-10-05']['repeat']);
     }
 
     public function test_confirmed_orders_gross_and_aov_follow_segmentation_productivity(): void

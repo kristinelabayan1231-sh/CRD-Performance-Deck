@@ -27,6 +27,34 @@ class ExclusiveLeadPageTest extends TestCase
         parent::setUp();
 
         $this->travelTo(CarbonImmutable::parse('2026-11-06 09:00', 'Asia/Manila'));
+        config([
+            'exclusive_leads.quota_overrides' => ['2026-11-01' => 100, '2026-11-02' => 100, '2026-11-03' => 100, '2026-11-04' => 100],
+            'exclusive_leads.build_from' => '2026-11-06',
+        ]);
+    }
+
+    public function test_the_page_follows_the_working_date_like_the_segmentation_tracker(): void
+    {
+        config(['exclusive_leads' => require config_path('exclusive_leads.php')]);
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-08'));
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index'))
+            ->assertOk()
+            ->assertSee('Working date: Oct 7, 2026')
+            ->assertSee('Wednesday, Oct 7')
+            ->assertSee('October plans 6,900 leads: Oct 2–5 ran at 100 leads a day');
+    }
+
+    public function test_the_migration_moves_only_the_nov_1_start_to_its_lead_day(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-11-03');
+
+        (require database_path('migrations/2026_11_06_000000_move_exclusive_start_to_its_lead_day.php'))->up();
+
+        $this->assertSame('2026-10-02', $joanna->fresh()->exclusive_from->toDateString());
+        $this->assertSame('2026-11-03', $regina->fresh()->exclusive_from->toDateString());
     }
 
     public function test_an_exclusive_cra_sees_their_goals_and_the_month_plan(): void

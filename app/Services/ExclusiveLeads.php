@@ -9,6 +9,7 @@ use App\Models\LeadMove;
 use App\Models\User;
 use App\Support\DutyGoals;
 use App\Support\NicheRules;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
@@ -343,7 +344,8 @@ class ExclusiveLeads
      * Confirmed orders, gross and AOV come from Segmentation Productivity. The confirmed orders target is daily: a day
      * off (DutyGoals) or a day before the transfer has none, and the month's is the sum of its days, the daily target
      * × working_days. A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
-     * while on that day's list.
+     * while on that day's list. $month and the days are lead days; repeat purchases, sales and days off happen on real
+     * days, so each counts on the lead day paired with its real day (WorkingDate).
      *
      * @return array{
      *     targets: array{leads: int, repeat: int, repeat_percent: int, confirmed_orders: int, confirmed_orders_per_day: int, working_days: int, high_aov_min: int},
@@ -364,17 +366,21 @@ class ExclusiveLeads
             ->get();
         $byDay = $entries->groupBy(fn (ExclusiveListLead $entry) => $entry->list_date->toDateString());
 
-        $bought = Lead::where('assigned_to', $cra->id)->repeatPurchasedBetween($start, $end)
+        $lag = WorkingDate::lagDays();
+        $realStart = $start->addDays($lag);
+        $realEnd = $end->addDays($lag);
+
+        $bought = Lead::where('assigned_to', $cra->id)->repeatPurchasedBetween($realStart, $realEnd)
             ->orderBy('repeat_purchase_on')->orderBy('id')
             ->get(['phone_number', 'repeat_purchase_on']);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
         $repeatByDay = $bought->groupBy(fn (Lead $lead) => $lead->repeat_purchase_on->toDateString())
             ->map(fn (Collection $leads) => $leads->unique($phoneOf)->count());
 
-        $sales = app(SegmentationProductivity::class)->days(collect([$cra]), $start, $end)[$cra->id] ?? [];
+        $sales = app(SegmentationProductivity::class)->days(collect([$cra]), $realStart, $realEnd)[$cra->id] ?? [];
         $goalPercent = (int) config('exclusive_leads.repeat_goal_percent');
         $confirmedPerDay = (int) config('exclusive_leads.confirmed_orders_per_day');
-        $offDays = DutyGoals::offDays(LeadGenerator::cras(), $start, $end);
+        $offDays = DutyGoals::offDays(LeadGenerator::cras(), $realStart, $realEnd);
         $workingDays = 0;
         $mixOf = fn (Collection $rows) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $rows->where('source', $source)->count()])->all();
         $days = [];
@@ -382,12 +388,13 @@ class ExclusiveLeads
 
         for ($day = $start; $day->lessThanOrEqualTo($end); $day = $day->addDay()) {
             $date = $day->toDateString();
+            $realDate = $day->addDays($lag)->toDateString();
             $rows = collect($byDay[$date] ?? []);
             $quota = $day->lessThan($firstDay) ? 0 : self::quotaFor($day);
             $counted = $rows->where('source', '!=', self::POS);
             $worked = $counted->filter(fn (ExclusiveListLead $entry) => $entry->lead?->isProcessed() && $entry->lead->listed_on->isSameDay($day))->count();
             $planned += $quota;
-            $isDayOff = isset($offDays[$date][$cra->id]);
+            $isDayOff = isset($offDays[$realDate][$cra->id]);
             $isWorkingDay = $quota > 0 && ! $isDayOff;
             $workingDays += (int) $isWorkingDay;
 
@@ -400,13 +407,13 @@ class ExclusiveLeads
                 'left' => $counted->count() - $worked,
                 'pos' => $rows->count() - $counted->count(),
                 'mix' => $mixOf($rows),
-                'repeat' => (int) ($repeatByDay[$date] ?? 0),
+                'repeat' => (int) ($repeatByDay[$realDate] ?? 0),
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
-                'confirmed' => (int) ($sales[$date]['confirmed'] ?? 0),
+                'confirmed' => (int) ($sales[$realDate]['confirmed'] ?? 0),
                 'confirmed_goal' => $isWorkingDay ? $confirmedPerDay : 0,
                 'is_day_off' => $isDayOff,
-                'gross' => (float) ($sales[$date]['gross'] ?? 0),
-                'aov' => $sales[$date]['aov'] ?? null,
+                'gross' => (float) ($sales[$realDate]['gross'] ?? 0),
+                'aov' => $sales[$realDate]['aov'] ?? null,
             ];
         }
 
