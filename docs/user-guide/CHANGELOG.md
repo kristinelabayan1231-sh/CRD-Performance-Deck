@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-05 · Settings → Product Consumption · TSD upsell text now says only orders with just TSD products count in gross sales; a TSD add-on on a CRD order isn't counted, as in Shecom · shots: settings-product-consumption
+- 2026-11-05 · Daily I.S. · Product Cost leaves out a TSD add-on named after the card's product (e.g. a Sinuxyl Inhaler on a Sinuxyl order); an order of only that TSD product keeps its cost · shots: none
 - 2026-11-05 · Settings → Daily I.S. · Product costs from Shecom lists only the CRD and TSD products on Settings → Product Consumption; Shecom's other items are hidden · shots: none
 - 2026-11-05 · Product Performance · Over time graph: the names beside the lines (e.g. Testing products) stay fully on the graph when the lines end near zero, instead of being cut off at the bottom · shots: none
 - 2026-11-04 · All pages · Pages float up as they load, a spinner shows while the next page, a pop-up or the Product Performance graph is loading, and tabs that switch on the page fade their content in · shots: none

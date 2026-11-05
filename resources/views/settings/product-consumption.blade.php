@@ -39,7 +39,7 @@
                 <h2 class="text-base font-semibold">{{ ['crd' => 'CRD products', 'tsd' => 'TSD upsell products'][$source] ?? 'Products' }}</h2>
                 <p class="text-sm text-muted">
                     @if ($source === 'tsd')
-                        TSD products CRAs may upsell to their leads. A CRA's Broadcast or Segmentation order with one counts in that CRA's gross sales (CVR Tracker, Conversion Breakdown, Running Sales, Daily I.S.). It doesn't create leads or change the Customer Database.
+                        TSD products CRAs may upsell to their leads. A CRA's Broadcast or Segmentation order with only TSD products counts in that CRA's gross sales (CVR Tracker, Conversion Breakdown, Running Sales, Daily I.S.). Added to an order with a CRD product, its sale isn't counted there, as in Shecom, and the Daily I.S. leaves out its cost too. It doesn't create leads or change the Customer Database.
                     @else
                         The products the deck counts. Orders with none of these products are left out of the Segmentation Tracker, sales and the Customer Database. TSD upsell products count only in the CRAs' sales.
                     @endif
