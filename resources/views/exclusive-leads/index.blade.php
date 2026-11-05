@@ -140,7 +140,7 @@
             {{-- The selected day --}}
             @php($quota = $dayMetrics['quota'])
             @php($dayAov = $dayMetrics['aov'])
-            <x-panel :title="$day->format('l, M j').' · '.number_format($dayMetrics['listed']).' '.\Illuminate\Support\Str::plural('lead', $dayMetrics['listed'])" accent="sky" icon="chart" title-id="exclusive-day-title" :tinted="false" body-class="" class="mb-3">
+            <x-panel :title="$day->format('l, M j').' · '.number_format($dayMetrics['listed']).' '.\Illuminate\Support\Str::plural('lead', $dayMetrics['listed']).($leadDay ? ' from '.$leadDay->format('M j') : '')" accent="sky" icon="chart" title-id="exclusive-day-title" :tinted="false" body-class="" class="mb-3">
                 <x-slot:badges>
                     @if ($dayMetrics['is_history'])
                         <span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-muted shadow-sm">History · leads she already had</span>

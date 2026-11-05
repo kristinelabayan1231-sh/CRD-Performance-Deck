@@ -33,7 +33,7 @@ class ExclusiveLeadPageTest extends TestCase
         ]);
     }
 
-    public function test_the_page_follows_the_working_date_like_the_segmentation_tracker(): void
+    public function test_the_page_shows_real_dates_with_the_paired_lead_days_leads(): void
     {
         config(['exclusive_leads' => require config_path('exclusive_leads.php')]);
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
@@ -42,8 +42,9 @@ class ExclusiveLeadPageTest extends TestCase
         $this->actingAs($joanna)->get(route('exclusive-leads.index'))
             ->assertOk()
             ->assertSee('Working date: Oct 7, 2026')
-            ->assertSee('Wednesday, Oct 7')
-            ->assertSee('October plans 6,900 leads: Oct 2–5 ran at 100 leads a day');
+            ->assertSee('Friday, Nov 6')
+            ->assertSee('from Oct 7')
+            ->assertSee('November plans 6,900 leads: Nov 1–4 ran at 100 leads a day');
     }
 
     public function test_the_migration_moves_only_the_nov_1_start_to_its_lead_day(): void
@@ -70,7 +71,7 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertDontSee('Settings · Exclusive Lead Tracker');
     }
 
-    public function test_a_working_date_before_the_transfer_opens_the_transfer_month(): void
+    public function test_a_transfer_paired_with_a_later_real_day_opens_that_month(): void
     {
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
         WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-08'));
@@ -78,8 +79,7 @@ class ExclusiveLeadPageTest extends TestCase
         $this->actingAs($joanna)->get(route('exclusive-leads.index'))
             ->assertOk()
             ->assertSee('Month goals · Joanna')
-            ->assertSee('November plans 6,900 leads')
-            ->assertSee('Sunday, Nov 1');
+            ->assertSee('Tuesday, Dec 1');
     }
 
     public function test_a_month_before_the_transfer_opens_the_transfer_month(): void

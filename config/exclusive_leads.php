@@ -10,7 +10,7 @@ return [
     | CRAs transferred out of the Segmentation Tracker (Settings, users.exclusive_from).
     | Each day's list is daily_quota leads, except the days in quota_overrides. Days before
     | build_from keep the leads the CRA already had and are never topped up. All dates here
-    | are lead days, like Settings → Working Date (real Nov 1, 2026 = lead day Oct 2).
+    | are lead days (real Nov 1, 2026 = lead day Oct 2). The page shows the real dates.
     |
     */
 
@@ -27,7 +27,7 @@ return [
     // Lead day Oct 7, 2026 = real Nov 6.
     'build_from' => '2026-10-07',
 
-    // The goal is constant; the days of a month may plan fewer (October 2026 plans 6,900).
+    // The goal is constant; the days of a month may plan fewer (November 2026 plans 6,900).
     'month_target' => 7000,
 
     'repeat_goal_percent' => 20,
