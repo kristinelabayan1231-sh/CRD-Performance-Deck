@@ -10,6 +10,7 @@ use App\Models\PancakePage;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
+use App\Services\CraPerformance;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
 use App\Services\PosLeads;
@@ -19,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Tests\TestCase;
 
 class ConversionBreakdownTest extends TestCase
@@ -572,6 +574,76 @@ class ConversionBreakdownTest extends TestCase
             ->assertSessionHas('status', 'Re-checked 1 flagged order in Pancake: 1 updated.');
 
         $this->assertSame(PancakeOrder::BROADCAST, PancakeOrder::sole()->conversion_type);
+    }
+
+    public function test_an_order_gone_from_shecom_and_pancake_is_marked_deleted_and_stops_counting(): void
+    {
+        $lhea = $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [
+            $gone = $this->order('CRD Lhei', [self::SEGMENTATION], 500, 0),
+            $stillInShecom = $this->order('CRD Lhei', [self::SEGMENTATION], 700, 0),
+            $stillInPancake = $this->order('CRD Lhei', [self::SEGMENTATION], 900, 0),
+        ];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+        $this->sales = [['order_id' => (string) $stillInShecom['display_id'], 'sales' => 700]];
+        $this->current = [['id' => $stillInPancake['id'], 'display_id' => $stillInPancake['display_id'], 'tags' => [self::SEGMENTATION], 'status' => 0, 'status_name' => 'new']];
+
+        $this->artisan('pancake:sync', ['--gone' => true, '--date' => '2026-10-01'])->assertSuccessful();
+
+        $this->assertSame(CraPerformance::DELETED, PancakeOrder::firstWhere('pancake_order_id', $gone['display_id'])->status);
+        $this->assertSame(0, PancakeOrder::firstWhere('pancake_order_id', $stillInShecom['display_id'])->status);
+        $this->assertSame(0, PancakeOrder::firstWhere('pancake_order_id', $stillInPancake['display_id'])->status);
+        $day = app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01'];
+        $this->assertSame(2, $day['sc_orders']);
+        $this->assertEqualsWithDelta(1600.0, $day['sc_gross'], 0.001);
+    }
+
+    public function test_a_gone_order_outside_the_dates_is_left_alone(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [self::SEGMENTATION], 500, 0)];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+
+        app(PancakeSync::class)->markGoneOrders(CarbonImmutable::parse('2026-09-20'), CarbonImmutable::parse('2026-09-30'));
+
+        $this->assertSame(0, PancakeOrder::firstWhere('pancake_order_id', $order['display_id'])->status);
+    }
+
+    public function test_a_gone_waiting_order_records_that_it_left_waiting(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [self::SEGMENTATION], 500, PancakeOrder::WAITING)];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+
+        app(PancakeSync::class)->markGoneOrders(Lead::today(), Lead::today());
+
+        $this->assertDatabaseHas('order_status_changes', [
+            'pancake_order_id' => (string) $order['display_id'], 'from_status' => PancakeOrder::WAITING, 'to_status' => CraPerformance::DELETED,
+        ]);
+    }
+
+    public function test_no_order_is_marked_deleted_when_the_pancake_lookup_fails(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [self::SEGMENTATION], 500, 0)];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+        $this->searchDown = true;
+
+        $this->assertThrows(fn () => app(PancakeSync::class)->markGoneOrders(Lead::today(), Lead::today()), RuntimeException::class);
+
+        $this->assertSame(0, PancakeOrder::firstWhere('pancake_order_id', $order['display_id'])->status);
+    }
+
+    public function test_no_order_is_marked_deleted_when_shecom_is_down(): void
+    {
+        $this->cra('Lhea', 'CRD Lhei');
+        $this->orders = [$order = $this->order('CRD Lhei', [self::SEGMENTATION], 500, 0)];
+        app(PancakeSync::class)->syncOrders(Lead::today());
+        $this->sales = null;
+
+        $this->assertThrows(fn () => app(PancakeSync::class)->markGoneOrders(Lead::today(), Lead::today()), RuntimeException::class);
+
+        $this->assertSame(0, PancakeOrder::firstWhere('pancake_order_id', $order['display_id'])->status);
     }
 
     public function test_check_again_says_when_pancake_refuses_the_lookup(): void

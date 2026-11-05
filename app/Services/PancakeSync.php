@@ -16,6 +16,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 use function Illuminate\Support\defer;
@@ -433,6 +434,52 @@ class PancakeSync
             ->sum(fn ($ids, string $amount) => $ids->chunk(1000)->sum(
                 fn ($chunk) => PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update(['shecom_sales' => $amount])
             ));
+    }
+
+    /**
+     * Mark Deleted the saved orders dated $from–$to that no longer exist: Pancake stops returning a removed order
+     * instead of sending a Deleted status, so it would stay saved as it last was and keep counting. An order counts as
+     * gone only when Shecom doesn't list it and Pancake's lookup doesn't find it. If Shecom or the lookup fails, nothing
+     * is marked. A marked order that comes back is saved with its real status by the next sync of its day.
+     *
+     * @return list<string> the order numbers marked Deleted
+     */
+    public function markGoneOrders(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $listedInShecom = $this->shecom->sales($from, $to);
+
+        $saved = PancakeOrder::whereBetween('ordered_on', [$from->toDateString(), $to->toDateString()])
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))
+            ->pluck('status', 'pancake_order_id')
+            ->reject(fn (?int $status, string $number) => array_key_exists($number, $listedInShecom));
+
+        if ($saved->isEmpty()) {
+            return [];
+        }
+
+        $inPancake = collect($this->client->ordersByNumber($saved->keys()->map(fn ($number) => (string) $number)->all()))
+            ->map(fn (array $order) => (string) ($order['display_id'] ?? ''))
+            ->flip();
+
+        if ($this->client->lastLookupFailures > 0) {
+            throw new RuntimeException("Pancake order lookup failed for {$this->client->lastLookupFailures} orders; none marked Deleted.");
+        }
+
+        $gone = $saved->reject(fn (?int $status, string $number) => $inPancake->has($number));
+
+        DB::transaction(function () use ($gone) {
+            OrderStatusChange::recordLeaving($gone->all(), $gone->map(fn () => CraPerformance::DELETED)->all());
+
+            foreach ($gone->keys()->chunk(500) as $numbers) {
+                PancakeOrder::whereIn('pancake_order_id', $numbers->values())->update(['status' => CraPerformance::DELETED]);
+            }
+        });
+
+        if ($gone->isNotEmpty()) {
+            Log::info('Orders gone from Pancake and Shecom marked Deleted', ['orders' => $gone->keys()->all()]);
+        }
+
+        return $gone->keys()->map(fn ($number) => (string) $number)->all();
     }
 
     /**

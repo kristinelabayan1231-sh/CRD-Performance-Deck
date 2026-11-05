@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\PancakeSync;
+use App\Services\RunningSales;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
@@ -199,5 +200,19 @@ class RunningSalesTest extends TestCase
         $this->actingAs($this->regina)->get(route('running-sales.index'))->assertForbidden();
         $this->actingAs($this->regina)->post(route('running-sales.refresh'))->assertForbidden();
         $this->actingAs($this->supervisor)->get(route('running-sales.index', ['period' => 'year']))->assertSessionHasErrors('period');
+    }
+
+    public function test_the_next_fetch_is_the_evening_snapshot_when_it_comes_before_the_even_hour(): void
+    {
+        $at = fn (string $time) => $this->travelTo(CarbonImmutable::parse("2026-10-09 {$time}", 'Asia/Manila'));
+
+        $at('20:30');
+        $this->assertSame('21:25', RunningSales::nextFetch()->format('H:i'));
+
+        $at('21:30');
+        $this->assertSame('22:00', RunningSales::nextFetch()->format('H:i'));
+
+        $at('19:30');
+        $this->assertSame('20:00', RunningSales::nextFetch()->format('H:i'));
     }
 }

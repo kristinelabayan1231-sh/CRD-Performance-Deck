@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\RunningSales;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -58,6 +59,24 @@ Schedule::command('pancake:sync --sales --last=14')
     ->dailyAt('01:15')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(15);
+
+// The CRD team sends its reports at 10 PM, so everything that isn't refreshed every few minutes is brought up to date
+// by 9:30 PM: amounts corrected in Shecom, then removed orders, then (after the 9:20 sync and POS sales) Running Sales.
+Schedule::command('pancake:sync --sales --last=14')
+    ->dailyAt('21:00')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(15);
+
+// Orders removed from Pancake never send a status, so without this they keep counting as they last were saved.
+Schedule::command('pancake:sync --gone --last=14')
+    ->dailyAt('21:05')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(10);
+
+Schedule::command('running-sales:refresh')
+    ->dailyAt(RunningSales::BEFORE_REPORTS)
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(5);
 
 // The CRAs' POS sales of the last week in the Segmentation Tracker again: late orders, products added to Settings
 // later and orders counted for another CRA in the CVR Tracker (a customer is never added twice).
