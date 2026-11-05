@@ -19,7 +19,7 @@ use Illuminate\Support\Str;
  * day, laid out like the CRAs' sheet. A product card:
  *
  * Leads/inquiries and engagements = the CRA's PC Report Total Inquiries and Total Engagement on the product's pages.
- * Orders = the CRA's Pancake orders on those pages that day, canceled and deleted left out (PC Report's # of Orders); an
+ * Orders = the CRA's Pancake orders on those pages that day, deleted left out and canceled included, as Shecom lists them; an
  * order the CVR Tracker counts for another CRA goes to that CRA, as in the Conversion Breakdown.
  * Gross Sales = the sales of every one of those orders but deleted ones (Shecom's amount once synced), canceled included.
  * Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders.
@@ -32,8 +32,8 @@ use Illuminate\Support\Str;
  * Consumption are left out. Days in PRODUCT_COST_OVERRIDES_KEY (Nov 1–2, 2026) take the sheet's Product Cost instead. Pieces are
  * counted as Order Database → Product Report counts them; a TSD upsell add-on on an order with a CRD product isn't the
  * card's product, so its cost is left out (an order of only TSD upsell products keeps theirs). Gross Profit = Projected Delivered − Tax Allocation − Product Cost.
- * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders × ₱75; COD Fee = Projected Delivered × 2.24%;
- * Fulfillment Fee = orders × ₱25.
+ * Advertising Cost, Ads VAT and VAT on COD Fee = 0. Shipping Fee = orders not canceled × ₱75; COD Fee = Projected Delivered × 2.24%;
+ * Fulfillment Fee = orders not canceled × ₱25.
  * Tax Allocation and Salaries to HMO Expense = the CRA's 1M Monthly MNI figure for the month ÷ 24 working days, then ÷ the
  * day's number of products. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
  *
@@ -118,7 +118,7 @@ class DailyIncomeStatement
     ];
 
     /** Figures counted from the day's PC Report entries and orders (the rest are worked out from them). */
-    private const COUNTED = ['leads', 'engagements', 'orders', 'gross', 'cancelled', 'product_cost'];
+    private const COUNTED = ['leads', 'engagements', 'orders', 'orders_not_canceled', 'gross', 'cancelled', 'product_cost'];
 
     /** @var array<string, array<int, array<string, float|int>>> month (Y-m) => the 1M Monthly MNI per CRA */
     private array $mniByMonth = [];
@@ -158,7 +158,8 @@ class DailyIncomeStatement
         $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->mapWithKeys(fn (array $order) => [$order['id'] => $groupNames[$groupOf[$order['page']]]])->all(), $day);
         foreach ($orders as $order) {
             $product = &$figures[$order['cra']][$groupOf[$order['page']]];
-            $product['orders'] += $order['counted'] ? 1 : 0;
+            $product['orders']++;
+            $product['orders_not_canceled'] += $order['counted'] ? 1 : 0;
             $product['gross'] += $order['sales'];
             $product['cancelled'] += in_array($order['status'], PancakeOrder::CANCELLED_OR_WAITING_STATUSES, true) ? $order['sales'] : 0;
             $product['product_cost'] += $costs[$order['id']] ?? 0;
@@ -377,10 +378,10 @@ class DailyIncomeStatement
         $selling = [
             'advertising' => 0.0,
             'ads_vat' => 0.0,
-            'shipping' => $counted['orders'] * self::SHIPPING_PER_ORDER,
+            'shipping' => $counted['orders_not_canceled'] * self::SHIPPING_PER_ORDER,
             'cod' => $delivered * self::COD_RATE,
             'vat_on_cod' => 0.0,
-            'fulfillment' => $counted['orders'] * self::FULFILLMENT_PER_ORDER,
+            'fulfillment' => $counted['orders_not_canceled'] * self::FULFILLMENT_PER_ORDER,
         ];
         $operating = collect(self::OPERATING)->map(fn (string $label, string $key) => $shares[$key])->all();
 
