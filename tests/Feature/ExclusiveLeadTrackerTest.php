@@ -445,23 +445,33 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame(1, collect($month['days'])->firstWhere('date', '2026-11-04')['repeat']);
     }
 
-    public function test_repeat_purchases_sales_and_days_off_count_on_the_lead_day_paired_with_their_real_day(): void
+    public function test_a_real_day_shows_its_results_with_the_paired_lead_days_list(): void
     {
         WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-08'));
         $this->joanna->update(['exclusive_from' => '2026-10-02']);
-        $this->lead('2026-09-01', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-05']);
+        config(['exclusive_leads' => require config_path('exclusive_leads.php')]);
+        $listed = $this->lead('2026-10-06', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-05']);
+        ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-10-06', 'lead_id' => $listed->id, 'source' => ExclusiveLeads::HIGH_VALUE]);
         PancakeOrder::create(['pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => '2026-11-05', 'ordered_at' => '2026-11-05 02:00:00',
             'seller_name' => $this->joanna->pancake_name, 'phone_key' => '91700'.$this->seq, 'status' => 3, 'total_price' => 800,
             'conversion_type' => PancakeOrder::SEGMENTATION]);
         DutySchedule::create(['user_id' => $this->joanna->id, 'date' => '2026-11-05', 'type' => DutySchedule::REST]);
 
-        $days = collect(app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-10-01'))['days'])->keyBy('date');
+        $days = collect(app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'))['days'])->keyBy('date');
 
-        $this->assertSame(1, $days['2026-10-06']['repeat']);
-        $this->assertSame(1, $days['2026-10-06']['confirmed']);
-        $this->assertTrue($days['2026-10-06']['is_day_off']);
-        $this->assertSame(0, $days['2026-10-06']['confirmed_goal']);
-        $this->assertSame(0, $days['2026-10-05']['repeat']);
+        $this->assertSame('2026-10-06', $days['2026-11-05']['lead_date']);
+        $this->assertSame(1, $days['2026-11-05']['listed']);
+        $this->assertSame(1, $days['2026-11-05']['repeat']);
+        $this->assertSame(1, $days['2026-11-05']['confirmed']);
+        $this->assertTrue($days['2026-11-05']['is_day_off']);
+        $this->assertSame(0, $days['2026-11-05']['confirmed_goal']);
+        $this->assertSame(0, $days['2026-11-04']['listed']);
+        $this->assertSame(100, $days['2026-11-01']['quota']);
+
+        $this->actingAs($this->supervisor)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()
+            ->assertSee('Thursday, Nov 5')
+            ->assertSee($listed->customer_name);
     }
 
     public function test_confirmed_orders_gross_and_aov_follow_segmentation_productivity(): void

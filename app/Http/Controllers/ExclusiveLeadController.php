@@ -35,7 +35,7 @@ class ExclusiveLeadController extends Controller
     public function index(Request $request, ExclusiveLeads $exclusive): View
     {
         $user = $request->user();
-        $today = Lead::today();
+        $today = WorkingDate::realToday();
         $canViewAll = $user->can('exclusive_leads.view_all');
         $canManageSettings = $user->can('exclusive_leads.manage');
 
@@ -67,18 +67,21 @@ class ExclusiveLeadController extends Controller
             return view('exclusive-leads.index', $data + ['month' => null]);
         }
 
+        // The page is by real date, when she worked; each day's leads are from its paired lead day (WorkingDate).
         // The month and day: a date picks its month; never past today, never before the transfer.
         $date = isset($filters['date']) ? CarbonImmutable::parse($filters['date']) : null;
         $month = $date ?? (isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : $today);
-        $first = $cra->exclusive_from->startOfDay();
+        $lag = WorkingDate::lagDays();
+        $first = $cra->exclusive_from->addDays($lag)->startOfDay();
         $month = $month->startOfMonth()->max($first->startOfMonth());
         $metrics = $exclusive->month($cra, $month);
 
         $lastDay = $month->endOfMonth()->startOfDay()->min($today);
         $day = ($date ?? ($month->isSameMonth($today) ? $today : $lastDay))->startOfDay()->min($lastDay);
         $day = $day->max($month->max($first));
+        $leadDay = $day->subDays($lag);
 
-        $scope = $exclusive->leadsFor($cra, $day)
+        $scope = $exclusive->leadsFor($cra, $leadDay)
             ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name');
@@ -89,12 +92,13 @@ class ExclusiveLeadController extends Controller
         $processed = in_array($show, ['all', 'processed'], true) ? (clone $scope)->processed()->paginate($perPage, ['*'], 'processed_page')->withQueryString() : null;
 
         $shared = $data + [
-            'sources' => $exclusive->sourcesFor($cra, $day),
+            'sources' => $exclusive->sourcesFor($cra, $leadDay),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
             'optionalColumns' => config('segmentation.optional_columns'),
             'day' => $day,
+            'leadDay' => $lag > 0 ? $leadDay : null,
             'show' => $show,
         ];
 
