@@ -21,8 +21,8 @@ use Illuminate\Support\Facades\DB;
  * Exclusive Lead Tracker: CRAs moved out of the Segmentation Tracker (users.exclusive_from) get their own daily list.
  *
  * Days before exclusive_leads.build_from only record the leads the CRA already had. From then on each day fills up to
- * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers whose
- * two orders they handled (CustomerOwners), then random leads (the day's and the pool's unassigned leads no other CRA
+ * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers who are
+ * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned leads no other CRA
  * owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
  *
  * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
