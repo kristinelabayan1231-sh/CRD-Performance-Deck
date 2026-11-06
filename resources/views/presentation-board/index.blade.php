@@ -5,6 +5,9 @@
     $peso = fn (int|float|null $value) => $value === null ? '—' : '₱'.number_format($value);
     $millions = fn (int|float $value) => '₱'.number_format($value / 1000000, 2).'M';
     $percent = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 1).'%';
+    // A rate with what it is out of.
+    $of = fn (int|float $part, int|float $base) => $base ? number_format($part / $base * 100, 1).'% ('.number_format($part).' of '.number_format($base).')' : '—';
+    $small = 'display: block; font-size: 11px; font-weight: 400; color: #bdb6cf; white-space: nowrap';
     $glass = 'background: rgb(45 42 62 / .55); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); border: 1px solid rgb(255 255 255 / .12); border-radius: 16px';
     $hero = 'background: rgb(58 49 87 / .55); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); border: 1px solid rgb(195 155 255 / .35); border-radius: 16px; box-shadow: 0 0 40px rgb(124 77 255 / .18)';
     $head = 'background: linear-gradient(90deg, rgb(70 58 108 / .65), rgb(58 49 87 / .3)); border-bottom: 1px solid rgb(255 255 255 / .1); border-radius: 16px 16px 0 0; padding: 12px 16px';
@@ -78,8 +81,8 @@
                     ['label' => 'Repeat (CRD)', 'color' => $crd, 'value' => $totals['repeat_rate'], 'sub' => $number($totals['repeat']).' of '.$number($totals['repeat_base']).' CRD customers bought again'],
                 ];
                 $teams = [
-                    ['name' => 'FSD leads', 'leads' => 'fsd_leads', 'wait' => 'fsd_waiting', 'bought' => 'retained', 'base' => 'retained_base', 'rate' => 'retained_rate', 'lost' => 'fsd_lost', 'churn' => 'fsd_churn_rate', 'boughtName' => 'Retained', 'color' => $fsd, 'tint' => $fsdTint, 'added' => true, 'id' => 'fsd'],
-                    ['name' => 'CRD leads', 'leads' => 'crd_leads', 'wait' => 'crd_waiting', 'bought' => 'repeat', 'base' => 'repeat_base', 'rate' => 'repeat_rate', 'lost' => 'crd_lost', 'churn' => 'crd_churn_rate', 'boughtName' => 'Repeat', 'color' => $crd, 'tint' => $crdTint, 'added' => false, 'id' => 'crd'],
+                    ['name' => 'FSD leads', 'leads' => 'fsd_leads', 'wait' => 'fsd_waiting', 'bought' => 'retained', 'base' => 'retained_base', 'rate' => 'retained_rate', 'lost' => 'fsd_lost', 'due' => 'fsd_due', 'churn' => 'fsd_churn_rate', 'boughtName' => 'Retained', 'color' => $fsd, 'tint' => $fsdTint, 'added' => true, 'id' => 'fsd'],
+                    ['name' => 'CRD leads', 'leads' => 'crd_leads', 'wait' => 'crd_waiting', 'bought' => 'repeat', 'base' => 'repeat_base', 'rate' => 'repeat_rate', 'lost' => 'crd_lost', 'due' => 'crd_due', 'churn' => 'crd_churn_rate', 'boughtName' => 'Repeat', 'color' => $crd, 'tint' => $crdTint, 'added' => false, 'id' => 'crd'],
                 ];
             @endphp
 
@@ -181,9 +184,9 @@
                     <div class="min-w-0" style="flex: 999 1 560px">
                         <x-presentation-board.line-chart
                             :months="$months" read-target="board-read-rates"
-                            :split="$trackerAt ? ['at' => $trackerAt, 'before' => 'Shecom deliveries', 'after' => 'Tracker'] : null"
+                            :split="$trackerAt ? ['at' => $trackerAt, 'before' => 'Deliveries', 'after' => 'Tracker'] : null"
                             :series="[['key' => 'conversion_rate', 'color' => $accent, 'name' => 'Conversion'], ['key' => 'retained_rate', 'color' => $fsd, 'name' => 'Retain'], ['key' => 'repeat_rate', 'color' => $crd, 'name' => 'Repeat']]"
-                            :read="fn (array $month) => $month['label'].': conversion '.($month['conversion_rate'] === null ? 'no tracker data' : $percent($month['conversion_rate'])).' · retain '.$percent($month['retained_rate']).' · repeat '.$percent($month['repeat_rate'])" />
+                            :read="fn (array $month) => $month['label'].': conversion '.($month['conversion'] === null ? 'no tracker data' : $of($month['conversion']['all']['customers'], $month['conversion']['all']['base'])).' · retain '.$of($month['retained'], $month['retained_base']).' · repeat '.$of($month['repeat'], $month['repeat_base'])" />
                     </div>
                 </div>
             </section>
@@ -306,7 +309,7 @@
                             <span><a href="{{ $listUrl('fsd_leads', $month['key']) }}" style="{{ $link }}">{{ $number($month['fsd_leads']) }}</a>@if ($month['fsd_waiting'])<br><a href="{{ $listUrl('fsd_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['fsd_waiting']) }}</a>@endif</span>
                             <span><a href="{{ $listUrl('crd_leads', $month['key']) }}" style="{{ $link }}">{{ $number($month['crd_leads']) }}</a>@if ($month['crd_waiting'])<br><a href="{{ $listUrl('crd_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['crd_waiting']) }}</a>@endif</span>
                             <span><a href="{{ $listUrl('added', $month['key']) }}" style="{{ $link }}">{{ $number($month['added']) }}</a>@if ($month['added_waiting'])<br><a href="{{ $listUrl('added_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['added_waiting']) }}</a>@endif</span><span><a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="{{ $link }}">{{ $number($month['all_lost']) }}</a></span><span style="font-weight: 700">{{ $signed($month['net']) }}</span>
-                            <span><a href="{{ $listUrl('retained', $month['key']) }}" style="{{ $link }}">{{ $number($month['retained']) }}</a></span><span>{{ $percent($month['retained_rate']) }}</span><span><a href="{{ $listUrl('repeat', $month['key']) }}" style="{{ $link }}">{{ $number($month['repeat']) }}</a></span><span>{{ $percent($month['repeat_rate']) }}</span><span>{{ $percent($month['conversion_rate']) }}</span>
+                            <span><a href="{{ $listUrl('retained', $month['key']) }}" style="{{ $link }}">{{ $number($month['retained']) }}</a></span><span>{{ $percent($month['retained_rate']) }}<span style="{{ $small }}">of {{ $number($month['retained_base']) }}</span></span><span><a href="{{ $listUrl('repeat', $month['key']) }}" style="{{ $link }}">{{ $number($month['repeat']) }}</a></span><span>{{ $percent($month['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($month['repeat_base']) }}</span></span><span>{{ $percent($month['conversion_rate']) }}@if ($month['conversion'])<span style="{{ $small }}">of {{ $number($month['conversion']['all']['base']) }}</span>@endif</span>
                             <span><a href="{{ $ordersUrl($month['key']) }}" style="{{ $link }}">{{ $number($month['orders']) }}</a></span><span>{{ $peso($month['aov']) }}</span><span style="font-weight: 600"><a href="{{ $ordersUrl($month['key']) }}" style="{{ $link }}">{{ $peso($month['gross']) }}</a></span>
                             <span class="text-left"><span style="border-radius: 999px; padding: 2px 6px; font-size: 11px; font-weight: 600; background: {{ $month['source'] === 'tracker' ? 'rgb(63 209 185 / .22)' : 'rgb(42 159 201 / .28)' }}">{{ $month['source'] === 'tracker' ? 'Tracker' : 'Deliveries' }}</span></span>
                         </div>
@@ -316,7 +319,7 @@
                         <span>{{ $number($totals['fsd_leads']) }}@if ($totals['fsd_waiting'])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($totals['fsd_waiting']) }}</span>@endif</span>
                         <span>{{ $number($totals['crd_leads']) }}@if ($totals['crd_waiting'])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($totals['crd_waiting']) }}</span>@endif</span>
                         <span>{{ $number($totals['added'] + $totals['added_waiting']) }}</span><span>{{ $number($totals['all_lost']) }}</span><span>{{ $signed($totals['net']) }}</span>
-                        <span>{{ $number($totals['retained']) }}</span><span>{{ $percent($totals['retained_rate']) }}</span><span>{{ $number($totals['repeat']) }}</span><span>{{ $percent($totals['repeat_rate']) }}</span><span>{{ $percent($totals['conversion_rate']) }}</span>
+                        <span>{{ $number($totals['retained']) }}</span><span>{{ $percent($totals['retained_rate']) }}<span style="{{ $small }}">of {{ $number($totals['retained_base']) }}</span></span><span>{{ $number($totals['repeat']) }}</span><span>{{ $percent($totals['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($totals['repeat_base']) }}</span></span><span>{{ $percent($totals['conversion_rate']) }}@if ($totals['conversion_base'])<span style="{{ $small }}">of {{ $number($totals['conversion_base']) }}</span>@endif</span>
                         <span>{{ $number($totals['orders']) }}</span><span>{{ $peso($totals['aov']) }}</span><span>{{ $peso($totals['gross']) }}</span><span></span>
                     </div>
                 </div>
@@ -338,7 +341,7 @@
                             $peak = max(1, ...array_map(fn (array $row) => max($row[$team['leads']] + $row[$team['wait']], $row[$team['bought']]), $periods));
                             $readId = 'board-read-'.$team['id'];
                             $defaultRead = 'Point at a bar for its numbers';
-                            $columns = 'display: grid; grid-template-columns: 1.3fr repeat('.($team['added'] ? 7 : 6).', 1fr); gap: 4px; min-width: 470px; padding: 6px; text-align: right';
+                            $columns = 'display: grid; grid-template-columns: 1.3fr repeat('.($team['added'] ? 6 : 5).', 1fr); gap: 4px; min-width: 470px; padding: 6px; text-align: right';
                         @endphp
                         <div class="flex min-w-0 flex-col gap-2.5" style="flex: 1 1 520px; padding: 14px 16px">
                             <div class="flex flex-wrap items-center justify-between gap-2" style="font-size: 13px">
@@ -365,13 +368,13 @@
                                 <div style="{{ $columns }}; position: sticky; top: 0; background: #36324b; font-weight: 600; color: #e4dff0">
                                     <span class="text-left">{{ ['daily' => 'Day', 'weekly' => 'Week', 'monthly' => 'Month'][$period] }}</span><span>Leads</span>
                                     @if ($team['added'])<span title="New customers">New</span>@endif
-                                    <span title="What the rate is out of">Base</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churned</span><span>Churn %</span>
+                                    <span title="What the rate is out of">Base</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churn %</span>
                                 </div>
                                 @foreach ($periods as $row)
                                     <div style="{{ $columns }}; {{ $rowLine }}">
                                         <span class="text-left" style="font-weight: 600">{{ $row['label'] }}</span><span>{{ $number($row[$team['leads']]) }}@if ($row[$team['wait']])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($row[$team['wait']]) }}</span>@endif</span>
                                         @if ($team['added'])<span>{{ $number($row['added']) }}</span>@endif
-                                        <span>{{ $number($row[$team['base']]) }}</span><span>{{ $number($row[$team['bought']]) }}</span><span>{{ $percent($row[$team['rate']]) }}</span><span>{{ $number($row[$team['lost']]) }}</span><span>{{ $percent($row[$team['churn']]) }}</span>
+                                        <span>{{ $number($row[$team['base']]) }}</span><span>{{ $number($row[$team['bought']]) }}</span><span>{{ $percent($row[$team['rate']]) }}</span><span>{{ $percent($row[$team['churn']]) }}<span style="{{ $small }}">{{ $number($row[$team['lost']]) }} of {{ $number($row[$team['due']]) }}</span></span>
                                     </div>
                                 @endforeach
                             </div>
@@ -413,8 +416,11 @@
                             <div data-chart class="flex gap-1" style="min-width: 760px; font-size: 13px">
                                 <div style="width: 90px; flex: none; font-weight: 600; {{ $muted }}">
                                     <div style="height: 222px"></div>
-                                    @foreach (['Month', 'Added', 'Churned', 'Reactivation', 'Net', 'Churn %', 'FSD %', 'CRD %'] as $label)
+                                    @foreach (['Month', 'Added', 'Churned', 'Reactivation', 'Net'] as $label)
                                         <div style="height: 24px; line-height: 24px">{{ $label }}</div>
+                                    @endforeach
+                                    @foreach (['Churn %', 'FSD %', 'CRD %'] as $label)
+                                        <div style="height: 38px; line-height: 19px">{{ $label }}</div>
                                     @endforeach
                                 </div>
                                 @foreach ($months as $month)
@@ -427,9 +433,9 @@
                                         <a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_lost']) }}</a>
                                         <a href="{{ $churnUrl('reactivation', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_reactivation']) }}{{ $star($month) }}</a>
                                         <span style="display: block; height: 24px; line-height: 24px; font-weight: 700">{{ $signed($month['net']) }}</span>
-                                <span style="display: block; height: 24px; line-height: 24px; font-weight: 700">{{ $percent($month['churn_rate']) }}{{ $star($month) }}</span>
-                                <a href="{{ $churnUrl('lost', 'fsd', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $percent($month['fsd_churn_rate']) }}{{ $star($month) }}</a>
-                                <a href="{{ $churnUrl('lost', 'crd', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $percent($month['crd_churn_rate']) }}{{ $star($month) }}</a>
+                                <span style="display: block; height: 38px; line-height: 19px; font-weight: 700">{{ $percent($month['churn_rate']) }}{{ $star($month) }}<span style="{{ $small }}">{{ $number($month['all_lost']) }} of {{ $number($month['all_due']) }}</span></span>
+                                <a href="{{ $churnUrl('lost', 'fsd', $month['key']) }}" style="display: block; height: 38px; line-height: 19px; {{ $link }}">{{ $percent($month['fsd_churn_rate']) }}{{ $star($month) }}<span style="{{ $small }}">{{ $number($month['fsd_lost']) }} of {{ $number($month['fsd_due']) }}</span></a>
+                                <a href="{{ $churnUrl('lost', 'crd', $month['key']) }}" style="display: block; height: 38px; line-height: 19px; {{ $link }}">{{ $percent($month['crd_churn_rate']) }}{{ $star($month) }}<span style="{{ $small }}">{{ $number($month['crd_lost']) }} of {{ $number($month['crd_due']) }}</span></a>
                                     </div>
                                 @endforeach
                             </div>
