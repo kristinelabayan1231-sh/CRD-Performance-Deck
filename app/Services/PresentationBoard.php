@@ -38,6 +38,9 @@ class PresentationBoard
 
     public const OTHERS = 'Others';
 
+    /** Deliveries are split into this many files, so only one file's customers are in memory at a time. */
+    private const LEAD_BATCHES = 64;
+
     /** The figures that open a list of their customers: metric => [title, what the date means]. */
     public const LISTS = [
         'fsd_leads' => ['FSD leads', 'Est. out of stock'],
@@ -91,13 +94,6 @@ class PresentationBoard
         $snapshot = $this->build(WorkingDate::realToday());
         Cache::forever(self::CACHE_KEY, $snapshot);
 
-        foreach (array_keys(self::LISTS) as $metric) {
-            foreach (array_keys($snapshot['months']) as $month) {
-                Cache::forever(self::listKey($metric, $month), base64_encode(gzcompress(implode("\n", $this->lists[$metric][$month] ?? []), 6)));
-                unset($this->lists[$metric][$month]);
-            }
-        }
-
         return $snapshot;
     }
 
@@ -119,12 +115,14 @@ class PresentationBoard
         }
 
         $this->addLeads($days, $yearStart, $today);
+        $this->saveLists(['fsd_leads', 'crd_leads', 'fsd_waiting', 'crd_waiting', 'added', 'added_waiting'], array_keys($months));
         $cras = LeadGenerator::cras();
 
         foreach (array_keys($months) as $key) {
             $from = CarbonImmutable::parse($key.'-01');
             $to = $from->endOfMonth()->startOfDay()->min($today);
             $months[$key]['source'] = $this->addRetention($days, $cras, $from, $to);
+            $this->saveLists(['retained', 'repeat'], [$key]);
             $months[$key]['conversion'] = $this->conversion($cras, $from, $to);
             $this->addChurn($days, $from, $to);
         }
@@ -184,6 +182,22 @@ class PresentationBoard
             'product' => (string) ($found[$row[1]][2] ?? '—'),
             'delivered' => isset($found[$row[1]][3]) ? substr((string) $found[$row[1]][3], 0, 10) : null,
         ], $rows);
+    }
+
+    /**
+     * Save finished lists and let go of them, so the rest of the build has the memory.
+     *
+     * @param  list<string>  $metrics
+     * @param  list<string>  $months
+     */
+    private function saveLists(array $metrics, array $months): void
+    {
+        foreach ($metrics as $metric) {
+            foreach ($months as $month) {
+                Cache::forever(self::listKey($metric, $month), base64_encode(gzcompress(implode("\n", $this->lists[$metric][$month] ?? []), 6)));
+                unset($this->lists[$metric][$month]);
+            }
+        }
     }
 
     private static function listKey(string $metric, string $month): string
@@ -384,7 +398,63 @@ class PresentationBoard
      */
     private function addLeads(array &$days, CarbonImmutable $yearStart, CarbonImmutable $today): void
     {
-        $first = $today->toDateString();
+        $batches = $this->sortDeliveriesIntoBatches($yearStart, $today);
+
+        foreach ($batches as $batch) {
+            rewind($batch);
+            $firstDelivery = [];
+            $leads = [];
+
+            while (($line = fgets($batch)) !== false) {
+                [$customer, $team, $page, $delivered, $ranOut, $orderId] = explode("\t", rtrim($line, "\n"));
+
+                if (! isset($firstDelivery[$customer]) || $delivered < $firstDelivery[$customer][0]) {
+                    $firstDelivery[$customer] = [$delivered, $team, $page, $orderId];
+                }
+                if ($ranOut !== '') {
+                    $slot = $team.'_'.$page;
+                    $month = substr($ranOut, 0, 7);
+                    if (! isset($leads[$month][$customer][$slot]) || $ranOut < $leads[$month][$customer][$slot][0]) {
+                        $leads[$month][$customer][$slot] = [$ranOut, $orderId];
+                    }
+                }
+            }
+            fclose($batch);
+
+            foreach ($leads as $month => $customers) {
+                foreach ($customers as $customer => $slots) {
+                    // One customer, one lead per month: confirmed pages first, then CRD over FSD.
+                    foreach (['crd_listed' => 'crd_leads', 'fsd_listed' => 'fsd_leads', 'crd_waiting' => 'crd_waiting', 'fsd_waiting' => 'fsd_waiting'] as $slot => $metric) {
+                        if (isset($slots[$slot])) {
+                            [$ranOut, $orderId] = $slots[$slot];
+                            $days[$ranOut][$metric]++;
+                            $this->lists[$metric][$month][] = "{$customer}|{$orderId}|{$ranOut}";
+                            break;
+                        }
+                    }
+                }
+            }
+
+            foreach ($firstDelivery as $customer => [$delivered, $team, $page, $orderId]) {
+                if ($team === LogisticsOrder::TEAM_FSD && isset($days[$delivered]) && $page !== 'other') {
+                    $metric = $page === 'listed' ? 'added' : 'added_waiting';
+                    $days[$delivered][$metric]++;
+                    $this->lists[$metric][substr($delivered, 0, 7)][] = "{$customer}|{$orderId}|{$delivered}";
+                }
+            }
+        }
+    }
+
+    /**
+     * Read every delivery on record, a chunk at a time, and write what the leads need to temporary files, each customer always
+     * in the same file. A year has too many customers to hold at once; a file's worth is small. Each line is customer, team,
+     * page (listed, waiting or other), delivered day, out-of-stock day (empty when it isn't a lead) and order id.
+     *
+     * @return list<resource>
+     */
+    private function sortDeliveriesIntoBatches(CarbonImmutable $yearStart, CarbonImmutable $today): array
+    {
+        $last = $today->toDateString();
         $yearFrom = $yearStart->toDateString();
         $handled = $this->firstHandledByCra();
         $accounts = PancakeOrder::crdAccounts();
@@ -395,15 +465,12 @@ class PresentationBoard
         $product = function (string $name, string $on) use (&$products) {
             return $products[$name.'|'.$on] ??= $this->catalog->match($name, $on) ?? false;
         };
-        $seen = [];
-        $leads = [];
-        $firstDelivery = [];
+        $batches = [];
+        for ($i = 0; $i < self::LEAD_BATCHES; $i++) {
+            $batches[] = tmpfile();
+        }
 
-        $consider = function (object $row, string $team, string $name) use (&$seen, &$leads, &$firstDelivery, $product, $pages, $completeMonths, $handled, $yearFrom, $first) {
-            if (isset($seen[$row->order_id])) {
-                return;
-            }
-            $seen[$row->order_id] = true;
+        $consider = function (object $row, string $team, string $name) use ($batches, $product, $pages, $completeMonths, $handled, $yearFrom, $last) {
             $delivered = substr((string) $row->delivered_date, 0, 10);
             $listed = $product($name, $delivered);
 
@@ -416,29 +483,18 @@ class PresentationBoard
             $page = $row->page_id === null || $row->page_id === ''
                 ? (isset($completeMonths[substr($orderedOn, 0, 7)]) || $orderedOn > PancakePageBackfill::LAST_MONTH.'-31' ? 'other' : 'waiting')
                 : (array_key_exists((string) $row->page_id, $pages) && ($pages[(string) $row->page_id] === null || $pages[(string) $row->page_id] <= $orderedOn) ? 'listed' : 'other');
+            $ranOut = '';
 
-            if (! isset($firstDelivery[$customer]) || $delivered < substr($firstDelivery[$customer], 0, 10)) {
-                $firstDelivery[$customer] = "{$delivered}|{$team}|{$page}|{$row->order_id}";
-            }
-            if ($page === 'other') {
-                return;
-            }
+            if ($page !== 'other') {
+                $qty = $row->qty ?? $this->qtyFromItems($row->items ?? null, $listed, $product, $orderedOn);
+                $ranOut = gmdate('Y-m-d', strtotime($delivered.' 00:00:00 UTC') + (max(1, (int) $qty) * $listed->consumption_days - 1) * 86400);
 
-            $qty = $row->qty ?? $this->qtyFromItems($row->items ?? null, $listed, $product, $orderedOn);
-            $ranOut = gmdate('Y-m-d', strtotime($delivered.' 00:00:00 UTC') + (max(1, (int) $qty) * $listed->consumption_days - 1) * 86400);
-
-            if ($ranOut < $yearFrom || $ranOut > $first) {
-                return;
-            }
-            if ($team === LogisticsOrder::TEAM_FSD && isset($handled[$customer]) && $handled[$customer] < $ranOut) {
-                return;
+                if ($ranOut < $yearFrom || $ranOut > $last || ($team === LogisticsOrder::TEAM_FSD && isset($handled[$customer]) && $handled[$customer] < $ranOut)) {
+                    $ranOut = '';
+                }
             }
 
-            $slot = $customer.'|'.$team.'_'.$page;
-            $month = substr($ranOut, 0, 7);
-            if (! isset($leads[$month][$slot]) || $ranOut < substr($leads[$month][$slot], 0, 10)) {
-                $leads[$month][$slot] = $ranOut.'|'.$row->order_id;
-            }
+            fwrite($batches[crc32($customer) % self::LEAD_BATCHES], "{$customer}\t{$team}\t{$page}\t{$delivered}\t{$ranOut}\t{$row->order_id}\n");
         };
 
         DB::table('logistics_orders')
@@ -457,9 +513,12 @@ class PresentationBoard
                 }
             }, 'logistics_orders.id', 'id');
 
+        // Older deliveries, except any order already read above.
         DB::table('delivered_orders')
             ->leftJoin('pancake_orders', 'pancake_orders.pancake_order_id', '=', 'delivered_orders.order_id')
+            ->leftJoin('logistics_orders', 'logistics_orders.order_id', '=', 'delivered_orders.order_id')
             ->where('delivered_orders.delivered_date', '<', LogisticsOrder::coveredFrom())
+            ->whereNull('logistics_orders.id')
             ->select([
                 'delivered_orders.id', 'delivered_orders.order_id', 'delivered_orders.product_raw', 'delivered_orders.qty', 'delivered_orders.delivered_date', 'delivered_orders.phone_number',
                 'pancake_orders.phone_key as customer_key', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
@@ -471,33 +530,7 @@ class PresentationBoard
                 }
             }, 'delivered_orders.id', 'id');
 
-        // One customer, one lead per month: confirmed pages first, then CRD over FSD.
-        $ranks = ['crd_listed' => 0, 'fsd_listed' => 1, 'crd_waiting' => 2, 'fsd_waiting' => 3];
-        $metrics = ['crd_leads', 'fsd_leads', 'crd_waiting', 'fsd_waiting'];
-        foreach ($leads as $month => $slots) {
-            $best = [];
-            foreach ($slots as $slot => $lead) {
-                [$customer, $kind] = explode('|', $slot);
-                if (! isset($best[$customer]) || $ranks[$kind] < $best[$customer][0]) {
-                    $best[$customer] = [$ranks[$kind], $lead];
-                }
-            }
-            foreach ($best as $customer => [$rank, $lead]) {
-                [$ranOut, $orderId] = explode('|', $lead);
-                $days[$ranOut][$metrics[$rank]]++;
-                $this->lists[$metrics[$rank]][$month][] = "{$customer}|{$orderId}|{$ranOut}";
-            }
-            unset($leads[$month], $best);
-        }
-
-        foreach ($firstDelivery as $customer => $first) {
-            [$delivered, $team, $page, $orderId] = explode('|', $first);
-            if ($team === LogisticsOrder::TEAM_FSD && isset($days[$delivered]) && $page !== 'other') {
-                $metric = $page === 'listed' ? 'added' : 'added_waiting';
-                $days[$delivered][$metric]++;
-                $this->lists[$metric][substr($delivered, 0, 7)][] = "{$customer}|{$orderId}|{$delivered}";
-            }
-        }
+        return $batches;
     }
 
     /**
