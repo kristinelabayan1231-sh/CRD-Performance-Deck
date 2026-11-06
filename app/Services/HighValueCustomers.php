@@ -454,7 +454,7 @@ class HighValueCustomers
             return 0;
         }
 
-        $found = app(CustomerOwners::class)->for($keys);
+        $found = app(CustomerOwners::class)->forHighValue($keys);
         $rest = array_values(array_filter($keys, fn (string $key) => ! isset($found[$key])));
         $found += $this->firstReorderCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['high_aov'])));
         $found += $this->vipQualifyingCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['vip'] && ! isset($found[$key]))));

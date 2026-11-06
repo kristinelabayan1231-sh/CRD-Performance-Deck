@@ -22,6 +22,11 @@ return [
     // on-duty CRA up to this with their own oldest untouched backlog, then an even share of the unassigned pool.
     'max_leads_per_cra' => (int) env('SEGMENTATION_MAX_LEADS_PER_CRA', 100),
 
+    // First lead day whose untouched leads move to their customer's CRA (LeadGenerator). Lead day Oct 8, 2026 = real
+    // Nov 7: the rule that a customer's CRA is who handled the most of their orders starts then, and the lists CRAs
+    // were already working stay as they were.
+    'reclaim_from' => '2026-10-08',
+
     // Pancake POS order tag ids that make an order a CRD conversion (Conversion
     // Breakdown): "CRD - BROADCAST" and "CRD - SEGMENTATION". An order with
     // both tags counts as segmentation.

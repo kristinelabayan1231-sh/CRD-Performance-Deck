@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\CvrOrderEntry;
 use App\Models\Lead;
@@ -68,29 +69,93 @@ class LeadOwnershipTest extends TestCase
         ]);
     }
 
-    public function test_a_cra_owns_a_customer_after_handling_two_of_their_orders_the_latest_such_cra_winning(): void
+    public function test_a_customers_cra_is_the_one_with_the_most_orders_and_the_first_when_level(): void
     {
-        // 9171111111: Anna twice. 9172222222: Anna once (not yet owned). 9173333333: Anna twice in June, Ben twice in August.
-        $this->sale('9171111111', 'CRD ANNA', '2026-05-01');
+        // One order is enough. 9171111111: Ben once, then Anna once: Ben was first.
+        $this->sale('9171111111', 'CRD BEN', '2026-05-01');
         $this->sale('9171111111', 'CRD ANNA', '2026-06-01');
+        // Two beat a first CRA with one. 9172222222: Ben once, then Anna twice.
+        $this->sale('9172222222', 'CRD BEN', '2026-05-01');
         $this->sale('9172222222', 'CRD ANNA', '2026-06-01');
-        $this->sale('9173333333', 'CRD ANNA', '2026-06-01');
-        $this->sale('9173333333', 'CRD ANNA', '2026-06-10');
+        $this->sale('9172222222', 'CRD ANNA', '2026-06-02');
+        // The most wins, not the latest. 9173333333: Anna five times, then Ben twice.
+        foreach (range(1, 5) as $day) {
+            $this->sale('9173333333', 'CRD ANNA', '2026-05-0'.$day);
+        }
         $this->sale('9173333333', 'CRD BEN', '2026-08-01');
-        $this->sale('9173333333', 'CRD BEN', '2026-08-10');
-        // 9174444444: one canceled order doesn't count; one order claimed for Ben in the CVR Tracker counts for him.
+        $this->sale('9173333333', 'CRD BEN', '2026-08-02');
+        // 9174444444: a canceled order doesn't count, and one claimed for Ben in the CVR Tracker counts for him.
         $this->sale('9174444444', 'CRD ANNA', '2026-07-01', status: 6);
         $this->sale('9174444444', 'CRD ANNA', '2026-07-02');
         $claimed = $this->sale('9174444444', 'CRD ANNA', '2026-07-03');
+        $otherClaimed = $this->sale('9174444444', 'CRD ANNA', '2026-07-04');
         CvrOrderEntry::create(['pancake_order_id' => $claimed->pancake_order_id, 'user_id' => $this->ben->id]);
-        // 9175555555 merged into 9176666666: one customer, two orders by Ben.
+        CvrOrderEntry::create(['pancake_order_id' => $otherClaimed->pancake_order_id, 'user_id' => $this->ben->id]);
+        // 9175555555 merged into 9176666666: one customer, two orders by Ben against one by Anna.
         CustomerLink::create(['phone_key' => '9175555555', 'primary_phone_key' => '9176666666']);
         $this->sale('9175555555', 'CRD BEN', '2026-07-01');
         $this->sale('9176666666', 'CRD BEN', '2026-07-05');
+        $this->sale('9175555555', 'CRD ANNA', '2026-06-01');
 
-        $owners = app(CustomerOwners::class)->for(['9171111111', '9172222222', '9173333333', '9174444444', '9175555555']);
+        $owners = app(CustomerOwners::class)->for(['9171111111', '9172222222', '9173333333', '9174444444', '9175555555', '9177777777']);
 
-        $this->assertSame([9171111111 => $this->anna->id, 9173333333 => $this->ben->id, 9175555555 => $this->ben->id], $owners);
+        $this->assertSame([
+            9171111111 => $this->ben->id,
+            9172222222 => $this->anna->id,
+            9173333333 => $this->anna->id,
+            9174444444 => $this->ben->id,
+            9175555555 => $this->ben->id,
+        ], $owners);
+    }
+
+    public function test_orders_older_than_the_saved_ones_count_without_counting_a_saved_order_twice(): void
+    {
+        // Ben's 2024 order is only in the history; his 2026 one is in both, so it stays one order, level with Anna's one. Ben was first.
+        $this->sale('9171111111', 'CRD ANNA', '2026-02-01');
+        CustomerHistory::create(['phone_key' => '9171111111', 'prior_cra_orders' => 2, 'checked_at' => now(), 'prior_cra_sales' => [
+            ['at' => '2024-03-01T02:00:00Z', 'amount' => 800, 'seller' => 'CRD BEN'],
+            ['at' => '2026-02-01T02:00:00Z', 'amount' => 800, 'seller' => 'CRD ANNA'],
+        ]]);
+
+        $this->assertSame([9171111111 => $this->ben->id], app(CustomerOwners::class)->for(['9171111111']));
+    }
+
+    public function test_leads_a_cra_processed_stay_with_them_when_the_customer_belongs_to_another_cra(): void
+    {
+        config(['segmentation.max_leads_per_cra' => 5]);
+        $this->sale('9171111111', 'CRD ANNA', '2026-05-01');
+        $this->sale('9172222222', 'CRD ANNA', '2026-05-01');
+        $today = $this->lead('9171111111', '2026-10-09', $this->ben, ['status' => 'pjr_drop_call']);
+        $backlog = $this->lead('9172222222', '2026-09-02', $this->ben, ['listed_on' => '2026-09-02', 'status' => 'pjr_drop_call']);
+
+        app(LeadGenerator::class)->assign($this->day);
+        app(BacklogFill::class)->fill($this->day, collect([$this->anna, $this->ben]));
+
+        $this->assertSame($this->ben->id, $today->fresh()->assigned_to);
+        $this->assertSame([$this->ben->id, '2026-09-02'], [$backlog->fresh()->assigned_to, $backlog->fresh()->listed_on->toDateString()]);
+    }
+
+    public function test_leads_of_a_day_before_the_rule_starts_are_not_moved_to_their_customers_cra(): void
+    {
+        config(['segmentation.reclaim_from' => '2026-10-10']);
+        $this->sale('9171111111', 'CRD ANNA', '2026-05-01');
+        $lead = $this->lead('9171111111', '2026-10-09', $this->ben);
+
+        app(LeadGenerator::class)->assign($this->day);
+
+        $this->assertSame($this->ben->id, $lead->fresh()->assigned_to);
+    }
+
+    public function test_a_new_high_value_customers_cra_still_needs_two_orders_the_latest_such_cra_winning(): void
+    {
+        // 9171111111: Anna once. 9172222222: Anna twice in June, then Ben twice in August.
+        $this->sale('9171111111', 'CRD ANNA', '2026-06-01');
+        $this->sale('9172222222', 'CRD ANNA', '2026-06-01');
+        $this->sale('9172222222', 'CRD ANNA', '2026-06-10');
+        $this->sale('9172222222', 'CRD BEN', '2026-08-01');
+        $this->sale('9172222222', 'CRD BEN', '2026-08-10');
+
+        $this->assertSame([9172222222 => $this->ben->id], app(CustomerOwners::class)->forHighValue(['9171111111', '9172222222']));
     }
 
     public function test_a_deactivated_cra_owns_no_customers(): void
