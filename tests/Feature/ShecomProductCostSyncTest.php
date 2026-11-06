@@ -36,6 +36,31 @@ class ShecomProductCostSyncTest extends TestCase
         $this->assertSame(['3 bottles sinuxyl' => 120.0], ShecomProductCost::current());
     }
 
+    public function test_a_cost_edited_in_shecom_with_an_earlier_effective_date_replaces_the_old_one(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-03 13:00', 'Asia/Manila'));
+        config(['services.shecom.product_cost_key' => 'test-key']);
+        $costs = fn (float $cost, string $from) => Http::response(['products' => [
+            ['product' => 'Scar Erase', 'currentCost' => $cost, 'currentEffectiveFrom' => $from],
+        ]]);
+        Http::fakeSequence('*/product-costs')
+            ->pushResponse($costs(42, '2026-11-03'))
+            ->pushResponse($costs(40, '2026-10-01'))
+            ->pushResponse($costs(42, '2026-11-03'));
+
+        $this->artisan('shecom:product-costs')->assertSuccessful();
+        $this->assertSame(['scar erase' => 42.0], ShecomProductCost::current());
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 13:10', 'Asia/Manila'));
+        $this->artisan('shecom:product-costs')->assertSuccessful();
+        $this->assertSame(['scar erase' => 40.0], ShecomProductCost::current());
+
+        // Edited back to a cost it had before: the row already exists, and it's current again.
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 14:10', 'Asia/Manila'));
+        $this->artisan('shecom:product-costs')->assertSuccessful();
+        $this->assertSame(['scar erase' => 42.0], ShecomProductCost::current());
+    }
+
     public function test_a_supervisor_refreshes_the_product_costs_from_the_daily_is(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-11-03 09:00', 'Asia/Manila'));
