@@ -30,7 +30,7 @@
         <select name="cra" class="{{ $field }} w-32 truncate pr-7 pl-8" onchange="this.form.submit()">
             <option value="all" @selected($filters['cra'] === 'all')>All</option>
             @foreach ($cras as $cra)
-                <option value="{{ $cra->id }}" @selected($filters['cra'] === (string) $cra->id)>{{ $cra->displayName() }}{{ ! $canViewAll && $cra->id === auth()->id() ? ' (you)' : '' }}</option>
+                <option value="{{ $cra->id }}" @selected($filters['cra'] === (string) $cra->id)>{{ $cra->displayName() }}{{ $cra->id === auth()->id() ? ' (you)' : '' }}</option>
             @endforeach
         </select>
     </label>

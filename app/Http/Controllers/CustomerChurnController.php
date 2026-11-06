@@ -52,6 +52,7 @@ class CustomerChurnController extends Controller
             'delivered' => ['required', 'date_format:Y-m-d'],
             'ran_out' => ['required', 'date_format:Y-m-d'],
             'deadline' => ['required', 'date_format:Y-m-d'],
+            'churned' => ['nullable', 'boolean'],
         ]);
         $history = $churn->history($phoneKey);
 

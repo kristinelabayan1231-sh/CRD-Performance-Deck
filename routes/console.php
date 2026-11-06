@@ -132,3 +132,17 @@ Schedule::command('shecom:product-costs')
     ->hourlyAt(10)
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(10);
+
+// Presentation Board: the year's figures, kept as a snapshot because they read every order of the year.
+Schedule::command('presentation-board:refresh')
+    ->everyTwoHours()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
+// Presentation Board: older orders' Pancake pages, a little at a time (the web service and syncs share one instance); does nothing once finished.
+Schedule::command('pancake:backfill-pages --minutes=8')
+    ->everyTenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(20)
+    ->runInBackground();

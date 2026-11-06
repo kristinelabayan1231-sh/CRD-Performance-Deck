@@ -4,6 +4,7 @@
     $tags = [
         \App\Models\PancakeOrder::BROADCAST => ['CRD - BROADCAST', 'bg-teal/15 text-teal-700'],
         \App\Models\PancakeOrder::SEGMENTATION => ['CRD - SEGMENTATION', 'bg-brand-100 text-brand-700'],
+        \App\Models\PancakeOrder::UNTAGGED => ['Not tagged', 'bg-canvas text-muted'],
     ];
 @endphp
 
@@ -25,7 +26,7 @@
             </div>
             <div>
                 <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Gross sales</dt>
-                <dd class="text-xl font-bold tabular-nums">{{ $peso($bcGross + $scGross) }}</dd>
+                <dd class="text-xl font-bold tabular-nums">{{ $peso($bcGross + $scGross + $untaggedGross) }}</dd>
             </div>
         </dl>
     </div>
@@ -67,7 +68,7 @@
                 <tfoot class="bg-ink font-semibold text-white">
                     <tr>
                         <td class="px-3 py-2" colspan="6">Total · {{ number_format($orders->count()) }} {{ Str::plural('order', $orders->count()) }}</td>
-                        <td class="px-3 py-2 text-right tabular-nums">{{ $peso($bcGross + $scGross) }}</td>
+                        <td class="px-3 py-2 text-right tabular-nums">{{ $peso($bcGross + $scGross + $untaggedGross) }}</td>
                     </tr>
                 </tfoot>
             </table>

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LeadAttempt;
+use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
@@ -97,26 +98,47 @@ class ColdLeadAttemptsTest extends TestCase
             ->assertSee($retrying->customer_name)->assertSeeText('2 left')->assertDontSee('Used Up');
     }
 
-    public function test_churn_leaves_out_cold_leads_still_being_retried(): void
+    public function test_a_customer_is_churned_once_a_cra_has_reached_them_with_no_order_since(): void
     {
-        // Ran out Aug 15, so their 30 days ended Sep 14 with no reorder: lost.
+        // Ran out Aug 15, so their 30 days ended Sep 14 with no reorder: due in September.
         Product::create(['name' => 'Crdol']);
         $delivered = fn (string $phone) => DeliveredOrder::create(['order_id' => uniqid(), 'customer_name' => 'C', 'phone_number' => $phone, 'product_raw' => 'Crdol',
             'qty' => 1, 'delivered_date' => '2026-08-01', 'consumption_days_per_unit' => 15, 'source' => DeliveredOrder::SOURCE_SHECOM]);
-        $churn = fn () => app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-09-01'), CarbonImmutable::parse('2026-09-30'))['all'];
+        $from = CarbonImmutable::parse('2026-09-01');
+        $to = CarbonImmutable::parse('2026-09-30');
+        $untouched = ['status' => null, 'contact_date' => null, 'customer_tag' => null];
 
+        // Churned: reached by a contact date, by a status a CRA set, and by a logged attempt.
         $delivered('9171111111');
-        $retrying = $this->lead('Retrying', ['phone_number' => '09171111111']);
-        $this->attempt($retrying, '2026-10-01');
+        $this->lead('Contacted', ['phone_number' => '09171111111', 'status' => null]);
         $delivered('9172222222');
-        $this->lead('Went Active', ['phone_number' => '09172222222', 'status' => 'active']);
+        $this->lead('Status Set', ['phone_number' => '09172222222', 'contact_date' => null, 'status' => 'active', 'status_updated_by' => $this->alice->id]);
         $delivered('9173333333');
+        $this->attempt($this->lead('Attempted', ['phone_number' => '09173333333', ...$untouched]), '2026-10-01');
 
-        $this->assertSame([2, 2], [$churn()['customers'], $churn()['lost']]);
+        // For reactivation: no lead, an import's default status, reserved, bought, ordered late, or only an older delivery's lead.
+        $delivered('9174444444');
+        $delivered('9175555555');
+        $this->lead('Import Default', ['phone_number' => '09175555555', 'contact_date' => null, 'status' => 'active']);
+        $delivered('9176666666');
+        $this->lead('Reserved', ['phone_number' => '09176666666', 'repeat_purchase' => 'reserve']);
+        $delivered('9177777777');
+        $this->lead('Bought', ['phone_number' => '09177777777', 'repeat_purchase' => 'yes']);
+        $delivered('9178888888');
+        $this->lead('Ordered Late', ['phone_number' => '09178888888']);
+        PancakeOrder::create(['pancake_order_id' => 'LATE', 'ordered_on' => '2026-10-04', 'phone_key' => '9178888888', 'status' => 3, 'total_price' => 500]);
+        $delivered('9179999999');
+        $this->lead('Older Delivery', ['phone_number' => '09179999999', 'delivered_date' => '2026-07-01']);
 
-        // All three attempts made: counted again.
-        $this->attempt($retrying, '2026-10-02');
-        $this->attempt($retrying, '2026-10-03');
-        $this->assertSame([3, 3], [$churn()['customers'], $churn()['lost']]);
+        $all = app(CustomerChurn::class)->for($from, $to)['all'];
+        $this->assertSame(['customers' => 9, 'back' => 0, 'reactivation' => 6, 'lost' => 3], array_intersect_key($all, array_flip(['customers', 'back', 'reactivation', 'lost'])));
+        $this->assertSame(3 / 9, $all['rate']);
+
+        $rows = collect(app(CustomerChurn::class)->customers($from, $to))->map(fn (array $row) => CustomerChurn::row($row));
+        $this->assertSame(['9171111111', '9172222222', '9173333333'], $rows->where('churned', true)->pluck('phone_key')->map(fn ($phone) => (string) $phone)->sort()->values()->all());
+
+        $days = app(CustomerChurn::class)->perDeadline($from, $to)['all'];
+        $this->assertSame(3, collect($days)->sum('lost'));
+        $this->assertSame(6, collect($days)->sum('reactivation'));
     }
 }

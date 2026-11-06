@@ -79,6 +79,8 @@ class ConversionBreakdown
                     'sc_orders' => $orders[$cra->id][$key]['sc_orders'] ?? 0,
                     'bc_gross' => $orders[$cra->id][$key]['bc_gross'] ?? 0.0,
                     'sc_gross' => $orders[$cra->id][$key]['sc_gross'] ?? 0.0,
+                    'untagged_orders' => $orders[$cra->id][$key]['untagged_orders'] ?? 0,
+                    'untagged_gross' => $orders[$cra->id][$key]['untagged_gross'] ?? 0.0,
                     'engagements' => $engagements[$cra->id][$key] ?? 0,
                     'leads' => $leads[$cra->id][$key] ?? 0,
                 ]);
@@ -93,7 +95,7 @@ class ConversionBreakdown
      * (every status but deleted) for broadcast and segmentation, with the CVR Tracker's corrections (taggedOrders()).
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
-     * @return array<int, array<string, array{bc_orders: int, sc_orders: int, bc_gross: float, sc_gross: float}>>
+     * @return array<int, array<string, array{bc_orders: int, sc_orders: int, untagged_orders: int, bc_gross: float, sc_gross: float, untagged_gross: float}>>
      */
     public function orders(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -108,8 +110,12 @@ class ConversionBreakdown
             ->each(function (PancakeOrder $order) use (&$out, $accounts) {
                 $cra = self::craFor($order, $accounts);
                 $day = $order->ordered_on->toDateString();
-                $prefix = $order->counted_type === PancakeOrder::BROADCAST ? 'bc' : 'sc';
-                $out[$cra][$day] ??= ['bc_orders' => 0, 'sc_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0];
+                $prefix = match ($order->counted_type) {
+                    PancakeOrder::BROADCAST => 'bc',
+                    PancakeOrder::UNTAGGED => 'untagged',
+                    default => 'sc',
+                };
+                $out[$cra][$day] ??= ['bc_orders' => 0, 'sc_orders' => 0, 'untagged_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0, 'untagged_gross' => 0.0];
                 $out[$cra][$day]["{$prefix}_orders"] += $order->isCounted() ? 1 : 0;
                 $out[$cra][$day]["{$prefix}_gross"] += $order->sales();
             });
@@ -118,7 +124,8 @@ class ConversionBreakdown
     }
 
     /**
-     * The CRAs' (by $accounts) Pancake orders created $from–$to tagged CRD - BROADCAST or CRD - SEGMENTATION, every
+     * The CRAs' (by $accounts) Pancake orders created $from–$to tagged CRD - BROADCAST or CRD - SEGMENTATION (before
+     * the tags existed, config segmentation.conversion_tags_from, every order: counted_type untagged), every
      * status but deleted, as the CVR Tracker counts them: an order counted for another CRA there goes to that CRA (also when made
      * under an account not in $accounts), and its Type of Order there wins over the tag. Each order carries
      * counted_type (broadcast / segmentation) and counted_for (the CVR Tracker's CRA id, or null: its seller's CRA).
@@ -129,14 +136,16 @@ class ConversionBreakdown
     {
         return PancakeOrder::crdSales()
             ->leftJoin('cvr_order_entries as cvr', 'cvr.pancake_order_id', '=', 'pancake_orders.pancake_order_id')
-            ->whereIn('pancake_orders.conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+            ->where(fn (Builder $q) => $q
+                ->whereIn('pancake_orders.conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
+                ->orWhere(fn (Builder $q) => $q->whereNull('pancake_orders.conversion_type')->where('pancake_orders.ordered_on', '<', config('segmentation.conversion_tags_from'))))
             ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhere('pancake_orders.status', '!=', CraPerformance::DELETED))
             ->where('pancake_orders.ordered_on', '>=', $from->toDateString())->where('pancake_orders.ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn (Builder $q) => $q
                 ->where(fn (Builder $q) => $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()))
                 ->orWhereIn('cvr.user_id', $accounts->values()))
             ->select('pancake_orders.*')
-            ->selectRaw('coalesce(cvr.order_type, pancake_orders.conversion_type) as counted_type, cvr.user_id as counted_for');
+            ->selectRaw("coalesce(cvr.order_type, pancake_orders.conversion_type, '".PancakeOrder::UNTAGGED."') as counted_type, cvr.user_id as counted_for");
     }
 
     /**
@@ -169,11 +178,11 @@ class ConversionBreakdown
      */
     public static function sum(iterable $rows): array
     {
-        $totals = [...array_fill_keys(self::COUNTS, 0), 'bc_gross' => 0.0, 'sc_gross' => 0.0];
+        $totals = [...array_fill_keys(self::COUNTS, 0), 'untagged_orders' => 0, 'bc_gross' => 0.0, 'sc_gross' => 0.0, 'untagged_gross' => 0.0];
 
         foreach ($rows as $row) {
             foreach ($totals as $key => $value) {
-                $totals[$key] = $value + $row[$key];
+                $totals[$key] = $value + ($row[$key] ?? 0);
             }
         }
 
@@ -181,19 +190,19 @@ class ConversionBreakdown
     }
 
     /**
-     * @param  array{bc_orders: int, sc_orders: int, bc_gross: float, sc_gross: float, engagements: int, leads: int}  $base
+     * @param  array{bc_orders: int, sc_orders: int, untagged_orders: int, bc_gross: float, sc_gross: float, untagged_gross: float, engagements: int, leads: int}  $base
      * @return array<string, int|float|null>
      */
     private static function derive(array $base): array
     {
-        $orders = $base['bc_orders'] + $base['sc_orders'];
+        $orders = $base['bc_orders'] + $base['sc_orders'] + $base['untagged_orders'];
         $reach = $base['engagements'] + $base['leads'];
 
         return [
             ...$base,
             'orders' => $orders,
             'reach' => $reach,
-            'gross' => $base['bc_gross'] + $base['sc_gross'],
+            'gross' => $base['bc_gross'] + $base['sc_gross'] + $base['untagged_gross'],
             'bc_rate' => $base['engagements'] ? $base['bc_orders'] / $base['engagements'] : null,
             'sc_rate' => $base['leads'] ? $base['sc_orders'] / $base['leads'] : null,
             'total_rate' => $reach ? $orders / $reach : null,

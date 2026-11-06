@@ -805,6 +805,40 @@ class SegmentationTest extends TestCase
         $this->actingAs($alice)->get('/segmentation')->assertDontSee('Per CRA');
     }
 
+    public function test_cra_with_view_all_opens_on_own_leads_and_can_switch_to_all(): void
+    {
+        $craRole = Role::firstWhere('slug', Role::CRA);
+        $craRole->update(['permissions' => [...$craRole->permissions, 'segmentation.view_all']]);
+        $alice = $this->cra('alice@gmail.com');
+        $bob = $this->cra('bob@gmail.com');
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+        $mine = Lead::where('assigned_to', $alice->id)->first();
+        $theirs = Lead::where('assigned_to', $bob->id)->first();
+
+        $this->actingAs($alice)->get('/segmentation')->assertOk()
+            ->assertSee($mine->customer_name)->assertDontSee($theirs->customer_name)
+            ->assertSee($alice->displayName().' (you)');
+        $this->actingAs($alice)->getJson('/segmentation/summary')->assertJsonPath('total.value', '1');
+
+        // All shows everyone's leads, but only her own row can be edited.
+        $this->actingAs($alice)->get('/segmentation?cra=all')->assertOk()
+            ->assertSee('data-update-url="'.route('segmentation.update', $mine).'"', false)
+            ->assertSee($theirs->customer_name)
+            ->assertDontSee('data-update-url="'.route('segmentation.update', $theirs).'"', false);
+    }
+
+    public function test_supervisor_still_opens_on_all_leads(): void
+    {
+        $this->cra('alice@gmail.com');
+        $this->cra('bob@gmail.com');
+        $supervisor = User::create(['email' => 'supervisor@gmail.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+        $this->fakeApi([$this->row('1', '9171111111', '2026-10-05'), $this->row('2', '9172222222', '2026-10-05')]);
+        app(LeadGenerator::class)->generate($this->day);
+
+        $this->actingAs($supervisor)->getJson('/segmentation/summary')->assertJsonPath('total.value', '2');
+    }
+
     public function test_conversion_tile_counts_yes_or_no_with_purchased_feedback(): void
     {
         $alice = $this->cra('alice@gmail.com');

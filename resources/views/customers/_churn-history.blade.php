@@ -21,8 +21,9 @@
             <span class="flex flex-wrap gap-1">
                 @if ($back)
                     <span class="rounded-full bg-teal/15 px-2 py-0.5 text-xs font-semibold text-teal-700">Came back</span>
+                @elseif ($window['churned'] ?? false)
+                    <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral-700">Churned</span>
                 @else
-                    <span class="rounded-full bg-coral/15 px-2 py-0.5 text-xs font-semibold text-coral-700">Lost</span>
                     <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-xs font-semibold text-[#8a5a00]">For reactivation</span>
                 @endif
             </span>

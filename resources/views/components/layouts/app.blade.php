@@ -68,6 +68,9 @@
                 @can('report_summary.view')
                     <x-nav-link :href="route('report-summary.index')" :active="request()->routeIs('report-summary.*')" icon="report">Report Summary</x-nav-link>
                 @endcan
+                @can('presentation_board.view')
+                    <x-nav-link :href="route('presentation-board.index')" :active="request()->routeIs('presentation-board.*')" icon="chart">Presentation Board</x-nav-link>
+                @endcan
 
                 @if ($navGroups->isNotEmpty())
                     <div class="mx-1 my-2 h-px bg-white/10" aria-hidden="true"></div>

@@ -71,6 +71,9 @@ $modules = [
     'Running Sales' => [
         'running_sales.view' => 'View every CRA\'s running sales (overall and per product) against their daily goal, and refresh them',
     ],
+    'Presentation Board' => [
+        'presentation_board.view' => 'View the CRD team\'s year so far: leads, customers added and lost, rates, sales and top products',
+    ],
     'Call Recordings' => [
         'call_recordings.view' => 'View and play own call recordings and AHT (average call length)',
         'call_recordings.view_all' => 'View and play every CRA\'s call recordings and compare their AHT',

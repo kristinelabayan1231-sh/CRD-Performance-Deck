@@ -10,51 +10,89 @@ use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 
 /**
- * Churn rate = customers lost ÷ customers due × 100, for CRD, FSD and both together.
+ * Churn rate = customers churned ÷ customers due × 100, for CRD, FSD and both together.
  *
  * A delivered customer runs out on delivered date + qty × consumption days − 1 and has config
  * customers.churn_grace_days (30) to order again. CRD = the CRD-delivered orders (the logistics
  * out-of-stock list). FSD = the FSD-delivered logistics orders, with qty from the Pancake delivered
  * orders (an order without a known qty is left out until it has one) and consumption days from
  * Settings → Product Consumption. Customers due in $from–$to = those whose grace ended in the range
- * (up to today). Lost = no Pancake POS order (not canceled or deleted) and no new delivery between
- * that delivery and the end of the grace. A customer counts once per list, by their latest delivery
- * whose grace ended in the range, so a past range's churn doesn't change later; overall takes each
- * customer's latest delivery across both lists. Customers with a cold lead still being retried in the Segmentation Tracker (attempts
- * left, no Active status) are left out until its attempts are used up. delivered_months counts the customers by the month
- * they were delivered (Y-m), usually months before the range. customers() lists them one by one.
+ * (up to today). A customer counts once per list, by their latest delivery whose grace ended in the
+ * range, so a past range's figures don't change later; overall takes each customer's latest delivery
+ * across both lists. Each customer due is one of:
+ * - came back: a Pancake POS order (not canceled or deleted) or a new delivery after that delivery, by the deadline;
+ * - churned: a CRA reached out at least once (on a lead from that delivery on: a contact date, a status a CRA set, or a logged
+ *   attempt) and they have not ordered since, nor been marked as bought or Reserve on that lead;
+ * - for reactivation: everyone else, including those who ordered after the deadline.
+ * delivered_months counts the customers by the month they were delivered (Y-m), usually months before the range.
+ * customers() lists them one by one.
  */
 class CustomerChurn
 {
+    private const NO_ORDER_SINCE = 0;
+
+    private const CAME_BACK = 1;
+
+    private const ORDERED_AFTER_DEADLINE = 2;
+
     /**
-     * @return array{crd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, fsd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, all: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, grace_days: int}
+     * @return array{crd: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, fsd: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, all: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, grace_days: int}
      */
     public function for(CarbonImmutable $from, CarbonImmutable $to): array
     {
         [$due, $outcomes] = $this->evaluate($from, $to);
+        $contacts = $this->contacts();
 
         return [
-            'crd' => $this->summary($due['crd'], $outcomes['crd']),
-            'fsd' => $this->summary($due['fsd'], $outcomes['fsd']),
-            'all' => $this->summary($due['all'], $outcomes['all']),
+            'crd' => $this->summary($due['crd'], $outcomes['crd'], $contacts),
+            'fsd' => $this->summary($due['fsd'], $outcomes['fsd'], $contacts),
+            'all' => $this->summary($due['all'], $outcomes['all'], $contacts),
             'grace_days' => (int) config('customers.churn_grace_days'),
         ];
     }
 
     /**
+     * for() per day, by the day each customer's window to reorder ended, so the days add up to for()'s totals.
+     *
+     * @return array{crd: array<string, array{customers: int, reactivation: int, lost: int}>, fsd: array<string, array{customers: int, reactivation: int, lost: int}>, all: array<string, array{customers: int, reactivation: int, lost: int}>}
+     */
+    public function perDeadline(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        [$due, $outcomes] = $this->evaluate($from, $to);
+        $contacts = $this->contacts();
+        $days = ['crd' => [], 'fsd' => [], 'all' => []];
+
+        foreach ($due as $list => $customers) {
+            foreach ($customers as $phone => $customer) {
+                $day = $customer['deadline'];
+                $days[$list][$day] ??= ['customers' => 0, 'reactivation' => 0, 'lost' => 0];
+                $days[$list][$day]['customers']++;
+                $outcome = $outcomes[$list][$phone] ?? self::NO_ORDER_SINCE;
+
+                if ($outcome === self::CAME_BACK) {
+                    continue;
+                }
+                $days[$list][$day][$outcome === self::NO_ORDER_SINCE && $this->isChurned((string) $phone, $customer['delivered'], $contacts) ? 'lost' : 'reactivation']++;
+            }
+        }
+
+        return $days;
+    }
+
+    /**
      * for(), kept as the Customer Database's results are (a few minutes, or until customers:warm-cache refreshes it).
      *
-     * @return array{crd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, fsd: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, all: array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}, grace_days: int}
+     * @return array{crd: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, fsd: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, all: array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}, grace_days: int}
      */
     public function cached(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        return CustomerDatabase::remember(CustomerDatabase::cacheKey('churn', [$from->toDateString(), $to->toDateString()]), fn () => $this->for($from, $to));
+        return CustomerDatabase::remember(CustomerDatabase::cacheKey('churn-v3', [$from->toDateString(), $to->toDateString()]), fn () => $this->for($from, $to));
     }
 
     /**
      * The customers behind for(): one compact row per customer of the list ('all', 'crd' or 'fsd'), soonest deadline
      * first (then by number), as [phone_key, team, product, order_id, delivered, ran_out, deadline, back order id,
-     * back date, back source, last order id, last date, last source]; row() turns one into named fields. Compact because a long range has tens of thousands of customers and a page
+     * back date, back source, last order id, last date, last source, churned ('1' or null)]; row() turns one into named fields. Compact because a long range has tens of thousands of customers and a page
      * shows fifty. back = the first order or delivery inside their window (null when lost); last_order = their latest
      * order or delivery since the one judged (that one when nothing came after).
      *
@@ -63,13 +101,16 @@ class CustomerChurn
     public function customers(CarbonImmutable $from, CarbonImmutable $to, string $list = 'all'): array
     {
         [$due, $outcomes] = $this->evaluate($from, $to, $list);
+        $contacts = $this->contacts();
 
         $rows = [];
         foreach ($due[$list] ?? [] as $phone => $d) {
             $back = $outcomes[$list][(string) $phone]['back'] ?? null;
-            $last = $outcomes[$list][(string) $phone]['last'] ?? ['order_id' => $d['order_id'], 'date' => $d['delivered'], 'source' => 'delivery'];
+            $orderedSince = $outcomes[$list][(string) $phone]['last'] ?? null;
+            $last = $orderedSince ?? ['order_id' => $d['order_id'], 'date' => $d['delivered'], 'source' => 'delivery'];
             $rows[] = [(string) $phone, $d['team'], $d['product'], $d['order_id'], $d['delivered'], $d['ran_out'], $d['deadline'],
-                $back['order_id'] ?? null, $back['date'] ?? null, $back['source'] ?? null, $last['order_id'], $last['date'], $last['source']];
+                $back['order_id'] ?? null, $back['date'] ?? null, $back['source'] ?? null, $last['order_id'], $last['date'], $last['source'],
+                $orderedSince === null && $this->isChurned((string) $phone, $d['delivered'], $contacts) ? '1' : null];
         }
         unset($due, $outcomes);
 
@@ -82,7 +123,7 @@ class CustomerChurn
      * One of customers()' compact rows with named fields.
      *
      * @param  list<?string>  $row
-     * @return array{phone_key: string, team: string, product: string, order_id: string, delivered: string, ran_out: string, deadline: string, back: ?array{order_id: string, date: string, source: string}, last_order: array{order_id: string, date: string, source: string}}
+     * @return array{phone_key: string, team: string, product: string, order_id: string, delivered: string, ran_out: string, deadline: string, back: ?array{order_id: string, date: string, source: string}, last_order: array{order_id: string, date: string, source: string}, churned: bool}
      */
     public static function row(array $row): array
     {
@@ -91,6 +132,7 @@ class CustomerChurn
             'ran_out' => $row[5], 'deadline' => $row[6],
             'back' => $row[7] === null ? null : ['order_id' => $row[7], 'date' => $row[8], 'source' => $row[9]],
             'last_order' => ['order_id' => $row[10], 'date' => $row[11], 'source' => $row[12]],
+            'churned' => ($row[13] ?? null) === '1',
         ];
     }
 
@@ -194,47 +236,49 @@ class CustomerChurn
             }
         }
 
-        // Cold leads still being retried (attempts left, no Active status) aren't judged yet: leave their customers out.
-        $retrying = $this->coldRetrying();
-        foreach ($due as $list => $customers) {
-            foreach ($customers as $phone => $d) {
-                if (isset($retrying[$phone]) && $retrying[$phone] >= $d['delivered']) {
-                    unset($due[$list][$phone]);
-                }
-            }
-        }
-
         return [$due, $this->outcomes($due, $detailsFor)];
     }
 
     /**
-     * Customers with a cold lead still being retried (Lead::scopeColdRetrying()): phone => that lead's latest delivered
-     * date, so only a lead from the delivery judged or later keeps the customer out.
+     * phone => the latest delivered date of their leads: reached = a CRA contacted them (a contact date, a status a CRA set,
+     * not an import's default, or a logged attempt); spoken for = marked as bought or Repeat Purchase = Reserve. Only a lead
+     * from the delivery judged or later speaks for that delivery.
      *
-     * @return array<string, string>
+     * @return array{reached: array<string, string>, spokenFor: array<string, string>}
      */
-    private function coldRetrying(): array
+    private function contacts(): array
     {
-        $retrying = [];
+        $contacts = ['reached' => [], 'spokenFor' => []];
+        $remember = function (string $kind, object $lead) use (&$contacts) {
+            $phone = LeadGenerator::normalizePhone((string) $lead->phone_number);
+            $contacts[$kind][$phone] = max($contacts[$kind][$phone] ?? '', substr((string) $lead->delivered_date, 0, 10));
+        };
 
-        Lead::query()->coldRetrying()->toBase()->get(['phone_number', 'delivered_date'])
-            ->each(function (object $lead) use (&$retrying) {
-                $phone = LeadGenerator::normalizePhone((string) $lead->phone_number);
-                $delivered = substr((string) $lead->delivered_date, 0, 10);
-                $retrying[$phone] = max($retrying[$phone] ?? '', $delivered);
-            });
+        Lead::query()->where(fn ($query) => $query->whereNotNull('contact_date')->orWhereNotNull('status_updated_by')->orHas('attempts'))
+            ->toBase()->get(['phone_number', 'delivered_date'])
+            ->each(fn (object $lead) => $remember('reached', $lead));
+        Lead::whereIn('repeat_purchase', ['yes', ...Lead::reserveRepeatPurchases()])
+            ->toBase()->get(['phone_number', 'delivered_date'])
+            ->each(fn (object $lead) => $remember('spokenFor', $lead));
 
-        return $retrying;
+        return $contacts;
     }
 
     /**
-     * Per list and customer, whether an order or delivery came after the judged delivery and by the deadline (true =
-     * came back, false = lost). With $detailsFor, for that list only: the first such one (back, null when lost) and the
+     * @param  array{reached: array<string, string>, spokenFor: array<string, string>}  $contacts
+     */
+    private function isChurned(string $phone, string $delivered, array $contacts): bool
+    {
+        return ($contacts['reached'][$phone] ?? '') >= $delivered && ($contacts['spokenFor'][$phone] ?? '') < $delivered;
+    }
+
+    /**
+     * Per list and customer, whether an order or delivery came after the judged delivery: by the deadline, later, or not at all. With $detailsFor, for that list only: the first such one (back, null when lost) and the
      * latest one after the judged delivery (last, null when nothing came after). Customers are looked up 1,000 at a
      * time and only this is kept, so a long range doesn't hold every later order in memory.
      *
      * @param  array{crd: array<string, array<string, string>>, fsd: array<string, array<string, string>>, all: array<string, array<string, string>>}  $due
-     * @return array<string, array<string, bool|array{back: ?array{order_id: string, date: string, source: string}, last: ?array{order_id: string, date: string, source: string}}>>
+     * @return array<string, array<string, int|array{back: ?array{order_id: string, date: string, source: string}, last: ?array{order_id: string, date: string, source: string}}>>
      */
     private function outcomes(array $due, ?string $detailsFor = null): array
     {
@@ -281,7 +325,9 @@ class CustomerChurn
                         }
                     }
 
-                    $outcomes[$list][$phone] = $detailsFor === null ? $back !== null : ['back' => $back, 'last' => $last];
+                    $outcomes[$list][$phone] = $detailsFor === null
+                        ? ($back !== null ? self::CAME_BACK : ($last !== null ? self::ORDERED_AFTER_DEADLINE : self::NO_ORDER_SINCE))
+                        : ['back' => $back, 'last' => $last];
                 }
             }
         }
@@ -291,15 +337,19 @@ class CustomerChurn
 
     /**
      * @param  array<string, array<string, string>>  $due
-     * @param  array<string, bool>  $cameBack
-     * @return array{customers: int, lost: int, rate: ?float, delivered_months: array<string, int>}
+     * @param  array<string, int>  $outcomes
+     * @param  array{reached: array<string, string>, spokenFor: array<string, string>}  $contacts
+     * @return array{customers: int, back: int, reactivation: int, lost: int, rate: ?float, delivered_months: array<string, int>}
      */
-    private function summary(array $due, array $cameBack): array
+    private function summary(array $due, array $outcomes, array $contacts): array
     {
+        $back = 0;
         $lost = 0;
         $months = [];
         foreach ($due as $phone => $d) {
-            $lost += ($cameBack[$phone] ?? false) ? 0 : 1;
+            $outcome = $outcomes[$phone] ?? self::NO_ORDER_SINCE;
+            $back += $outcome === self::CAME_BACK ? 1 : 0;
+            $lost += $outcome === self::NO_ORDER_SINCE && $this->isChurned((string) $phone, $d['delivered'], $contacts) ? 1 : 0;
             $month = substr($d['delivered'], 0, 7);
             $months[$month] = ($months[$month] ?? 0) + 1;
         }
@@ -307,8 +357,10 @@ class CustomerChurn
 
         return [
             'customers' => count($due),
+            'back' => $back,
+            'reactivation' => count($due) - $back - $lost,
             'lost' => $lost,
-            'rate' => $due === [] ? null : $lost / count($due),
+            'rate' => $due === [] ? null : (float) $lost / count($due),
             'delivered_months' => $months,
         ];
     }

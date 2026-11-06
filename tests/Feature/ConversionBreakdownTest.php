@@ -282,7 +282,7 @@ class ConversionBreakdownTest extends TestCase
 
         $orders = app(ConversionBreakdown::class)->orders(ConversionBreakdown::accounts(collect([$lhea])), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-01'));
 
-        $this->assertSame(['bc_orders' => 1, 'sc_orders' => 1, 'bc_gross' => 500.0, 'sc_gross' => 500.0], $orders[$lhea->id]['2026-10-01']);
+        $this->assertSame(['bc_orders' => 1, 'sc_orders' => 1, 'untagged_orders' => 0, 'bc_gross' => 500.0, 'sc_gross' => 500.0, 'untagged_gross' => 0.0], $orders[$lhea->id]['2026-10-01']);
     }
 
     public function test_sync_saves_the_order_tags(): void
