@@ -359,6 +359,19 @@ class PresentationBoardTest extends TestCase
         $this->actingAs($this->supervisor)->get(route('presentation-board.customers', [...$query, 'metric' => 'passwords']))->assertSessionHasErrors('metric');
     }
 
+    public function test_every_rate_shows_what_it_is_out_of(): void
+    {
+        $this->delivery('1601', '2026-03-05', LogisticsOrder::TEAM_FSD);
+        $this->delivery('1602', '2026-03-06', LogisticsOrder::TEAM_FSD);
+        PancakeOrder::create(['pancake_order_id' => 'R7', 'ordered_on' => '2026-03-25', 'seller_name' => self::CRD_SELLER, 'phone_key' => '1601', 'status' => 3, 'total_price' => 500]);
+        app(PresentationBoard::class)->refresh();
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-03', 'to' => '2026-03']))
+            ->assertOk()
+            ->assertSee('retain 50.0% (1 of 2)')
+            ->assertSee('of 2');
+    }
+
     public function test_the_page_filters_by_month_range_and_rejects_a_backwards_one(): void
     {
         $this->sale('2026-02-03', 1000);

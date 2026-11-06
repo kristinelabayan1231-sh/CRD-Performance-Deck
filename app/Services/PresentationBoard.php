@@ -50,7 +50,7 @@ class PresentationBoard
         'repeat' => ['CRD customers who repeated', 'Delivered or bought'],
     ];
 
-    /** @var array<string, array<string, list<array{0: string, 1: string, 2: string}>>> metric => Y-m => [customer, order id, day] */
+    /** @var array<string, array<string, list<string>>> metric => Y-m => "customer|order id|day", as strings because a year has about 200,000 of them */
     private array $lists = [];
 
     public const PERIODS = ['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'];
@@ -93,7 +93,8 @@ class PresentationBoard
 
         foreach (array_keys(self::LISTS) as $metric) {
             foreach (array_keys($snapshot['months']) as $month) {
-                Cache::forever(self::listKey($metric, $month), base64_encode(gzcompress(serialize($this->lists[$metric][$month] ?? []), 6)));
+                Cache::forever(self::listKey($metric, $month), base64_encode(gzcompress(implode("\n", $this->lists[$metric][$month] ?? []), 6)));
+                unset($this->lists[$metric][$month]);
             }
         }
 
@@ -145,8 +146,9 @@ class PresentationBoard
 
         for ($month = CarbonImmutable::parse($from.'-01'); $month->format('Y-m') <= $to; $month = $month->addMonth()) {
             $saved = Cache::get(self::listKey($metric, $month->format('Y-m')));
-            if (is_string($saved)) {
-                array_push($rows, ...unserialize((string) gzuncompress(base64_decode($saved))));
+            $text = is_string($saved) ? (string) gzuncompress(base64_decode($saved)) : '';
+            foreach ($text === '' ? [] : explode("\n", $text) as $row) {
+                $rows[] = explode('|', $row);
             }
         }
 
@@ -415,8 +417,8 @@ class PresentationBoard
                 ? (isset($completeMonths[substr($orderedOn, 0, 7)]) || $orderedOn > PancakePageBackfill::LAST_MONTH.'-31' ? 'other' : 'waiting')
                 : (array_key_exists((string) $row->page_id, $pages) && ($pages[(string) $row->page_id] === null || $pages[(string) $row->page_id] <= $orderedOn) ? 'listed' : 'other');
 
-            if (! isset($firstDelivery[$customer]) || $delivered < $firstDelivery[$customer][0]) {
-                $firstDelivery[$customer] = [$delivered, $team, $page, (string) $row->order_id];
+            if (! isset($firstDelivery[$customer]) || $delivered < substr($firstDelivery[$customer], 0, 10)) {
+                $firstDelivery[$customer] = "{$delivered}|{$team}|{$page}|{$row->order_id}";
             }
             if ($page === 'other') {
                 return;
@@ -432,10 +434,10 @@ class PresentationBoard
                 return;
             }
 
-            $slot = $team.'_'.$page;
+            $slot = $customer.'|'.$team.'_'.$page;
             $month = substr($ranOut, 0, 7);
-            if (! isset($leads[$month][$customer][$slot]) || $ranOut < $leads[$month][$customer][$slot][0]) {
-                $leads[$month][$customer][$slot] = [$ranOut, (string) $row->order_id];
+            if (! isset($leads[$month][$slot]) || $ranOut < substr($leads[$month][$slot], 0, 10)) {
+                $leads[$month][$slot] = $ranOut.'|'.$row->order_id;
             }
         };
 
@@ -447,7 +449,7 @@ class PresentationBoard
                 'logistics_orders.phone_key as customer_key', 'pancake_orders.items', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
                 'delivered_orders.qty as saved_qty',
             ])
-            ->chunkById(5000, function (Collection $rows) use ($consider, $accounts) {
+            ->chunkById(2000, function (Collection $rows) use ($consider, $accounts) {
                 foreach ($rows as $row) {
                     // FSD deliveries keep their quantity in delivered_orders; order items can read low.
                     $row->qty ??= $row->saved_qty;
@@ -462,31 +464,38 @@ class PresentationBoard
                 'delivered_orders.id', 'delivered_orders.order_id', 'delivered_orders.product_raw', 'delivered_orders.qty', 'delivered_orders.delivered_date', 'delivered_orders.phone_number',
                 'pancake_orders.phone_key as customer_key', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
             ])
-            ->chunkById(5000, function (Collection $rows) use ($consider, $accounts) {
+            ->chunkById(2000, function (Collection $rows) use ($consider, $accounts) {
                 foreach ($rows as $row) {
                     $row->customer_key = $row->customer_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
                     $consider($row, self::teamOf($row->seller_name, LogisticsOrder::TEAM_FSD, $accounts), (string) $row->product_raw);
                 }
             }, 'delivered_orders.id', 'id');
 
-        foreach ($leads as $month => $customers) {
-            foreach ($customers as $customer => $slots) {
-                // One customer, one lead per month: confirmed pages first, then CRD over FSD.
-                foreach (['crd_listed' => 'crd_leads', 'fsd_listed' => 'fsd_leads', 'crd_waiting' => 'crd_waiting', 'fsd_waiting' => 'fsd_waiting'] as $slot => $metric) {
-                    if (isset($slots[$slot])) {
-                        $days[$slots[$slot][0]][$metric]++;
-                        $this->lists[$metric][$month][] = [(string) $customer, $slots[$slot][1], $slots[$slot][0]];
-                        break;
-                    }
+        // One customer, one lead per month: confirmed pages first, then CRD over FSD.
+        $ranks = ['crd_listed' => 0, 'fsd_listed' => 1, 'crd_waiting' => 2, 'fsd_waiting' => 3];
+        $metrics = ['crd_leads', 'fsd_leads', 'crd_waiting', 'fsd_waiting'];
+        foreach ($leads as $month => $slots) {
+            $best = [];
+            foreach ($slots as $slot => $lead) {
+                [$customer, $kind] = explode('|', $slot);
+                if (! isset($best[$customer]) || $ranks[$kind] < $best[$customer][0]) {
+                    $best[$customer] = [$ranks[$kind], $lead];
                 }
             }
+            foreach ($best as $customer => [$rank, $lead]) {
+                [$ranOut, $orderId] = explode('|', $lead);
+                $days[$ranOut][$metrics[$rank]]++;
+                $this->lists[$metrics[$rank]][$month][] = "{$customer}|{$orderId}|{$ranOut}";
+            }
+            unset($leads[$month], $best);
         }
 
-        foreach ($firstDelivery as $customer => [$delivered, $team, $page, $orderId]) {
+        foreach ($firstDelivery as $customer => $first) {
+            [$delivered, $team, $page, $orderId] = explode('|', $first);
             if ($team === LogisticsOrder::TEAM_FSD && isset($days[$delivered]) && $page !== 'other') {
                 $metric = $page === 'listed' ? 'added' : 'added_waiting';
                 $days[$delivered][$metric]++;
-                $this->lists[$metric][substr($delivered, 0, 7)][] = [(string) $customer, $orderId, $delivered];
+                $this->lists[$metric][substr($delivered, 0, 7)][] = "{$customer}|{$orderId}|{$delivered}";
             }
         }
     }
@@ -564,7 +573,7 @@ class PresentationBoard
             }
 
             foreach ($boughtAgain as $metric => $rows) {
-                $this->lists[$metric][$from->format('Y-m')] = $rows;
+                $this->lists[$metric][$from->format('Y-m')] = array_map(fn (array $row) => implode('|', $row), $rows);
             }
 
             return DeliveredRetention::SOURCE;
@@ -574,7 +583,7 @@ class PresentationBoard
             foreach ($this->stats->repeatPurchases($cras, $segment, $from, $to) as $lead) {
                 $day = $lead->repeat_purchase_on->toDateString();
                 $days[$day][$segment]++;
-                $this->lists[$segment][$from->format('Y-m')][] = [LeadGenerator::normalizePhone((string) $lead->phone_number), (string) $lead->order_id, $day];
+                $this->lists[$segment][$from->format('Y-m')][] = LeadGenerator::normalizePhone((string) $lead->phone_number).'|'.$lead->order_id.'|'.$day;
             }
         }
 
@@ -651,23 +660,26 @@ class PresentationBoard
             return;
         }
 
-        foreach (ConversionBreakdown::taggedOrders($accounts, $from, $to)->cursor() as $order) {
-            $day = $order->ordered_on->toDateString();
-            $month = substr($day, 0, 7);
-            $counted = $order->isCounted();
-            $days[$day]['gross'] += $order->sales();
-            $days[$day]['shecom_gross'] += (float) ($order->shecom_sales ?? 0);
-            $days[$day]['orders'] += $counted ? 1 : 0;
+        // A month at a time: the database driver holds a whole result in memory.
+        for ($start = $from; $start->lessThanOrEqualTo($to); $start = $start->addMonth()) {
+            foreach (ConversionBreakdown::taggedOrders($accounts, $start, $start->endOfMonth()->startOfDay()->min($to))->cursor() as $order) {
+                $day = $order->ordered_on->toDateString();
+                $month = substr($day, 0, 7);
+                $counted = $order->isCounted();
+                $days[$day]['gross'] += $order->sales();
+                $days[$day]['shecom_gross'] += (float) ($order->shecom_sales ?? 0);
+                $days[$day]['orders'] += $counted ? 1 : 0;
 
-            $names = [];
-            foreach ($this->productSales->split($order) as $item) {
-                $name = $item['listed'] ? $item['name'] : self::OTHERS;
-                $months[$month]['products'][$name] ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
-                $months[$month]['products'][$name]['sales'] += $item['sales'];
-                $months[$month]['products'][$name]['qty'] += $counted ? $item['qty'] : 0;
-                if ($counted && ! isset($names[$name])) {
-                    $names[$name] = true;
-                    $months[$month]['products'][$name]['orders']++;
+                $names = [];
+                foreach ($this->productSales->split($order) as $item) {
+                    $name = $item['listed'] ? $item['name'] : self::OTHERS;
+                    $months[$month]['products'][$name] ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
+                    $months[$month]['products'][$name]['sales'] += $item['sales'];
+                    $months[$month]['products'][$name]['qty'] += $counted ? $item['qty'] : 0;
+                    if ($counted && ! isset($names[$name])) {
+                        $names[$name] = true;
+                        $months[$month]['products'][$name]['orders']++;
+                    }
                 }
             }
         }

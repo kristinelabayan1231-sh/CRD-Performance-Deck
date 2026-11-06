@@ -492,7 +492,7 @@ class PancakeClient
                 ->get(rtrim(config('services.pancake.pos_url'), '/')."/shops/{$shop}/orders?".http_build_query([
                     ...$auth,
                     'page_id' => $pageId,
-                    'page_size' => 500,
+                    'page_size' => 100,
                     'page_number' => $page,
                     'startDateTime' => $start->getTimestamp(),
                     'endDateTime' => $start->endOfMonth()->getTimestamp(),
