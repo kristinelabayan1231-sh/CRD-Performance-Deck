@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-06 · Settings → Pancake Pages · Renaming a page keeps it in its product group with its PC Report rows and numbers, so its orders stay in the Daily I.S. Two pages can't share a name ("Another page already has this name") · shots: none
 - 2026-11-05 · Daily I.S., Running Sales · Orders now count canceled orders (deleted stay out), so the number matches Shecom's list; AOV and the Daily I.S. conversion rate follow it. Shipping and Fulfillment Fees are still charged only on orders not canceled, so Net Income doesn't change · shots: none
 - 2026-11-05 · Settings → Product Consumption · TSD upsell text now says only orders with just TSD products count in gross sales; a TSD add-on on a CRD order isn't counted, as in Shecom · shots: settings-product-consumption
 - 2026-11-05 · Daily I.S. · Product Cost leaves out a TSD add-on named after the card's product (e.g. a Sinuxyl Inhaler on a Sinuxyl order); an order of only that TSD product keeps its cost · shots: none
