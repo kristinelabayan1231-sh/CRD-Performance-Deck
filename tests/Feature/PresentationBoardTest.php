@@ -123,6 +123,18 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(0, $march['fsd_leads']);
     }
 
+    public function test_an_order_in_both_delivery_records_counts_once(): void
+    {
+        $id = $this->delivery('1701', '2026-02-01', LogisticsOrder::TEAM_FSD);
+        DeliveredOrder::create(['order_id' => $id, 'customer_name' => 'Buyer', 'phone_number' => '1701', 'product_raw' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2025-12-20', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+
+        $snapshot = $this->snapshot();
+
+        $this->assertSame(1, $this->month($snapshot, '2026-03')['fsd_leads']);
+        $this->assertSame(0, $this->month($snapshot, '2026-01')['fsd_leads']);
+        $this->assertSame(1, $this->month($snapshot, '2026-02')['added']);
+    }
+
     public function test_a_delivery_without_its_own_quantity_uses_the_saved_one_over_the_order_items(): void
     {
         // 3 × 30 days from Feb 1 runs out May 1; the order's items say 1, which would be Mar 2.
