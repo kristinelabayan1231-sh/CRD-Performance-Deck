@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exclusive Lead Tracker · Proposal 3 · Priority lanes</title><link rel="stylesheet" href="shared.css">
+<style>
+.build{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;padding:16px}
+.op{font-size:26px;font-weight:300;color:var(--muted)}
+.big{border:1px solid var(--line);border-radius:12px;padding:12px 16px}.big .v{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}
+.lanes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:0 16px 16px}
+.lane{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:0;text-align:left;cursor:pointer;overflow:hidden;display:block;width:100%}
+.lane:hover{border-color:var(--brand-400)}
+.lane[aria-pressed=true]{border-color:var(--brand-500);box-shadow:0 0 0 2px var(--brand-200)}
+.lane .lh{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:var(--th);font-weight:600;font-size:13px}
+.lane .lb{padding:12px 14px;display:grid;gap:8px}.lane .v{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.goals{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;padding:16px}
+@media (max-width:1279px){.goals{grid-template-columns:repeat(2,1fr)}.build{grid-template-columns:1fr}.op{display:none}}
+</style></head>
+<body><div class="app"><aside class="side" data-sidebar></aside><div class="main-col"><header class="top" data-topbar></header>
+<main>
+  <div id="head"></div>
+  <form class="card filters mb" id="filters" onsubmit="return false"></form>
+  <section class="card mb" aria-label="How the day is built"><div class="panel-h"><h2 id="bt">How the day is built</h2><span class="xs muted">Order of priority: 1 High AOV / VIP · 2 Handled twice · 3 Random</span></div>
+    <div class="build" id="build"></div><div class="lanes" id="lanes"></div></section>
+  <details class="card mb" open><summary class="panel-h" style="cursor:pointer;list-style:none"><h2>November goals · Joanna Paclibare</h2><span class="xs muted">Collapse to give the table more room</span></summary><div class="goals" id="goals"></div></details>
+  <div id="table"></div>
+</main></div></div>
+<dialog id="settings" class="drawer" aria-labelledby="st"><div class="dlg-h"><div><h2 id="st" style="font-size:18px">Settings · Exclusive Lead Tracker</h2><p class="sub">Transfer a CRA into this page</p></div><button class="x" data-close-dialog aria-label="Close">×</button></div>
+  <div class="dlg-b" data-settings-body></div><div class="dlg-f" data-settings-foot data-close="data-close-dialog"></div></dialog>
+<script src="shared.js"></script>
+<script>
+let day = 6, lane = '';
+function page(){
+  document.getElementById('head').innerHTML = pageHead('Work her leads by priority lane',
+    `<button class="btn" data-open="settings" type="button">${svg('gear','width:16px;height:16px')} Settings</button>`);
+  document.querySelector('[data-open=settings]').onclick=()=>document.getElementById('settings').showModal();
+  document.getElementById('goals').innerHTML=
+    meter('Leads this month',MONTH.leads,7000,'var(--brand-500)',{tail:'250 a day, all month. Leads stay with Joanna.'})+
+    meter('Repeat purchases',MONTH.repeat,1400,'var(--twice)',{pace:5/30,tail:'Goal 20% of leads. Line = where she should be by day 5.'})+
+    meter('Confirmed orders',MONTH.orders,54,'var(--rand)',{pace:5/30,tail:'Monthly target — <b>to confirm</b>.'})+
+    meter('AOV (₱)',MONTH.aov,895,'var(--carry)',{tail:'<span class="bad b">₱15 below</span> the ₱895 threshold.'});
+  const f=filters(day);document.getElementById('filters').outerHTML=f.replace('<form class="card filters mb"','<form id="filters" class="card filters mb"');
+  document.querySelector('#filters input[type=date]').onchange=e=>{day=Math.min(6,Math.max(1,+e.target.value.slice(-2)||6));draw();};
+  draw();
+  if(location.hash==='#settings')document.getElementById('settings').showModal();
+}
+function draw(){
+  const d=DAYS[day], c=d.carry, ks=['vip','twice','rand'];
+  document.getElementById('bt').textContent=`${dLong(day)} · ${d.next?'how tomorrow’s 250 is built':d.hist?'100-lead history day':'today’s 250'}`;
+  const carryTotal=c?c.reduce((a,b)=>a+b):d.left||0;
+  document.getElementById('build').innerHTML=d.next?
+   `<div class="big"><p class="sm muted">Left over from Nov 5</p><p class="v" style="color:var(--carry)">${carryTotal}</p><p class="xs muted">not worked, stay with Joanna</p></div><span class="op">+</span>
+    <div class="big"><p class="sm muted">Fresh leads</p><p class="v">${d.fresh.reduce((a,b)=>a+b)}</p><p class="xs muted">VIP first, then twice, then random</p></div><span class="op">=</span>
+    <div class="big"><p class="sm muted">Nov 6 total</p><p class="v">250</p><p class="xs muted">first full 250 day</p></div>`:
+   `<div class="big"><p class="sm muted">Leads</p><p class="v">${d.leads}</p><p class="xs muted">${d.hist?'history day':'today'}</p></div><span class="op"> </span>
+    <div class="big"><p class="sm muted">Repeat purchases</p><p class="v" style="color:var(--twice)">${d.repeat}</p><p class="xs muted">goal ${d.hist?20:50} (20%)</p></div><span class="op"> </span>
+    <div class="big"><p class="sm muted">Orders · AOV</p><p class="v">${d.orders} <small style="font-size:14px;color:var(--muted)">· ₱${d.aov}</small></p><p class="xs muted">${d.aov>=895?'meets':'below'} ₱895 · target 54/month (to confirm)</p></div>`;
+  document.getElementById('lanes').innerHTML=ks.map((k,i)=>{
+    const tot=d.mix[i], co=c?c[i]:null, fr=d.fresh?d.fresh[i]:null, p=PRI[k];
+    return `<button class="lane" data-k="${k}" aria-pressed="${lane===k}"><span class="lh"><span class="row" style="gap:8px"><i class="dot ${p.cls}"></i>${i+1}. ${p.label}</span><span class="num xs muted">${pct(tot,d.leads)}% of day</span></span>
+     <span class="lb"><span class="v num">${tot}</span><span class="bar"><i class="${p.cls}" style="width:${pct(tot,d.leads)}%"></i></span>
+     <span class="xs muted">${co!=null?`<b style="color:var(--carry)">${co}</b> left over + <b>${fr}</b> fresh`:(d.left!=null?`${d.worked} worked · ${d.left} open`:'history · all handled')}</span></span></button>`;}).join('');
+  document.querySelectorAll('.lane').forEach(b=>b.onclick=()=>{lane=lane===b.dataset.k?'':b.dataset.k;draw();});
+  const bar=lane?`<button class="btn" type="button" onclick="lane='';draw()">Showing ${PRI[lane].label} only · Clear ×</button>`:'';
+  document.getElementById('table').innerHTML=leadTable({day,rows:25,maxH:520,pri:lane,bar,total:lane?d.mix[ks.indexOf(lane)]:d.leads,title:lane?`${dLong(day)} · ${PRI[lane].label}`:''});
+}
+</script></body></html>

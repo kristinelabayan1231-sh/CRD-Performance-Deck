@@ -89,6 +89,11 @@ class LeadGenerator
             }
         });
 
+        // Exclusive CRAs take their day's list first; a failure leaves it to the next run.
+        if ($date->isSameDay(Lead::today())) {
+            rescue(fn () => app(ExclusiveLeads::class)->sync($date));
+        }
+
         $assigned = $this->assign($date);
 
         // Today's on-duty CRAs topped up to the daily maximum with backlog, after their own leads.
@@ -339,7 +344,7 @@ class LeadGenerator
     public function assign(CarbonImmutable $date): int
     {
         // Oldest account first, not the display order: ties go to the earliest CRA, as they always have.
-        $cras = self::cras()->sortBy('id')->values();
+        $cras = self::segmentationCras($date)->sortBy('id')->values();
 
         if ($cras->isEmpty()) {
             return 0;
@@ -371,6 +376,13 @@ class LeadGenerator
         rescue(fn () => $highValue->assignNewCustomers($phones->unique()->values()->all()));
         $owners = $this->ownersFor($phones->unique()->values()->all(), $highValue);
         $highValueFlags = rescue(fn () => $highValue->flagsForNumbers($phones->unique()->values()->all()), []);
+        // An exclusive CRA's customers wait for their list (ExclusiveLeads), never going to another CRA.
+        $exclusive = User::exclusiveOn($date)->pluck('id')->flip();
+        $pending = $pending->reject(function (Lead $lead) use ($owners, $phones, $niches, $exclusive) {
+            $owner = self::ownerFor($owners, $phones[$lead->id], $lead->product_name, $niches);
+
+            return $owner !== null && isset($exclusive[$owner]);
+        });
         $ownerOf = function (Lead $lead) use ($owners, $phones, $niches, $load) {
             $owner = self::ownerFor($owners, $phones[$lead->id], $lead->product_name, $niches);
 
@@ -452,7 +464,8 @@ class LeadGenerator
     private function reclaimForOwners(CarbonImmutable $date, array $craIds): void
     {
         $leads = Lead::whereDate('listed_on', $date)->whereDate('est_out_of_stock_date', $date)
-            ->whereNotNull('assigned_to')->untouched()->withoutPosSales()->doesntHave('transfers')
+            ->whereNotNull('assigned_to')->whereNotIn('assigned_to', User::exclusiveOn($date)->pluck('id'))
+            ->untouched()->withoutPosSales()->doesntHave('transfers')
             ->get(['id', 'phone_number', 'product_name', 'assigned_to']);
         $owners = $this->ownersFor($leads->map(fn (Lead $lead) => self::normalizePhone((string) $lead->phone_number))->unique()->values()->all());
         $niches = NicheRules::current();
@@ -482,7 +495,7 @@ class LeadGenerator
             return 0;
         }
 
-        $leads = Lead::whereIn('assigned_to', $niches->craIds())->untouched()->withoutPosSales()->doesntHave('transfers')
+        $leads = Lead::whereIn('assigned_to', $niches->craIds())->whereNotIn('assigned_to', User::exclusiveOn($today)->pluck('id'))->untouched()->withoutPosSales()->doesntHave('transfers')
             ->get(['id', 'phone_number', 'product_name', 'assigned_to', 'listed_on'])
             ->reject(fn (Lead $lead) => $niches->allows($lead->assigned_to, $lead->product_name));
         $highValue = rescue(fn () => app(HighValueCustomers::class)->crasFor($leads->map(fn (Lead $lead) => self::normalizePhone((string) $lead->phone_number))->unique()->values()->all()), []);
@@ -519,6 +532,18 @@ class LeadGenerator
     }
 
     /**
+     * The CRAs of the Segmentation Tracker on $day (default today): active CRAs not moved to the Exclusive Lead Tracker by then.
+     *
+     * @return Collection<int, User>
+     */
+    public static function segmentationCras(?CarbonImmutable $day = null): Collection
+    {
+        $day ??= Lead::today();
+
+        return self::cras()->reject(fn (User $cra) => $cra->isExclusiveOn($day))->values();
+    }
+
+    /**
      * Each active CRA's load right now: today's assigned leads and their
      * unprocessed backlog. Shown before transferring a backlog.
      *
@@ -527,7 +552,7 @@ class LeadGenerator
     public static function workload(?CarbonImmutable $today = null): array
     {
         $today ??= Lead::today();
-        $cras = self::cras();
+        $cras = self::segmentationCras($today);
         $ids = $cras->pluck('id');
 
         $todayCounts = Lead::whereDate('listed_on', $today)->whereIn('assigned_to', $ids)

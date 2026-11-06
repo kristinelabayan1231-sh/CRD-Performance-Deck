@@ -18,6 +18,8 @@ use App\Http\Controllers\DashboardBoardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
+use App\Http\Controllers\ExclusiveLeadController;
+use App\Http\Controllers\ExclusiveLeadSettingController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
 use App\Http\Controllers\LeadCallController;
@@ -120,6 +122,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::put('/schedule', DutyScheduleController::class)->name('schedule');
     });
 
+    Route::get('/exclusive-leads', [ExclusiveLeadController::class, 'index'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.index');
+
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
         Route::get('/', [SegmentationProductivityController::class, 'index'])->name('index');
         Route::post('/sync', [SegmentationProductivityController::class, 'sync'])->middleware('can:productivity.view_all')->name('sync');
@@ -219,6 +223,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
+        Route::prefix('exclusive-leads')->name('exclusive-leads.')->middleware('can:exclusive_leads.manage')->group(function () {
+            Route::post('/{user}', [ExclusiveLeadSettingController::class, 'store'])->name('store');
+            Route::delete('/{user}', [ExclusiveLeadSettingController::class, 'destroy'])->name('destroy');
+        });
+
         // The first Settings tab this user may open.
         Route::get('/', fn () => redirect()->route(
             match (true) {

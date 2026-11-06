@@ -29,11 +29,16 @@ class SegmentationController extends Controller
     /** Customers per page in a list's full-view pop-up. */
     private const FULL_PER_PAGE = 50;
 
-    public function index(Request $request, LeadGenerator $generator): View
+    public function index(Request $request, LeadGenerator $generator): View|RedirectResponse
     {
         $user = $request->user();
         $canViewAll = $user->can('segmentation.view_all');
         $today = Lead::today();
+
+        // A CRA moved to the Exclusive Lead Tracker works there; asking for a date still opens their earlier days here.
+        if ($request->query() === [] && $request->user()->isExclusiveOn($today) && $request->user()->can('exclusive_leads.view')) {
+            return redirect()->route('exclusive-leads.index');
+        }
 
         // Keep today's leads fresh without anyone pressing a button (after the page is sent).
         $generator->syncLater($today);
@@ -41,7 +46,7 @@ class SegmentationController extends Controller
 
         [$filters, $from, $to] = $this->resolveFilters($request, $today);
         $scope = $this->scope($filters, $from, $to);
-        $cras = LeadGenerator::cras();
+        $cras = LeadGenerator::segmentationCras($to);
 
         // The selected day's leads in two lists: still to do (no status and no contact
         // date, not marked as processed) and processed. "show" narrows the page to one of them.
@@ -72,7 +77,7 @@ class SegmentationController extends Controller
                 'show' => $show,
                 'canManage' => $user->can('segmentation.manage'),
                 'canViewAll' => $canViewAll,
-                'cras' => LeadGenerator::cras(),
+                'cras' => LeadGenerator::segmentationCras($to),
                 'statuses' => config('segmentation.statuses'),
                 'optionalColumns' => config('segmentation.optional_columns'),
                 'today' => $today,
@@ -143,7 +148,7 @@ class SegmentationController extends Controller
         [$filters, $from, $to] = $this->resolveFilters($request, Lead::today());
 
         return response()->json($this->tiles(
-            $this->scope($filters, $from, $to), $filters, $from, $to, LeadGenerator::cras(), $request->user()->can('segmentation.view_all'),
+            $this->scope($filters, $from, $to), $filters, $from, $to, LeadGenerator::segmentationCras($to), $request->user()->can('segmentation.view_all'),
         ));
     }
 
@@ -195,7 +200,7 @@ class SegmentationController extends Controller
         $cra = $filters['cra'] ?? null;
         $filters['cra'] = match (true) {
             $user->can('segmentation.view_all') => $cra ?? 'all',
-            $cra === 'all', ctype_digit((string) $cra) && LeadGenerator::cras()->contains('id', (int) $cra) => $cra,
+            $cra === 'all', ctype_digit((string) $cra) && LeadGenerator::segmentationCras($to)->contains('id', (int) $cra) => $cra,
             default => (string) $user->id,
         };
 
@@ -205,6 +210,7 @@ class SegmentationController extends Controller
     private function scope(array $filters, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         return Lead::query()
+            ->inSegmentationTracker()
             // A search looks through every lead day; repeat=yes, the repeat purchases bought on the date or in the month
             // (any lead day); otherwise the lead days of the date or month picked.
             ->when($filters['q'], fn (Builder $q, string $term) => $q->search($term),
@@ -227,6 +233,7 @@ class SegmentationController extends Controller
     {
         $realToday = WorkingDate::realToday();
         $base = Lead::query()
+            ->inSegmentationTracker()
             ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereRaw('1 = 0'))
             ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
@@ -264,7 +271,8 @@ class SegmentationController extends Controller
             return null;
         }
 
-        return LeadMove::departed($from, $to, ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null);
+        return LeadMove::departed($from, $to, ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null)
+            ->inSegmentationTracker();
     }
 
     /**
@@ -404,7 +412,7 @@ class SegmentationController extends Controller
 
         $data = $request->validate([
             'status' => $in('statuses'),
-            'assigned_to' => ['sometimes', 'nullable', Rule::in(LeadGenerator::cras()->pluck('id'))],
+            'assigned_to' => ['sometimes', 'nullable', Rule::in(LeadGenerator::segmentationCras()->pluck('id'))],
             'repeat_purchase' => $in('repeat_purchase'),
             'customer_tag' => $in('customer_tags'),
             'contact_date' => ['sometimes', 'nullable', 'date_format:Y-m-d'],
@@ -455,6 +463,7 @@ class SegmentationController extends Controller
 
         if (array_key_exists('assigned_to', $data)) {
             abort_unless($canManage, 403, 'Only managers can reassign leads.');
+            abort_if($lead->assignee?->isExclusiveOn($lead->listed_on), 422, 'This lead is on an Exclusive Lead Tracker list and stays with that CRA.');
 
             $lead->forceFill([
                 'assigned_to' => $data['assigned_to'],

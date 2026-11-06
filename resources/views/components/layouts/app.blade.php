@@ -31,6 +31,7 @@
             $navGroups = collect([
                 ['name' => 'Segmentation', 'icon' => 'chart', 'items' => [
                     ['Segmentation Tracker', route('segmentation.index'), request()->routeIs('segmentation.*'), $user->can('segmentation.view')],
+                    ['Exclusive Lead Tracker', route('exclusive-leads.index'), request()->routeIs('exclusive-leads.*'), $user->can('exclusive_leads.view')],
                     ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
                     ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
                     ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view')],
@@ -158,11 +159,15 @@
             </header>
 
             <main @class(['float-in flex-1 p-4 sm:p-8', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden lg:py-5' => $fit])>
-                {{-- Only the Segmentation Tracker runs on the working date; every other page is the real date. --}}
-                @if (request()->routeIs('segmentation.*') && ($workingDate = \App\Support\WorkingDate::get()))
+                {{-- Only the Segmentation Tracker runs on the working date; the Exclusive Lead Tracker is by real date with paired lead days. --}}
+                @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && ($workingDate = \App\Support\WorkingDate::get()))
                     <div role="note" class="mb-4 flex flex-wrap items-center gap-x-2 rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
                         <span class="font-semibold">Working date: {{ $workingDate->format('M j, Y') }}</span>
-                        <span>· The Segmentation Tracker shows this lead day as today (real date {{ \App\Support\WorkingDate::realToday()->format('M j') }}). Sales and conversion follow the real date.</span>
+                        @if (request()->routeIs('exclusive-leads.*'))
+                            <span>· This page goes by the real date (today is {{ \App\Support\WorkingDate::realToday()->format('M j') }}). Each day's leads come from the lead day paired with it.</span>
+                        @else
+                            <span>· The Segmentation Tracker shows this lead day as today (real date {{ \App\Support\WorkingDate::realToday()->format('M j') }}). Sales and conversion follow the real date.</span>
+                        @endif
                         @can('sales_goals.manage')
                             <a href="{{ route('settings.working-date.index') }}" class="font-semibold underline">Change</a>
                         @endcan

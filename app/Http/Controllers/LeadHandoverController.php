@@ -47,12 +47,13 @@ class LeadHandoverController extends Controller
     {
         abort_unless($request->user()->can('segmentation.manage') || $lead->assigned_to === $request->user()->id, 403, 'You can only transfer leads assigned to you.');
 
-        if ($lead->isProcessed()) {
+        // A lead on an Exclusive Lead Tracker list stays with that CRA.
+        if ($lead->isProcessed() || $lead->assignee?->isExclusiveOn($lead->listed_on)) {
             return null;
         }
 
         $handler = $owners->latestHandler(LeadGenerator::normalizePhone((string) $lead->phone_number));
 
-        return $handler !== null && $handler['cra']->id !== $lead->assigned_to ? $handler : null;
+        return $handler !== null && $handler['cra']->id !== $lead->assigned_to && ! $handler['cra']->isExclusiveOn(Lead::today()) ? $handler : null;
     }
 }

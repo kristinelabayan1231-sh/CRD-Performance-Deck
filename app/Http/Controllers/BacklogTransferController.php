@@ -22,13 +22,13 @@ class BacklogTransferController extends Controller
         $data = $request->validate([
             'lead_ids' => ['required', 'array', 'min:1', 'max:500'],
             'lead_ids.*' => ['integer', 'distinct'],
-            'to' => ['required', Rule::in(LeadGenerator::cras()->pluck('id'))],
+            'to' => ['required', Rule::in(LeadGenerator::segmentationCras()->pluck('id'))],
         ], [
             'to.in' => 'Backlog can only be transferred to an active CRA.',
             'to.required' => 'Choose a CRA to transfer to.',
         ]);
 
-        $leads = Lead::carryOver()->whereIn('id', $data['lead_ids'])->with('assignee')->get();
+        $leads = Lead::carryOver()->inSegmentationTracker()->whereIn('id', $data['lead_ids'])->with('assignee')->get();
 
         if ($leads->count() !== count($data['lead_ids'])) {
             return back()->withErrors(['transfer' => 'Some of those leads no longer carry over (handled with another status, or not yet due). Refresh and try again.']);
@@ -40,7 +40,7 @@ class BacklogTransferController extends Controller
             return back()->withErrors(['transfer' => 'Those leads are already assigned to that CRA.']);
         }
 
-        $to = LeadGenerator::cras()->firstWhere('id', (int) $data['to']);
+        $to = LeadGenerator::segmentationCras()->firstWhere('id', (int) $data['to']);
         $from = $leads->map(fn (Lead $lead) => $lead->assignee?->displayName() ?? 'Unassigned')->unique()->join(', ');
 
         $today = Lead::today();

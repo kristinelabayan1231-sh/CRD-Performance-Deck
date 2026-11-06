@@ -20,6 +20,13 @@ Schedule::command('leads:generate')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(30);
 
+// Exclusive Lead Tracker: each exclusive CRA's day (leads:generate builds it first too; this catches
+// leads added since and a generate run that failed). Safe to run again: it only tops up to the quota.
+Schedule::command('leads:build-exclusive')
+    ->hourlyAt(15)
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30);
+
 // Dashboard, Conversion Breakdown and Segmentation Productivity: today's Pancake
 // engagements, orders and tags every ten minutes, and yesterday's once more
 // after midnight so its totals are final.
