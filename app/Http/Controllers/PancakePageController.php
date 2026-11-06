@@ -8,6 +8,7 @@ use App\Support\ProductGroups;
 use App\Support\WorkingDate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -47,7 +48,15 @@ class PancakePageController extends Controller
             unset($data['access_token']);
         }
 
-        $page->update($data);
+        $previousName = $page->name;
+
+        DB::transaction(function () use ($page, $data, $previousName, $request) {
+            $page->update($data);
+
+            if ($page->wasChanged('name')) {
+                ProductGroups::renamePage($previousName, $page->name, $request->user());
+            }
+        });
 
         if ($page->wasChanged(['page_id', 'access_token'])) {
             $this->check($page, $client);
@@ -132,11 +141,12 @@ class PancakePageController extends Controller
 
         // Edits are validated in their own error bag so they don't show on the add form.
         return $request->validateWithBag($page ? "page{$page->id}" : 'default', [
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255', Rule::unique('pancake_pages', 'name')->ignore($page)],
             'page_id' => ['required', 'regex:/^\d+$/', 'max:30', Rule::unique('pancake_pages', 'page_id')->ignore($page)],
             'access_token' => [$page ? 'nullable' : 'required', 'string', 'max:2000'],
             'is_active' => ['boolean'],
         ], [
+            'name.unique' => 'Another page already has this name.',
             'page_id.regex' => 'The page ID is the number from Pancake (digits only).',
             'page_id.unique' => 'This page is already added.',
         ]);
