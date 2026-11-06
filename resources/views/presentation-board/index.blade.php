@@ -181,7 +181,7 @@
                     <div class="min-w-0" style="flex: 999 1 560px">
                         <x-presentation-board.line-chart
                             :months="$months" read-target="board-read-rates"
-                            :split="$trackerAt ? ['at' => $trackerAt, 'before' => 'Shecom deliveries', 'after' => 'Tracker'] : null"
+                            :split="$trackerAt ? ['at' => $trackerAt, 'before' => 'Deliveries', 'after' => 'Tracker'] : null"
                             :series="[['key' => 'conversion_rate', 'color' => $accent, 'name' => 'Conversion'], ['key' => 'retained_rate', 'color' => $fsd, 'name' => 'Retain'], ['key' => 'repeat_rate', 'color' => $crd, 'name' => 'Repeat']]"
                             :read="fn (array $month) => $month['label'].': conversion '.($month['conversion_rate'] === null ? 'no tracker data' : $percent($month['conversion_rate'])).' · retain '.$percent($month['retained_rate']).' · repeat '.$percent($month['repeat_rate'])" />
                     </div>

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
@@ -120,6 +121,19 @@ class PresentationBoardTest extends TestCase
 
         $this->assertSame(1, $march['crd_leads']);
         $this->assertSame(0, $march['fsd_leads']);
+    }
+
+    public function test_a_delivery_without_its_own_quantity_uses_the_saved_one_over_the_order_items(): void
+    {
+        // 3 × 30 days from Feb 1 runs out May 1; the order's items say 1, which would be Mar 2.
+        $id = $this->delivery('1501', '2026-02-01', LogisticsOrder::TEAM_FSD);
+        LogisticsOrder::where('order_id', $id)->update(['qty' => null]);
+        DeliveredOrder::create(['order_id' => $id, 'customer_name' => 'Buyer', 'phone_number' => '1501', 'product_raw' => 'Sinuxyl', 'qty' => 3, 'delivered_date' => '2026-02-01', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+
+        $snapshot = $this->snapshot();
+
+        $this->assertSame(0, $this->month($snapshot, '2026-03')['fsd_leads']);
+        $this->assertSame(1, $this->month($snapshot, '2026-05')['fsd_leads']);
     }
 
     public function test_an_fsd_customer_already_handled_by_a_cra_is_not_an_fsd_lead(): void

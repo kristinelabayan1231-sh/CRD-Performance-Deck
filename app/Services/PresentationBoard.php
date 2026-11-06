@@ -325,7 +325,7 @@ class PresentationBoard
             $lines[] = 'Recent repeat rates read lower: newer customers had less time to rebuy.';
         }
         if (collect($months)->pluck('source')->unique()->count() > 1) {
-            $lines[] = 'Rates change source in October: Shecom deliveries before, tracker after.';
+            $lines[] = 'Rates change source in October: deliveries before, tracker after.';
         }
         if ($top) {
             $lines[] = $top['name'].' is '.number_format($top['share'] * 100).'% of sales.';
@@ -441,12 +441,16 @@ class PresentationBoard
 
         DB::table('logistics_orders')
             ->leftJoin('pancake_orders', 'pancake_orders.pancake_order_id', '=', 'logistics_orders.order_id')
+            ->leftJoin('delivered_orders', 'delivered_orders.order_id', '=', 'logistics_orders.order_id')
             ->select([
                 'logistics_orders.id', 'logistics_orders.order_id', 'logistics_orders.team', 'logistics_orders.product', 'logistics_orders.qty', 'logistics_orders.delivered_date',
                 'logistics_orders.phone_key as customer_key', 'pancake_orders.items', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
+                'delivered_orders.qty as saved_qty',
             ])
             ->chunkById(5000, function (Collection $rows) use ($consider, $accounts) {
                 foreach ($rows as $row) {
+                    // FSD deliveries keep their quantity in delivered_orders; order items can read low.
+                    $row->qty ??= $row->saved_qty;
                     $consider($row, self::teamOf($row->seller_name, $row->team, $accounts), (string) $row->product);
                 }
             }, 'logistics_orders.id', 'id');
