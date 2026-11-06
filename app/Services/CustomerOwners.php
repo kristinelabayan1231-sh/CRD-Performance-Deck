@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\CvrOrderEntry;
 use App\Models\PancakeEngagement;
@@ -12,15 +13,17 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 
 /**
- * Each customer's own CRA for the Segmentation Tracker: a CRA owns a customer once they have handled
- * ORDERS_TO_OWN of their orders, so the customer's leads go to them from then on (LeadGenerator, BacklogFill).
- * An order is handled by the CRA it was claimed for in the CVR Tracker, else the CRA whose Pancake account sold it;
- * canceled and deleted orders don't count, and merged numbers (Customer Database) are one customer. With more than
- * one such CRA, the one who handled the latest order. Only active CRAs own customers.
+ * Each customer's own CRA: the one who has handled the most of their orders and, when CRAs are level, the one who
+ * handled the customer first. So one order is enough, two beat a CRA with one, and five beat a later CRA with two. The
+ * customer's leads go to them from then on (LeadGenerator, BacklogFill, ExclusiveLeads). An order is handled by the CRA
+ * it was claimed for in the CVR Tracker, else the CRA whose Pancake account sold it; canceled and deleted orders don't
+ * count, and merged numbers (Customer Database) are one customer. Orders from before the saved Pancake orders count
+ * too (CustomerHistory). Only active CRAs own customers.
  */
 class CustomerOwners
 {
-    public const ORDERS_TO_OWN = 2;
+    /** Orders a CRA must have handled to get a new High AOV / VIP customer. */
+    public const HIGH_VALUE_ORDERS = 2;
 
     /**
      * The own CRA of each of these numbers' customers, by number (numbers with none left out).
@@ -29,6 +32,35 @@ class CustomerOwners
      * @return array<string, int> phone key => CRA id
      */
     public function for(array $phoneKeys): array
+    {
+        return $this->pick($phoneKeys, true, fn (array $byCra) => collect($byCra)
+            ->map(fn (array $counted, int $craId) => [...$counted, 'cra' => $craId])
+            ->sortBy([['count', 'desc'], ['first', 'asc'], ['cra', 'asc']])
+            ->first()['cra']);
+    }
+
+    /**
+     * The CRA a new High AOV / VIP customer goes to (HighValueCustomers): the one who has handled HIGH_VALUE_ORDERS of
+     * their orders, the latest such CRA when there are several; numbers with none left out.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, int> phone key => CRA id
+     */
+    public function forHighValue(array $phoneKeys): array
+    {
+        return $this->pick($phoneKeys, false, fn (array $byCra) => collect($byCra)
+            ->filter(fn (array $counted) => $counted['count'] >= self::HIGH_VALUE_ORDERS)
+            ->sortByDesc('latest')
+            ->keys()->first());
+    }
+
+    /**
+     * @param  list<string>  $phoneKeys
+     * @param  bool  $withHistory  also count orders older than the saved ones (CustomerHistory)
+     * @param  callable(array<int, array{count: int, first: string, latest: string}>): ?int  $choose  per customer, from their CRAs' tallies
+     * @return array<string, int> phone key => CRA id
+     */
+    private function pick(array $phoneKeys, bool $withHistory, callable $choose): array
     {
         $phoneKeys = array_values(array_unique(array_filter($phoneKeys)));
         $cras = LeadGenerator::cras();
@@ -50,30 +82,51 @@ class CustomerOwners
                 });
         }
 
-        $orders = $this->orders(array_values(array_unique(array_merge(...array_values($numbersOf)))));
+        $numbers = array_values(array_unique(array_merge(...array_values($numbersOf))));
+        $orders = $this->orders($numbers);
         // Keyed by order number (numeric strings), so the chunks are joined with + to keep the keys.
         $claimed = $orders->pluck('pancake_order_id')->chunk(1000)->reduce(fn (array $all, Collection $ids) => $all
             + CvrOrderEntry::whereNotNull('user_id')->whereIn('pancake_order_id', $ids->values())->pluck('user_id', 'pancake_order_id')->all(), []);
         $active = $cras->pluck('id')->flip();
 
-        // Per customer and CRA: how many orders they handled and when the latest was.
+        // Per customer and CRA: how many orders they handled, and when the first and latest were.
         $handled = [];
-        foreach ($orders as $order) {
-            $craId = isset($claimed[$order->pancake_order_id]) ? (int) $claimed[$order->pancake_order_id] : ($bySeller[$order->seller_name] ?? null);
-            if ($craId === null || ! isset($active[$craId])) {
-                continue;
-            }
-
-            $customer = $primaryOf[$order->phone_key] ?? $order->phone_key;
+        $tally = function (string $customer, int $craId, string $at) use (&$handled) {
             $handled[$customer][$craId]['count'] = ($handled[$customer][$craId]['count'] ?? 0) + 1;
-            $handled[$customer][$craId]['latest'] = max($handled[$customer][$craId]['latest'] ?? '', (string) $order->ordered_at);
+            $handled[$customer][$craId]['first'] = min($handled[$customer][$craId]['first'] ?? $at, $at);
+            $handled[$customer][$craId]['latest'] = max($handled[$customer][$craId]['latest'] ?? $at, $at);
+        };
+
+        $oldestDay = [];
+        foreach ($orders as $order) {
+            $customer = $primaryOf[$order->phone_key] ?? $order->phone_key;
+            $at = $order->ordered_at ?? $order->ordered_on;
+            $oldestDay[$customer] = min($oldestDay[$customer] ?? '9999', $at->toDateString());
+
+            $craId = isset($claimed[$order->pancake_order_id]) ? (int) $claimed[$order->pancake_order_id] : ($bySeller[$order->seller_name] ?? null);
+            if ($craId !== null && isset($active[$craId])) {
+                $tally($customer, $craId, $at->toDateTimeString());
+            }
         }
 
-        $ownerOf = collect($handled)->map(fn (array $byCra) => collect($byCra)
-            ->filter(fn (array $tally) => $tally['count'] >= self::ORDERS_TO_OWN)
-            ->sortByDesc('latest')
-            ->keys()->first())
-            ->filter();
+        // The history repeats most saved orders: only what's older than the customer's oldest saved order is new here.
+        foreach ($withHistory ? array_chunk($numbers, 1000) : [] as $chunk) {
+            CustomerHistory::whereIn('phone_key', $chunk)->whereNotNull('prior_cra_sales')->get(['phone_key', 'prior_cra_sales'])
+                ->each(function (CustomerHistory $history) use ($primaryOf, $bySeller, $active, $oldestDay, $tally) {
+                    $customer = $primaryOf[$history->phone_key] ?? $history->phone_key;
+
+                    foreach ($history->prior_cra_sales as $sale) {
+                        $at = CarbonImmutable::parse($sale['at']);
+                        $craId = $bySeller[$sale['seller']] ?? null;
+
+                        if ($craId !== null && isset($active[$craId]) && $at->toDateString() < ($oldestDay[$customer] ?? '9999')) {
+                            $tally($customer, $craId, $at->toDateTimeString());
+                        }
+                    }
+                });
+        }
+
+        $ownerOf = collect($handled)->map($choose)->filter();
 
         return collect($phoneKeys)
             ->mapWithKeys(fn (string $phone) => [$phone => $ownerOf[$primaryOf[$phone] ?? $phone] ?? null])
@@ -142,6 +195,6 @@ class CustomerOwners
     private function orders(array $numbers): Collection
     {
         return collect(array_chunk($numbers, 1000))->flatMap(fn (array $chunk) => PancakeOrder::whereIn('phone_key', $chunk)->counted()
-            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'ordered_at']));
+            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'ordered_on', 'ordered_at']));
     }
 }

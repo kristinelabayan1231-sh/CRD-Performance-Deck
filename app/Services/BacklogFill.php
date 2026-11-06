@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Cache;
 /**
  * Tops each on-duty CRA's day up to the daily maximum (segmentation.max_leads_per_cra) once their own leads
  * for the day are in, with a mix across months: each pick takes the next out-of-stock month in turn. First the
- * waiting leads of the CRA's own customers (CustomerOwners: two orders handled; High AOV / VIP CRA), wherever they
+ * waiting leads of the CRA's own customers (CustomerOwners: most orders handled; High AOV / VIP CRA), wherever they
  * are (the pool, their backlog or another CRA's untouched backlog); then their own untouched backlog of that month,
  * then the unassigned pool (the June–Aug backfill rows with no CRA kept), split evenly. A customer's lead waits for
  * their CRA, never going to another one. A lead whose customer has since ordered the same product again stays where it is. Old months are worked little by little next to the current one. A moved lead is listed on $day
