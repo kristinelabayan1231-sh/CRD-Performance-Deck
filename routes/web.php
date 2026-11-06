@@ -36,6 +36,7 @@ use App\Http\Controllers\PancakePageController;
 use App\Http\Controllers\PancakeReservationController;
 use App\Http\Controllers\PcReportController;
 use App\Http\Controllers\PresentationBoardController;
+use App\Http\Controllers\PresentationBoardCustomersController;
 use App\Http\Controllers\ProductConsumptionController;
 use App\Http\Controllers\ProductPerformanceController;
 use App\Http\Controllers\ProductPhotoController;
@@ -157,6 +158,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::get('/presentation-board', PresentationBoardController::class)->middleware('can:presentation_board.view')->name('presentation-board.index');
+    Route::get('/presentation-board/customers', PresentationBoardCustomersController::class)->middleware('can:presentation_board.view')->name('presentation-board.customers');
     Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
     Route::prefix('running-sales')->name('running-sales.')->middleware('can:running_sales.view')->group(function () {
         Route::get('/', [RunningSalesController::class, 'index'])->name('index');

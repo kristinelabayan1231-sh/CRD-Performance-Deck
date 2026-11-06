@@ -43,16 +43,18 @@ class DeliveredRetention
 
     /**
      * customers() per day, so the days of a range add up to it: a customer counts on their first delivery in the
-     * range, and as bought again on their first delivery in the range followed by a CRA order.
+     * range, and as bought again on their first delivery in the range followed by a CRA order. $boughtAgain collects
+     * those customers as [phone, order id, delivered day], per Retained and Repeat.
      *
+     * @param  array{retained?: list<array{0: string, 1: string, 2: string}>, repeat?: list<array{0: string, 1: string, 2: string}>}|null  $boughtAgain
      * @return array<string, array{retained_base: int, repeat_base: int, retained: int, repeat: int}>
      */
-    public function perDay(CarbonImmutable $from, CarbonImmutable $to): array
+    public function perDay(CarbonImmutable $from, CarbonImmutable $to, ?array &$boughtAgain = null): array
     {
         $deliveries = LogisticsOrder::covered()->where('non_crd', false)
             ->whereDate('delivered_date', '>=', $from)->whereDate('delivered_date', '<=', $to)
             ->orderBy('delivered_date')
-            ->get(['team', 'phone_key', 'delivered_date']);
+            ->get(['order_id', 'team', 'phone_key', 'delivered_date']);
         $lastCraOrder = $this->lastCraOrders($from);
         $days = [];
         $seen = [];
@@ -69,6 +71,7 @@ class DeliveredRetention
             if (! isset($seen[$bought][$delivery->phone_key]) && ($lastCraOrder[$delivery->phone_key] ?? '') > $day) {
                 $seen[$bought][$delivery->phone_key] = true;
                 $days[$day][$bought]++;
+                $boughtAgain[$bought][] = [(string) $delivery->phone_key, (string) $delivery->order_id, $day];
             }
         }
 

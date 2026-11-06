@@ -30,8 +30,11 @@ class PresentationBoardController extends Controller
         $from = max($filters['from'] ?? $months[0], $months[0]);
         $to = min($filters['to'] ?? end($months), end($months));
 
+        $figures = $board->range($snapshot, $from, $to, $period);
+
         return view('presentation-board.index', [
-            ...$board->range($snapshot, $from, $to, $period),
+            ...$figures,
+            'insights' => $board->insights($figures['months'], $figures['totals'], $figures['products']),
             'snapshot' => $snapshot,
             'monthOptions' => collect($months)->mapWithKeys(fn (string $month) => [$month => CarbonImmutable::parse($month.'-01')->format('M Y')])->all(),
             'from' => $from,

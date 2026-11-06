@@ -38,6 +38,21 @@ class PresentationBoard
 
     public const OTHERS = 'Others';
 
+    /** The figures that open a list of their customers: metric => [title, what the date means]. */
+    public const LISTS = [
+        'fsd_leads' => ['FSD leads', 'Est. out of stock'],
+        'crd_leads' => ['CRD leads', 'Est. out of stock'],
+        'fsd_waiting' => ['FSD leads waiting for page check', 'Est. out of stock'],
+        'crd_waiting' => ['CRD leads waiting for page check', 'Est. out of stock'],
+        'added' => ['Customers added from FSD', 'First delivery'],
+        'added_waiting' => ['Customers added, waiting for page check', 'First delivery'],
+        'retained' => ['FSD customers retained', 'Delivered or bought'],
+        'repeat' => ['CRD customers who repeated', 'Delivered or bought'],
+    ];
+
+    /** @var array<string, array<string, list<array{0: string, 1: string, 2: string}>>> metric => Y-m => [customer, order id, day] */
+    private array $lists = [];
+
     public const PERIODS = ['daily' => 'Daily', 'weekly' => 'Weekly', 'monthly' => 'Monthly'];
 
     private const SUMMED = [
@@ -76,6 +91,12 @@ class PresentationBoard
         $snapshot = $this->build(WorkingDate::realToday());
         Cache::forever(self::CACHE_KEY, $snapshot);
 
+        foreach (array_keys(self::LISTS) as $metric) {
+            foreach (array_keys($snapshot['months']) as $month) {
+                Cache::forever(self::listKey($metric, $month), base64_encode(gzcompress(serialize($this->lists[$metric][$month] ?? []), 6)));
+            }
+        }
+
         return $snapshot;
     }
 
@@ -110,6 +131,62 @@ class PresentationBoard
         $this->addSales($days, $months, $cras, $yearStart, $today);
 
         return ['built_at' => now()->toIso8601String(), 'today' => $today->toDateString(), 'days' => $days, 'months' => $months];
+    }
+
+    /**
+     * The customers behind a figure for months $from–$to (Y-m), one row per customer per month as the figure counts them,
+     * in date order: [customer, order id, day].
+     *
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    public function listed(string $metric, string $from, string $to): array
+    {
+        $rows = [];
+
+        for ($month = CarbonImmutable::parse($from.'-01'); $month->format('Y-m') <= $to; $month = $month->addMonth()) {
+            $saved = Cache::get(self::listKey($metric, $month->format('Y-m')));
+            if (is_string($saved)) {
+                array_push($rows, ...unserialize((string) gzuncompress(base64_decode($saved))));
+            }
+        }
+
+        usort($rows, fn (array $a, array $b) => [$a[2], $a[0]] <=> [$b[2], $b[0]]);
+
+        return $rows;
+    }
+
+    /**
+     * Name, number, product and delivery of listed rows, from the order behind each.
+     *
+     * @param  list<array{0: string, 1: string, 2: string}>  $rows
+     * @return list<array{customer: string, order_id: string, day: string, name: string, phone: string, product: string, delivered: ?string}>
+     */
+    public function details(array $rows): array
+    {
+        $orders = array_column($rows, 1);
+        $found = [];
+        foreach (DB::table('leads')->whereIn('order_id', $orders)->get(['order_id', 'customer_name', 'phone_number', 'product_name', 'delivered_date']) as $row) {
+            $found[$row->order_id] = [$row->customer_name, $row->phone_number, $row->product_name, $row->delivered_date];
+        }
+        foreach (DB::table('delivered_orders')->whereIn('order_id', $orders)->get(['order_id', 'customer_name', 'phone_number', 'product_raw', 'delivered_date']) as $row) {
+            $found[$row->order_id] = [$row->customer_name, $row->phone_number, $row->product_raw, $row->delivered_date];
+        }
+        foreach (DB::table('logistics_orders')->whereIn('order_id', $orders)->get(['order_id', 'customer_name', 'phone_number', 'product', 'delivered_date']) as $row) {
+            $found[$row->order_id] = [$row->customer_name, $row->phone_number, $row->product, $row->delivered_date];
+        }
+
+        return array_map(fn (array $row) => [
+            'customer' => $row[0], 'order_id' => $row[1], 'day' => $row[2],
+            'name' => (string) ($found[$row[1]][0] ?? 'Unknown'),
+            'phone' => (string) ($found[$row[1]][1] ?? $row[0]),
+            'product' => (string) ($found[$row[1]][2] ?? '—'),
+            'delivered' => isset($found[$row[1]][3]) ? substr((string) $found[$row[1]][3], 0, 10) : null,
+        ], $rows);
+    }
+
+    private static function listKey(string $metric, string $month): string
+    {
+        return "presentation-board.list.{$metric}.{$month}";
     }
 
     /**
@@ -217,7 +294,50 @@ class PresentationBoard
             'churn_due' => $counted->sum('all_due'),
             'churn_lost' => $counted->sum('all_lost'),
             'churn_label' => $counted->count() === 1 ? $counted->first()['label'] : $counted->first()['label'].'–'.$counted->last()['label'],
+            'churn_lists' => collect(['all' => 'Overall', 'fsd' => 'FSD leads', 'crd' => 'CRD leads'])->map(fn (string $name, string $list) => [
+                'name' => $name,
+                'due' => $counted->sum("{$list}_due"),
+                'lost' => $counted->sum("{$list}_lost"),
+                'reactivation' => $counted->sum("{$list}_reactivation"),
+                'back' => $counted->sum("{$list}_due") - $counted->sum("{$list}_lost") - $counted->sum("{$list}_reactivation"),
+                'rate' => self::rate($counted->sum("{$list}_lost"), $counted->sum("{$list}_due")),
+            ])->all(),
         ];
+    }
+
+    /**
+     * What the figures of a range say, one short line each, worked out from the figures themselves.
+     *
+     * @param  list<array<string, mixed>>  $months
+     * @param  array<string, mixed>  $totals
+     * @param  list<array<string, mixed>>  $products
+     * @return list<string>
+     */
+    public function insights(array $months, array $totals, array $products): array
+    {
+        $count = fn (int|float $value) => number_format($value);
+        $top = collect($products)->firstWhere(fn (array $product) => $product['name'] !== self::OTHERS);
+        $waiting = $totals['fsd_waiting'] + $totals['crd_waiting'];
+        $shecom = self::rate($totals['shecom_gross'], $totals['gross']);
+        $lines = [];
+
+        if (collect($months)->filter(fn (array $month) => $month['repeat_rate'] !== null)->count() > 1) {
+            $lines[] = 'Recent repeat rates read lower: newer customers had less time to rebuy.';
+        }
+        if (collect($months)->pluck('source')->unique()->count() > 1) {
+            $lines[] = 'Rates change source in October: Shecom deliveries before, tracker after.';
+        }
+        if ($top) {
+            $lines[] = $top['name'].' is '.number_format($top['share'] * 100).'% of sales.';
+        }
+        if ($waiting) {
+            $lines[] = $count($waiting).' leads still waiting for their page check. Don\'t quote lead totals yet.';
+        }
+        if ($shecom !== null && $shecom < .99) {
+            $lines[] = number_format($shecom * 100).'% of sales at Shecom\'s amount, the rest at Pancake\'s.';
+        }
+
+        return $lines;
     }
 
     private static function rate(int|float $part, int|float $of): ?float
@@ -296,7 +416,7 @@ class PresentationBoard
                 : (array_key_exists((string) $row->page_id, $pages) && ($pages[(string) $row->page_id] === null || $pages[(string) $row->page_id] <= $orderedOn) ? 'listed' : 'other');
 
             if (! isset($firstDelivery[$customer]) || $delivered < $firstDelivery[$customer][0]) {
-                $firstDelivery[$customer] = [$delivered, $team, $page];
+                $firstDelivery[$customer] = [$delivered, $team, $page, (string) $row->order_id];
             }
             if ($page === 'other') {
                 return;
@@ -314,8 +434,8 @@ class PresentationBoard
 
             $slot = $team.'_'.$page;
             $month = substr($ranOut, 0, 7);
-            if (! isset($leads[$month][$customer][$slot]) || $ranOut < $leads[$month][$customer][$slot]) {
-                $leads[$month][$customer][$slot] = $ranOut;
+            if (! isset($leads[$month][$customer][$slot]) || $ranOut < $leads[$month][$customer][$slot][0]) {
+                $leads[$month][$customer][$slot] = [$ranOut, (string) $row->order_id];
             }
         };
 
@@ -345,21 +465,24 @@ class PresentationBoard
                 }
             }, 'delivered_orders.id', 'id');
 
-        foreach ($leads as $customers) {
-            foreach ($customers as $slots) {
+        foreach ($leads as $month => $customers) {
+            foreach ($customers as $customer => $slots) {
                 // One customer, one lead per month: confirmed pages first, then CRD over FSD.
                 foreach (['crd_listed' => 'crd_leads', 'fsd_listed' => 'fsd_leads', 'crd_waiting' => 'crd_waiting', 'fsd_waiting' => 'fsd_waiting'] as $slot => $metric) {
                     if (isset($slots[$slot])) {
-                        $days[$slots[$slot]][$metric]++;
+                        $days[$slots[$slot][0]][$metric]++;
+                        $this->lists[$metric][$month][] = [(string) $customer, $slots[$slot][1], $slots[$slot][0]];
                         break;
                     }
                 }
             }
         }
 
-        foreach ($firstDelivery as [$delivered, $team, $page]) {
+        foreach ($firstDelivery as $customer => [$delivered, $team, $page, $orderId]) {
             if ($team === LogisticsOrder::TEAM_FSD && isset($days[$delivered]) && $page !== 'other') {
-                $days[$delivered][$page === 'listed' ? 'added' : 'added_waiting']++;
+                $metric = $page === 'listed' ? 'added' : 'added_waiting';
+                $days[$delivered][$metric]++;
+                $this->lists[$metric][substr($delivered, 0, 7)][] = [(string) $customer, $orderId, $delivered];
             }
         }
     }
@@ -429,10 +552,15 @@ class PresentationBoard
     private function addRetention(array &$days, Collection $cras, CarbonImmutable $from, CarbonImmutable $to): string
     {
         if (DeliveredRetention::covers($to)) {
-            foreach ($this->deliveredRetention->perDay($from, $to) as $day => $counts) {
+            $boughtAgain = [];
+            foreach ($this->deliveredRetention->perDay($from, $to, $boughtAgain) as $day => $counts) {
                 foreach ($counts as $metric => $count) {
                     $days[$day][$metric] += $count;
                 }
+            }
+
+            foreach ($boughtAgain as $metric => $rows) {
+                $this->lists[$metric][$from->format('Y-m')] = $rows;
             }
 
             return DeliveredRetention::SOURCE;
@@ -440,7 +568,9 @@ class PresentationBoard
 
         foreach (['retained', 'repeat'] as $segment) {
             foreach ($this->stats->repeatPurchases($cras, $segment, $from, $to) as $lead) {
-                $days[$lead->repeat_purchase_on->toDateString()][$segment]++;
+                $day = $lead->repeat_purchase_on->toDateString();
+                $days[$day][$segment]++;
+                $this->lists[$segment][$from->format('Y-m')][] = [LeadGenerator::normalizePhone((string) $lead->phone_number), (string) $lead->order_id, $day];
             }
         }
 

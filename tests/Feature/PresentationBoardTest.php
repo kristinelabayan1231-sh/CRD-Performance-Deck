@@ -284,6 +284,7 @@ class PresentationBoardTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index'))
             ->assertOk()
+            ->assertSee('In short')
             ->assertSee('Overall total sales')
             ->assertSee('₱1,000')
             ->assertSee('Older months may still go up or down until it finishes.')
@@ -293,6 +294,55 @@ class PresentationBoardTest extends TestCase
         Setting::put(PancakePageBackfill::SETTING, json_encode($done));
 
         $this->get(route('presentation-board.index'))->assertOk()->assertDontSee('Older months may still');
+    }
+
+    public function test_a_figure_opens_the_same_customers_it_counts(): void
+    {
+        $this->delivery('1301', '2026-02-01', LogisticsOrder::TEAM_FSD);
+        $this->delivery('1301', '2026-02-10', LogisticsOrder::TEAM_FSD);
+        $this->delivery('1302', '2026-02-03', LogisticsOrder::TEAM_CRD);
+        $this->delivery('1303', '2026-02-04', LogisticsOrder::TEAM_FSD, page: null);
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+        $march = $this->month($board->snapshot(), '2026-03');
+
+        foreach (['fsd_leads' => ['1301'], 'crd_leads' => ['1302'], 'fsd_waiting' => ['1303']] as $metric => $customers) {
+            $rows = $board->listed($metric, '2026-03', '2026-03');
+            $this->assertSame($customers, array_column($rows, 0));
+            $this->assertSame($march[$metric], count($rows));
+        }
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-03', 'to' => '2026-03']))
+            ->assertOk()
+            ->assertSee(route('presentation-board.customers', ['metric' => 'fsd_leads', 'from' => '2026-03', 'to' => '2026-03']));
+
+        $this->get(route('presentation-board.index'))->assertOk()
+            ->assertSee(route('customers.churn', ['from' => '2026-07-01', 'to' => '2026-11-06', 'status' => 'lost', 'list' => 'fsd']));
+        $this->get(route('presentation-board.customers', ['metric' => 'fsd_leads', 'from' => '2026-03', 'to' => '2026-03']))
+            ->assertOk()->assertSee('FSD leads')->assertSee('1 customer,')->assertSeeInOrder(['1301', 'Sinuxyl', 'L1', 'Feb 1, 2026', 'Mar 2, 2026']);
+    }
+
+    public function test_retained_and_repeat_open_their_customers_from_deliveries_and_the_tracker(): void
+    {
+        $this->delivery('1401', '2026-03-05', LogisticsOrder::TEAM_FSD);
+        PancakeOrder::create(['pancake_order_id' => 'R9', 'ordered_on' => '2026-03-25', 'seller_name' => self::CRD_SELLER, 'phone_key' => '1401', 'status' => 3, 'total_price' => 500]);
+        Lead::create([
+            'order_id' => 'T9', 'customer_name' => 'Buyer', 'phone_number' => '09171234567', 'product_name' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 30,
+            'est_out_of_stock_date' => '2026-10-01', 'listed_on' => '2026-10-01', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $this->cra->id, 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-20',
+        ]);
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+
+        $this->assertSame(['1401'], array_column($board->listed('retained', '2026-03', '2026-03'), 0));
+        $this->assertSame([LeadGenerator::normalizePhone('09171234567')], array_column($board->listed('repeat', '2026-10', '2026-10'), 0));
+    }
+
+    public function test_the_customer_list_needs_the_permission_and_a_known_figure(): void
+    {
+        $query = ['metric' => 'fsd_leads', 'from' => '2026-03', 'to' => '2026-03'];
+
+        $this->actingAs($this->cra)->get(route('presentation-board.customers', $query))->assertForbidden();
+        $this->actingAs($this->supervisor)->get(route('presentation-board.customers', [...$query, 'metric' => 'passwords']))->assertSessionHasErrors('metric');
     }
 
     public function test_the_page_filters_by_month_range_and_rejects_a_backwards_one(): void
@@ -355,5 +405,41 @@ class PresentationBoardTest extends TestCase
         $this->assertEqualsWithDelta(470 / 1010, $totals['churn_rate'], 0.00001);
         $this->assertSame('Jul–Nov', $totals['churn_label']);
         $this->assertTrue($totals['churn_partial']);
+    }
+
+    public function test_churn_has_a_rate_for_fsd_crd_and_overall(): void
+    {
+        $snapshot = $this->snapshot();
+        $snapshot['days']['2026-08-10'] = [...$snapshot['days']['2026-08-10'],
+            'fsd_due' => 100, 'fsd_lost' => 10, 'fsd_reactivation' => 80, 'crd_due' => 50, 'crd_lost' => 20, 'crd_reactivation' => 25,
+            'all_due' => 140, 'all_lost' => 28, 'all_reactivation' => 100];
+
+        $lists = app(PresentationBoard::class)->range($snapshot, '2026-08', '2026-08', 'monthly')['totals']['churn_lists'];
+
+        $this->assertSame(['name' => 'FSD leads', 'due' => 100, 'lost' => 10, 'reactivation' => 80, 'back' => 10, 'rate' => 0.1], $lists['fsd']);
+        $this->assertSame(['name' => 'CRD leads', 'due' => 50, 'lost' => 20, 'reactivation' => 25, 'back' => 5, 'rate' => 0.4], $lists['crd']);
+        $this->assertSame(['name' => 'Overall', 'due' => 140, 'lost' => 28, 'reactivation' => 100, 'back' => 12, 'rate' => 0.2], $lists['all']);
+    }
+
+    public function test_insights_are_short_and_only_warn_when_it_applies(): void
+    {
+        $board = app(PresentationBoard::class);
+        $snapshot = $this->snapshot();
+        $snapshot['days']['2026-08-10'] = [...$snapshot['days']['2026-08-10'], 'gross' => 1000, 'shecom_gross' => 1000, 'orders' => 2, 'all_due' => 100, 'all_lost' => 5, 'all_reactivation' => 88, 'fsd_leads' => 40];
+        $august = $board->range($snapshot, '2026-08', '2026-08', 'monthly');
+        $lines = $board->insights($august['months'], $august['totals'], $august['products']);
+
+        $this->assertStringNotContainsString('waiting', implode(' ', $lines));
+        $this->assertStringNotContainsString("Pancake's", implode(' ', $lines));
+        foreach ($lines as $line) {
+            $this->assertLessThanOrEqual(90, mb_strlen($line));
+        }
+
+        $snapshot['days']['2026-08-11'] = [...$snapshot['days']['2026-08-11'], 'gross' => 1000, 'fsd_waiting' => 7];
+        $mixed = $board->range($snapshot, '2026-08', '2026-08', 'monthly');
+        $lines = implode(' ', $board->insights($mixed['months'], $mixed['totals'], $mixed['products']));
+
+        $this->assertStringContainsString("the rest at Pancake's", $lines);
+        $this->assertStringContainsString('7 leads still waiting', $lines);
     }
 }
