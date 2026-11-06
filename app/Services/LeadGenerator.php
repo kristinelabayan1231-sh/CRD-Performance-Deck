@@ -334,8 +334,8 @@ class LeadGenerator
 
     /**
      * Hand out the day's unassigned leads. First each customer's own CRA gets their leads: a High AOV / VIP
-     * customer's CRA (Customer Database → High AOV CVR & VIP), else the CRA who has handled two of their orders
-     * (CustomerOwners) when the product is in their niche, whether or not they are on duty. The rest go one at a time,
+     * customer's CRA (Customer Database → High AOV CVR & VIP), else the CRA who has handled the most of their
+     * orders, the first of them when level (CustomerOwners), when the product is in their niche, whether or not they are on duty. The rest go one at a time,
      * CRD Leads first, to the CRA with the fewest leads that day whose niche (Settings → Niche) has the product, so
      * everyone fills toward the daily quota together and any excess is spread evenly; a lead no CRA's niche takes
      * waits unassigned. Today's own leads still untouched with another CRA (and not transferred) are moved to their
@@ -426,7 +426,7 @@ class LeadGenerator
     }
 
     /**
-     * Each number's own CRAs: their High AOV / VIP CRA and the CRA who has handled two of their orders (CustomerOwners).
+     * Each number's own CRAs: their High AOV / VIP CRA and the CRA who has handled the most of their orders (CustomerOwners).
      * ownerFor() picks between them for a lead.
      *
      * @param  list<string>  $phoneKeys
@@ -443,8 +443,8 @@ class LeadGenerator
     }
 
     /**
-     * A lead's own CRA: the customer's High AOV / VIP CRA whatever the product, else the CRA who has handled two of
-     * their orders when the product is in that CRA's niche (Settings → Niche).
+     * A lead's own CRA: the customer's High AOV / VIP CRA whatever the product, else the CRA who has handled the most
+     * of their orders when the product is in that CRA's niche (Settings → Niche).
      *
      * @param  array{high_value: array<string, int>, handled: array<string, int>}  $owners  from ownersFor()
      */
@@ -463,6 +463,10 @@ class LeadGenerator
      */
     private function reclaimForOwners(CarbonImmutable $date, array $craIds): void
     {
+        if ($date->lessThan(CarbonImmutable::parse(config('segmentation.reclaim_from')))) {
+            return;
+        }
+
         $leads = Lead::whereDate('listed_on', $date)->whereDate('est_out_of_stock_date', $date)
             ->whereNotNull('assigned_to')->whereNotIn('assigned_to', User::exclusiveOn($date)->pluck('id'))
             ->untouched()->withoutPosSales()->doesntHave('transfers')
