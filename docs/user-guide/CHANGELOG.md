@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-06 · Settings → Pancake Pages · Renaming a page keeps it in its product group with its PC Report rows and numbers, so its orders stay in the Daily I.S. Two pages can't share a name ("Another page already has this name") · shots: none
 - 2026-11-06 · Exclusive Lead Tracker · The page goes by the real date, with November's calendar and goals; each day's leads come from the lead day paired with it (Nov 1 shows Oct 2's leads, Nov 6 shows Oct 7's) and the day's heading names that lead day. Joanna Rose starts on real Nov 1: 100 a day for Nov 1–4, 250 a day from Nov 6 · shots: exclusive lead tracker
 - 2026-11-06 · Exclusive Lead Tracker · When the working date or a chosen month is before the CRA's transfer, the page opens on the transfer month instead of showing a server error · shots: none
 - 2026-11-05 · Exclusive Lead Tracker · New page under Segmentation: month calendar to pick a day, goal rings for leads (7,000), repeat purchases (1,400) and confirmed orders (54 a day, the month's total is 54 × her working days; a day off has no target), the day's confirmed orders as x / 54 today, AOV vs the ₱895 High AOV line, the day's leads in the Segmentation Tracker's Pending/Catered tables with a Listed as column, and a Settings pop-up for supervisors to move a CRA in or out · shots: exclusive-lead-tracker

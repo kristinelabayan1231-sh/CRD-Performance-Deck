@@ -3,9 +3,12 @@
 namespace App\Support;
 
 use App\Models\PancakePage;
+use App\Models\PcReportEntry;
+use App\Models\PcReportRow;
 use App\Models\Setting;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -97,5 +100,30 @@ class ProductGroups
         ], array_values($groups));
 
         Setting::put(self::KEY, json_encode($groups), $by);
+    }
+
+    /**
+     * Carry a page's new name to everything saved under its name: its place in a product group (the group keeps its
+     * starting date) and its PC Report rows and days. Any spelling of the old name that differs only by case or spacing
+     * counts as the same page, as it does when orders are matched to pages.
+     */
+    public static function renamePage(string $from, string $to, ?User $by = null): void
+    {
+        $normalize = fn (string $name) => Str::lower(Str::squish($name));
+        $isRenamed = fn (string $page) => $normalize($page) === $normalize($from);
+        $savedNames = collect(self::all())->pluck('pages')->flatten()->filter($isRenamed)->push($from)->unique()->values()->all();
+
+        DB::transaction(function () use ($isRenamed, $savedNames, $to, $by) {
+            if (self::isSaved()) {
+                self::save(array_map(fn (array $group) => [
+                    'name' => $group['name'],
+                    'pages' => array_map(fn (string $page) => $isRenamed($page) ? $to : $page, $group['pages']),
+                    'added_on' => $group['added_on'],
+                ], self::all()), $by);
+            }
+
+            PcReportRow::whereIn('page', $savedNames)->update(['page' => $to]);
+            PcReportEntry::whereIn('page', $savedNames)->update(['page' => $to]);
+        });
     }
 }

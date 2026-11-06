@@ -2,9 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\PancakeOrder;
 use App\Models\PancakePage;
+use App\Models\PcReportEntry;
+use App\Models\PcReportRow;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PageOrders;
 use App\Support\ProductGroups;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -17,6 +21,8 @@ use Tests\TestCase;
 class PancakePagesTest extends TestCase
 {
     use RefreshDatabase;
+
+    private const REPAIR_MIGRATION = '2026_11_06_102045_move_renamed_pages_to_their_new_names_in_product_groups.php';
 
     private User $owner;
 
@@ -165,6 +171,88 @@ class PancakePagesTest extends TestCase
         $this->saveGroups([])->assertSessionHasErrorsIn('groups');
 
         $this->assertFalse(ProductGroups::isSaved());
+    }
+
+    public function test_renaming_a_page_keeps_it_in_its_group_with_its_pc_report_numbers_and_orders(): void
+    {
+        $this->pages('Sinuxyl Nasal Care', 'Sinuxyl Nasal Spray');
+        $page = PancakePage::firstWhere('name', 'Sinuxyl Nasal Care');
+        $this->saveGroups([['name' => 'Sinuxyl', 'starts_on' => '2026-10-26', 'pages' => ['Sinuxyl Nasal Care', 'Sinuxyl Nasal Spray']]]);
+        PcReportRow::create(['user_id' => $this->owner->id, 'page' => 'Sinuxyl Nasal Care', 'category' => '', 'tagging' => 'CRD']);
+        PcReportEntry::create(['user_id' => $this->owner->id, 'page' => 'Sinuxyl Nasal Care', 'category' => '', 'date' => '2026-11-05', 'inquiries' => 40]);
+        PcReportEntry::create(['user_id' => $this->owner->id, 'page' => 'Sinuxyl Nasal Spray', 'category' => '', 'date' => '2026-11-05', 'inquiries' => 7]);
+
+        $this->actingAs($this->owner)->patch(route('settings.pancake-pages.update', $page), [
+            'name' => 'Sinuxyl Nasal Care PH', 'page_id' => $page->page_id, 'access_token' => '',
+        ])->assertSessionHasNoErrors();
+
+        $group = ProductGroups::all()[0];
+        $this->assertSame(['Sinuxyl Nasal Care PH', 'Sinuxyl Nasal Spray'], $group['pages']);
+        $this->assertSame('2026-10-26', $group['added_on']);
+
+        $this->assertDatabaseHas('pc_report_rows', ['page' => 'Sinuxyl Nasal Care PH', 'tagging' => 'CRD']);
+        $this->assertDatabaseHas('pc_report_entries', ['page' => 'Sinuxyl Nasal Care PH', 'inquiries' => 40]);
+        $this->assertDatabaseHas('pc_report_entries', ['page' => 'Sinuxyl Nasal Spray', 'inquiries' => 7]);
+        $this->assertDatabaseMissing('pc_report_entries', ['page' => 'Sinuxyl Nasal Care']);
+
+        $orderOnThePage = new PancakeOrder(['page_id' => $page->page_id, 'page_name' => 'Sinuxyl Nasal Care PH']);
+        $this->assertSame('Sinuxyl Nasal Care PH', PageOrders::pageMatcher($group['pages'])($orderOnThePage));
+    }
+
+    public function test_renaming_a_page_finds_it_in_its_group_when_only_the_capitals_differ(): void
+    {
+        $this->pages('Clearsight Eye Drop');
+        $page = PancakePage::firstWhere('name', 'Clearsight Eye Drop');
+        $this->saveGroups([['name' => 'ClearSight', 'pages' => ['Clearsight Eye Drop']]]);
+        $page->update(['name' => 'CLEARSIGHT EYE DROP']);
+
+        $this->actingAs($this->owner)->patch(route('settings.pancake-pages.update', $page), [
+            'name' => 'ClearSight Eye Drops', 'page_id' => $page->page_id, 'access_token' => '',
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(['ClearSight Eye Drops'], ProductGroups::all()[0]['pages']);
+    }
+
+    public function test_a_page_cannot_be_renamed_to_another_pages_name(): void
+    {
+        $this->pages('Sinuxyl Nasal Care', 'Sinuxyl Nasal Spray');
+        $page = PancakePage::firstWhere('name', 'Sinuxyl Nasal Care');
+        $this->saveGroups([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Care', 'Sinuxyl Nasal Spray']]]);
+
+        $this->actingAs($this->owner)->patch(route('settings.pancake-pages.update', $page), [
+            'name' => 'Sinuxyl Nasal Spray', 'page_id' => $page->page_id, 'access_token' => '',
+        ])->assertSessionHasErrorsIn("page{$page->id}", ['name' => 'Another page already has this name.']);
+
+        $this->assertSame('Sinuxyl Nasal Care', $page->fresh()->name);
+        $this->assertSame(['Sinuxyl Nasal Care', 'Sinuxyl Nasal Spray'], ProductGroups::all()[0]['pages']);
+    }
+
+    public function test_the_repair_moves_pages_renamed_before_the_fix_and_leaves_the_rest(): void
+    {
+        foreach (['119962371080557' => 'Trusted Eye Care in PH', '1172567645931439' => 'Pterygium Eye Support', '464125443455939' => 'Sinuxyl Nasal Care PH', '1219523551234706' => 'ClearSight Eye Drop', '9001' => 'Clear Sight Hub'] as $pageId => $name) {
+            PancakePage::create(['name' => $name, 'page_id' => (string) $pageId, 'access_token' => 't']);
+        }
+        ProductGroups::save([
+            ['name' => 'ClearSight', 'added_on' => '2026-10-26', 'pages' => ['Clear Sight Hub', 'Clearsight Eye Drop', 'Trusted Eye Care']],
+            ['name' => 'Pterygium', 'added_on' => '2026-10-26', 'pages' => ['Pterygium Eye Supp']],
+            ['name' => 'Sinuxyl', 'added_on' => '2026-10-26', 'pages' => ['Sinuxyl Nasal Care']],
+        ]);
+        PcReportEntry::create(['user_id' => $this->owner->id, 'page' => 'Sinuxyl Nasal Care', 'category' => '', 'date' => '2026-11-05', 'inquiries' => 40]);
+        PcReportEntry::create(['user_id' => $this->owner->id, 'page' => 'Clear Sight Hub', 'category' => '', 'date' => '2026-11-05', 'inquiries' => 9]);
+
+        (require database_path('migrations/'.self::REPAIR_MIGRATION))->up();
+
+        $this->assertSame([
+            ['Clear Sight Hub', 'ClearSight Eye Drop', 'Trusted Eye Care in PH'],
+            ['Pterygium Eye Support'],
+            ['Sinuxyl Nasal Care PH'],
+        ], array_column(ProductGroups::all(), 'pages'));
+        $this->assertSame(['2026-10-26', '2026-10-26', '2026-10-26'], array_column(ProductGroups::all(), 'added_on'));
+        $this->assertDatabaseHas('pc_report_entries', ['page' => 'Sinuxyl Nasal Care PH', 'inquiries' => 40]);
+        $this->assertDatabaseHas('pc_report_entries', ['page' => 'Clear Sight Hub', 'inquiries' => 9]);
+
+        $this->saveGroups(array_map(fn (array $group) => ['name' => $group['name'], 'pages' => $group['pages']], ProductGroups::all()))
+            ->assertSessionHas('status', 'Product groups saved. PC Report shows them now.');
     }
 
     public function test_only_users_with_the_permission_can_save_product_groups(): void
