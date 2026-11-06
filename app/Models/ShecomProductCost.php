@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -22,7 +23,8 @@ class ShecomProductCost extends Model
     }
 
     /**
-     * Save Shecom's current costs; an item without a cost is skipped (it keeps any cost it had).
+     * Save Shecom's current costs; an item without a cost is skipped (it keeps any cost it had). Every cost sent is
+     * stamped with this sync's time, even unchanged, so the one Shecom sent last is the item's cost.
      *
      * @param  list<array{product?: ?string, currentCost?: int|float|string|null, currentEffectiveFrom?: ?string}>  $rows
      * @return int the items with a cost
@@ -31,6 +33,7 @@ class ShecomProductCost extends Model
     {
         $timezone = config('segmentation.timezone');
         $saved = 0;
+        $sentIds = [];
 
         foreach ($rows as $row) {
             $product = trim((string) ($row['product'] ?? ''));
@@ -41,25 +44,38 @@ class ShecomProductCost extends Model
             $from = filled($row['currentEffectiveFrom'] ?? null)
                 ? CarbonImmutable::parse($row['currentEffectiveFrom'], $timezone)->setTimezone($timezone)->toDateString()
                 : null;
-            static::updateOrCreate(['product' => $product, 'effective_from' => $from], ['cost' => (float) $row['currentCost']]);
+            $sentIds[] = static::updateOrCreate(['product' => $product, 'effective_from' => $from], ['cost' => (float) $row['currentCost']])->id;
             $saved++;
         }
+
+        static::whereKey($sentIds)->update(['updated_at' => now()]);
 
         return $saved;
     }
 
     /**
-     * Each item's current cost: the one with the latest effective_from (or, at the same date, the latest saved). The
-     * Daily I.S. uses it for every day it takes Shecom's costs, so an added or changed cost shows on earlier days too.
+     * Each item's current cost: the one Shecom sent last, whatever its effective date (an edit in Shecom can move the
+     * date back), or within one sync the latest effective_from. The Daily I.S. uses it for every day it takes Shecom's
+     * costs, so an added or changed cost shows on earlier days too.
      *
      * @return array<string, float> lowercased item name => cost
      */
     public static function current(): array
     {
-        return static::query()
-            ->orderByRaw('effective_from is null desc')->orderBy('effective_from')->orderBy('updated_at')->orderBy('id')
+        return static::oldestToCurrent()
             ->get(['product', 'cost'])
             ->mapWithKeys(fn (self $row) => [mb_strtolower($row->product) => (float) $row->cost])
             ->all();
+    }
+
+    /**
+     * Each item's rows in the order that leaves its current one last.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeOldestToCurrent(Builder $query): Builder
+    {
+        return $query->orderBy('updated_at')->orderByRaw('effective_from is null desc')->orderBy('effective_from')->orderBy('id');
     }
 }
