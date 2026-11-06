@@ -35,6 +35,13 @@ return [
         'segmentation' => (int) env('PANCAKE_TAG_SEGMENTATION', 398),
     ],
 
+    // First day the CRAs tagged orders CRD - BROADCAST / CRD - SEGMENTATION. Before it every CRA order counts, untagged.
+    'conversion_tags_from' => '2026-07-09',
+
+    // First day the Segmentation Tracker holds purchases. Before it, supervisors' Retained and Repeat tiles come
+    // from Shecom's deliveries (DeliveredRetention).
+    'tracker_repeats_from' => '2026-10-01',
+
     // Default sales goals until they are set in Settings → Sales Goals (pesos).
     'sales_goals' => [
         'cra_daily' => 77000,
@@ -85,7 +92,7 @@ return [
 
     // Cold leads (these Customer Tagging keys) get cold_attempts contact attempts, logged by the CRA with the row's
     // Attempt button (one per day, kept when the lead moves to another CRA). Once used up without an Active status
-    // the lead leaves Reactivation and counts in the churn rate; until then it's left out of the churn rate.
+    // the lead leaves Reactivation.
     // cold_attempts is the default until it's set in Settings → Segmentation Tracker.
     'cold_tags' => ['cold', 'canpro_cold'],
     'cold_attempts' => 3,

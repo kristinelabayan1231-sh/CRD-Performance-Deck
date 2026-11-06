@@ -6,7 +6,7 @@
     $deadlines = $range->custom
         ? ($range->from->equalTo($range->to) ? $range->from->format('M j, Y') : $range->from->format('M j').' – '.$range->to->format('M j, Y'))
         : $range->month->format('F Y').($range->month->isSameMonth($today) ? ' (to date)' : '');
-    $extra = ['due' => 'Ran out → reorder by', 'back' => 'Came back with', 'lost' => 'Last ordered'][$status];
+    $extra = ['due' => 'Ran out → reorder by', 'back' => 'Came back with', 'reactivation' => 'Last ordered', 'lost' => 'Last ordered'][$status];
 @endphp
 
 <x-layouts.app title="Customer Churn">
@@ -52,11 +52,12 @@
         @endif
 
         {{-- Tiles filter the list; the one in use sits raised with a "Showing" pill --}}
-        <section aria-label="Churn counts" class="grid gap-3 sm:grid-cols-3">
+        <section aria-label="Churn counts" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             @foreach ([
                 ['due', 'Due to reorder', $counts['due'], 'from-[#4f5563] to-[#343a40]', "Their {$graceDays} days to reorder ended in these dates"],
                 ['back', 'Came back in time', $counts['back'], 'from-[#0e8f7c] to-[#0b6b5d]', 'A Pancake order (not canceled) or a new delivery in time'],
-                ['lost', 'Lost', $counts['lost'], 'from-[#e05a5f] to-[#c4484c]', 'No order and no delivery in time'],
+                ['reactivation', 'For reactivation', $counts['reactivation'], 'from-[#d99a0b] to-[#a8740a]', 'No order in time, and no CRA has reached out yet (or they ordered later or are on Reserve)'],
+                ['lost', 'Churned', $counts['lost'], 'from-[#e05a5f] to-[#c4484c]', 'A CRA reached out at least once, no order since, not bought or Reserve'],
             ] as [$key, $label, $value, $gradient, $hint])
                 <a href="{{ $query(['status' => $key, 'page' => null]) }}" title="{{ $hint }}. Click to filter." @if ($status === $key) aria-current="true" @endif
                    @class(['relative flex flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white transition', $gradient, '-translate-y-1.5 shadow-xl' => $status === $key, 'shadow-sm hover:-translate-y-0.5 hover:shadow-lg' => $status !== $key])>
@@ -101,7 +102,7 @@
                                 <th class="px-4 py-3 text-right font-semibold">Total spent</th>
                                 <th class="px-4 py-3 font-semibold">CRD / FSD</th>
                                 <th class="px-4 py-3 font-semibold">{{ $extra }}</th>
-                                @if ($status === 'lost')
+                                @if (in_array($status, ['reactivation', 'lost'], true))
                                     <th class="px-4 py-3 font-semibold">Why no reorder (tracker)</th>
                                 @endif
                             </tr>
@@ -109,7 +110,7 @@
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
                                 <tr tabindex="0" role="button" aria-label="Order history of {{ $customer['name'] }}"
-                                    data-customer-url="{{ route('customers.churn.history', ['phoneKey' => $customer['phone_key'], ...Arr::only($customer, ['order_id', 'team', 'delivered', 'ran_out', 'deadline'])]) }}"
+                                    data-customer-url="{{ route('customers.churn.history', ['phoneKey' => $customer['phone_key'], ...Arr::only($customer, ['order_id', 'team', 'delivered', 'ran_out', 'deadline']), 'churned' => $customer['churned'] ? 1 : null]) }}"
                                     class="cursor-pointer align-top hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
                                     <td class="px-4 py-3">
                                         <a href="{{ route('customers.index', ['search' => $customer['phone_key']]) }}" class="font-medium hover:text-brand-600 hover:underline"
@@ -119,8 +120,11 @@
                                             <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-teal-700">Came back</span>
                                         @elseif (! $customer['back'])
                                             <span class="mt-1 flex flex-wrap gap-1">
-                                                <span class="rounded-full bg-coral/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Lost</span>
-                                                <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[0.6875rem] font-semibold text-[#8a5a00]">For reactivation</span>
+                                                @if ($customer['churned'])
+                                                    <span class="rounded-full bg-coral/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Churned</span>
+                                                @else
+                                                    <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[0.6875rem] font-semibold text-[#8a5a00]">For reactivation</span>
+                                                @endif
                                             </span>
                                         @endif
                                     </td>
@@ -147,7 +151,7 @@
                                             <span class="block text-xs text-muted">{{ $customer['last_order']['source'] === 'order' ? 'Order' : 'Delivery' }} {{ $customer['last_order']['order_id'] }}{{ $customer['last_order']['date'] > $customer['deadline'] ? ' · after the deadline' : '' }}</span>
                                         @endif
                                     </td>
-                                    @if ($status === 'lost')
+                                    @if (in_array($status, ['reactivation', 'lost'], true))
                                         <td class="px-4 py-3 text-xs">
                                             @if ($lead = $customer['lead'])
                                                 @if ($lead['feedback'] || $lead['status'])
@@ -183,11 +187,11 @@
         <details class="rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Due to reorder</dt><dd>A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $graceDays }} days to order again. Due = customers whose {{ $graceDays }} days ended in the dates picked, by their latest such delivery. Cold leads still being retried in the Segmentation Tracker (attempts left, no Active status) are left out until all {{ config('segmentation.cold_attempts') }} attempts are made.</dd></div>
-                <div><dt class="font-semibold text-ink">Came back in time / Lost</dt><dd>Came back = a Pancake order (not canceled) or a new delivery after that delivery and by the deadline; the first one is shown. Lost = neither.</dd></div>
+                <div><dt class="font-semibold text-ink">Due to reorder</dt><dd>A delivered customer runs out on delivered date + qty × consumption days − 1, then has {{ $graceDays }} days to order again. Due = customers whose {{ $graceDays }} days ended in the dates picked, by their latest such delivery.</dd></div>
+                <div><dt class="font-semibold text-ink">Came back · For reactivation · Churned</dt><dd>Came back = a Pancake order (not canceled) or a new delivery after that delivery and by the deadline; the first one is shown. Churned = a CRA reached out at least once on their lead from that delivery on (a contact date, a status a CRA set, or a logged attempt), with no order since, and the lead isn't marked as bought or Reserve. For reactivation = everyone else due.</dd></div>
                 <div><dt class="font-semibold text-ink">CRD / FSD / Overall</dt><dd>CRD = the CRD-delivered list; FSD = FSD deliveries whose qty is known from Pancake; Overall counts a customer on both lists once, by their latest delivery.</dd></div>
                 <div><dt class="font-semibold text-ink">Last ordered</dt><dd>The customer's latest order or delivery since: the delivery judged if nothing came after, or a later one placed after the deadline.</dd></div>
-                <div><dt class="font-semibold text-ink">Order history · For reactivation</dt><dd>Click a customer to see every Pancake order and delivery on their numbers, who handled each (seller, CRD or FSD), and their reorder window shaded. Every lost customer is marked For reactivation.</dd></div>
+                <div><dt class="font-semibold text-ink">Order history · For reactivation</dt><dd>Click a customer to see every Pancake order and delivery on their numbers, who handled each (seller, CRD or FSD), and their reorder window shaded.</dd></div>
                 <div><dt class="font-semibold text-ink">Why no reorder</dt><dd>What the CRA recorded on the customer's latest Segmentation Tracker lead from that delivery on: Customer's feedback, status, tag, contact date and notes.</dd></div>
                 <div><dt class="font-semibold text-ink">Products ordered · Total spent</dt><dd>Every product delivered to the customer since the Customer Database's first day, and the Pancake totals of all their delivered orders, FSD and CRA-handled (the Customer Database's total spent counts CRA-handled orders only).</dd></div>
             </dl>

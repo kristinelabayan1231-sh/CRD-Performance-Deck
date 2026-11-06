@@ -31,6 +31,9 @@ class PancakeOrder extends Model
 
     public const SEGMENTATION = 'segmentation';
 
+    /** counted_type of an order from before the tags existed (config segmentation.conversion_tags_from). */
+    public const UNTAGGED = 'untagged';
+
     protected function casts(): array
     {
         return [

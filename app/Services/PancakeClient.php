@@ -467,6 +467,57 @@ class PancakeClient
     }
 
     /**
+     * The order numbers of every POS order created on one Pancake page in $month (segmentation timezone).
+     *
+     * @return list<string>
+     */
+    public function orderNumbersOnPage(string $pageId, CarbonImmutable $month): array
+    {
+        $shop = config('services.pancake.shop_id');
+        $auth = config('services.pancake.access_token')
+            ? ['access_token' => config('services.pancake.access_token')]
+            : ['api_key' => config('services.pancake.key')];
+
+        if (! reset($auth) || ! $shop) {
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set in .env.');
+        }
+
+        $start = CarbonImmutable::parse($month->format('Y-m').'-01', config('segmentation.timezone'));
+        $numbers = [];
+        $page = 1;
+
+        do {
+            $response = Http::timeout(180)
+                ->retry(3, 5000, throw: false)
+                ->get(rtrim(config('services.pancake.pos_url'), '/')."/shops/{$shop}/orders?".http_build_query([
+                    ...$auth,
+                    'page_id' => $pageId,
+                    'page_size' => 500,
+                    'page_number' => $page,
+                    'startDateTime' => $start->getTimestamp(),
+                    'endDateTime' => $start->endOfMonth()->getTimestamp(),
+                    'updateStatus' => 'inserted_at',
+                ]).'&fields[]=id&fields[]=display_id');
+
+            $body = $response->json();
+
+            if ($response->failed() || ! ($body['success'] ?? false)) {
+                throw new RuntimeException("Pancake POS orders returned HTTP {$response->status()}: ".($body['message'] ?? 'unknown error'));
+            }
+
+            foreach ($body['data'] ?? [] as $order) {
+                $numbers[] = (string) ($order['display_id'] ?? $order['id']);
+            }
+
+            $totalPages = (int) ($body['total_pages'] ?? 1);
+            unset($body, $response);
+            $page++;
+        } while ($page <= $totalPages);
+
+        return $numbers;
+    }
+
+    /**
      * Every POS order created on $day (segmentation timezone), trimmed to the
      * fields Segmentation Productivity uses; full orders are large.
      * With $since, only the ones created from then on (the CVR Tracker's quick refresh).

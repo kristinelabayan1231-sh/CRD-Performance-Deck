@@ -196,10 +196,11 @@ class SegmentationController extends Controller
             $filters['month'] = $today->format('Y-m');
         }
 
-        // Everyone can look at all CRAs or one CRA's leads; without view_all it opens on their own, and Unassigned is managers' only.
+        // Everyone can look at all CRAs or one CRA's leads. A CRA opens on their own, whatever their role allows; so does
+        // anyone without view_all, and Unassigned is managers' only.
         $cra = $filters['cra'] ?? null;
         $filters['cra'] = match (true) {
-            $user->can('segmentation.view_all') => $cra ?? 'all',
+            $user->can('segmentation.view_all') => $cra ?? ($user->role?->slug === Role::CRA ? (string) $user->id : 'all'),
             $cra === 'all', ctype_digit((string) $cra) && LeadGenerator::segmentationCras($to)->contains('id', (int) $cra) => $cra,
             default => (string) $user->id,
         };

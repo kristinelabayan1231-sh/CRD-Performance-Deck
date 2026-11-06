@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Lead;
+use App\Models\LogisticsOrder;
+use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
@@ -203,6 +205,80 @@ class DashboardSegmentationTest extends TestCase
         // A CRA: only their own, whatever CRA is asked for.
         $this->actingAs($this->alice)->get(route('segmentation.repeat-purchases', ['from' => '2026-10-01', 'to' => '2026-10-16', 'segment' => 'retained', 'cra' => $this->bob->id]))
             ->assertOk()->assertDontSee('Fsd Fay')->assertDontSee('All CRAs');
+    }
+
+    public function test_months_before_the_tracker_count_retained_and_repeat_per_customer_from_deliveries(): void
+    {
+        $this->alice->update(['pancake_name' => 'CRD ALICE']);
+        $delivered = fn (string $id, string $team, string $phone, string $day) => LogisticsOrder::create([
+            'order_id' => $id, 'team' => $team, 'customer_name' => $id, 'phone_number' => $phone, 'phone_key' => $phone,
+            'product' => 'Pterygium Drops', 'delivered_date' => $day,
+        ]);
+        $ordered = fn (string $id, string $phone, string $day, string $seller = 'CRD ALICE', int $status = 3) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => $day, 'seller_name' => $seller, 'phone_key' => $phone, 'status' => $status, 'total_price' => 500,
+        ]);
+
+        // Two deliveries, one customer, who ordered from a CRA afterwards.
+        $delivered('F1', LogisticsOrder::TEAM_FSD, '9170000001', '2026-08-03');
+        $delivered('F2', LogisticsOrder::TEAM_FSD, '9170000001', '2026-08-20');
+        $ordered('P1', '9170000001', '2026-09-10');
+        // Not retained: ordered only before the delivery, canceled afterwards, or from a seller outside the CRD team.
+        $delivered('F3', LogisticsOrder::TEAM_FSD, '9170000002', '2026-08-10');
+        $ordered('P2', '9170000002', '2026-08-05');
+        $delivered('F4', LogisticsOrder::TEAM_FSD, '9170000003', '2026-08-10');
+        $ordered('P3', '9170000003', '2026-08-15', status: PancakeOrder::CANCELED);
+        $delivered('F5', LogisticsOrder::TEAM_FSD, '9170000004', '2026-08-10');
+        $ordered('P4', '9170000004', '2026-08-15', seller: 'FB SELLER');
+        // Repeat, and a delivery outside the dates.
+        $delivered('C1', LogisticsOrder::TEAM_CRD, '9170000005', '2026-08-12');
+        $ordered('P5', '9170000005', '2026-08-30');
+        $delivered('C2', LogisticsOrder::TEAM_CRD, '9170000006', '2026-07-31');
+        // The tracker's own purchase in the month no longer counts on the tiles.
+        $this->lead($this->alice, '2026-08-01', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-08-02']);
+
+        $response = $this->actingAs($this->owner)->get('/dashboard?month=2026-08')->assertOk()
+            ->assertSee('FSD customers delivered')->assertSee('No tracker data');
+
+        $customers = $response->viewData('customers');
+        $this->assertSame(['retained' => 4, 'repeat' => 1], $customers['leads']);
+        $this->assertSame([1, 1], [$customers['retained'], $customers['repeat']]);
+        $this->assertNull($response->viewData('results')['conversion']['sc']['rate']);
+        $this->assertNull($response->viewData('results')['conversion']['all']['rate']);
+    }
+
+    public function test_orders_count_untagged_only_before_the_tags_existed(): void
+    {
+        $this->alice->update(['pancake_name' => 'CRD ALICE']);
+        $ordered = fn (string $id, string $day, ?string $type = null, int $status = 3) => PancakeOrder::create([
+            'pancake_order_id' => $id, 'ordered_on' => $day, 'seller_name' => 'CRD ALICE', 'status' => $status, 'total_price' => 500, 'conversion_type' => $type,
+        ]);
+        $ordered('P1', '2026-07-08');
+        $ordered('P2', '2026-07-08', status: PancakeOrder::CANCELED);
+        $ordered('P3', '2026-07-09');
+        $ordered('P4', '2026-07-09', PancakeOrder::SEGMENTATION);
+
+        $response = $this->actingAs($this->owner)->get('/dashboard?month=2026-07')->assertOk()->assertSee('Not tagged 1');
+        $team = $response->viewData('results')['team'];
+
+        // P1 is an order, P2 counts in gross as canceled orders do, P3 stays out once tagging began.
+        $this->assertSame([1, 1, 2], [$team['untagged_orders'], $team['sc_orders'], $team['orders']]);
+        $this->assertSame(1500.0, $team['gross']);
+
+        $this->actingAs($this->owner)->get(route('conversion.orders', ['month' => '2026-07']))->assertOk()->assertSee('Not tagged');
+    }
+
+    public function test_a_cra_keeps_their_own_tracker_figures_before_the_tracker_month(): void
+    {
+        $this->lead($this->alice, '2026-08-01', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-08-02']);
+        LogisticsOrder::create([
+            'order_id' => 'F1', 'team' => LogisticsOrder::TEAM_FSD, 'customer_name' => 'F1', 'phone_number' => '9170000001', 'phone_key' => '9170000001',
+            'product' => 'Pterygium Drops', 'delivered_date' => '2026-08-03',
+        ]);
+
+        $customers = $this->actingAs($this->alice)->get('/dashboard?month=2026-08')->assertOk()->viewData('customers');
+
+        $this->assertArrayNotHasKey('source', $customers);
+        $this->assertSame(1, $customers['retained']);
     }
 
     public function test_users_without_segmentation_access_see_no_card(): void

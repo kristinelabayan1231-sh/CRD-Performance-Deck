@@ -423,18 +423,18 @@ class SalesGoalsTest extends TestCase
 
         $churn = app(CustomerChurn::class)->for(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-10'));
         $this->assertSame([
-            'crd' => ['customers' => 5, 'lost' => 2, 'rate' => 0.4, 'delivered_months' => ['2026-08' => 5]],
-            'fsd' => ['customers' => 3, 'lost' => 2, 'rate' => 2 / 3, 'delivered_months' => ['2026-08' => 3]],
-            'all' => ['customers' => 7, 'lost' => 4, 'rate' => 4 / 7, 'delivered_months' => ['2026-08' => 7]],
+            'crd' => ['customers' => 5, 'back' => 3, 'reactivation' => 2, 'lost' => 0, 'rate' => 0.0, 'delivered_months' => ['2026-08' => 5]],
+            'fsd' => ['customers' => 3, 'back' => 1, 'reactivation' => 2, 'lost' => 0, 'rate' => 0.0, 'delivered_months' => ['2026-08' => 3]],
+            'all' => ['customers' => 7, 'back' => 3, 'reactivation' => 4, 'lost' => 0, 'rate' => 0.0, 'delivered_months' => ['2026-08' => 7]],
             'grace_days' => 30,
         ], $churn);
 
         $this->actingAs($this->owner)->get(route('dashboard'))
-            ->assertSeeTextInOrder(['Customer churn', 'Deadline Oct 1–10', 'Overall', '57.14%', '4 lost of 7',
-                'CRD', '40.00%', '2 lost of 5', 'FSD', '66.67%', '2 lost of 3', 'Breakdown'])
+            ->assertSeeTextInOrder(['Customer churn', 'Deadline Oct 1–10', 'Overall', '0.00%', '0 churned of 7',
+                'CRD', '0.00%', '0 churned of 5', 'FSD', '0.00%', '0 churned of 3', 'Breakdown'])
             ->assertSeeTextInOrder(['Came back in time', '3', '1', '3', 'Reorder date Sep 1–10', '+ 30 days grace = Oct 1–10', 'CRD', 'Aug 5', 'FSD', 'Aug 3'])
-            ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers lost ÷ customers due × 100', '30 days to order again'])
-            ->assertSee(route('customers.churn', ['status' => 'lost', 'list' => 'all']))
+            ->assertSeeTextInOrder(['How the numbers are worked out', 'Churn rate', 'Customers churned ÷ customers due × 100', '30 days to order again'])
+            ->assertSee(route('customers.churn', ['status' => 'reactivation', 'list' => 'all']))
             ->assertSeeText('See customers');
 
         // Customer Database → Churn: the same customers one by one. The CRA recorded why one didn't reorder.
@@ -443,31 +443,32 @@ class SalesGoalsTest extends TestCase
             'status' => 'active', 'feedback' => 'no_budget', 'contact_date' => '2026-09-05', 'notes' => 'Will buy next payday']);
 
         $this->actingAs($this->owner)->get(route('customers.churn'))->assertOk()
-            ->assertViewHas('counts', ['due' => 7, 'back' => 3, 'lost' => 4])
+            ->assertViewHas('counts', ['due' => 7, 'back' => 3, 'reactivation' => 3, 'lost' => 1])
             ->assertSeeText('Ran out → reorder by');
         $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'back']))->assertOk()
             ->assertSeeTextInOrder(['9175555555', 'CRD', 'Delivery L1', 'Sep 25, 2026']);
         $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost']))->assertOk()
             ->assertSeeTextInOrder(['Last ordered', 'Why no reorder'])
-            ->assertSeeTextInOrder(['9174444444', 'Aug 26, 2026', config('segmentation.feedback.no_budget.0'), 'contacted Sep 5, 2026', 'Will buy next payday'])
+            ->assertSeeTextInOrder(['9174444444', 'Churned', 'Aug 26, 2026', config('segmentation.feedback.no_budget.0'), 'contacted Sep 5, 2026', 'Will buy next payday']);
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'reactivation']))->assertOk()
             ->assertSeeTextInOrder(['9176666666', 'Oct 5, 2026', 'after the deadline', 'No tracker lead']);
         // An FSD customer's total spent counts their FSD orders.
-        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'fsd']))->assertOk()
-            ->assertSeeTextInOrder(['9177777777', 'Lost', 'For reactivation', '₱1,250.00']);
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'reactivation', 'list' => 'fsd']))->assertOk()
+            ->assertSeeTextInOrder(['9177777777', 'For reactivation', '₱1,250.00']);
 
         // A row opens the customer's order history: who handled each order, and their reorder window.
         $window = ['team' => 'fsd', 'order_id' => 'F2', 'delivered' => '2026-08-20', 'ran_out' => '2026-09-03', 'deadline' => '2026-10-03'];
-        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'fsd']))
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'reactivation', 'list' => 'fsd']))
             ->assertSee(route('customers.churn.history', ['phoneKey' => '9177777777', ...$window]));
         $this->actingAs($this->owner)->get(route('customers.churn.history', ['phoneKey' => '9177777777', ...$window]))->assertOk()
-            ->assertSeeTextInOrder(['Lost', 'For reactivation', 'FSD', 'Delivered', 'Aug 20, 2026', 'reorder by', 'Oct 3, 2026',
+            ->assertSeeTextInOrder(['For reactivation', 'FSD', 'Delivered', 'Aug 20, 2026', 'reorder by', 'Oct 3, 2026',
                 'No order or delivery after Aug 20, 2026 up to Oct 3, 2026', 'Order history', 'Aug 17, 2026', 'delivered Aug 20', 'Judged delivery',
                 'F2', 'Delivered', 'Fsd Agent', 'FSD', '₱1,250.00']);
         $this->actingAs($this->owner)->get(route('customers.churn.history', [
             'phoneKey' => '9172222222', 'order_id' => 'x', 'team' => 'crd', 'delivered' => '2026-08-25', 'ran_out' => '2026-09-03', 'deadline' => '2026-10-03',
         ]))->assertOk()->assertSeeText('Came back with order')->assertDontSeeText('For reactivation');
         $this->actingAs($this->owner)->get(route('customers.churn.history', ['phoneKey' => '9170001111', ...$window]))->assertNotFound();
-        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'lost', 'list' => 'crd']))->assertOk()
-            ->assertViewHas('counts', ['due' => 5, 'back' => 3, 'lost' => 2]);
+        $this->actingAs($this->owner)->get(route('customers.churn', ['status' => 'reactivation', 'list' => 'crd']))->assertOk()
+            ->assertViewHas('counts', ['due' => 5, 'back' => 3, 'reactivation' => 1, 'lost' => 1]);
     }
 }

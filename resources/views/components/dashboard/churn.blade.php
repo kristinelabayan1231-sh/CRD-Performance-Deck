@@ -26,7 +26,7 @@
                         title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
                     <span class="text-[0.625rem] font-bold tracking-wide uppercase">{{ $teamLabel }}</span>
                     <span class="text-[0.9375rem] font-bold">{{ $pct($teamChurn['rate'], 2) }}</span>
-                    <span class="text-[0.6875rem] text-[#8f3236]/80">{{ number_format($teamChurn['lost']) }} lost of {{ number_format($teamChurn['customers']) }}</span>
+                    <span class="text-[0.6875rem] text-[#8f3236]/80">{{ number_format($teamChurn['lost']) }} churned of {{ number_format($teamChurn['customers']) }}</span>
                 </button>
             </li>
         @endforeach
@@ -51,7 +51,7 @@
 
             {{-- Due / came back / lost counts open those customers in Customer Database → Churn, for the same dates --}}
             @php($churnLinks = auth()->user()->can('customers.view'))
-            @php($churnStatus = ['Due to reorder' => 'due', 'Came back in time' => 'back', 'Lost' => 'lost'])
+            @php($churnStatus = ['Due to reorder' => 'due', 'Came back in time' => 'back', 'For reactivation' => 'reactivation', 'Churned' => 'lost'])
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
                 <div class="overflow-x-auto rounded-xl border border-line">
                     <table class="w-full text-sm">
@@ -67,8 +67,9 @@
                             @foreach ([
                                 'Churn rate' => fn ($c) => $pct($c['rate'], 2),
                                 'Due to reorder' => fn ($c) => number_format($c['customers']),
-                                'Came back in time' => fn ($c) => number_format($c['customers'] - $c['lost']),
-                                'Lost' => fn ($c) => number_format($c['lost']),
+                                'Came back in time' => fn ($c) => number_format($c['back']),
+                                'For reactivation' => fn ($c) => number_format($c['reactivation']),
+                                'Churned' => fn ($c) => number_format($c['lost']),
                             ] as $row => $value)
                                 <tr>
                                     <th scope="row" class="px-4 py-2 text-left font-medium">{{ $row }}</th>
@@ -87,7 +88,7 @@
                     </table>
                 </div>
                 <div class="flex flex-wrap items-start justify-between gap-3">
-                    <p class="max-w-prose text-xs text-muted">Due = their {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Came back = a Pancake order (not canceled) or a new delivery in that time.</p>
+                    <p class="max-w-prose text-xs text-muted">Due = their {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Came back = a Pancake order (not canceled) or a new delivery in that time. Churned = a CRA reached out at least once, with no order since, not marked as bought or Reserve. For reactivation = everyone else due.</p>
                     @if ($churnLinks)
                         <a href="{{ route('customers.churn', $query) }}" class="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700">See customers &rarr;</a>
                     @endif

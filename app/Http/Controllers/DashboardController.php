@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Lead;
 use App\Services\CancelledOrders;
 use App\Services\CustomerChurn;
+use App\Services\DeliveredRetention;
 use App\Services\LeadGenerator;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
@@ -19,7 +20,7 @@ use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CancelledOrders $cancelledOrders): View
+    public function __invoke(Request $request, LeadGenerator $generator, SegmentationStats $stats, SalesGoalProgress $goals, PancakeSync $pancake, LogisticsRetention $logistics, CustomerChurn $churn, CancelledOrders $cancelledOrders, DeliveredRetention $deliveredRetention): View
     {
         $user = $request->user();
         $realToday = WorkingDate::realToday();
@@ -49,6 +50,7 @@ class DashboardController extends Controller
             $cras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
             // Converted counts purchases on the real dates, as the Retained and Repeat tiles do.
             $segmentation = $stats->range($cras, $leadFrom, $leadTo, $range->from, $range->to);
+            $segmentation['no_tracker_purchases'] = $user->can('segmentation.view_all') && DeliveredRetention::covers($range->to);
 
             // Company-wide retention from the logistics report; the lead sync above usually just refreshed it.
             $logistics->ensureFresh();
@@ -84,6 +86,13 @@ class DashboardController extends Controller
             if ($user->can('segmentation.view')) {
                 $trackerCras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
                 $customers = $stats->customers($trackerCras, $range->from, $range->to, $leadFrom, $leadTo);
+
+                // Before the tracker recorded purchases: Shecom's deliveries, per customer. A delivery has no CRA, so a CRA keeps their own tracker figures.
+                if ($user->can('segmentation.view_all') && DeliveredRetention::covers($range->to)) {
+                    $customers = $deliveredRetention->customers($range->from, $range->to);
+                    $results['conversion'] = DeliveredRetention::withoutTrackerRates($results['conversion']);
+                }
+
                 // Monthly goals (Settings → Sales Goals), as a percent of those leads.
                 $customers['goals'] = ['retained' => SalesGoals::retainedRate(), 'repeat' => SalesGoals::repeatRate()];
             }

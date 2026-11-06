@@ -102,13 +102,13 @@
         {!! $bubble !!}
         <p class="{{ $label }}">{{ $own ? 'Your confirmed orders' : 'Total confirmed orders' }}</p>
         <p class="relative text-3xl font-bold tabular-nums">{{ number_format($team['orders']) }}</p>
-        <p class="{{ $note }}">Broadcast {{ number_format($team['bc_orders']) }} · Segmentation {{ number_format($team['sc_orders']) }}</p>
+        <p class="{{ $note }}">Broadcast {{ number_format($team['bc_orders']) }} · Segmentation {{ number_format($team['sc_orders']) }}@if ($team['untagged_orders']) · Not tagged {{ number_format($team['untagged_orders']) }}@endif</p>
         <p class="relative text-xs font-semibold text-white group-hover:underline">View orders &rarr;</p>
     </a>
         <x-slot:back>
             <x-dashboard.trend title="Confirmed orders per day" type="bars" :format="$formatCount"
-                :series="[['label' => 'Broadcast', 'color' => '#1f8fb8', 'values' => $daily->map->bc_orders->all()], ['label' => 'Segmentation', 'color' => '#8b3ff0', 'values' => $daily->map->sc_orders->all()]]"
-                :legend="[['Broadcast', '#1f8fb8', number_format($team['bc_orders']), false], ['Segmentation', '#8b3ff0', number_format($team['sc_orders']), false]]" />
+                :series="[['label' => 'Broadcast', 'color' => '#1f8fb8', 'values' => $daily->map->bc_orders->all()], ['label' => 'Segmentation', 'color' => '#8b3ff0', 'values' => $daily->map->sc_orders->all()], ...($team['untagged_orders'] ? [['label' => 'Not tagged', 'color' => '#6b7280', 'values' => $daily->map->untagged_orders->all()]] : [])]"
+                :legend="[['Broadcast', '#1f8fb8', number_format($team['bc_orders']), false], ['Segmentation', '#8b3ff0', number_format($team['sc_orders']), false], ...($team['untagged_orders'] ? [['Not tagged', '#6b7280', number_format($team['untagged_orders']), false]] : [])]" />
         </x-slot:back>
     </x-dashboard.flip>
 
@@ -116,17 +116,20 @@
          buyer once ÷ engagements + leads), then Segmentation CVR (the Segmentation Tracker's Converted: Retained + Repeat
          ÷ tracker leads) and Broadcast CVR (Broadcast buyers ÷ engagements) as bars; the back has all three per day. --}}
     @php($conv = $results['conversion'])
+    @php($noTracker = $conv['no_tracker'] ?? false)
     @php($cvrRows = [
-        ['Segmentation CVR', $conv['sc'], number_format($conv['sc']['customers']).' of '.number_format($conv['sc']['base']).' leads', 'Same as the Segmentation Tracker\'s Converted: '.number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads'],
+        $noTracker
+            ? ['Segmentation CVR', $conv['sc'], 'No tracker data', 'The Segmentation Tracker has no purchases for these dates']
+            : ['Segmentation CVR', $conv['sc'], number_format($conv['sc']['customers']).' of '.number_format($conv['sc']['base']).' leads', 'Same as the Segmentation Tracker\'s Converted: '.number_format($conv['sc']['customers']).' customers of '.number_format($conv['sc']['base']).' leads'],
         ['Broadcast CVR', $conv['bc'], number_format($conv['bc']['customers']).' of '.number_format($conv['bc']['base']).' engagements', number_format($conv['bc']['customers']).' customers of '.number_format($conv['bc']['base']).' engagements'],
     ])
     <x-dashboard.flip :class="$span">
     <article class="{{ $tile }} from-[#1f8fb8] to-[#156c8c]">
         {!! $bubble !!}
-        <div class="relative grid gap-0.5" title="Broadcast + Segmentation: {{ number_format($conv['all']['customers']) }} customers of {{ number_format($conv['all']['base']) }} engagements + leads">
+        <div class="relative grid gap-0.5" title="{{ $noTracker ? 'The Segmentation Tracker has no purchases for these dates' : 'Broadcast + Segmentation: '.number_format($conv['all']['customers']).' customers of '.number_format($conv['all']['base']).' engagements + leads' }}">
             <p class="{{ $label }}">{{ $own ? 'Your conversion rate' : 'Conversion rate' }}</p>
             <p class="text-3xl font-bold tabular-nums">{{ $pct($conv['all']['rate'], 2) }}</p>
-            <p class="{{ $note }}">Broadcast + Segmentation · {{ number_format($conv['all']['customers']) }} of {{ number_format($conv['all']['base']) }}</p>
+            <p class="{{ $note }}">Broadcast + Segmentation · {{ $noTracker ? 'No tracker data' : number_format($conv['all']['customers']).' of '.number_format($conv['all']['base']) }}</p>
         </div>
         <div class="relative mt-1 grid gap-2 border-t border-white/30 pt-2">
             @foreach ($cvrRows as [$rowLabel, $row, $rowNote, $rowTitle])
@@ -214,9 +217,16 @@
          opens the list of those customers for the same dates --}}
         @php($customerRange = ['from' => $results['range']->from->toDateString(), 'to' => $results['range']->to->toDateString()])
         @php($segments = [])
+        {{-- Months before the tracker recorded purchases: customers from Shecom's deliveries, with no list of tracker customers to open --}}
+        @php($fromDeliveries = ($customers['source'] ?? null) === \App\Services\DeliveredRetention::SOURCE)
+        @php($baseNoun = $fromDeliveries ? 'customers delivered' : 'leads')
+        @php($tileTag = $fromDeliveries ? 'article' : 'a')
         <x-dashboard.flip class="sm:col-span-6">
         <div class="grid gap-3 sm:grid-cols-2">
-        @foreach ([
+        @foreach ($fromDeliveries ? [
+            'retained' => ['Retained', 'FSD customers delivered', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'Customers FSD delivered to in these dates (Shecom, one per number) who ordered from a CRA afterwards.'],
+            'repeat' => ['Repeat customers', 'CRD customers delivered', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'Customers CRD delivered to in these dates (Shecom, one per number) who ordered from a CRA afterwards.'],
+        ] : [
             'retained' => ['Retained', 'FSD Leads', 'from-[#4f46e5] to-[#3730a3]', 'retain', 'FSD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s FSD Leads. Click to see them.'],
             'repeat' => ['Repeat customers', 'CRD Leads', 'from-[#c026d3] to-[#86198f]', 'get to order again', 'CRD Leads in the Segmentation Tracker with Repeat Purchase = Yes bought in these dates, out of the tracker\'s CRD Leads. Click to see them.'],
         ] as $segment => [$segmentLabel, $segmentNote, $segmentColors, $segmentVerb, $segmentTitle])
@@ -228,7 +238,7 @@
             @php($toGoal = max(0, $goalCount - $count))
             @php($goalProgress = $goalCount ? min(1, $count / $goalCount) : 1)
             @php($segments[$segment] = ['label' => $segmentLabel, 'note' => $segmentNote, 'count' => $count, 'leads' => $leads, 'goal' => $goalLabel, 'goal_count' => $goalCount])
-            <a href="{{ route('segmentation.repeat-purchases', [...$customerRange, 'segment' => $segment]) }}" class="group {{ $tile }} {{ $segmentColors }} gap-2 transition hover:-translate-y-0.5 hover:shadow-lg" title="{{ $segmentTitle }}">
+            <{{ $tileTag }} @unless ($fromDeliveries) href="{{ route('segmentation.repeat-purchases', [...$customerRange, 'segment' => $segment]) }}" @endunless class="group {{ $tile }} {{ $segmentColors }} gap-2 {{ $fromDeliveries ? '' : 'transition hover:-translate-y-0.5 hover:shadow-lg' }}" title="{{ $segmentTitle }}">
                 {!! $bubble !!}
                 <div class="relative flex items-start justify-between gap-2">
                     <p class="{{ $label }}">{{ $segmentLabel }}</p>
@@ -238,7 +248,7 @@
                 </div>
                 <p class="relative flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
                     <span class="text-3xl font-bold whitespace-nowrap tabular-nums">{{ number_format($count) }}<span class="text-sm font-semibold text-white/75">/{{ number_format($leads) }}</span></span>
-                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} tracker {{ $segmentNote }}">{{ $pct($leads ? $count / $leads : null) }}</span>
+                    <span class="shrink-0 rounded-full bg-white/20 px-2 py-0.5 text-base font-bold tabular-nums" title="{{ number_format($count) }} of {{ number_format($leads) }} {{ $fromDeliveries ? '' : 'tracker' }} {{ $segmentNote }}">{{ $pct($leads ? $count / $leads : null) }}</span>
                 </p>
 
                 {{-- Progress toward the goal: full bar = goal reached --}}
@@ -249,9 +259,9 @@
                     <p class="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[0.6875rem] text-white/90 tabular-nums">
                         <span>Goal <span class="font-bold text-white">{{ $goalLabel }}</span> · {{ number_format($goalCount) }} of {{ number_format($leads) }}</span>
                         @if (! $leads)
-                            <span>No leads in these dates</span>
+                            <span>No {{ $baseNoun }} in these dates</span>
                         @elseif ($toGoal > 0)
-                            <span class="rounded-full bg-white px-2 font-bold text-coral-700" title="Customers still to {{ $segmentVerb }} to reach {{ $goalLabel }} of {{ number_format($leads) }} leads">{{ number_format($toGoal) }} more to reach {{ $goalLabel }}</span>
+                            <span class="rounded-full bg-white px-2 font-bold text-coral-700" title="Customers still to {{ $segmentVerb }} to reach {{ $goalLabel }} of {{ number_format($leads) }} {{ $baseNoun }}">{{ number_format($toGoal) }} more to reach {{ $goalLabel }}</span>
                         @else
                             <span class="rounded-full bg-white px-2 font-bold text-teal-700">Goal reached</span>
                         @endif
@@ -260,9 +270,11 @@
 
                 <p class="relative flex items-center justify-between gap-2 text-xs">
                     <span class="text-white/90">{{ $segmentNote }}</span>
-                    <span class="font-semibold text-white group-hover:underline">View customers &rarr;</span>
+                    @unless ($fromDeliveries)
+                        <span class="font-semibold text-white group-hover:underline">View customers &rarr;</span>
+                    @endunless
                 </p>
-            </a>
+            </{{ $tileTag }}>
         @endforeach
         </div>
             <x-slot:back>
@@ -271,7 +283,7 @@
                 <div class="flex h-full flex-col gap-3">
                     <div class="flex flex-wrap items-baseline justify-between gap-x-3">
                         <p class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Retained & repeat vs goal</p>
-                        <p class="flex items-center gap-1 text-[0.6875rem] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · each out of its own leads</p>
+                        <p class="flex items-center gap-1 text-[0.6875rem] text-ink"><span aria-hidden="true" class="inline-block h-2.5 w-0.5 bg-ink"></span> Goal · each out of its own {{ $baseNoun }}</p>
                     </div>
                     <div class="flex flex-1 flex-col justify-center gap-4">
                         @foreach ($segments as $segment => $row)

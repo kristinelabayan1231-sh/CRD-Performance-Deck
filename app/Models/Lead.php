@@ -296,16 +296,6 @@ class Lead extends Model
             ->has('attempts', '>=', (int) config('segmentation.cold_attempts'));
     }
 
-    /**
-     * Cold leads still being retried: attempts left and no Active status yet. Left out of the churn rate.
-     */
-    public function scopeColdRetrying(Builder $query): Builder
-    {
-        return $query->whereIn('customer_tag', config('segmentation.cold_tags'))
-            ->where(fn (Builder $q) => $q->whereNull('status')->orWhere('status', '!=', 'active'))
-            ->has('attempts', '<', (int) config('segmentation.cold_attempts'));
-    }
-
     public function isCold(): bool
     {
         return in_array($this->customer_tag, config('segmentation.cold_tags'), true);

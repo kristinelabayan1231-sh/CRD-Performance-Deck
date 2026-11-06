@@ -186,6 +186,7 @@ class ConversionBreakdownController extends Controller
             'period' => $from->equalTo($to) ? $from->format('D, M j, Y') : $from->format('M j').' – '.$to->format('M j, Y'),
             'bcGross' => $gross(PancakeOrder::BROADCAST),
             'scGross' => $gross(PancakeOrder::SEGMENTATION),
+            'untaggedGross' => $gross(PancakeOrder::UNTAGGED),
             'statuses' => config('customers.pos_statuses'),
         ]);
     }

@@ -68,7 +68,7 @@
                                     </td>
                                     <td class="px-4 py-3">
                                         <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-[#e3f3f9] text-[#0c5a7d]' => $order->counted_type === 'broadcast', 'bg-brand-100 text-brand-700' => $order->counted_type !== 'broadcast'])>
-                                            {{ $order->counted_type === 'broadcast' ? 'Broadcast' : 'Segmentation' }}
+                                            {{ match ($order->counted_type) { 'broadcast' => 'Broadcast', \App\Models\PancakeOrder::UNTAGGED => 'Not tagged', default => 'Segmentation' } }}
                                         </span>
                                     </td>
                                     <td class="px-4 py-3">

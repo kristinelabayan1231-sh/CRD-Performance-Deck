@@ -39,12 +39,15 @@
                             <span class="truncate">{{ $kpi['label'] }}</span>
                         </p>
                         <p class="relative flex flex-wrap items-baseline gap-x-1.5">
-                            <span class="text-2xl font-bold tabular-nums">{{ $kpi['value'] }}</span>
-                            @if ($kpi['count'])
+                            @php($noPurchases = $kpi['label'] === 'Converted' && ($p['no_tracker_purchases'] ?? false))
+                            <span class="text-2xl font-bold tabular-nums">{{ $noPurchases ? '—' : $kpi['value'] }}</span>
+                            @if ($kpi['count'] && ! $noPurchases)
                                 <span class="text-sm font-semibold tabular-nums text-white/90" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>
                             @endif
                         </p>
-                        @if ($kpi['label'] === 'Converted')
+                        @if ($noPurchases)
+                            <p class="relative mt-1 border-t border-white/30 pt-1 text-[0.625rem] leading-snug text-white/90">No tracker data</p>
+                        @elseif ($kpi['label'] === 'Converted')
                             {{-- The tiles above, added up: Converted = Retained + Repeat out of FSD + CRD leads --}}
                             @php($c = $p['counts'])
                             <p class="relative mt-1 grid gap-0.5 border-t border-white/30 pt-1 text-[0.625rem] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
@@ -144,7 +147,9 @@
                                     <th class="pb-1.5 text-left font-medium">CRA</th>
                                     <th class="pb-1.5 text-right font-medium">Catered</th>
                                     <th class="pb-1.5 text-right font-medium" title="Pending">Open</th>
-                                    <th class="pb-1.5 text-right font-medium" title="Converted">Conv.</th>
+                                    @unless ($p['no_tracker_purchases'] ?? false)
+                                        <th class="pb-1.5 text-right font-medium" title="Converted">Conv.</th>
+                                    @endunless
                                 </tr>
                             </thead>
                             <tbody>
@@ -162,7 +167,9 @@
                                         </td>
                                         <td class="py-1.5 text-right font-semibold tabular-nums text-teal-700">{{ $row['processed'] }}</td>
                                         <td @class(['py-1.5 text-right tabular-nums', 'font-semibold text-coral-700' => $row['unprocessed'] > 0 && $row['unprocessed'] === $maxUnprocessed])>{{ $row['unprocessed'] }}</td>
-                                        <td class="py-1.5 text-right tabular-nums">{{ $row['converted'] }}</td>
+                                        @unless ($p['no_tracker_purchases'] ?? false)
+                                            <td class="py-1.5 text-right tabular-nums">{{ $row['converted'] }}</td>
+                                        @endunless
                                     </tr>
                                 @endforeach
                             </tbody>

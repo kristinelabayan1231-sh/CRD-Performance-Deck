@@ -10,6 +10,7 @@ import { initMonthlyCost } from './monthly-cost';
 import { initPageLoader } from './page-loader';
 import { initPcReport, initProductGroups } from './pc-report';
 import { initPoster } from './poster';
+import { initPresentationBoard } from './presentation-board';
 import { initProductPerformance } from './product-performance';
 import { initProductTargetMarket } from './product-target-market';
 import { initResultsFlip } from './results-flip';
@@ -28,6 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDutySchedule();
     initSpiels();
     initPoster();
+    initPresentationBoard();
     initDailyIsShot();
     initResultsFlip();
     initLive();

@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * The customers behind the dashboard's churn rate (Customer Database → Churn): who was due to
- * reorder in the dates picked, who came back in time and who was lost, per list (overall, CRD or
+ * reorder in the dates picked, who came back in time, who is for reactivation and who churned, per list (overall, CRD or
  * FSD). Each page adds the customer's name, contact number, products ordered, total spent and,
  * for lost customers, what the CRA last recorded on their Segmentation Tracker lead.
  */
@@ -25,7 +25,8 @@ class ChurnCustomerList
     public const STATUSES = [
         'due' => 'Due to reorder',
         'back' => 'Came back in time',
-        'lost' => 'Lost',
+        'reactivation' => 'For reactivation',
+        'lost' => 'Churned',
     ];
 
     public const LISTS = [
@@ -40,16 +41,17 @@ class ChurnCustomerList
     public function __construct(private CustomerChurn $churn, private CustomerDatabase $customers) {}
 
     /**
-     * Customers due, came back and lost, for the tiles.
+     * Customers due, came back, for reactivation and churned, for the tiles.
      *
-     * @return array{due: int, back: int, lost: int}
+     * @return array{due: int, back: int, reactivation: int, lost: int}
      */
     public function counts(DashboardRange $range, string $list): array
     {
         $rows = $this->rows($range, $list);
         $back = count(array_filter($rows, fn (array $row) => $row[7] !== null));
+        $lost = count(array_filter($rows, fn (array $row) => ($row[13] ?? null) === '1'));
 
-        return ['due' => count($rows), 'back' => $back, 'lost' => count($rows) - $back];
+        return ['due' => count($rows), 'back' => $back, 'reactivation' => count($rows) - $back - $lost, 'lost' => $lost];
     }
 
     /**
@@ -60,7 +62,8 @@ class ChurnCustomerList
         $rows = $this->rows($range, $list);
         $rows = match ($status) {
             'back' => array_values(array_filter($rows, fn (array $row) => $row[7] !== null)),
-            'lost' => array_values(array_filter($rows, fn (array $row) => $row[7] === null)),
+            'reactivation' => array_values(array_filter($rows, fn (array $row) => $row[7] === null && ($row[13] ?? null) !== '1')),
+            'lost' => array_values(array_filter($rows, fn (array $row) => ($row[13] ?? null) === '1')),
             default => $rows,
         };
         $page = Paginator::resolveCurrentPage();
@@ -80,7 +83,7 @@ class ChurnCustomerList
      */
     private function rows(DashboardRange $range, string $list): array
     {
-        $key = CustomerDatabase::cacheKey('churn-rows', [$range->from->toDateString(), $range->to->toDateString(), $list]);
+        $key = CustomerDatabase::cacheKey('churn-rows-v3', [$range->from->toDateString(), $range->to->toDateString(), $list]);
 
         if (isset($this->loaded[$key])) {
             return $this->loaded[$key];
@@ -98,7 +101,7 @@ class ChurnCustomerList
 
     /**
      * Name, contact number, products ordered, total spent (all their delivered orders' Pancake totals,
-     * FSD ones too) and, for lost customers, their latest Segmentation Tracker lead.
+     * FSD ones too) and their latest Segmentation Tracker lead.
      *
      * @param  Collection<int, array<string, mixed>>  $rows
      * @return Collection<int, array<string, mixed>>
