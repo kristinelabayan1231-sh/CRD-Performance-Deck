@@ -39,6 +39,13 @@
                                     <svg data-copy-icon class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                                     <svg data-copied-icon class="hidden size-3.5 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
                                 </button>
+                                {{-- Exclusive Lead Tracker: the whole month's list as an Excel file, Pending and Catered together --}}
+                                @isset($exportUrl)
+                                    <a href="{{ $exportUrl }}" title="Download the whole month's leads as Excel" aria-label="Download the whole month's leads as an Excel file"
+                                       class="grid size-6 place-items-center rounded-md text-muted normal-case hover:bg-white hover:text-brand-600">
+                                        <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></svg>
+                                    </a>
+                                @endisset
                             </span>
                         </th>
                         <th data-col="delivered_date" class="px-4 py-3 font-semibold">Delivered Date</th>

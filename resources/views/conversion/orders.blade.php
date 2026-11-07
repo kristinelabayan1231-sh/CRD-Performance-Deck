@@ -19,11 +19,9 @@
             @endforeach
         </section>
 
-        @if ($canViewAll)
-            <form method="GET" action="{{ route('conversion.orders') }}" class="flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
-                @foreach ($dashboardQuery as $name => $value)
-                    <input type="hidden" name="{{ $name }}" value="{{ $value }}">
-                @endforeach
+        <x-customer-list-filters :action="route('conversion.orders')" :filters="$filters" :hidden="$dashboardQuery" placeholder="Name, contact number or order #"
+                                 :clear-url="route('conversion.orders', array_filter([...$dashboardQuery, 'cra' => $filters['cra'] ?? null]))">
+            @if ($canViewAll)
                 <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
                     CRA
                     <select name="cra" onchange="this.form.submit()" class="{{ $control }} text-ink normal-case">
@@ -33,12 +31,12 @@
                         @endforeach
                     </select>
                 </label>
-            </form>
-        @endif
+            @endif
+        </x-customer-list-filters>
 
         <section class="overflow-hidden rounded-xl bg-white shadow-sm">
             @if ($orders->isEmpty())
-                <p class="px-4 py-10 text-center text-sm text-muted">No confirmed orders in this period.</p>
+                <p class="px-4 py-10 text-center text-sm text-muted">{{ filled($filters['search'] ?? null) || ($filters['show'] ?? 'all') !== 'all' ? 'No orders match.' : 'No confirmed orders in this period.' }}</p>
             @else
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[47.5rem] text-left text-sm">
@@ -62,6 +60,7 @@
                                     <td class="px-4 py-3">{{ $craFor($order)?->displayName() ?? '—' }}</td>
                                     <td class="px-4 py-3">
                                         {{ $order->customer_name ?: '—' }}
+                                        @include('customers._value-pill', ['flags' => $highValue[$order->phone_key] ?? []])
                                         @if ($order->phone_number)
                                             <span class="block text-xs text-muted tabular-nums">{{ $order->phone_number }}</span>
                                         @endif

@@ -7,6 +7,7 @@ use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
+use App\Support\CustomerSearch;
 use App\Support\DashboardRange;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
@@ -38,7 +39,7 @@ class ChurnCustomerList
     /** @var array<string, list<list<?string>>> The lists this request already has, so the tiles and the page share one copy. */
     private array $loaded = [];
 
-    public function __construct(private CustomerChurn $churn, private CustomerDatabase $customers) {}
+    public function __construct(private CustomerChurn $churn, private CustomerDatabase $customers, private HighValueCustomers $highValue) {}
 
     /**
      * Customers due, came back, for reactivation and churned, for the tiles.
@@ -55,9 +56,10 @@ class ChurnCustomerList
     }
 
     /**
-     * One page of the customers in $status, soonest reorder deadline first.
+     * One page of the customers in $status, soonest reorder deadline first, narrowed to a search and to all, High AOV
+     * or VIP customers (HighValueCustomers::SHOW).
      */
-    public function page(DashboardRange $range, string $list, string $status, int $perPage = 50): LengthAwarePaginator
+    public function page(DashboardRange $range, string $list, string $status, ?string $search = null, string $show = 'all', int $perPage = 50): LengthAwarePaginator
     {
         $rows = $this->rows($range, $list);
         $rows = match ($status) {
@@ -66,6 +68,7 @@ class ChurnCustomerList
             'lost' => array_values(array_filter($rows, fn (array $row) => ($row[13] ?? null) === '1')),
             default => $rows,
         };
+        $rows = $this->highValue->rowsShown((new CustomerSearch($search))->filter($rows, 3), $show);
         $page = Paginator::resolveCurrentPage();
         // Only the page shown gets named fields and details.
         $shown = collect(array_slice($rows, ($page - 1) * $perPage, $perPage))->map(fn (array $row) => CustomerChurn::row($row));
@@ -129,8 +132,9 @@ class ChurnCustomerList
         // The delivery judged, for a name and number when logistics has none for them yet.
         $judged = DeliveredOrder::whereIn('order_id', $rows->pluck('order_id')->all())->get(['order_id', 'customer_name', 'phone_number'])->keyBy('order_id');
         $leads = $this->latestLeads($rows);
+        $highValue = $this->highValue->flagsForNumbers($phones);
 
-        return $rows->map(function (array $row) use ($deliveries, $spent, $catalog, $leads, $judged) {
+        return $rows->map(function (array $row) use ($deliveries, $spent, $catalog, $leads, $judged, $highValue) {
             $mine = $deliveries[$row['phone_key']] ?? collect();
 
             return [
@@ -141,6 +145,7 @@ class ChurnCustomerList
                     ->push($row['product'])->filter()->unique()->values()->all(),
                 'total_spent' => (float) ($spent[$row['phone_key']] ?? 0),
                 'lead' => $leads[$row['phone_key']] ?? null,
+                'high_value' => $highValue[$row['phone_key']] ?? [],
             ];
         });
     }

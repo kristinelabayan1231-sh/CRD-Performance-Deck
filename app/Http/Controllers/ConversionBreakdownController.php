@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
+use App\Services\HighValueCustomers;
 use App\Services\LeadGenerator;
 use App\Services\PancakeSync;
+use App\Support\CustomerSearch;
 use App\Support\DashboardRange;
 use App\Support\MonthWeeks;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -110,7 +113,7 @@ class ConversionBreakdownController extends Controller
      * The confirmed orders behind the dashboard's tile: the CRAs' own orders tagged CRD - BROADCAST or
      * CRD - SEGMENTATION (not canceled or deleted) in the dashboard's month or range. A CRA sees their own.
      */
-    public function orders(Request $request): View
+    public function orders(Request $request, HighValueCustomers $highValue): View
     {
         $user = $request->user();
         $today = WorkingDate::realToday();
@@ -119,6 +122,8 @@ class ConversionBreakdownController extends Controller
             'from' => ['nullable', 'date_format:Y-m-d', 'before_or_equal:'.$today->toDateString()],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'cra' => ['nullable', 'integer'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'show' => ['nullable', Rule::in(array_keys(HighValueCustomers::SHOW))],
         ]);
         $range = DashboardRange::fromFilters($filters, $today);
 
@@ -133,9 +138,20 @@ class ConversionBreakdownController extends Controller
 
         // As the dashboard counts them, with the CVR Tracker's corrections (type, and orders counted for another CRA).
         $query = ConversionBreakdown::taggedOrders($accounts, $range->from, $range->to);
+        $search = new CustomerSearch($filters['search'] ?? null);
+        $query->when(! $search->isEmpty(), fn (Builder $query) => $query->where(fn (Builder $query) => $query
+            ->whereLike('pancake_orders.customer_name', $search->like(), caseSensitive: false)
+            ->orWhereLike('pancake_orders.pancake_order_id', $search->like(), caseSensitive: false)
+            ->when($search->hasNumber(), fn (Builder $query) => $query->orWhere('pancake_orders.phone_key', 'like', '%'.$search->number.'%'))));
 
         // The list and count are confirmed orders; gross sales counts every status but deleted, as on the dashboard.
         $all = (clone $query)->get();
+        $flags = $highValue->flagsForNumbers($all->pluck('phone_key')->filter()->unique()->values()->all());
+        $show = $filters['show'] ?? 'all';
+        if ($show !== 'all') {
+            $all = $all->filter(fn (PancakeOrder $order) => $flags[$order->phone_key][$show] ?? false);
+            $query->whereIn('pancake_orders.phone_key', $all->pluck('phone_key')->unique()->map(fn ($key) => (string) $key)->values()->all());
+        }
         $gross = $all->sum(fn (PancakeOrder $order) => $order->sales());
         $all = $all->filter(fn (PancakeOrder $order) => $order->isCounted());
         $query->where(fn ($q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES));
@@ -143,6 +159,7 @@ class ConversionBreakdownController extends Controller
         return view('conversion.orders', [
             'orders' => $query->orderByDesc('pancake_orders.ordered_on')->orderByDesc('pancake_orders.ordered_at')->orderByDesc('pancake_orders.id')->paginate(50)->withQueryString(),
             'craFor' => fn (PancakeOrder $order) => $byId[ConversionBreakdown::craFor($order, $accounts) ?? 0] ?? null,
+            'highValue' => $flags,
             'count' => $all->count(),
             'gross' => $gross,
             'aov' => $all->count() ? $gross / $all->count() : null,

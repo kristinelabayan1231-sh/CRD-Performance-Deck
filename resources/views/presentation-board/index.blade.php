@@ -91,6 +91,7 @@
                     <div class="flex flex-wrap items-center gap-2">
                         <h1 style="margin: 0; font-size: 28px; font-weight: 700">Presentation Board</h1>
                         <span style="border-radius: 999px; background: rgb(195 155 255 / .2); color: #e4d3ff; padding: 3px 10px; font-size: 12px; font-weight: 600">{{ $monthOptions[$from] }}@if ($from !== $to) – {{ $monthOptions[$to] }}@endif</span>
+                        <span class="flex items-center gap-1.5" style="border-radius: 999px; background: rgb(63 209 185 / .18); color: #b5f2e6; padding: 3px 10px; font-size: 12px; font-weight: 600"><span aria-hidden="true" style="width: 7px; height: 7px; border-radius: 50%; background: {{ $added }}"></span>Based on real POS data</span>
                     </div>
                     <p style="margin: 0; font-size: 14px; {{ $muted }}">The CRD team's year so far, and what the numbers mean.</p>
                 </div>

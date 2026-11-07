@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ChurnCustomerList;
+use App\Services\HighValueCustomers;
 use App\Support\DashboardRange;
 use App\Support\WorkingDate;
 use Illuminate\Http\Request;
@@ -23,6 +24,8 @@ class CustomerChurnController extends Controller
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
             'status' => ['nullable', Rule::in(array_keys(ChurnCustomerList::STATUSES))],
             'list' => ['nullable', Rule::in(array_keys(ChurnCustomerList::LISTS))],
+            'search' => ['nullable', 'string', 'max:100'],
+            'show' => ['nullable', Rule::in(array_keys(HighValueCustomers::SHOW))],
         ], [
             'to.after_or_equal' => 'The "to" date must be on or after the "from" date.',
         ]);
@@ -31,7 +34,7 @@ class CustomerChurnController extends Controller
         $list = $filters['list'] ?? 'all';
 
         return view('customers.churn', [
-            'customers' => $churn->page($range, $list, $status),
+            'customers' => $churn->page($range, $list, $status, $filters['search'] ?? null, $filters['show'] ?? 'all'),
             'counts' => $churn->counts($range, $list),
             'filters' => [...$filters, 'status' => $status, 'list' => $list],
             'range' => $range,

@@ -23,6 +23,11 @@
             <form method="GET" action="{{ route('customers.churn') }}" class="flex flex-wrap items-center gap-2" aria-label="Churn month and dates">
                 <input type="hidden" name="status" value="{{ $status }}">
                 <input type="hidden" name="list" value="{{ $filters['list'] }}">
+                @foreach (['search', 'show'] as $kept)
+                    @if (filled($filters[$kept] ?? null))
+                        <input type="hidden" name="{{ $kept }}" value="{{ $filters[$kept] }}">
+                    @endif
+                @endforeach
                 <label>
                     <span class="sr-only">Month</span>
                     <select name="month" onchange="this.form.from.value = ''; this.form.to.value = ''; this.form.submit()"
@@ -76,6 +81,10 @@
             @endforeach
         </section>
 
+        <x-customer-list-filters :action="route('customers.churn')" :filters="$filters"
+                                 :hidden="Arr::only($filters, ['month', 'from', 'to', 'status', 'list'])"
+                                 :clear-url="$query(['search' => null, 'show' => null, 'page' => null])" />
+
         <x-panel :title="\App\Services\ChurnCustomerList::STATUSES[$status]" icon="users" title-id="churn-list-title" body-class="p-0">
             <x-slot:badges>
                 <span class="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-brand-700 tabular-nums shadow-sm">{{ number_format($customers->total()) }}</span>
@@ -91,7 +100,7 @@
             </x-slot:actions>
 
             @if ($customers->isEmpty())
-                <p class="px-4 py-10 text-center text-sm text-muted">No customers here for these dates.</p>
+                <p class="px-4 py-10 text-center text-sm text-muted">{{ filled($filters['search'] ?? null) || ($filters['show'] ?? 'all') !== 'all' ? 'No customers match.' : 'No customers here for these dates.' }}</p>
             @else
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[60rem] text-left text-sm">
@@ -115,6 +124,7 @@
                                     <td class="px-4 py-3">
                                         <a href="{{ route('customers.index', ['search' => $customer['phone_key']]) }}" class="font-medium hover:text-brand-600 hover:underline"
                                            title="Open in the Customer Database">{{ $customer['name'] }}</a>
+                                        @include('customers._value-pill', ['flags' => $customer['high_value']])
                                         <span class="block text-xs text-muted tabular-nums">{{ $customer['phone'] }}</span>
                                         @if ($status === 'due' && $customer['back'])
                                             <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-teal-700">Came back</span>
