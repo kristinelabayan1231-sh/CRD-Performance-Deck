@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
@@ -37,6 +38,7 @@ class ExclusiveLeadSettingController extends Controller
         abort_if($user->exclusive_from === null, 422, "{$user->displayName()} is not on the Exclusive Lead Tracker.");
 
         $user->update(['exclusive_from' => null]);
+        ExclusiveReservedLead::where('user_id', $user->id)->delete();
 
         // Back in the even split from today's unassigned leads.
         rescue(fn () => $generator->assign(Lead::today()));

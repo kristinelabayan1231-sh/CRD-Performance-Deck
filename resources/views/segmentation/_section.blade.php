@@ -39,6 +39,15 @@
                                     <svg data-copy-icon class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
                                     <svg data-copied-icon class="hidden size-3.5 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
                                 </button>
+                                {{-- Exclusive Lead Tracker: every number on the whole month's list, not just this page's (segmentation.js) --}}
+                                @isset($allPhonesUrl)
+                                    <button type="button" data-copy-all-phones="{{ $allPhonesUrl }}" title="Copy every number on the whole month's list" aria-label="Copy every contact number on the whole month's list"
+                                            class="flex h-6 items-center gap-1 rounded-md px-1 text-muted normal-case hover:bg-white hover:text-brand-600 disabled:opacity-60">
+                                        <svg data-copy-icon class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+                                        <svg data-copied-icon class="hidden size-3.5 text-teal-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
+                                        <span data-copy-label>All</span>
+                                    </button>
+                                @endisset
                                 {{-- Exclusive Lead Tracker: the whole month's list as an Excel file, Pending and Catered together --}}
                                 @isset($exportUrl)
                                     <a href="{{ $exportUrl }}" title="Download the whole month's leads as Excel" aria-label="Download the whole month's leads as an Excel file"

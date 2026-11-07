@@ -82,7 +82,7 @@
                         @foreach ($metrics['days'] as $cell)
                             @php($cellDate = \Carbon\CarbonImmutable::parse($cell['date']))
                             @php($future = $cellDate->greaterThan($today))
-                            @php($before = $cell['quota'] === 0 && ! $future)
+                            @php($before = $cell['is_before_transfer'])
                             @php($selected = $cellDate->isSameDay($day))
                             @php($smallDay = $cell['quota'] > 0 && $cell['quota'] < $standard)
                             @if ($future || $before)
@@ -101,7 +101,7 @@
                                             <span class="hidden rounded-full bg-brand-100 px-1.5 text-[0.625rem] font-semibold text-brand-700 sm:inline">today</span><span class="size-1.5 rounded-full bg-brand-600 sm:hidden" title="Today"></span>
                                         @endif
                                     </span>
-                                    <span class="text-xs text-muted tabular-nums">{{ number_format($cell['listed']) }}{{ $smallDay ? ' leads' : '/'.number_format($cell['quota']) }}</span>
+                                    <span class="text-xs text-muted tabular-nums">{{ number_format($cell['new']) }}{{ $smallDay ? ' leads' : '/'.number_format($cell['quota']) }}</span>
                                     <span class="hidden text-xs text-muted tabular-nums sm:block">{{ number_format($cell['repeat']) }} repeat</span>
                                     <span class="hidden text-xs text-muted tabular-nums sm:block">{{ number_format($cell['confirmed']) }}{{ $cell['confirmed_goal'] > 0 ? '/'.number_format($cell['confirmed_goal']).' orders' : ' '.\Illuminate\Support\Str::plural('order', $cell['confirmed']) }}</span>
                                     @if ($cell['is_day_off'])
@@ -111,7 +111,7 @@
                             @endif
                         @endforeach
                     </div>
-                    <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day: leads listed out of the daily quota, repeat purchases, confirmed orders out of the daily target. Dashed days have not started.
+                    <p class="border-t border-line px-4 py-2 text-xs text-muted">Each day: new leads out of the daily quota, repeat purchases, confirmed orders out of the daily target. Dashed days have not started.
                         <a href="{{ route('segmentation.index', ['cra' => $cra->id, 'date' => $cra->exclusive_from->subDay()->toDateString()]) }}" class="font-medium text-brand-600 hover:underline">Days before the transfer are in the Segmentation Tracker.</a></p>
                 </x-panel>
 
@@ -119,7 +119,7 @@
                 <x-panel :title="'Month goals · '.$cra->displayName()" accent="teal" icon="target" title-id="exclusive-goals-title" :tinted="false" body-class="">
                     <x-slot:badges><p class="text-xs text-muted">{{ $month->format('F') }} so far</p></x-slot:badges>
                     <div class="grid grid-cols-3 gap-2 p-4">
-                        @include('exclusive-leads._ring', ['label' => 'Leads', 'value' => $actual['listed'], 'target' => $targets['leads'], 'stroke' => 'stroke-brand-500', 'sub' => $standard.' a day'])
+                        @include('exclusive-leads._ring', ['label' => 'Leads', 'value' => $actual['unique_leads'], 'target' => $targets['leads'], 'stroke' => 'stroke-brand-500', 'sub' => $standard.' a day'])
                         @include('exclusive-leads._ring', ['label' => 'Repeat purchases', 'value' => $actual['repeat'], 'target' => $targets['repeat'], 'stroke' => 'stroke-teal-700', 'sub' => 'Goal '.$targets['repeat_percent'].'% of leads'])
                         @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => ($metrics['limits']['orders_rate_changed'] ? 'Across ' : number_format($targets['confirmed_orders_per_day']).' a day × ').$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
                     </div>
@@ -140,7 +140,7 @@
                         </div>
                     </div>
                     <div class="border-t border-line bg-canvas/50 p-4 text-xs text-muted">
-                        <strong class="text-ink">{{ number_format($targets['leads']) }} leads a month</strong> is the target, {{ $standard }} a day. Her leads stay with her all month.
+                        <strong class="text-ink">{{ number_format($targets['leads']) }} leads a month</strong> is the target, {{ $standard }} new leads a day until it's reached; leftovers carry on top. It can end short when too few leads qualify. Her leads stay with her all month.
                         <br><strong class="text-ink">{{ number_format($targets['confirmed_orders_per_day']) }} confirmed orders a day</strong> is the target, {{ number_format($targets['confirmed_orders']) }} across {{ $month->format('F') }}'s working days. A day off has no target.
                         @if ($quotaNote)
                             <br><strong class="text-ink">{{ $quotaNote }}</strong>
@@ -165,7 +165,7 @@
                 </p>
             @elseif ($wholeMonth)
                 <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
-                    <strong>{{ number_format($actual['unique_leads']) }} different {{ \Illuminate\Support\Str::plural('lead', $actual['unique_leads']) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} {{ $month->format('F') }} lists so far, {{ number_format($actual['listed']) }} counted toward the {{ number_format($targets['leads']) }} target because a lead carried over counts each day. Days ahead get their leads on the day.
+                    <strong>{{ number_format($actual['unique_leads']) }} different {{ \Illuminate\Support\Str::plural('lead', $actual['unique_leads']) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} {{ $month->format('F') }} lists so far, plus <strong>{{ number_format($upcomingCount) }} upcoming</strong> held for the days ahead, out of the {{ number_format($targets['leads']) }} target. Upcoming leads can't be worked until they are handed out on their day.
                 </p>
             @else
             {{-- The selected day --}}

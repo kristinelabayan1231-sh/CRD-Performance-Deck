@@ -127,6 +127,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::get('/exclusive-leads', [ExclusiveLeadController::class, 'index'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.index');
     Route::get('/exclusive-leads/export', [ExclusiveLeadController::class, 'export'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.export');
+    Route::get('/exclusive-leads/phones', [ExclusiveLeadController::class, 'phones'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.phones');
 
     Route::prefix('segmentation-productivity')->name('productivity.')->middleware('can:productivity.view')->group(function () {
         Route::get('/', [SegmentationProductivityController::class, 'index'])->name('index');
