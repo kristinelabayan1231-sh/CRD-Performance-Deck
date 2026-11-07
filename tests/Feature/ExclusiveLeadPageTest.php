@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DutyLogin;
 use App\Models\DutySchedule;
 use App\Models\Role;
 use App\Models\User;
@@ -119,6 +120,49 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertOk()
             ->assertSee('Day off, no target · Month: 0 of 1,566')
             ->assertSee('54 a day × 29 working days');
+    }
+
+    public function test_an_exclusive_cra_logs_in_for_duty_from_the_page(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-11-01');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index'))
+            ->assertOk()
+            ->assertSeeText('Log in for today?')
+            ->assertSeeText('My schedule');
+
+        $this->actingAs($joanna)->from(route('exclusive-leads.index'))->post(route('segmentation.on-duty'))
+            ->assertRedirect(route('exclusive-leads.index'));
+
+        $this->assertTrue(DutyLogin::where('user_id', $joanna->id)->whereDate('date', '2026-11-06')->exists());
+        $this->actingAs($joanna)->get(route('exclusive-leads.index'))->assertOk()->assertDontSeeText('Log in for today?');
+    }
+
+    public function test_a_transferred_cra_keeps_todays_log_in_and_is_asked_on_the_page_when_they_have_none(): void
+    {
+        $supervisor = $this->user(Role::CRA_SUPERVISOR, 'Lead');
+        $loggedIn = $this->user(Role::CRA, 'Regina');
+        $notLoggedIn = $this->user(Role::CRA, 'Lhea');
+        DutyLogin::create(['user_id' => $loggedIn->id, 'date' => '2026-11-06', 'logged_in_at' => now()]);
+
+        foreach ([$loggedIn, $notLoggedIn] as $cra) {
+            $this->actingAs($supervisor)->post(route('settings.exclusive-leads.store', $cra))->assertRedirect();
+        }
+
+        $this->actingAs($loggedIn->fresh())->get(route('exclusive-leads.index'))->assertOk()->assertDontSeeText('Log in for today?');
+
+        $this->actingAs($notLoggedIn->fresh())->get(route('segmentation.index'))->assertRedirect(route('exclusive-leads.index'));
+        $this->actingAs($notLoggedIn->fresh())->get(route('exclusive-leads.index'))->assertOk()->assertSeeText('Log in for today?');
+    }
+
+    public function test_a_supervisor_is_not_asked_to_log_in_on_the_page(): void
+    {
+        $this->user(Role::CRA, 'Joanna', '2026-11-01');
+
+        $this->actingAs($this->user(Role::CRA_SUPERVISOR, 'Lead'))->get(route('exclusive-leads.index'))
+            ->assertOk()
+            ->assertDontSee('on-duty-dialog')
+            ->assertDontSeeText('My schedule');
     }
 
     public function test_a_cra_not_on_the_page_is_pointed_to_the_segmentation_tracker(): void

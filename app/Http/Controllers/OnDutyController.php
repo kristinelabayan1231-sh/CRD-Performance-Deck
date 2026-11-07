@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 class OnDutyController extends Controller
 {
     /**
-     * A CRA logs in from the Segmentation Tracker: they're on today's on-duty list, and once today's leads
+     * A CRA logs in from the Segmentation or Exclusive Lead Tracker: they're on today's on-duty list, and once today's leads
      * are in, their day is topped up with backlog (BacklogFill; the hourly lead sync does it otherwise).
      */
     public function store(Request $request, BacklogFill $fill): RedirectResponse

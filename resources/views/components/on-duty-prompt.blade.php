@@ -8,8 +8,8 @@
 
 {{--
     A CRA's on-duty pop-up: log in for today (left) and My schedule (right), a calendar where they set their days off
-    ahead (Absent / Leave, Rest Day). Opens by itself on their first Segmentation Tracker visit of the day (not on a day
-    off; "Not now" asks again on the next page), after saving the schedule, and from the tracker's My schedule button.
+    ahead (Absent / Leave, Rest Day). Opens by itself on their first Segmentation or Exclusive Lead Tracker visit of the day
+    (not on a day off; "Not now" asks again on the next page), after saving the schedule, and from the tracker's My schedule button.
     The calendar is drawn by duty-schedule.js from data-schedule.
 --}}
 <dialog id="on-duty-dialog" aria-labelledby="on-duty-title" @if ($open) data-auto-open @endif
