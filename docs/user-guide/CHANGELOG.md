@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-07 · Exclusive Lead Tracker · Each day before leftovers carry over, an untouched lead that isn't the CRA's by the rules leaves them: a customer another CRA owns goes to that CRA, a CRD lead with no reason to be theirs goes back to the pool · shots: none
+- 2026-11-07 · Exclusive Lead Tracker · Same search and filters as the Segmentation Tracker (CRA, Type, Product, Month, Date, Range, Columns), and Pending's full view has the same tabs: Call back for today, Reactivation, Reserved and Reserved - Pancake. Call back for today moved from the page into that tab · shots: exclusive lead tracker
 - 2026-11-07 · Exclusive Lead Tracker · Random leads are FSD leads only; CRD leads no other CRA owns stay for the Segmentation Tracker · shots: none
 - 2026-11-07 · Exclusive Lead Tracker · Whole month view next to the day's list: every lead on the CRA's lists for the month so far, each once, with the day it was last listed · shots: none
 - 2026-11-07 · Exclusive Lead Tracker → Settings · Supervisors and Team Leads set the leads a day, leads a month and orders a day with a start date; they hold to the end of that month and carry on until new ones are set. Team Leads can now open the page · shots: none

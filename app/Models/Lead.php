@@ -342,13 +342,16 @@ class Lead extends Model
 
     /**
      * Hand the lead to $to from $day on: listed on $day for them, while its old day keeps counting it for the CRA
-     * who had it (LeadMove), so past days read the same. Logged as a transfer by $by.
+     * who had it (LeadMove), so past days read the same. Logged as a transfer by $by; null when the rules moved it.
+     * A lead already listed on $day leaves that day, so nothing keeps counting it there.
      */
-    public function transferTo(User $to, User $by, CarbonImmutable $day): void
+    public function transferTo(User $to, ?User $by, CarbonImmutable $day): void
     {
         BacklogHandout::create(['lead_id' => $this->id, 'user_id' => $to->id, 'handed_on' => $day->toDateString(), 'source' => BacklogHandout::TRANSFER]);
-        LeadMove::create(['lead_id' => $this->id, 'assigned_to' => $this->assigned_to, 'listed_on' => $this->listed_on->toDateString(), 'moved_to' => $day->toDateString()]);
-        LeadTransfer::create(['lead_id' => $this->id, 'from_user_id' => $this->assigned_to, 'to_user_id' => $to->id, 'transferred_by' => $by->id]);
+        if (! $this->listed_on->isSameDay($day)) {
+            LeadMove::create(['lead_id' => $this->id, 'assigned_to' => $this->assigned_to, 'listed_on' => $this->listed_on->toDateString(), 'moved_to' => $day->toDateString()]);
+        }
+        LeadTransfer::create(['lead_id' => $this->id, 'from_user_id' => $this->assigned_to, 'to_user_id' => $to->id, 'transferred_by' => $by?->id]);
 
         $this->forceFill(['assigned_to' => $to->id, 'assigned_at' => now(), 'listed_on' => $day->toDateString()])->save();
     }
