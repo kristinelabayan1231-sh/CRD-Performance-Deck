@@ -44,4 +44,10 @@ return [
     // This module's High AOV line. customers.high_aov_min stays the rule for every other CRA.
     'high_aov_min' => 895,
 
+    // The POS order tag the page's Tag column looks for on a customer's orders.
+    'order_tag' => [
+        'id' => (int) env('PANCAKE_TAG_EXCLUSIVE', 749),
+        'name' => 'CRD - ANNA (EXCLUSIVE LEADS)',
+    ],
+
 ];

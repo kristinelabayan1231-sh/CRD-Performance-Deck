@@ -7,6 +7,7 @@ use App\Models\DutySchedule;
 use App\Models\ExclusiveListLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
+use App\Models\PancakeOrder;
 use App\Models\PancakeReservation;
 use App\Models\Role;
 use App\Models\User;
@@ -14,6 +15,8 @@ use App\Services\ExclusiveLeads;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 use ZipArchive;
@@ -302,6 +305,181 @@ class ExclusiveLeadPageTest extends TestCase
         $this->assertSame('Contact #', $rows[0][3]);
         $this->assertSame(['Maria Santos', '09171234567', 'Pending', 'Leftover', '2'], [$rows[1][0], $rows[1][3], $rows[1][10], $rows[1][12], $rows[1][14]]);
         $this->assertSame(['Pedro Reyes', 'Catered', 'Active'], [$rows[2][0], $rows[2][10], $rows[2][11]]);
+    }
+
+    public function test_the_tag_column_shows_the_pos_tag_only_for_customers_with_a_tagged_order(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $tagged = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-11-05');
+        $otherTag = $this->lead($joanna, 'Pedro Reyes', '09177654321', '2026-11-05');
+        foreach ([$tagged, $otherTag] as $lead) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+        PancakeOrder::create(['pancake_order_id' => 'T1', 'ordered_on' => '2026-11-05', 'phone_key' => '9171234567', 'status' => 3, 'total_price' => 300, 'tags' => [398, 749]]);
+        PancakeOrder::create(['pancake_order_id' => 'T2', 'ordered_on' => '2026-11-05', 'phone_key' => '9177654321', 'status' => 3, 'total_price' => 300, 'tags' => [398]]);
+        $tagName = 'CRD - ANNA (EXCLUSIVE LEADS)';
+
+        $response = $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))->assertOk();
+        $this->assertSame(1, substr_count($response->getContent(), 'text-brand-700">'.$tagName));
+        $this->assertSame(1, substr_count($response->getContent(), '— Add tag —'));
+
+        $rows = $this->downloadedRows($this->actingAs($joanna)->get(route('exclusive-leads.export', ['month' => '2026-11'])));
+        $this->assertSame('Tag', $rows[0][15]);
+        $this->assertSame(['Maria Santos', $tagName], [$rows[1][0], $rows[1][15]]);
+        $this->assertSame('Pedro Reyes', $rows[2][0]);
+        $this->assertNotContains($tagName, $rows[2]);
+    }
+
+    /**
+     * A lead on Joanna's list, its saved order, and Pancake answering for that order: found by search, then read by
+     * its internal id, as $reads in turn.
+     *
+     * @param  list<array<string, mixed>>  $reads
+     * @return array{0: User, 1: Lead}
+     */
+    private function leadWithPancakeOrder(array $reads, ?array $put = null): array
+    {
+        config(['services.pancake.shop_id' => '99', 'services.pancake.access_token' => 'token']);
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $lead = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-11-05');
+        $lead->update(['order_id' => '1326186']);
+        ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        PancakeOrder::create(['pancake_order_id' => '1326186', 'ordered_on' => '2026-08-01', 'phone_key' => '9171234567', 'status' => 3, 'total_price' => 300, 'tags' => [398, 4]]);
+
+        Http::preventStrayRequests();
+        $reading = Http::sequence();
+        foreach ($reads as $read) {
+            $reading->push(['success' => true, 'data' => ['id' => 555, 'display_id' => 1326186, 'status' => 3, 'total_price' => 300, 'bill_phone_number' => '09171234567', 'items' => [['id' => 1]], ...$read]]);
+        }
+        Http::fake(function (ClientRequest $request) use ($reading, $put) {
+            if ($request->method() === 'PUT') {
+                return Http::response($put ?? ['success' => true]);
+            }
+
+            return str_contains($request->url(), '/orders/555?')
+                ? $reading($request)
+                : Http::response(['success' => true, 'data' => [['id' => 555, 'display_id' => 1326186, 'tags' => [398, 4]]]]);
+        });
+
+        return [$joanna, $lead];
+    }
+
+    public function test_the_dropdown_adds_the_tag_to_the_leads_order_keeping_its_other_tags(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [398, 4, 749]]]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])
+            ->assertOk()->assertExactJson(['order_tag' => 'CRD - ANNA (EXCLUSIVE LEADS)']);
+
+        Http::assertSent(fn (ClientRequest $request) => $request->method() === 'PUT'
+            && str_contains($request->url(), '/shops/99/orders/555?')
+            && $request->data() === ['tags' => [398, 4, 749]]);
+        $saved = PancakeOrder::firstWhere('pancake_order_id', '1326186');
+        $this->assertSame([398, 4, 749], $saved->tags);
+        $this->assertSame(PancakeOrder::SEGMENTATION, $saved->conversion_type);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee('CRD - ANNA (EXCLUSIVE LEADS)')->assertDontSee('— Add tag —');
+    }
+
+    public function test_an_untagged_lead_shows_the_dropdown(): void
+    {
+        [$joanna] = $this->leadWithPancakeOrder([]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee('— Add tag —');
+    }
+
+    public function test_an_order_pancake_already_tagged_is_not_written_again(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 749]]]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])->assertOk();
+
+        Http::assertNotSent(fn (ClientRequest $request) => $request->method() === 'PUT');
+        $this->assertSame([398, 749], PancakeOrder::firstWhere('pancake_order_id', '1326186')->tags);
+    }
+
+    public function test_a_refused_update_says_so_and_saves_nothing(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]]], ['success' => false, 'message' => 'No permission']);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])
+            ->assertUnprocessable()->assertJsonPath('message', 'Pancake refused the tag on order #1326186 (HTTP 200): No permission');
+
+        $this->assertSame([398, 4], PancakeOrder::firstWhere('pancake_order_id', '1326186')->tags);
+    }
+
+    public function test_a_read_back_that_lost_other_tags_is_reported_and_not_saved(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [749]]]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])
+            ->assertUnprocessable()->assertJsonPath('message', "Order #1326186's tags didn't save as expected. Check the order in Pancake: it had [398, 4] and now has [749].");
+
+        $this->assertSame([398, 4], PancakeOrder::firstWhere('pancake_order_id', '1326186')->tags);
+    }
+
+    public function test_a_read_back_where_the_order_itself_changed_is_reported(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [398, 4, 749], 'items' => []]]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])
+            ->assertUnprocessable()->assertJsonPath('message', 'The tag saved on order #1326186, but its items also changed. Check the order in Pancake.');
+    }
+
+    public function test_only_the_exclusive_tag_can_be_added_and_nothing_reaches_pancake_otherwise(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '398'])
+            ->assertUnprocessable()->assertJsonValidationErrors(['order_tag' => "That tag isn't available."]);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_a_supervisor_sees_the_dropdown_and_can_tag_an_exclusive_cras_lead(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [398, 4, 749]]]);
+        $supervisor = $this->user(Role::CRA_SUPERVISOR, 'Lead');
+
+        $this->actingAs($supervisor)->get(route('exclusive-leads.index', ['cra' => $joanna->id, 'date' => '2026-11-05']))
+            ->assertOk()->assertSee('— Add tag —');
+        $this->actingAs($supervisor)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])->assertOk();
+
+        $this->assertSame([398, 4, 749], PancakeOrder::firstWhere('pancake_order_id', '1326186')->tags);
+    }
+
+    public function test_a_cra_can_tag_a_lead_held_for_them_before_its_day(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [398, 4, 749]]]);
+        ExclusiveListLead::where('lead_id', $lead->id)->delete();
+        $lead->update(['assigned_to' => null]);
+        ExclusiveReservedLead::create(['user_id' => $joanna->id, 'month' => '2026-11-01', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::RANDOM]);
+
+        $this->actingAs($joanna)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])->assertOk();
+    }
+
+    public function test_a_cra_cannot_tag_another_cras_lead_and_a_lead_off_the_tracker_has_no_tagging(): void
+    {
+        [$joanna, $lead] = $this->leadWithPancakeOrder([]);
+        $otherExclusive = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $lhea = $this->user(Role::CRA, 'Lhea');
+        $offTracker = $this->lead($lhea, 'Pedro Reyes', '09177654321', '2026-11-05');
+
+        $this->actingAs($otherExclusive)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])->assertForbidden();
+        $this->actingAs($lhea)->postJson(route('exclusive-leads.order-tag', $offTracker), ['order_tag' => '749'])->assertNotFound();
+
+        Http::assertNothingSent();
+    }
+
+    public function test_the_segmentation_tracker_has_no_tag_column(): void
+    {
+        $regina = $this->user(Role::CRA, 'Regina');
+        $this->lead($regina, 'Maria Santos', '09171234567', '2026-10-07');
+
+        $this->actingAs($regina)->get(route('segmentation.index', ['date' => '2026-10-07']))
+            ->assertOk()->assertDontSee('data-col="order_tag"', false);
     }
 
     public function test_the_excel_file_is_the_cras_own_unless_they_oversee_and_keeps_the_filters(): void

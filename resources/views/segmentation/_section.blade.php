@@ -70,6 +70,9 @@
                         @isset($listedDays)
                             <th data-col="last_listed" class="px-4 py-3 font-semibold">Last listed</th>
                         @endisset
+                        @isset($taggedCustomers)
+                            <th data-col="order_tag" class="px-4 py-3 font-semibold">Tag</th>
+                        @endisset
                         @foreach ($visibleOptional as $key => $column)
                             <th data-col="{{ $key }}" class="bg-[#e3f1ea] px-4 py-3 font-semibold text-[#1d5b45]">{{ $column['label'] }}</th>
                         @endforeach

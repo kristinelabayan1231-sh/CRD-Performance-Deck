@@ -7,6 +7,7 @@ use App\Models\ExclusiveListLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
+use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\DutyGoals;
 use App\Support\ExclusiveLimits;
@@ -654,6 +655,21 @@ class ExclusiveLeads
     public function sourcesFor(User $cra, CarbonImmutable $day): Collection
     {
         return ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->pluck('source', 'lead_id');
+    }
+
+    /**
+     * The customers (last 10 digits of the number) with an order carrying the exclusive POS tag, for the Tag column.
+     *
+     * @return array<string, int> phone key => any value, to look up with isset()
+     */
+    public function taggedCustomers(): array
+    {
+        return PancakeOrder::whereJsonContains('tags', config('exclusive_leads.order_tag.id'))
+            ->whereNotNull('phone_key')
+            ->distinct()
+            ->pluck('phone_key')
+            ->flip()
+            ->all();
     }
 
     /**
