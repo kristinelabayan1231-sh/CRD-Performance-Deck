@@ -171,6 +171,17 @@ class ExclusiveLeads
     }
 
     /**
+     * How far the leads in the tracker fall short of the month's target of different leads, once $day's list and what can
+     * be held for the days ahead are counted.
+     */
+    public function monthShortfall(User $cra, CarbonImmutable $day): int
+    {
+        ['picks' => $picks, 'upcoming' => $upcoming] = $this->pick($cra, $day, max(0, $this->newLeadsRoom($cra, $day)), true);
+
+        return max(0, $this->monthRemaining($cra, $day) - $picks->where('source', '!=', self::LEFTOVER)->count() - $upcoming->count());
+    }
+
+    /**
      * The first and last lead days of the real month $leadDay is worked in.
      *
      * @return array{CarbonImmutable, CarbonImmutable}
