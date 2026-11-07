@@ -497,6 +497,19 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame(1, $this->dayOf('2026-11-06')['pos']);
     }
 
+    public function test_her_sale_to_another_cras_high_value_customer_stays_off_her_list_but_her_own_customers_stay_on(): void
+    {
+        $reginasCustomer = $this->lead('2026-11-06', $this->joanna, ['order_id' => 'POS-1', 'repeat_purchase' => 'yes']);
+        CustomerAccount::create(['phone_key' => $this->phoneKey($reginasCustomer), 'assigned_cra_id' => $this->regina->id]);
+        $hersCustomer = $this->lead('2026-11-06', $this->joanna, ['order_id' => 'POS-2', 'repeat_purchase' => 'yes']);
+        CustomerAccount::create(['phone_key' => $this->phoneKey($hersCustomer), 'assigned_cra_id' => $this->joanna->id]);
+
+        $this->sync('2026-11-06');
+
+        $this->assertSame([$hersCustomer->id => 'pos'], $this->listOn('2026-11-06'));
+        $this->assertSame($this->joanna->id, $reginasCustomer->fresh()->assigned_to);
+    }
+
     public function test_generating_the_day_gives_her_list_first_and_the_rest_to_the_segmentation_cras(): void
     {
         config(['exclusive_leads.daily_quota' => 1]);
