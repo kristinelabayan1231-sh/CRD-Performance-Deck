@@ -8,6 +8,7 @@ never needs to re-read the whole PDF. Newest first.
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
 - 2026-11-07 · Exclusive Lead Tracker · Random leads are FSD leads only; CRD leads no other CRA owns stay for the Segmentation Tracker · shots: none
+- 2026-11-07 · Exclusive Lead Tracker · Whole month view next to the day's list: every lead on the CRA's lists for the month so far, each once, with the day it was last listed · shots: none
 - 2026-11-07 · Exclusive Lead Tracker → Settings · Supervisors and Team Leads set the leads a day, leads a month and orders a day with a start date; they hold to the end of that month and carry on until new ones are set. Team Leads can now open the page · shots: none
 - 2026-11-07 · Presentation Board · New CRA performance section: a card per CRA with their photo and rank by gross sales, share of team gross, NI (November on), capacity a day (customers answered ÷ days they answered anyone), High AOV and VIP customers · shots: presentation-board
 - 2026-11-07 · Exclusive Lead Tracker · Picking a Repeat Purchase fills in Date and Time of contact (now, Manila time), as Customer Tagging does · shots: none

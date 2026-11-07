@@ -172,6 +172,19 @@
                 </x-panel>
             </div>
 
+            {{-- This day or the whole month's list --}}
+            <nav aria-label="Leads shown" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'date' => $day->toDateString()]) }}" @if (! $wholeMonth) aria-current="page" @endif
+                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => ! $wholeMonth, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => $wholeMonth])>{{ $day->format('M j') }} only</a>
+                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'date' => $day->toDateString(), 'view' => 'month']) }}" @if ($wholeMonth) aria-current="page" @endif
+                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => $wholeMonth, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => ! $wholeMonth])>Whole month</a>
+            </nav>
+
+            @if ($wholeMonth)
+                <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
+                    <strong>{{ number_format($actual['unique_leads']) }} different {{ \Illuminate\Support\Str::plural('lead', $actual['unique_leads']) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} {{ $month->format('F') }} lists so far, {{ number_format($actual['listed']) }} counted toward the {{ number_format($targets['leads']) }} target because a lead carried over counts each day. Days ahead get their leads on the day.
+                </p>
+            @else
             {{-- The selected day --}}
             @php($quota = $dayMetrics['quota'])
             @php($dayAov = $dayMetrics['aov'])
@@ -207,6 +220,7 @@
                 </div>
             </x-panel>
             @endif
+            @endif
 
             @php($lockAssignee = true)
             <div class="flex flex-col gap-3">
@@ -214,18 +228,18 @@
                     @include('segmentation._section', [
                         'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
                         'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.',
-                        'empty' => $search ? 'No pending leads match this search.' : ($dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.'),
+                        'empty' => $search ? 'No pending leads match this search.' : ($wholeMonth ? 'Nothing pending on this month\'s lists.' : ($dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.')),
                     ])
                 @endif
                 @if ($processed)
                     @include('segmentation._section', [
                         'leads' => $processed, 'id' => 'processed', 'title' => 'Catered',
                         'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.',
-                        'empty' => $search ? 'No catered leads match this search.' : 'No catered customers for this day yet.',
+                        'empty' => $search ? 'No catered leads match this search.' : ($wholeMonth ? 'No catered customers on this month\'s lists yet.' : 'No catered customers for this day yet.'),
                     ])
                 @endif
                 {{-- Follow-ups of any month: they were on the Segmentation Tracker before the transfer --}}
-                @if (! $search && $callbacks->total() > 0)
+                @if (! $search && ! $wholeMonth && $callbacks->total() > 0)
                     @include('segmentation._section', [
                         'leads' => $callbacks, 'id' => 'callback', 'title' => 'Call back for today', 'accent' => 'amber', 'icon' => 'calendar', 'sources' => null,
                         'hint' => 'Callback date is today or already passed, with no contact since.', 'empty' => 'No callbacks due today.',

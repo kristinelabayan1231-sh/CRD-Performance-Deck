@@ -53,9 +53,11 @@ class ExclusiveLeadController extends Controller
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
             'full' => ['nullable', 'boolean'],
             'q' => ['nullable', 'string', 'max:100'],
+            'view' => ['nullable', Rule::in(['day', 'month'])],
         ]);
         $show = $filters['show'] ?? 'all';
         $search = trim((string) ($filters['q'] ?? '')) ?: null;
+        $wholeMonth = ! $search && ($filters['view'] ?? 'day') === 'month';
 
         $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
 
@@ -91,9 +93,14 @@ class ExclusiveLeadController extends Controller
         $day = $day->max($month->max($first));
         $leadDay = $day->subDays($lag);
 
-        // A search looks through all of the CRA's days; otherwise the day picked.
-        $scope = ($search ? $exclusive->search($cra, $search) : $exclusive->leadsFor($cra, $leadDay))
-            ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
+        // A search looks through all of the CRA's days; the whole month through that month's lists; otherwise the day picked.
+        $scope = match (true) {
+            $search !== null => $exclusive->search($cra, $search),
+            $wholeMonth => $exclusive->leadsForMonth($cra, $month),
+            default => $exclusive->leadsFor($cra, $leadDay),
+        };
+        $monthList = $wholeMonth ? $exclusive->monthListDetails($cra, $month) : null;
+        $scope->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name')
             ->orderByDesc('listed_on');
@@ -105,7 +112,9 @@ class ExclusiveLeadController extends Controller
 
         $shared = $data + [
             'search' => $search,
-            'sources' => $search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay),
+            'wholeMonth' => $wholeMonth,
+            'listedDays' => $monthList['days'] ?? null,
+            'sources' => $monthList['sources'] ?? ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),

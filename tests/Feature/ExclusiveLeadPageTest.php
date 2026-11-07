@@ -4,9 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\DutyLogin;
 use App\Models\DutySchedule;
+use App\Models\ExclusiveListLead;
 use App\Models\Lead;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ExclusiveLeads;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -216,6 +218,49 @@ class ExclusiveLeadPageTest extends TestCase
         $this->assertSame('2026-11-01', $exclusiveLead->fresh()->contact_date->toDateString());
         $this->assertNull($segmentationLead->fresh()->contact_date);
         $this->assertNull($segmentationLead->fresh()->contact_time);
+    }
+
+    public function test_the_whole_month_lists_each_lead_once_for_the_cra_and_those_who_oversee_them(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $carried = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-11-03');
+        $later = $this->lead($joanna, 'Pedro Reyes', '09177654321', '2026-11-05');
+        $lastMonth = $this->lead($joanna, 'Ana Lastmonth', '09170002222', '2026-10-30');
+        $pos = $this->lead($joanna, 'Rico Possale', '09170003333', '2026-11-05');
+        $others = $this->lead($regina, 'Maria Cruz', '09170001111', '2026-11-05');
+        $list = fn (User $cra, Lead $lead, string $day, string $source = ExclusiveLeads::HANDLED) => ExclusiveListLead::create(['user_id' => $cra->id, 'list_date' => $day, 'lead_id' => $lead->id, 'source' => $source]);
+        $list($joanna, $carried, '2026-11-03');
+        $list($joanna, $carried, '2026-11-04', ExclusiveLeads::LEFTOVER);
+        $list($joanna, $later, '2026-11-05');
+        $list($joanna, $lastMonth, '2026-10-30');
+        $list($joanna, $pos, '2026-11-05', ExclusiveLeads::POS);
+        $list($regina, $others, '2026-11-05');
+        $teamLead = Role::create(['slug' => Role::CRA_TEAM_LEAD, 'name' => 'CRA Team Lead', 'permissions' => ['exclusive_leads.view', 'exclusive_leads.view_all']]);
+
+        $asJoanna = $this->actingAs($joanna)->get(route('exclusive-leads.index', ['view' => 'month']))->assertOk();
+        $asJoanna->assertSee('Maria Santos')->assertSee('Pedro Reyes')->assertSee('Last listed')->assertSee('Nov 4 · 2 days');
+        $asJoanna->assertSee('2 different leads')->assertDontSee('Ana Lastmonth')->assertDontSee('Rico Possale')->assertDontSee('Maria Cruz');
+
+        foreach ([$this->user(Role::CRA_SUPERVISOR, 'Lead'), User::create(['email' => 'team@example.com', 'display_name' => 'Team', 'role_id' => $teamLead->id, 'is_active' => true])] as $overseer) {
+            $this->actingAs($overseer)->get(route('exclusive-leads.index', ['cra' => $joanna->id, 'view' => 'month']))
+                ->assertOk()->assertSee('Maria Santos')->assertDontSee('Maria Cruz');
+        }
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $regina->id, 'view' => 'month']))
+            ->assertOk()->assertDontSee('Maria Cruz');
+    }
+
+    public function test_a_day_still_shows_only_that_days_leads(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        foreach (['Maria Santos' => '2026-11-03', 'Pedro Reyes' => '2026-11-05'] as $name => $day) {
+            $lead = $this->lead($joanna, $name, '0917'.substr(md5($name), 0, 7), $day);
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => $day, 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee('Pedro Reyes')->assertDontSee('Maria Santos')->assertDontSee('Last listed')->assertSee('Whole month');
     }
 
     public function test_a_search_with_no_match_says_so_and_a_cra_cannot_search_another_cras_list(): void

@@ -138,6 +138,15 @@
             @endif
         </td>
     @endisset
+    @isset($listedDays)
+        {{-- Exclusive Lead Tracker, whole month: the real day it was last on a list, and how many days it was on one --}}
+        @php($listedDay = $listedDays[$lead->id] ?? null)
+        <td data-col="last_listed" class="px-4 py-3 whitespace-nowrap tabular-nums">
+            @if ($listedDay)
+                {{ \Carbon\CarbonImmutable::parse($listedDay['last'])->format('M j') }}@if ($listedDay['count'] > 1) · {{ $listedDay['count'] }} days @endif
+            @endif
+        </td>
+    @endisset
     @foreach ($visibleOptional as $key => $column)
         <td data-col="{{ $key }}" class="px-4 py-3">
             @switch($key)
