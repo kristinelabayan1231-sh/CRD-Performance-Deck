@@ -12,13 +12,16 @@ use App\Services\LeadFollowUps;
 use App\Services\LeadGenerator;
 use App\Support\ExclusiveLimits;
 use App\Support\WorkingDate;
+use App\Support\XlsxFile;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * The Exclusive Lead Tracker page: an exclusive CRA's daily list (same table, filters and Pending full view as the
@@ -47,8 +50,7 @@ class ExclusiveLeadController extends Controller
         $canManageSettings = $user->can('exclusive_leads.manage');
         $canSetLimits = $user->can('exclusive_leads.limits');
 
-        $exclusiveCras = User::query()->whereNotNull('exclusive_from')->where('is_active', true)
-            ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
+        $exclusiveCras = $this->exclusiveCras();
         $visibleCras = $canViewAll ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
 
         $filters = $request->validate([
@@ -147,6 +149,7 @@ class ExclusiveLeadController extends Controller
             'products' => Product::crd()->orderBy('name')->pluck('name'),
             'listedDays' => $listDetails['days'] ?? null,
             'sources' => $listDetails['sources'] ?? ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
+            'exportUrl' => route('exclusive-leads.export', array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
@@ -176,6 +179,81 @@ class ExclusiveLeadController extends Controller
             'nextMonth' => $month->addMonth()->startOfMonth()->lessThanOrEqualTo($today) ? $month->addMonth()->format('Y-m') : null,
             'canPrev' => $month->startOfMonth()->greaterThan($first->startOfMonth()),
         ]);
+    }
+
+    /**
+     * The month's whole list as an Excel file: every lead on the CRA's lists so far, each once, Pending and Catered
+     * together, in the order of the Whole month view. It keeps the Type and Product picked.
+     */
+    public function export(Request $request, ExclusiveLeads $exclusive): BinaryFileResponse
+    {
+        $user = $request->user();
+        $filters = $request->validate([
+            'cra' => ['nullable', 'integer'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
+            'product' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $exclusiveCras = $this->exclusiveCras();
+        $visibleCras = $user->can('exclusive_leads.view_all') ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
+        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
+        abort_unless($cra, 404);
+
+        $requestedMonth = isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : WorkingDate::realToday();
+        $month = $requestedMonth->startOfMonth()->max($cra->exclusive_from->addDays(WorkingDate::lagDays())->startOfMonth());
+        $from = $month->startOfMonth();
+        $to = $month->endOfMonth()->startOfDay();
+        $details = $exclusive->listDetailsBetween($cra, $from, $to);
+
+        $leads = $this->narrowed($exclusive->leadsBetween($cra, $from, $to), $filters)->with('assignee')
+            ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
+            ->orderBy('customer_name')
+            ->orderByDesc('listed_on')
+            ->orderBy('id')
+            ->lazy(1000)
+            ->map(function (Lead $lead) use ($details) {
+                $listed = $details['days'][$lead->id] ?? null;
+                $source = $details['sources'][$lead->id] ?? null;
+
+                return [
+                    $lead->customer_name,
+                    $lead->qty,
+                    $lead->product_name,
+                    (string) $lead->phone_number,
+                    $lead->delivered_date,
+                    $lead->daysSinceDelivered(),
+                    $lead->est_out_of_stock_date,
+                    $lead->recommendedReplenishmentDay(),
+                    $lead->typeLabel(),
+                    $lead->assignee?->displayName(),
+                    $lead->isProcessed() ? 'Catered' : 'Pending',
+                    $lead->statusLabel(),
+                    self::SOURCE_LABELS[$source] ?? $source,
+                    $listed ? CarbonImmutable::parse($listed['last']) : null,
+                    $listed['count'] ?? null,
+                ];
+            });
+
+        $path = XlsxFile::write([
+            'Customer Name', 'Qty', 'Product', 'Contact #', 'Delivered Date', 'Days since Delivered', 'Est. Out of Stock',
+            'Recommended Replenishment Day', 'Type', 'Assigned to', 'List', 'Status', 'Listed as', 'Last Listed', 'Days on a List',
+        ], $leads);
+
+        return response()->download($path, 'exclusive-leads-'.Str::slug($cra->displayName()).'-'.$month->format('Y-m').'.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend();
+    }
+
+    /**
+     * Every active CRA on the page, by name.
+     *
+     * @return Collection<int, User>
+     */
+    private function exclusiveCras(): Collection
+    {
+        return User::query()->whereNotNull('exclusive_from')->where('is_active', true)
+            ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
     }
 
     /**

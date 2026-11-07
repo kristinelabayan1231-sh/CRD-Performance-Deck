@@ -13,7 +13,9 @@ use App\Services\ExclusiveLeads;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
+use ZipArchive;
 
 class ExclusiveLeadPageTest extends TestCase
 {
@@ -250,6 +252,98 @@ class ExclusiveLeadPageTest extends TestCase
 
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $regina->id, 'view' => 'month']))
             ->assertOk()->assertDontSee('Maria Cruz');
+    }
+
+    /**
+     * The sheet's rows as text, read back from the downloaded file.
+     *
+     * @return list<list<string>>
+     */
+    private function downloadedRows(TestResponse $response): array
+    {
+        $path = $response->assertOk()->baseResponse->getFile()->getPathname();
+        $zip = new ZipArchive;
+        $this->assertTrue($zip->open($path));
+        $sheet = simplexml_load_string($zip->getFromName('xl/worksheets/sheet1.xml'));
+        $zip->close();
+        unlink($path);
+
+        $rows = [];
+        foreach ($sheet->sheetData->row as $row) {
+            $cells = [];
+            foreach ($row->c as $cell) {
+                $cells[] = (string) ($cell->is->t ?? $cell->v);
+            }
+            $rows[] = $cells;
+        }
+
+        return $rows;
+    }
+
+    public function test_the_excel_file_has_the_whole_months_list_whichever_day_is_open(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $carried = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-11-03');
+        $catered = $this->lead($joanna, 'Pedro Reyes', '09177654321', '2026-11-05');
+        $catered->forceFill(['status' => 'active', 'contact_date' => '2026-11-05'])->save();
+        $lastMonth = $this->lead($joanna, 'Ana Lastmonth', '09170002222', '2026-10-30');
+        $pos = $this->lead($joanna, 'Rico Possale', '09170003333', '2026-11-05');
+        foreach ([[$carried, '2026-11-03', ExclusiveLeads::HANDLED], [$carried, '2026-11-04', ExclusiveLeads::LEFTOVER], [$catered, '2026-11-05', ExclusiveLeads::HANDLED], [$lastMonth, '2026-10-30', ExclusiveLeads::HANDLED], [$pos, '2026-11-05', ExclusiveLeads::POS]] as [$lead, $day, $source]) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => $day, 'lead_id' => $lead->id, 'source' => $source]);
+        }
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee(route('exclusive-leads.export', ['cra' => $joanna->id, 'month' => '2026-11']));
+
+        $rows = $this->downloadedRows($this->actingAs($joanna)->get(route('exclusive-leads.export', ['month' => '2026-11'])));
+
+        $this->assertCount(3, $rows);
+        $this->assertSame('Contact #', $rows[0][3]);
+        $this->assertSame(['Maria Santos', '09171234567', 'Pending', 'Leftover', '2'], [$rows[1][0], $rows[1][3], $rows[1][10], $rows[1][12], $rows[1][14]]);
+        $this->assertSame(['Pedro Reyes', 'Catered', 'Active'], [$rows[2][0], $rows[2][10], $rows[2][11]]);
+    }
+
+    public function test_the_excel_file_is_the_cras_own_unless_they_oversee_and_keeps_the_filters(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $crd = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
+        $fsd = $this->lead($joanna, 'Pedro Reyes', '09170000002', '2026-11-05');
+        $fsd->update(['lead_type' => Lead::TYPE_FSD]);
+        $others = $this->lead($regina, 'Maria Cruz', '09170000003', '2026-11-05');
+        foreach ([[$joanna, $crd], [$joanna, $fsd], [$regina, $others]] as [$cra, $lead]) {
+            ExclusiveListLead::create(['user_id' => $cra->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+        $names = fn (TestResponse $response) => array_column(array_slice($this->downloadedRows($response), 1), 0);
+
+        $this->assertSame(['Maria Santos', 'Pedro Reyes'], $names($this->actingAs($joanna)->get(route('exclusive-leads.export', ['cra' => $regina->id]))));
+        $this->assertSame(['Pedro Reyes'], $names($this->actingAs($joanna)->get(route('exclusive-leads.export', ['type' => Lead::TYPE_FSD]))));
+        $this->assertSame(['Maria Cruz'], $names($this->actingAs($this->user(Role::CRA_SUPERVISOR, 'Lead'))->get(route('exclusive-leads.export', ['cra' => $regina->id]))));
+    }
+
+    public function test_a_cra_not_on_the_page_has_no_excel_file(): void
+    {
+        $this->actingAs($this->user(Role::CRA, 'Regina'))->get(route('exclusive-leads.export'))->assertNotFound();
+    }
+
+    public function test_the_excel_file_survives_special_characters_and_does_not_run_formulas(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $lead = $this->lead($joanna, "=SUM(A1) <Ana> & \x07Co", '09170000001', '2026-11-05');
+        ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+
+        $rows = $this->downloadedRows($this->actingAs($joanna)->get(route('exclusive-leads.export')));
+
+        $this->assertSame('=SUM(A1) <Ana> & Co', $rows[1][0]);
+    }
+
+    public function test_the_segmentation_tracker_has_no_excel_button(): void
+    {
+        $regina = $this->user(Role::CRA, 'Regina');
+        $this->lead($regina, 'Maria Santos', '09170000001', '2026-11-06');
+
+        $this->actingAs($regina)->get(route('segmentation.index', ['date' => '2026-11-06']))
+            ->assertOk()->assertDontSee('Download the whole month');
     }
 
     public function test_a_day_still_shows_only_that_days_leads(): void
