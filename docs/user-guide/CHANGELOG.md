@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-07 · Exclusive Lead Tracker · Exclusive CRAs get the on-duty pop-up here: it opens by itself until they log in for the day, and a My schedule button sets days off, same as the Segmentation Tracker · shots: none
 - 2026-11-06 · Dashboard, Customer Database → Churn, Presentation Board · Churn rate now counts only customers a CRA reached out to at least once (a contact date, a status a CRA set, or a logged attempt) with no order since and not marked as bought or Reserve. Everyone else due with no order in time is For reactivation, shown separately and not in the rate. A cold lead still being retried now counts as due. The Churn list gets a For reactivation tile and filter · shots: dashboard, customer-churn
 - 2026-11-07 · Presentation Board · FSD leads use the delivery's saved quantity for their out-of-stock month; the rates chart says Deliveries instead of Shecom deliveries before October · shots: presentation-board
 - 2026-11-07 · Presentation Board · Dotted numbers open the customers behind them: leads, waiting, added, retained and repeat open a new customer list; churned, came back and for reactivation open Customer Database → Churn; sales and orders open the orders list · shots: presentation-board

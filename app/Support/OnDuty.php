@@ -12,7 +12,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Once;
 
 /**
- * CRAs on duty: the CRAs who logged in from the Segmentation Tracker on a real day (not the working date).
+ * CRAs on duty: the CRAs who logged in from the Segmentation or Exclusive Lead Tracker on a real day (not the working date).
  * The Report Summary divides by this count for Average sales and Average IBSC per CRA.
  */
 class OnDuty
@@ -29,7 +29,7 @@ class OnDuty
     }
 
     /**
-     * Whether $user is a CRA who hasn't logged in today (the Segmentation Tracker asks them to), unless today is a
+     * Whether $user is a CRA who hasn't logged in today (their tracker asks them to), unless today is a
      * day off they set in My schedule.
      */
     public static function needsLogin(User $user): bool

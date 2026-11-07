@@ -6,6 +6,13 @@
             <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· Pick a day on the calendar, then update the leads below.</span></h1>
 
             <div class="flex flex-wrap items-center gap-3 text-sm">
+                @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
+                    {{-- Opens the on-duty pop-up: log in for today, and the calendar to set days off ahead --}}
+                    <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
+                        My schedule
+                    </button>
+                @endif
                 @if ($cra && $canViewAll && $cras->count() > 1)
                     <form method="GET" action="{{ route('exclusive-leads.index') }}">
                         <label class="sr-only" for="exclusive-cra">CRA</label>

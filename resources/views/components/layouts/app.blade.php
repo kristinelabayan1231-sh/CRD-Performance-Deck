@@ -195,7 +195,7 @@
     </div>
 
     {{-- A CRA's on-duty pop-up (log in for today + My schedule): opens by itself until they log in, and after saving the schedule --}}
-    @if (request()->routeIs('segmentation.*') && $user->role?->slug === \App\Models\Role::CRA)
+    @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && $user->role?->slug === \App\Models\Role::CRA)
         <x-on-duty-prompt :open="\App\Support\OnDuty::needsLogin($user) || session('schedule_open') || $errors->has('dates') || $errors->has('dates.*')" />
     @endif
 </body>
