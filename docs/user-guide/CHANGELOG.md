@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-07 · Presentation Board customer list, Customer Database → Churn, Confirmed Orders · Search box (name, contact number, order #; product too on the two customer lists) and a Show filter (All customers, High AOV, VIP), with HIGH AOV and VIP pills on each customer. Churn's tiles keep the dates' totals; Confirmed Orders' totals follow the filters · shots: customer-churn
+- 2026-11-07 · Presentation Board · "Based on real POS data" label beside the month range at the top of the board · shots: presentation-board
 - 2026-11-07 · Exclusive Lead Tracker · Each day before leftovers carry over, an untouched lead that isn't the CRA's by the rules leaves them: a customer another CRA owns goes to that CRA, a CRD lead with no reason to be theirs goes back to the pool · shots: none
 - 2026-11-07 · Exclusive Lead Tracker · Same search and filters as the Segmentation Tracker (CRA, Type, Product, Month, Date, Range, Columns), and Pending's full view has the same tabs: Call back for today, Reactivation, Reserved and Reserved - Pancake. Call back for today moved from the page into that tab · shots: exclusive lead tracker
 - 2026-11-07 · Exclusive Lead Tracker · Random leads are FSD leads only; CRD leads no other CRA owns stay for the Segmentation Tracker · shots: none

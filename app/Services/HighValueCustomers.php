@@ -40,6 +40,13 @@ class HighValueCustomers
         'orders' => 'Per order',
     ];
 
+    /** The filter on other customer lists: everyone on the list, or just its High AOV or VIP customers. */
+    public const SHOW = [
+        'all' => 'All customers',
+        'high_aov' => 'High AOV',
+        'vip' => 'VIP',
+    ];
+
     public function __construct(private CustomerDatabase $customers) {}
 
     /**
@@ -545,6 +552,25 @@ class HighValueCustomers
             ->filter(fn (string $primary) => isset($listed[$primary]))
             ->map(fn (string $primary) => collect($listed[$primary])->only(['high_aov', 'vip', 'vip_products'])->all())
             ->all();
+    }
+
+    /**
+     * Just the list rows whose customer is on $show (a SHOW key). Lists keep the customer's number first.
+     *
+     * @template TRow of array
+     *
+     * @param  list<TRow>  $rows
+     * @return list<TRow>
+     */
+    public function rowsShown(array $rows, string $show): array
+    {
+        if ($show === 'all' || $rows === []) {
+            return $rows;
+        }
+
+        $flags = $this->flagsForNumbers(array_values(array_unique(array_map(fn (array $row) => (string) $row[0], $rows))));
+
+        return array_values(array_filter($rows, fn (array $row) => $flags[$row[0]][$show] ?? false));
     }
 
     /**

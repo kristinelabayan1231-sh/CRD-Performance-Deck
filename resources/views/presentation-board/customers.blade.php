@@ -3,10 +3,17 @@
         <header class="flex flex-wrap items-center justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">{{ $title }} <span class="text-sm font-normal text-muted">· {{ $rangeLabel }}</span></h1>
-                <p class="text-sm text-muted">{{ number_format($customers->total()) }} {{ Str::plural('customer', $customers->total()) }}, the same ones the board counts. A customer in two months is listed in each.</p>
+                @if ($customers->total() === $listedCount)
+                    <p class="text-sm text-muted">{{ number_format($customers->total()) }} {{ Str::plural('customer', $customers->total()) }}, the same ones the board counts. A customer in two months is listed in each.</p>
+                @else
+                    <p class="text-sm text-muted">{{ number_format($customers->total()) }} of the {{ number_format($listedCount) }} the board counts. A customer in two months is listed in each.</p>
+                @endif
             </div>
             <a href="{{ route('presentation-board.index', ['from' => $from, 'to' => $to]) }}" class="text-sm font-semibold text-brand-600 hover:underline">&larr; Presentation Board</a>
         </header>
+
+        @php($listQuery = ['metric' => $filters['metric'], 'from' => $from, 'to' => $to])
+        <x-customer-list-filters :action="route('presentation-board.customers')" :filters="$filters" :hidden="$listQuery" :clear-url="route('presentation-board.customers', $listQuery)" />
 
         <div class="overflow-x-auto rounded-2xl border border-line bg-white shadow-sm">
             <table class="w-full text-sm">
@@ -28,6 +35,7 @@
                                 @else
                                     <span class="font-medium">{{ $customer['name'] }}</span>
                                 @endcan
+                                @include('customers._value-pill', ['flags' => $highValue[$customer['customer']] ?? []])
                                 <span class="block text-xs text-muted">{{ $customer['phone'] }}</span>
                             </td>
                             <td class="px-4 py-3">{{ $customer['product'] }}</td>
@@ -36,7 +44,7 @@
                             <td class="px-4 py-3">{{ \Carbon\CarbonImmutable::parse($customer['day'])->format('M j, Y') }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-muted">No customers in these months.</td></tr>
+                        <tr><td colspan="5" class="px-4 py-8 text-center text-muted">{{ $listedCount ? 'No customers match.' : 'No customers in these months.' }}</td></tr>
                     @endforelse
                 </tbody>
             </table>

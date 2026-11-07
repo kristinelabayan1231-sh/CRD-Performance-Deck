@@ -458,6 +458,77 @@ class PresentationBoardTest extends TestCase
         $this->assertSame([LeadGenerator::normalizePhone('09171234567')], array_column($board->listed('repeat', '2026-10', '2026-10'), 0));
     }
 
+    /**
+     * Three customers delivered on $delivered: a High AOV one, a VIP and a plain one, with their names, on team $team.
+     *
+     * @return array{high_aov: string, vip: string, plain: string} order ids
+     */
+    private function valuedCustomers(string $delivered): array
+    {
+        // The ₱500 product's CLTV is ₱5,000 here: Vina reached it, Ana's ₱2,500 is only High AOV.
+        config(['customers.high_aov_min' => 2000, 'customers.cltv_units' => 10]);
+        $orders = [];
+        foreach ([['high_aov', '9171111111', 'Ana Cruz', 2500, 1], ['vip', '9172222222', 'Vina Lim', 15000, 2], ['plain', '9173333333', 'Ben Reyes', 500, 1]] as [$key, $phone, $name, $total, $qty]) {
+            $orders[$key] = $this->delivery($phone, $delivered, LogisticsOrder::TEAM_CRD, qty: $qty);
+            LogisticsOrder::where('order_id', $orders[$key])->update(['customer_name' => $name]);
+            PancakeOrder::where('pancake_order_id', $orders[$key])->update(['total_price' => $total, 'customer_name' => $name, 'conversion_type' => PancakeOrder::SEGMENTATION]);
+            DeliveredOrder::create(['order_id' => $orders[$key], 'source' => DeliveredOrder::SOURCE_SHECOM, 'customer_name' => $name, 'phone_number' => $phone, 'product_raw' => 'Sinuxyl', 'qty' => $qty, 'delivered_date' => $delivered]);
+        }
+
+        return $orders;
+    }
+
+    public function test_a_board_customer_list_can_be_searched_and_narrowed_to_high_aov_or_vip(): void
+    {
+        $orders = $this->valuedCustomers('2026-02-03');
+        // 2 units run out a month later, so the range covers both months.
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+        $query = ['metric' => 'crd_leads', 'from' => '2026-03', 'to' => '2026-08'];
+        $list = fn (array $extra = []) => $this->actingAs($this->supervisor)->get(route('presentation-board.customers', [...$query, ...$extra]))->assertOk();
+
+        $list()->assertSee('Ana Cruz')->assertSee('Vina Lim')->assertSee('Ben Reyes')->assertSee('HIGH AOV')->assertSee('VIP');
+        $list(['show' => 'high_aov'])->assertSee('Ana Cruz')->assertDontSee('Ben Reyes')->assertSee('2 of the 3 the board counts');
+        $list(['show' => 'vip'])->assertSee('Vina Lim')->assertDontSee('Ana Cruz')->assertDontSee('Ben Reyes');
+
+        $list(['search' => 'ana cr'])->assertSee('Ana Cruz')->assertDontSee('Ben Reyes')->assertDontSee('Vina Lim');
+        $list(['search' => '0917 333 3333'])->assertSee('Ben Reyes')->assertDontSee('Ana Cruz');
+        $list(['search' => $orders['vip']])->assertSee('Vina Lim')->assertDontSee('Ana Cruz');
+        $list(['search' => 'sinuxyl'])->assertSee('Ana Cruz')->assertSee('Ben Reyes');
+        $list(['search' => 'nobody here'])->assertSee('No customers match.');
+        // Together they narrow further.
+        $list(['search' => 'ben', 'show' => 'high_aov'])->assertSee('No customers match.');
+
+        $this->get(route('presentation-board.customers', [...$query, 'show' => 'everyone']))->assertSessionHasErrors('show');
+    }
+
+    public function test_the_churn_list_is_searched_and_filtered_but_its_tiles_keep_the_totals(): void
+    {
+        $this->valuedCustomers('2026-09-01');
+        $churn = fn (array $extra = []) => $this->actingAs($this->supervisor)->get(route('customers.churn', ['from' => '2026-10-01', 'to' => '2026-11-06', ...$extra]))->assertOk();
+
+        $churn()->assertSee('Ana Cruz')->assertSee('Ben Reyes')->assertSee('HIGH AOV');
+        $due = $churn()->viewData('counts')['due'];
+
+        $churn(['show' => 'high_aov'])->assertSee('Ana Cruz')->assertDontSee('Ben Reyes')->assertViewHas('counts', fn (array $counts) => $counts['due'] === $due);
+        $churn(['search' => 'ben'])->assertSee('Ben Reyes')->assertDontSee('Ana Cruz');
+        // The tiles keep the search on when switching status.
+        $churn(['search' => 'ben'])->assertSee('search=ben', false);
+    }
+
+    public function test_confirmed_orders_are_searched_and_filtered_and_the_totals_follow(): void
+    {
+        $orders = $this->valuedCustomers('2026-10-05');
+        $list = fn (array $extra = []) => $this->actingAs($this->supervisor)->get(route('conversion.orders', ['from' => '2026-10-01', 'to' => '2026-10-31', ...$extra]))->assertOk();
+
+        $list()->assertViewHas('count', 3)->assertSee('HIGH AOV');
+        $list(['show' => 'high_aov'])->assertViewHas('count', 2)->assertSee('Ana Cruz')->assertDontSee('Ben Reyes');
+        $list(['show' => 'vip'])->assertViewHas('count', 1)->assertViewHas('gross', 15000.0)->assertSee('Vina Lim')->assertDontSee('Ana Cruz');
+        $list(['search' => 'ben'])->assertViewHas('count', 1)->assertSee('Ben Reyes')->assertDontSee('Ana Cruz');
+        $list(['search' => '9171111111'])->assertSee('Ana Cruz')->assertDontSee('Ben Reyes');
+        $list(['search' => $orders['plain']])->assertSee('Ben Reyes')->assertDontSee('Vina Lim');
+    }
+
     public function test_the_customer_list_needs_the_permission_and_a_known_figure(): void
     {
         $query = ['metric' => 'fsd_leads', 'from' => '2026-03', 'to' => '2026-03'];
