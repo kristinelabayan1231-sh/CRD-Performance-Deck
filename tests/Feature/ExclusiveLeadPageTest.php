@@ -473,6 +473,23 @@ class ExclusiveLeadPageTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_the_call_button_dials_from_the_exclusive_list_on_the_cras_linked_phone(): void
+    {
+        $webhook = 'https://trigger.macrodroid.com/joanna-phone/call';
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $joanna->forceFill(['call_webhook_url' => $webhook])->save();
+        $lead = $this->lead($joanna, 'Maria Santos', '9171234567', '2026-11-05');
+        ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee('data-call-url="'.route('segmentation.call', $lead).'"', false);
+        $this->actingAs($joanna)->postJson(route('segmentation.call', $lead))->assertOk();
+
+        Http::assertSent(fn (ClientRequest $request) => $request->url() === "{$webhook}?number=09171234567&lead={$lead->id}");
+    }
+
     public function test_the_segmentation_tracker_has_no_tag_column(): void
     {
         $regina = $this->user(Role::CRA, 'Regina');

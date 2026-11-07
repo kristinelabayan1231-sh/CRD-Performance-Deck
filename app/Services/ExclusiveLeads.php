@@ -226,6 +226,12 @@ class ExclusiveLeads
             ->concat(Lead::whereIn('id', LeadMove::where('assigned_to', $cra->id)->whereDate('listed_on', $day)->select('lead_id'))->whereNotIn('id', $onList)->get($columns))
             ->unique('id');
 
+        // Another CRA's High AOV / VIP customers stay theirs: even the CRA's own sale to one doesn't go on the list.
+        $highValueCras = rescue(fn () => $this->highValue->crasFor(
+            $leads->map(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))->filter()->unique()->values()->all(),
+        ), []);
+        $leads = $leads->reject(fn (Lead $lead) => ($highValueCras[LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? $cra->id) !== $cra->id);
+
         if ($leads->isEmpty()) {
             return 0;
         }
