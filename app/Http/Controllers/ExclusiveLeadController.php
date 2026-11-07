@@ -151,6 +151,7 @@ class ExclusiveLeadController extends Controller
             ],
             'products' => Product::crd()->orderBy('name')->pluck('name'),
             'listedDays' => $listDetails['days'] ?? null,
+            'taggedCustomers' => $exclusive->taggedCustomers(),
             'upcomingCount' => count($upcoming),
             'sources' => isset($listDetails) ? $listDetails['sources'] + $upcoming : ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
             'exportUrl' => route('exclusive-leads.export', $wholeList = array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
@@ -195,10 +196,11 @@ class ExclusiveLeadController extends Controller
         ['cra' => $cra, 'month' => $month, 'leads' => $list] = $this->monthList($request, $exclusive);
         $details = $exclusive->listDetailsBetween($cra, $month->startOfMonth(), $month->endOfMonth()->startOfDay());
         $upcoming = $exclusive->upcomingSources($cra, $month);
+        $taggedCustomers = $exclusive->taggedCustomers();
 
         $leads = $list->with('assignee')
             ->lazy(1000)
-            ->map(function (Lead $lead) use ($details, $upcoming) {
+            ->map(function (Lead $lead) use ($details, $upcoming, $taggedCustomers) {
                 $listed = $details['days'][$lead->id] ?? null;
                 $source = $details['sources'][$lead->id] ?? $upcoming[$lead->id] ?? null;
 
@@ -218,12 +220,13 @@ class ExclusiveLeadController extends Controller
                     self::SOURCE_LABELS[$source] ?? $source,
                     $listed ? CarbonImmutable::parse($listed['last']) : null,
                     $listed['count'] ?? null,
+                    isset($taggedCustomers[LeadGenerator::normalizePhone((string) $lead->phone_number)]) ? config('exclusive_leads.order_tag.name') : null,
                 ];
             });
 
         $path = XlsxFile::write([
             'Customer Name', 'Qty', 'Product', 'Contact #', 'Delivered Date', 'Days since Delivered', 'Est. Out of Stock',
-            'Recommended Replenishment Day', 'Type', 'Assigned to', 'List', 'Status', 'Listed as', 'Last Listed', 'Days on a List',
+            'Recommended Replenishment Day', 'Type', 'Assigned to', 'List', 'Status', 'Listed as', 'Last Listed', 'Days on a List', 'Tag',
         ], $leads);
 
         return response()->download($path, 'exclusive-leads-'.Str::slug($cra->displayName()).'-'.$month->format('Y-m').'.xlsx', [

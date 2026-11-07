@@ -467,6 +467,94 @@ class PancakeClient
     }
 
     /**
+     * Add a tag to one POS order, keeping its other tags, then read the order back to confirm the tags saved and that its
+     * status, amount, number and items didn't change. Never retried, since it writes to Pancake. An order that already
+     * has the tag isn't written.
+     *
+     * @return array{before: list<int>, after: list<int>}
+     *
+     * @throws RuntimeException when the order can't be found, the update is refused, or the read-back doesn't match
+     */
+    public function addOrderTag(string $orderNumber, int $tagId): array
+    {
+        $orderId = $this->ordersByNumber([$orderNumber])[0]['id'] ?? null;
+
+        if ($orderId === null) {
+            throw new RuntimeException($this->lastLookupFailures > 0
+                ? "Couldn't reach Pancake to find order #{$orderNumber}. Nothing was changed."
+                : "Order #{$orderNumber} wasn't found in Pancake. Nothing was changed.");
+        }
+
+        $url = $this->posOrderUrl($orderId);
+        $before = $this->readOrder($url, $orderNumber);
+        $tagsBefore = self::tagIds($before);
+
+        if (in_array($tagId, $tagsBefore, true)) {
+            return ['before' => $tagsBefore, 'after' => $tagsBefore];
+        }
+
+        $tagsWanted = [...$tagsBefore, $tagId];
+        $response = Http::connectTimeout(10)->timeout(60)->put($url, ['tags' => $tagsWanted]);
+
+        if ($response->failed() || ! $response->json('success')) {
+            throw new RuntimeException("Pancake refused the tag on order #{$orderNumber} (HTTP {$response->status()}): ".($response->json('message') ?? 'unknown error'));
+        }
+
+        $after = $this->readOrder($url, $orderNumber);
+        $tagsAfter = self::tagIds($after);
+
+        if (array_diff($tagsWanted, $tagsAfter) !== [] || array_diff($tagsAfter, $tagsWanted) !== []) {
+            throw new RuntimeException("Order #{$orderNumber}'s tags didn't save as expected. Check the order in Pancake: it had [".implode(', ', $tagsBefore).'] and now has ['.implode(', ', $tagsAfter).'].');
+        }
+
+        $changed = collect(['status', 'total_price', 'bill_phone_number'])
+            ->reject(fn (string $field) => ($before[$field] ?? null) == ($after[$field] ?? null))
+            ->when(count($before['items'] ?? []) !== count($after['items'] ?? []), fn ($fields) => $fields->push('items'));
+
+        if ($changed->isNotEmpty()) {
+            throw new RuntimeException("The tag saved on order #{$orderNumber}, but its {$changed->implode(', ')} also changed. Check the order in Pancake.");
+        }
+
+        return ['before' => $tagsBefore, 'after' => $tagsAfter];
+    }
+
+    /**
+     * One POS order by its internal id's URL; Pancake's search lags behind a write, so the read-back can't use it.
+     *
+     * @return array<string, mixed>
+     */
+    private function readOrder(string $url, string $orderNumber): array
+    {
+        $response = Http::connectTimeout(10)->timeout(60)->retry(3, 1000, throw: false)->get($url);
+        $order = $response->json('data');
+
+        if ($response->failed() || ! $response->json('success') || ! is_array($order)) {
+            throw new RuntimeException("Couldn't read order #{$orderNumber} from Pancake (HTTP {$response->status()}). Check the order in Pancake.");
+        }
+
+        return $order;
+    }
+
+    /**
+     * @param  array<string, mixed>  $order
+     * @return list<int>
+     */
+    private static function tagIds(array $order): array
+    {
+        return collect($order['tags'] ?? [])
+            ->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))
+            ->filter()->values()->all();
+    }
+
+    /**
+     * The URL of one POS order by its internal id (the order number is refused here), with the shop's credentials.
+     */
+    private function posOrderUrl(int|string $orderId): string
+    {
+        return str_replace('/orders?', "/orders/{$orderId}?", $this->posOrdersUrl([], []));
+    }
+
+    /**
      * The order numbers of every POS order created on one Pancake page in $month (segmentation timezone).
      *
      * @return list<string>

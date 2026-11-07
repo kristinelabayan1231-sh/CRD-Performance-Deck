@@ -135,6 +135,14 @@ function initAutosave() {
                     flash(cell, true);
                 });
             }
+            // Exclusive Lead Tracker's Tag column: once added in Pancake, the dropdown becomes the tag's pill.
+            if (field.name === 'order_tag' && result.order_tag) {
+                const pill = document.createElement('span');
+                pill.className = 'rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700';
+                pill.textContent = result.order_tag;
+                form.replaceWith(pill);
+                return;
+            }
             // Optionally mirror a returned value elsewhere on the page (e.g. a renamed user).
             if (form.dataset.updateText && result.display_name !== undefined) {
                 document.querySelectorAll(form.dataset.updateText).forEach((el) => (el.textContent = result.display_name));

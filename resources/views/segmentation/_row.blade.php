@@ -147,6 +147,24 @@
             @endif
         </td>
     @endisset
+    @isset($taggedCustomers)
+        {{-- Exclusive Lead Tracker: the POS order tag when one of the customer's orders has it, else a dropdown that adds it to the lead's order in Pancake --}}
+        <td data-col="order_tag" class="px-4 py-3">
+            @isset($taggedCustomers[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)])
+                <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700">{{ config('exclusive_leads.order_tag.name') }}</span>
+            @else
+                {{-- Everyone who can see this page's rows can tag them: a CRA sees only their own, supervisors every exclusive CRA's --}}
+                <form method="POST" action="{{ route('exclusive-leads.order-tag', $lead) }}" data-autosave>
+                    @csrf
+                    <select name="order_tag" aria-label="Add a POS tag to the order of {{ $lead->customer_name }}"
+                            class="h-9 max-w-64 rounded-full border-0 bg-canvas px-3 text-xs font-semibold text-muted focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        <option value="" class="bg-white text-ink">— Add tag —</option>
+                        <option value="{{ config('exclusive_leads.order_tag.id') }}" class="bg-white text-ink">{{ config('exclusive_leads.order_tag.name') }}</option>
+                    </select>
+                </form>
+            @endisset
+        </td>
+    @endisset
     @foreach ($visibleOptional as $key => $column)
         <td data-col="{{ $key }}" class="px-4 py-3">
             @switch($key)
