@@ -329,6 +329,27 @@ class ExclusiveLeads
     }
 
     /**
+     * The CRA's leads matching $term (name, contact # or order #) on any day: their lists' and any lead they hold.
+     */
+    public function search(User $cra, string $term): Builder
+    {
+        return Lead::query()
+            ->where(fn (Builder $q) => $q->where('assigned_to', $cra->id)
+                ->orWhereIn('id', ExclusiveListLead::where('user_id', $cra->id)->select('lead_id')))
+            ->search($term);
+    }
+
+    /**
+     * Why each lead was last on the CRA's list, for search results across days.
+     *
+     * @return Collection<int, string> lead id => source
+     */
+    public function latestSources(User $cra): Collection
+    {
+        return ExclusiveListLead::where('user_id', $cra->id)->orderBy('list_date')->pluck('source', 'lead_id');
+    }
+
+    /**
      * Why each lead is on the CRA's list for $day.
      *
      * @return Collection<int, string> lead id => source

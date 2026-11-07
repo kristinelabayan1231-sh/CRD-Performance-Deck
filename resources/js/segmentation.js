@@ -123,8 +123,8 @@ function initAutosave() {
                 renderFeedback(feedback, result.feedbacks);
                 if (checkedFeedbacks(feedback).join() !== before) flash(feedback.querySelector('[popovertarget]'), true);
             }
-            // A customer tag sets the Date and Time of contact: show them in the same row.
-            if (field.name === 'customer_tag') {
+            // A customer tag, or an exclusive CRA's Repeat Purchase, sets the Date and Time of contact: show them in the same row.
+            if (['customer_tag', 'repeat_purchase'].includes(field.name)) {
                 const row = field.closest('tr');
                 [['input[name=contact_date]', result.contact_date], ['select[name=contact_time]', result.contact_time]].forEach(([selector, value]) => {
                     const cell = row?.querySelector(selector);

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DutyLogin;
 use App\Models\DutySchedule;
+use App\Models\Lead;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\WorkingDate;
@@ -153,6 +154,80 @@ class ExclusiveLeadPageTest extends TestCase
 
         $this->actingAs($notLoggedIn->fresh())->get(route('segmentation.index'))->assertRedirect(route('exclusive-leads.index'));
         $this->actingAs($notLoggedIn->fresh())->get(route('exclusive-leads.index'))->assertOk()->assertSeeText('Log in for today?');
+    }
+
+    private function lead(User $cra, string $name, string $phone, string $day): Lead
+    {
+        return Lead::create([
+            'order_id' => 'S'.$phone, 'customer_name' => $name, 'phone_number' => $phone,
+            'product_name' => 'Pterygium', 'qty' => 1, 'delivered_date' => '2026-06-01', 'consumption_days' => 30,
+            'est_out_of_stock_date' => $day, 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $cra->id,
+        ]);
+    }
+
+    public function test_search_finds_the_cras_leads_on_any_day_by_name_or_contact_and_not_another_cras(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $this->lead($joanna, 'Maria Santos', '09171234567', '2026-10-03');
+        $this->lead($joanna, 'Pedro Reyes', '09177654321', '2026-10-04');
+        $this->lead($regina, 'Maria Cruz', '09170001111', '2026-10-03');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['q' => 'maria']))
+            ->assertOk()
+            ->assertSee('Search results for')
+            ->assertSee('Maria Santos')
+            ->assertDontSee('Pedro Reyes')
+            ->assertDontSee('Maria Cruz')
+            ->assertDontSee('Month goals');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['q' => '0917 765']))
+            ->assertOk()
+            ->assertSee('Pedro Reyes')
+            ->assertDontSee('Maria Santos');
+    }
+
+    public function test_an_exclusive_cras_repeat_purchase_fills_the_date_and_time_of_contact(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 10:30', 'Asia/Manila'));
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $lead = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-10-03');
+
+        $this->actingAs($joanna)->patchJson(route('segmentation.update', $lead), ['repeat_purchase' => 'yes'])
+            ->assertOk()
+            ->assertJson(['contact_date' => '2026-11-06', 'contact_time' => '10']);
+
+        $this->assertSame('2026-11-06', $lead->fresh()->contact_date->toDateString());
+        $this->assertSame('10', $lead->fresh()->contact_time);
+    }
+
+    public function test_clearing_repeat_purchase_leaves_the_contact_and_the_segmentation_tracker_stays_as_it_was(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-06 10:30', 'Asia/Manila'));
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina');
+        $exclusiveLead = $this->lead($joanna, 'Maria Santos', '09171234567', '2026-10-03');
+        $exclusiveLead->forceFill(['repeat_purchase' => 'yes', 'contact_date' => '2026-11-01', 'contact_time' => '09'])->save();
+        $segmentationLead = $this->lead($regina, 'Pedro Reyes', '09177654321', '2026-10-03');
+
+        $this->actingAs($joanna)->patchJson(route('segmentation.update', $exclusiveLead), ['repeat_purchase' => null])->assertOk();
+        $this->actingAs($regina)->patchJson(route('segmentation.update', $segmentationLead), ['repeat_purchase' => 'yes'])->assertOk();
+
+        $this->assertSame('2026-11-01', $exclusiveLead->fresh()->contact_date->toDateString());
+        $this->assertNull($segmentationLead->fresh()->contact_date);
+        $this->assertNull($segmentationLead->fresh()->contact_time);
+    }
+
+    public function test_a_search_with_no_match_says_so_and_a_cra_cannot_search_another_cras_list(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $this->lead($regina, 'Maria Cruz', '09170001111', '2026-10-03');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $regina->id, 'q' => 'maria']))
+            ->assertOk()
+            ->assertDontSee('Maria Cruz')
+            ->assertSee('No pending leads match this search.');
     }
 
     public function test_a_supervisor_is_not_asked_to_log_in_on_the_page(): void
