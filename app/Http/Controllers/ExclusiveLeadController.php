@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExclusiveLeadLimit;
 use App\Models\Lead;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
 use App\Services\LeadGenerator;
+use App\Support\ExclusiveLimits;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -38,6 +40,7 @@ class ExclusiveLeadController extends Controller
         $today = WorkingDate::realToday();
         $canViewAll = $user->can('exclusive_leads.view_all');
         $canManageSettings = $user->can('exclusive_leads.manage');
+        $canSetLimits = $user->can('exclusive_leads.limits');
 
         $exclusiveCras = User::query()->whereNotNull('exclusive_from')->where('is_active', true)
             ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
@@ -62,6 +65,11 @@ class ExclusiveLeadController extends Controller
             'canViewAll' => $canViewAll,
             'canManageSettings' => $canManageSettings,
             'settingsCras' => $canManageSettings ? $this->settingsCras($exclusiveCras) : null,
+            'canSetLimits' => $canSetLimits,
+            'limitsNow' => ExclusiveLimits::on($today),
+            'limitChanges' => $canSetLimits
+                ? ExclusiveLeadLimit::whereDate('effective_from', '>=', $today->startOfMonth())->with('setter')->orderBy('effective_from')->get()
+                : collect(),
             'today' => $today,
         ];
 
@@ -151,7 +159,7 @@ class ExclusiveLeadController extends Controller
      */
     private function quotaNote(array $metrics): ?string
     {
-        $standard = (int) config('exclusive_leads.daily_quota');
+        $standard = $metrics['limits']['daily_leads'];
         $short = collect($metrics['days'])->filter(fn (array $day) => $day['quota'] > 0 && $day['quota'] !== $standard);
         $planned = $metrics['planned'];
 

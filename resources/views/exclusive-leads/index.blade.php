@@ -1,6 +1,4 @@
 <x-layouts.app title="Exclusive Lead Tracker">
-    @php($standard = (int) config('exclusive_leads.daily_quota'))
-
     <div class="flex flex-col">
         <div class="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
             <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· Pick a day on the calendar, then update the leads below.</span></h1>
@@ -42,7 +40,7 @@
                         </select>
                     </form>
                 @endif
-                @if ($canManageSettings)
+                @if ($canManageSettings || $canSetLimits)
                     <button type="button" onclick="document.getElementById('exclusive-settings').showModal()" aria-haspopup="dialog"
                             class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
                         <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
@@ -51,6 +49,10 @@
                 @endif
             </div>
         </div>
+
+        @if ($errors->hasAny(['effective_from', 'daily_leads', 'month_target', 'orders_per_day']))
+            <p role="alert" class="mb-3 shrink-0 rounded-lg border border-coral/40 bg-coral/10 px-4 py-2 text-sm">Limits not saved. {{ $errors->first() }}</p>
+        @endif
 
         @unless ($cra)
             <div class="rounded-2xl border border-line bg-white px-6 py-12 text-center shadow-sm">
@@ -63,6 +65,7 @@
                 @endif
             </div>
         @else
+            @php($standard = $metrics['limits']['daily_leads'])
             @php($actual = $metrics['actual'])
             @php($targets = $metrics['targets'])
             @php($dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
@@ -140,7 +143,7 @@
                     <div class="grid grid-cols-3 gap-2 p-4">
                         @include('exclusive-leads._ring', ['label' => 'Leads', 'value' => $actual['listed'], 'target' => $targets['leads'], 'stroke' => 'stroke-brand-500', 'sub' => $standard.' a day'])
                         @include('exclusive-leads._ring', ['label' => 'Repeat purchases', 'value' => $actual['repeat'], 'target' => $targets['repeat'], 'stroke' => 'stroke-teal-700', 'sub' => 'Goal '.$targets['repeat_percent'].'% of leads'])
-                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => number_format($targets['confirmed_orders_per_day']).' a day × '.$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
+                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => ($metrics['limits']['orders_rate_changed'] ? 'Across ' : number_format($targets['confirmed_orders_per_day']).' a day × ').$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
                     </div>
                     <div class="grid gap-3 border-t border-line p-4 text-sm">
                         @php($aov = $actual['aov'])
@@ -249,7 +252,7 @@
         @include('segmentation._recording-dialog')
     @endif
 
-    @if ($canManageSettings)
+    @if ($canManageSettings || $canSetLimits)
         @include('exclusive-leads._settings')
         <script>
             document.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));
