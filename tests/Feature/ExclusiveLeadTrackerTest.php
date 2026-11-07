@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CustomerAccount;
 use App\Models\DutySchedule;
 use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\LogisticsOrder;
@@ -116,11 +117,11 @@ class ExclusiveLeadTrackerTest extends TestCase
         return collect(app(ExclusiveLeads::class)->month($this->joanna->fresh(), CarbonImmutable::parse($date))['days'])->firstWhere('date', $date);
     }
 
-    public function test_november_plans_6900_against_the_7000_target_and_the_goals(): void
+    public function test_november_plans_what_the_days_left_can_reach_against_the_7000_target_and_the_goals(): void
     {
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
 
-        $this->assertSame(['leads' => 6900, 'target' => 7000, 'short_of_target' => 100], $month['planned']);
+        $this->assertSame(['leads' => 6250, 'target' => 7000, 'short_of_target' => 750], $month['planned']);
         $this->assertSame(['leads' => 7000, 'repeat' => 1400, 'repeat_percent' => 20, 'confirmed_orders' => 1620, 'confirmed_orders_per_day' => 54, 'working_days' => 30, 'high_aov_min' => 895], $month['targets']);
         $this->assertSame(100, $month['days'][3]['quota']);
         $this->assertSame(20, $month['days'][3]['repeat_goal']);
@@ -171,9 +172,9 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertNull($pool->fresh()->assigned_to);
     }
 
-    public function test_the_list_fills_leftovers_then_high_aov_then_handled_twice_then_random_up_to_the_quota(): void
+    public function test_the_list_carries_leftovers_then_fills_high_aov_then_handled_twice_then_random_up_to_the_quota(): void
     {
-        config(['exclusive_leads.daily_quota' => 5]);
+        config(['exclusive_leads.daily_quota' => 4]);
 
         $random = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $belowLine = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
@@ -195,7 +196,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame('handled', $list[$handled->id]);
         $this->assertSame('random', $list[$random->id]);
         $this->assertCount(5, $list);
-        // ₱894 is under this module's line, and the last slot went to the earlier lead.
+        // The leftover doesn't use up the 4 new leads. ₱894 is under this module's line, and the last slot went to the earlier lead.
         $this->assertArrayNotHasKey($belowLine->id, $list);
         $this->assertNull($belowLine->fresh()->assigned_to);
         $this->assertSame(Lead::HIGH_VALUE_TAG, $atLine->fresh()->customer_tag);
@@ -305,7 +306,90 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $this->artisan('leads:build-exclusive')->assertSuccessful();
 
-        $this->assertCount(3, $this->listOn('2026-11-06'));
+        // The leftover plus the day's 3 new leads.
+        $this->assertCount(4, $this->listOn('2026-11-06'));
+    }
+
+    public function test_leftovers_use_up_the_quota_before_the_flat_month_starts(): void
+    {
+        config(['exclusive_leads.daily_quota' => 2, 'exclusive_leads.flat_month_from' => '2026-11-07']);
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD]);
+        $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+        $waiting = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+
+        $this->sync('2026-11-06');
+
+        $this->assertCount(2, $this->listOn('2026-11-06'));
+        $this->assertSame('leftover', $this->listOn('2026-11-06')[$leftover->id]);
+        $this->assertNull($waiting->fresh()->assigned_to);
+        $this->assertSame(0, ExclusiveReservedLead::count());
+    }
+
+    public function test_the_flat_month_hands_out_the_quota_a_day_until_the_target_and_holds_the_rest(): void
+    {
+        config(['exclusive_leads.daily_quota' => 2, 'exclusive_leads.month_target' => 3]);
+        $leads = collect(range(1, 5))->map(fn () => $this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+
+        $this->sync('2026-11-06');
+
+        $this->assertSame($leads->take(2)->pluck('id')->all(), array_keys($this->listOn('2026-11-06')));
+        $this->assertSame([$leads[2]->id], ExclusiveReservedLead::pluck('lead_id')->all());
+        $this->assertNull($leads[2]->fresh()->assigned_to);
+
+        ExclusiveListLead::where('user_id', $this->joanna->id)->get()->each(fn (ExclusiveListLead $entry) => $entry->lead->forceFill(['status' => 'active'])->save());
+        $this->sync('2026-11-07');
+
+        $this->assertSame([$leads[2]->id => 'random'], $this->listOn('2026-11-07'));
+        $this->assertSame(0, ExclusiveReservedLead::count());
+
+        $this->sync('2026-11-08');
+
+        // The target is reached: her leftover carries, but no new lead comes.
+        $this->assertSame([$leads[2]->id => 'leftover'], $this->listOn('2026-11-08'));
+        $this->assertNull($leads[3]->fresh()->assigned_to);
+    }
+
+    public function test_a_lead_held_for_her_is_not_given_to_other_cras(): void
+    {
+        config(['exclusive_leads.daily_quota' => 1]);
+        $listed = $this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]);
+        $heldToday = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+        $this->sync('2026-11-06');
+        $heldIds = ExclusiveReservedLead::pluck('lead_id');
+        $this->assertTrue($heldIds->contains($listed->id) xor $this->listOn('2026-11-06') === [$listed->id => 'random']);
+        $held = Lead::whereIn('id', $heldIds)->firstOrFail();
+
+        app(LeadGenerator::class)->assign(CarbonImmutable::parse('2026-11-06'));
+        app(BacklogFill::class)->fill(CarbonImmutable::parse('2026-11-06'), collect([$this->regina]));
+
+        $this->assertNull($held->fresh()->assigned_to);
+        $this->assertTrue(in_array($heldToday->id, [...$heldIds, ...array_keys($this->listOn('2026-11-06'))], true));
+    }
+
+    public function test_her_list_never_takes_a_lead_another_cra_holds_even_her_own_customers(): void
+    {
+        $hers = $this->lead('2026-11-05', $this->regina, ['lead_type' => Lead::TYPE_FSD]);
+        $this->handledTwiceBy($this->joanna, $this->phoneKey($hers));
+
+        $this->sync('2026-11-06');
+
+        $this->assertSame($this->regina->id, $hers->fresh()->assigned_to);
+        $this->assertArrayNotHasKey($hers->id, $this->listOn('2026-11-06'));
+    }
+
+    public function test_the_month_runs_out_at_the_target_and_later_days_still_have_an_orders_target(): void
+    {
+        config(['exclusive_leads.quota_overrides' => []]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-01 09:00', 'Asia/Manila'));
+
+        $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
+
+        $this->assertSame(['leads' => 7000, 'target' => 7000, 'short_of_target' => 0], $month['planned']);
+        $this->assertSame(250, $month['days'][27]['quota']);
+        $this->assertSame(0, $month['days'][28]['quota']);
+        $this->assertFalse($month['days'][28]['is_before_transfer']);
+        $this->assertSame(54, $month['days'][28]['confirmed_goal']);
+        $this->assertSame(30, $month['targets']['working_days']);
     }
 
     public function test_random_leads_are_fsd_leads_only(): void

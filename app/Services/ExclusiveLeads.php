@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\BacklogHandout;
 use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
@@ -24,9 +25,13 @@ use Illuminate\Support\Facades\DB;
  * Days before exclusive_leads.build_from only record the leads the CRA already had. From then on each day fills up to
  * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers who are
  * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned FSD leads no other
- * CRA owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill). Only this class
- * does, each day before the leftovers carry over: an untouched leftover goes to the CRA who owns the customer, and a CRD
- * lead with no reason to be theirs goes back to the pool (releaseLeftovers).
+ * CRA owns). It never takes a lead another CRA holds. A lead listed for them stays theirs: nothing else moves it
+ * (LeadGenerator, BacklogFill). Only this class does, each day before the leftovers carry over: an untouched leftover
+ * goes to the CRA who owns the customer, and a CRD lead with no reason to be theirs goes back to the pool (releaseLeftovers).
+ *
+ * From exclusive_leads.flat_month_from the month is a flat target of different leads: each day hands out up to its quota of
+ * new leads until the target is reached, leftovers carry on top without using it, and the leads that qualify for the rest of
+ * the month are held for the CRA (ExclusiveReservedLead) so no other CRA gets them. It may end short when too few qualify.
  *
  * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
  * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
@@ -107,19 +112,103 @@ class ExclusiveLeads
             return $added;
         }
 
-        $listed = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->where('source', '!=', self::POS)->count();
-        $room = self::quotaFor($day) - $listed;
+        $isFlat = ! $day->lessThan(self::flatMonthFrom());
+        $room = max(0, $isFlat ? $this->newLeadsRoom($cra, $day) : self::quotaFor($day) - $this->listedOn($cra, $day)->count());
+        $onToday = $this->listedOn($cra, $day)->pluck('lead_id');
+        $hasWork = $room > 0
+            || ($isFlat && ($this->leftovers($cra, $day)->whereNotIn('id', $onToday)->exists()
+                || Cache::add("exclusive-reserved-{$cra->id}-{$day->toDateString()}", true, now()->addDay())));
 
-        if ($room <= 0) {
+        if (! $hasWork) {
             return $added;
         }
 
         $this->releaseLeftovers($cra, $day);
 
-        $picks = $this->pick($cra, $day, $room);
+        ['picks' => $picks, 'upcoming' => $upcoming] = $this->pick($cra, $day, $room, $isFlat);
         $this->hand($cra, $day, $picks);
 
+        if ($isFlat) {
+            $this->reserve($cra, $day, $upcoming);
+        }
+
         return $added + $picks->count();
+    }
+
+    /**
+     * The day's list, POS sales left out.
+     *
+     * @return Builder<ExclusiveListLead>
+     */
+    private function listedOn(User $cra, CarbonImmutable $day): Builder
+    {
+        return ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->where('source', '!=', self::POS);
+    }
+
+    /**
+     * How many new leads the day can still hand out: its quota less the new leads it has, within what's left of the month's target.
+     */
+    private function newLeadsRoom(User $cra, CarbonImmutable $day): int
+    {
+        $newToday = $this->listedOn($cra, $day)->where('source', '!=', self::LEFTOVER)->count();
+
+        return min(self::quotaFor($day) - $newToday, $this->monthRemaining($cra, $day));
+    }
+
+    /**
+     * What's left of the month's target of different leads, by the leads still theirs on the month's lists.
+     */
+    private function monthRemaining(User $cra, CarbonImmutable $day): int
+    {
+        [$from, $to] = $this->leadDaysOfMonth($day);
+        $different = ExclusiveListLead::where('user_id', $cra->id)->where('source', '!=', self::POS)
+            ->whereDate('list_date', '>=', $from)->whereDate('list_date', '<=', $to)
+            ->whereIn('lead_id', Lead::where('assigned_to', $cra->id)->select('id'))
+            ->distinct()->count('lead_id');
+
+        return ExclusiveLimits::on($day->addDays(WorkingDate::lagDays()))['month_target'] - $different;
+    }
+
+    /**
+     * The first and last lead days of the real month $leadDay is worked in.
+     *
+     * @return array{CarbonImmutable, CarbonImmutable}
+     */
+    private function leadDaysOfMonth(CarbonImmutable $leadDay): array
+    {
+        $lag = WorkingDate::lagDays();
+        $real = $leadDay->addDays($lag);
+
+        return [$real->startOfMonth()->startOfDay()->subDays($lag), $real->endOfMonth()->startOfDay()->subDays($lag)];
+    }
+
+    /**
+     * Hold these leads for the days ahead, in place of what was held. Older months' holds and leads no longer qualifying go free.
+     *
+     * @param  Collection<int, array{lead: Lead, source: string}>  $upcoming
+     */
+    private function reserve(User $cra, CarbonImmutable $day, Collection $upcoming): void
+    {
+        $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
+        $now = now();
+        $held = $upcoming->pluck('lead.id')->flip();
+
+        DB::transaction(function () use ($cra, $month, $now, $held, $upcoming) {
+            $gone = ExclusiveReservedLead::where('user_id', $cra->id)->get(['id', 'lead_id'])
+                ->reject(fn (ExclusiveReservedLead $reserved) => isset($held[$reserved->lead_id]))->pluck('id');
+            foreach ($gone->chunk(500) as $ids) {
+                ExclusiveReservedLead::whereIn('id', $ids->all())->delete();
+            }
+
+            foreach ($upcoming->chunk(500) as $chunk) {
+                ExclusiveReservedLead::insertOrIgnore($chunk->map(fn (array $pick) => [
+                    'user_id' => $cra->id, 'month' => $month, 'lead_id' => $pick['lead']->id, 'source' => $pick['source'],
+                    'created_at' => $now, 'updated_at' => $now,
+                ])->values()->all());
+            }
+
+            ExclusiveReservedLead::where('user_id', $cra->id)->update(['month' => $month]);
+        });
     }
 
     /**
@@ -150,46 +239,45 @@ class ExclusiveLeads
     }
 
     /**
-     * The next $room leads for the day, in priority order.
+     * The day's leads in priority order: $room in all, or on a flat month every leftover plus $room new ones, and the
+     * qualifying leads after those, up to what's left of the month's target, for the days ahead.
      *
-     * @return Collection<int, array{lead: Lead, source: string}>
+     * @return array{picks: Collection<int, array{lead: Lead, source: string}>, upcoming: Collection<int, array{lead: Lead, source: string}>}
      */
-    private function pick(User $cra, CarbonImmutable $day, int $room): Collection
+    private function pick(User $cra, CarbonImmutable $day, int $room, bool $isFlat): array
     {
         $columns = ['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date', 'lead_type', 'customer_tag'];
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
         $backlog = app(BacklogFill::class);
 
         // Already on a list this month: only the leftover step lists a lead again.
+        [$monthStart] = $this->leadDaysOfMonth($day);
         $listedThisMonth = ExclusiveListLead::where('user_id', $cra->id)
-            ->whereDate('list_date', '>=', $day->startOfMonth())->whereDate('list_date', '<=', $day)
+            ->whereDate('list_date', '>=', $monthStart)->whereDate('list_date', '<=', $day)
             ->pluck('lead_id')->flip();
         $onToday = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->pluck('lead_id');
 
         $leftovers = $backlog->withoutReordered($this->leftovers($cra, $day)->whereNotIn('id', $onToday)->orderBy('listed_on')->orderBy('id')->get($columns), $phoneOf);
         $leftoverIds = $leftovers->pluck('id')->flip();
 
-        // Waiting: the unassigned pool and the day's unassigned leads, and untouched backlog of earlier days (only the
-        // CRA's own, or their customers' from another CRA).
+        // Waiting: the unassigned pool and the day's unassigned leads not held for another exclusive CRA, and the CRA's own
+        // untouched backlog of earlier days. A lead another CRA holds is never taken.
         $waiting = Lead::withoutPosSales()->whereDate('listed_on', '<=', $day)
+            ->whereNotIn('id', ExclusiveReservedLead::where('user_id', '!=', $cra->id)->select('lead_id'))
             ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->whereNull('assigned_to')->unprocessed())
-                ->orWhere(fn (Builder $q) => $q->whereDate('listed_on', '<', $day)->whereNotNull('assigned_to')->untouched()))
+                ->orWhere(fn (Builder $q) => $q->whereDate('listed_on', '<', $day)->where('assigned_to', $cra->id)->untouched()))
             ->orderBy('listed_on')->orderBy('id')->get($columns);
         $waiting = $backlog->withoutReordered($waiting, $phoneOf);
 
         $classify = $this->classifier($cra, $day, $waiting);
         $niches = NicheRules::current();
-        $otherExclusive = User::exclusiveOn($day)->where('id', '!=', $cra->id)->pluck('id')->flip();
         $tiers = [self::HIGH_VALUE => [], self::HANDLED => [], self::RANDOM => []];
 
         foreach ($waiting as $lead) {
             ['owner' => $owner, 'source' => $source] = $classify($lead);
-            $holder = $lead->assigned_to;
 
             $skip = isset($listedThisMonth[$lead->id]) || isset($leftoverIds[$lead->id])
-                || ($holder !== null && isset($otherExclusive[$holder]))
                 || ($owner !== null && $owner !== $cra->id)
-                || ($holder !== null && $holder !== $cra->id && $owner !== $cra->id)
                 || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
 
             if (! $skip) {
@@ -204,12 +292,19 @@ class ExclusiveLeads
             $lead->id,
         ])->values();
 
-        return $leftovers->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::LEFTOVER])
-            ->concat($inOrder($tiers[self::HIGH_VALUE])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::HIGH_VALUE]))
-            ->concat($inOrder($tiers[self::HANDLED])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::HANDLED]))
-            ->concat($inOrder($tiers[self::RANDOM])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::RANDOM]))
-            ->take($room)
+        $carried = $leftovers->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::LEFTOVER]);
+        $new = collect([self::HIGH_VALUE, self::HANDLED, self::RANDOM])
+            ->flatMap(fn (string $source) => $inOrder($tiers[$source])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => $source]))
             ->values();
+
+        if (! $isFlat) {
+            return ['picks' => $carried->concat($new)->take($room)->values(), 'upcoming' => collect()];
+        }
+
+        return [
+            'picks' => $carried->concat($new->take($room))->values(),
+            'upcoming' => $new->slice($room)->take(max(0, $this->monthRemaining($cra, $day) - min($room, $new->count())))->values(),
+        ];
     }
 
     /**
@@ -443,6 +538,11 @@ class ExclusiveLeads
             ?? ExclusiveLimits::on($leadDay->addDays(WorkingDate::lagDays()))['daily_leads']);
     }
 
+    public static function flatMonthFrom(): CarbonImmutable
+    {
+        return CarbonImmutable::parse(config('exclusive_leads.flat_month_from'));
+    }
+
     public static function buildFrom(): CarbonImmutable
     {
         return CarbonImmutable::parse(config('exclusive_leads.build_from'));
@@ -462,11 +562,32 @@ class ExclusiveLeads
     }
 
     /**
-     * Every lead on the CRA's lists for real days $from–$to so far, each once. POS sales stay out, as in the month's goals.
+     * Every lead still theirs on the CRA's lists for real days $from–$to so far, each once. POS sales stay out, as in the month's goals.
      */
     public function leadsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
-        return Lead::whereIn('id', $this->entriesBetween($cra, $from, $to)->select('lead_id'));
+        return Lead::where('assigned_to', $cra->id)->whereIn('id', $this->entriesBetween($cra, $from, $to)->select('lead_id'));
+    }
+
+    /**
+     * The real month's whole list: every lead still theirs on its lists so far, and those held for its days ahead.
+     */
+    public function monthLeads(User $cra, CarbonImmutable $month): Builder
+    {
+        return Lead::where(fn (Builder $q) => $q
+            ->where(fn (Builder $q) => $q->where('assigned_to', $cra->id)
+                ->whereIn('id', $this->entriesBetween($cra, $month->startOfMonth(), $month->endOfMonth()->startOfDay())->select('lead_id')))
+            ->orWhereIn('id', ExclusiveReservedLead::where('user_id', $cra->id)->whereDate('month', $month->startOfMonth())->select('lead_id')));
+    }
+
+    /**
+     * Why each lead held for the real month's days ahead qualifies.
+     *
+     * @return array<int, string> lead id => source
+     */
+    public function upcomingSources(User $cra, CarbonImmutable $month): array
+    {
+        return ExclusiveReservedLead::where('user_id', $cra->id)->whereDate('month', $month->startOfMonth())->pluck('source', 'lead_id')->all();
     }
 
     /**
@@ -479,7 +600,9 @@ class ExclusiveLeads
         $lag = WorkingDate::lagDays();
         $details = ['sources' => [], 'days' => []];
 
-        foreach ($this->entriesBetween($cra, $from, $to)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
+        $stillTheirs = Lead::where('assigned_to', $cra->id)->select('id');
+
+        foreach ($this->entriesBetween($cra, $from, $to)->whereIn('lead_id', $stillTheirs)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
             $details['sources'][$entry->lead_id] = $entry->source;
             $details['days'][$entry->lead_id] = [
                 'last' => $entry->list_date->addDays($lag)->toDateString(),
@@ -559,7 +682,7 @@ class ExclusiveLeads
 
         $entries = ExclusiveListLead::where('user_id', $cra->id)
             ->whereDate('list_date', '>=', $start->subDays($lag))->whereDate('list_date', '<=', $end->subDays($lag))
-            ->with('lead:id,listed_on,status,contact_date,processed_at')
+            ->with('lead:id,assigned_to,listed_on,status,contact_date,processed_at')
             ->get();
         $byDay = $entries->groupBy(fn (ExclusiveListLead $entry) => $entry->list_date->toDateString());
 
@@ -579,7 +702,10 @@ class ExclusiveLeads
         $workingDays = 0;
         $mixOf = fn (Collection $rows) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $rows->where('source', $source)->count()])->all();
         $days = [];
-        $planned = 0;
+        $target = $monthLimits['month_target'];
+        $seen = [];
+        $held = 0;
+        $leadToday = Lead::today();
 
         for ($day = $start; $day->lessThanOrEqualTo($end); $day = $day->addDay()) {
             $date = $day->toDateString();
@@ -587,10 +713,21 @@ class ExclusiveLeads
             $rows = collect($byDay[$leadDay->toDateString()] ?? []);
             $quota = $day->lessThan($firstDay) ? 0 : self::quotaFor($leadDay);
             $counted = $rows->where('source', '!=', self::POS);
+            $new = $counted->where('source', '!=', self::LEFTOVER);
+            foreach ($counted as $entry) {
+                if ($entry->lead?->assigned_to === $cra->id) {
+                    $seen[$entry->lead_id] = true;
+                }
+            }
+            // Past days are what was listed; from today, up to the quota until the month's target is reached.
+            if (! $leadDay->lessThan($leadToday) && ! $day->lessThan($firstDay)) {
+                $quota = max(0, min($quota, $target - count($seen) - $held));
+                $held += $quota;
+            }
             $worked = $counted->filter(fn (ExclusiveListLead $entry) => $entry->lead?->isProcessed() && $entry->lead->listed_on->isSameDay($leadDay))->count();
-            $planned += $quota;
+            $isBeforeTransfer = $day->lessThan($firstDay);
             $isDayOff = isset($offDays[$date][$cra->id]);
-            $isWorkingDay = $quota > 0 && ! $isDayOff;
+            $isWorkingDay = ! $isBeforeTransfer && ! $isDayOff;
             $workingDays += (int) $isWorkingDay;
             $confirmedGoal = $isWorkingDay ? ExclusiveLimits::on($day)['orders_per_day'] : 0;
             if ($isWorkingDay) {
@@ -602,7 +739,9 @@ class ExclusiveLeads
                 'lead_date' => $leadDay->toDateString(),
                 'quota' => $quota,
                 'is_history' => $leadDay->lessThan(self::buildFrom()),
+                'is_before_transfer' => $isBeforeTransfer,
                 'listed' => $counted->count(),
+                'new' => $new->count(),
                 'worked' => $worked,
                 'left' => $counted->count() - $worked,
                 'pos' => $rows->count() - $counted->count(),
@@ -617,8 +756,8 @@ class ExclusiveLeads
             ];
         }
 
-        $target = $monthLimits['month_target'];
         $counted = $entries->where('source', '!=', self::POS);
+        $planned = count($seen) + $held;
         $confirmed = (int) collect($days)->sum('confirmed');
         $gross = (float) collect($days)->sum('gross');
 
@@ -636,7 +775,7 @@ class ExclusiveLeads
             'planned' => ['leads' => $planned, 'target' => $target, 'short_of_target' => max(0, $target - $planned)],
             'actual' => [
                 'listed' => $counted->count(),
-                'unique_leads' => $counted->unique('lead_id')->count(),
+                'unique_leads' => count($seen),
                 'repeat' => $bought->unique($phoneOf)->count(),
                 'confirmed' => $confirmed,
                 'gross' => $gross,

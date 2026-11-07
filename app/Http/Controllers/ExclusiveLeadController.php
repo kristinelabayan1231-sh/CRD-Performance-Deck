@@ -16,6 +16,7 @@ use App\Support\XlsxFile;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -117,10 +118,12 @@ class ExclusiveLeadController extends Controller
         $listing = $search === null && $listedBetween !== null;
         $scope = match (true) {
             $search !== null => $exclusive->search($cra, $search),
+            $wholeMonth => $exclusive->monthLeads($cra, $month),
             $listing => $exclusive->leadsBetween($cra, ...$listedBetween),
             default => $exclusive->leadsFor($cra, $leadDay),
         };
         $listDetails = $listing ? $exclusive->listDetailsBetween($cra, ...$listedBetween) : null;
+        $upcoming = $wholeMonth ? $exclusive->upcomingSources($cra, $month) : [];
         $this->narrowed($scope, $filters)->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name')
@@ -148,8 +151,10 @@ class ExclusiveLeadController extends Controller
             ],
             'products' => Product::crd()->orderBy('name')->pluck('name'),
             'listedDays' => $listDetails['days'] ?? null,
-            'sources' => $listDetails['sources'] ?? ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
-            'exportUrl' => route('exclusive-leads.export', array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
+            'upcomingCount' => count($upcoming),
+            'sources' => isset($listDetails) ? $listDetails['sources'] + $upcoming : ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
+            'exportUrl' => route('exclusive-leads.export', $wholeList = array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
+            'allPhonesUrl' => route('exclusive-leads.phones', $wholeList),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
@@ -187,34 +192,15 @@ class ExclusiveLeadController extends Controller
      */
     public function export(Request $request, ExclusiveLeads $exclusive): BinaryFileResponse
     {
-        $user = $request->user();
-        $filters = $request->validate([
-            'cra' => ['nullable', 'integer'],
-            'month' => ['nullable', 'date_format:Y-m'],
-            'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
-            'product' => ['nullable', 'string', 'max:255'],
-        ]);
+        ['cra' => $cra, 'month' => $month, 'leads' => $list] = $this->monthList($request, $exclusive);
+        $details = $exclusive->listDetailsBetween($cra, $month->startOfMonth(), $month->endOfMonth()->startOfDay());
+        $upcoming = $exclusive->upcomingSources($cra, $month);
 
-        $exclusiveCras = $this->exclusiveCras();
-        $visibleCras = $user->can('exclusive_leads.view_all') ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
-        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
-        abort_unless($cra, 404);
-
-        $requestedMonth = isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : WorkingDate::realToday();
-        $month = $requestedMonth->startOfMonth()->max($cra->exclusive_from->addDays(WorkingDate::lagDays())->startOfMonth());
-        $from = $month->startOfMonth();
-        $to = $month->endOfMonth()->startOfDay();
-        $details = $exclusive->listDetailsBetween($cra, $from, $to);
-
-        $leads = $this->narrowed($exclusive->leadsBetween($cra, $from, $to), $filters)->with('assignee')
-            ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
-            ->orderBy('customer_name')
-            ->orderByDesc('listed_on')
-            ->orderBy('id')
+        $leads = $list->with('assignee')
             ->lazy(1000)
-            ->map(function (Lead $lead) use ($details) {
+            ->map(function (Lead $lead) use ($details, $upcoming) {
                 $listed = $details['days'][$lead->id] ?? null;
-                $source = $details['sources'][$lead->id] ?? null;
+                $source = $details['sources'][$lead->id] ?? $upcoming[$lead->id] ?? null;
 
                 return [
                     $lead->customer_name,
@@ -227,7 +213,7 @@ class ExclusiveLeadController extends Controller
                     $lead->recommendedReplenishmentDay(),
                     $lead->typeLabel(),
                     $lead->assignee?->displayName(),
-                    $lead->isProcessed() ? 'Catered' : 'Pending',
+                    $listed === null && isset($upcoming[$lead->id]) ? 'Upcoming' : ($lead->isProcessed() ? 'Catered' : 'Pending'),
                     $lead->statusLabel(),
                     self::SOURCE_LABELS[$source] ?? $source,
                     $listed ? CarbonImmutable::parse($listed['last']) : null,
@@ -243,6 +229,54 @@ class ExclusiveLeadController extends Controller
         return response()->download($path, 'exclusive-leads-'.Str::slug($cra->displayName()).'-'.$month->format('Y-m').'.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ])->deleteFileAfterSend();
+    }
+
+    /**
+     * Every contact number on the month's whole list, each customer once, for pasting into Pancake POS's search.
+     */
+    public function phones(Request $request, ExclusiveLeads $exclusive): JsonResponse
+    {
+        $phones = $this->monthList($request, $exclusive)['leads']->pluck('phone_number')
+            ->filter()
+            ->unique(fn (string $phone) => LeadGenerator::normalizePhone($phone))
+            ->values();
+
+        return response()->json(['phones' => $phones]);
+    }
+
+    /**
+     * The whole list of the month picked, in the order of the Whole month view, for the CRA the viewer may see: every lead
+     * on their lists so far, each once, keeping the Type and Product picked.
+     *
+     * @return array{cra: User, month: CarbonImmutable, leads: Builder<Lead>}
+     */
+    private function monthList(Request $request, ExclusiveLeads $exclusive): array
+    {
+        $user = $request->user();
+        $filters = $request->validate([
+            'cra' => ['nullable', 'integer'],
+            'month' => ['nullable', 'date_format:Y-m'],
+            'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
+            'product' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $exclusiveCras = $this->exclusiveCras();
+        $visibleCras = $user->can('exclusive_leads.view_all') ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
+        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
+        abort_unless($cra, 404);
+
+        $requestedMonth = isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : WorkingDate::realToday();
+        $month = $requestedMonth->startOfMonth()->max($cra->exclusive_from->addDays(WorkingDate::lagDays())->startOfMonth());
+
+        return [
+            'cra' => $cra,
+            'month' => $month,
+            'leads' => $this->narrowed($exclusive->monthLeads($cra, $month), $filters)
+                ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
+                ->orderBy('customer_name')
+                ->orderByDesc('listed_on')
+                ->orderBy('id'),
+        ];
     }
 
     /**
@@ -302,29 +336,21 @@ class ExclusiveLeadController extends Controller
     }
 
     /**
-     * The month target against what the days actually plan, in words: "7,000 a month, November plans 6,900: ...".
+     * The month target against what the days can reach, in words, when they fall short of it.
      *
      * @param  array<string, mixed>  $metrics
      */
     private function quotaNote(array $metrics): ?string
     {
-        $standard = $metrics['limits']['daily_leads'];
-        $short = collect($metrics['days'])->filter(fn (array $day) => $day['quota'] > 0 && $day['quota'] !== $standard);
         $planned = $metrics['planned'];
 
-        if ($planned['short_of_target'] === 0 && $short->isEmpty()) {
+        if ($planned['short_of_target'] === 0) {
             return null;
         }
 
         $month = CarbonImmutable::parse($metrics['days'][0]['date'])->format('F');
-        $text = $month.' plans '.number_format($planned['leads']).' leads';
 
-        if ($short->isNotEmpty()) {
-            $dates = $short->map(fn (array $day) => CarbonImmutable::parse($day['date']))->values();
-            $range = $dates->count() === 1 ? $dates[0]->format('M j') : $dates->first()->format('M j').'–'.$dates->last()->format('j');
-            $text .= ': '.$range.' ran at '.$short->pluck('quota')->unique()->map(fn (int $quota) => number_format($quota))->implode('/').' leads a day, every other day is '.number_format($standard);
-        }
-
-        return $text.'.';
+        return $month.' plans '.number_format($planned['leads']).' different leads: '.number_format($metrics['actual']['unique_leads']).' so far, then up to '
+            .number_format($metrics['limits']['daily_leads']).' new leads a day.';
     }
 }

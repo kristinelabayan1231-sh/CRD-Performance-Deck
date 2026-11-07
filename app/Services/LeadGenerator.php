@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DeliveredOrder;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\Role;
@@ -364,6 +365,7 @@ class LeadGenerator
 
         $pending = Lead::whereDate('listed_on', $date)
             ->whereNull('assigned_to')
+            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('delivered_date')
             ->orderBy('id')

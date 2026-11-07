@@ -29,6 +29,10 @@ return [
     // Lead day Oct 7, 2026 = real Nov 6.
     'build_from' => '2026-10-07',
 
+    // From this lead day (real Nov 8) the month is a flat target of different leads, handed out at the daily quota, and
+    // leftovers no longer use up the day's quota. The leads qualifying for the rest of the month are held for the CRA.
+    'flat_month_from' => '2026-10-09',
+
     // The goal is constant; the days of a month may plan fewer (November 2026 plans 6,900).
     'month_target' => 7000,
 

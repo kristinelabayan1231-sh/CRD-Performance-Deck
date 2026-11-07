@@ -39,6 +39,17 @@ class CustomerOwners
     }
 
     /**
+     * How many of each customer's orders each active CRA has handled, counted as for() does.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, array<int, int>> phone key => CRA id => orders
+     */
+    public function orderCounts(array $phoneKeys): array
+    {
+        return $this->pick($phoneKeys, true, fn (array $byCra) => array_map(fn (array $counted) => $counted['count'], $byCra));
+    }
+
+    /**
      * The CRA a new High AOV / VIP customer goes to (HighValueCustomers): the one who has handled HIGH_VALUE_ORDERS of
      * their orders, the latest such CRA when there are several; numbers with none left out.
      *

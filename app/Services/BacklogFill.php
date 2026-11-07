@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BacklogHandout;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
@@ -84,6 +85,7 @@ class BacklogFill
         // (an untouched lead moved yesterday goes to the back). Only leads nobody touched (no status, date, note or any
         // other field) move: worked ones stay on their day.
         $waiting = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
+            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))
             ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
             ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date']);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);

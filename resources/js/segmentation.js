@@ -612,6 +612,46 @@ function initCopyPhones() {
             button.querySelector('[data-copied-icon]').classList.add('hidden');
         }, 1500);
     });
+
+    // Exclusive Lead Tracker's "All": the page only holds 30-50 rows, so the whole month's numbers come from the server.
+    document.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-copy-all-phones]');
+        if (!button) return;
+
+        const label = button.querySelector('[data-copy-label]');
+        const restTitle = button.title;
+        const rest = (message, delay) => {
+            label.textContent = message;
+            setTimeout(() => {
+                button.title = restTitle;
+                label.textContent = 'All';
+                button.querySelector('[data-copy-icon]').classList.remove('hidden');
+                button.querySelector('[data-copied-icon]').classList.add('hidden');
+            }, delay);
+        };
+
+        button.disabled = true;
+        label.textContent = 'Copying…';
+        try {
+            const response = await fetch(button.dataset.copyAllPhones, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const { phones } = await response.json();
+            if (!phones.length) {
+                rest('None', 1500);
+                return;
+            }
+
+            await copyColumn(phones);
+            button.title = `Copied ${phones.length.toLocaleString()} numbers`;
+            button.querySelector('[data-copy-icon]').classList.add('hidden');
+            button.querySelector('[data-copied-icon]').classList.remove('hidden');
+            rest(phones.length.toLocaleString(), 3000);
+        } catch {
+            rest('Failed', 3000);
+        } finally {
+            button.disabled = false;
+        }
+    });
 }
 
 // Right-click a lead row: Copy name / Copy mobile number, Mark as catered (Pending) or Unmark catered (Catered), and on a

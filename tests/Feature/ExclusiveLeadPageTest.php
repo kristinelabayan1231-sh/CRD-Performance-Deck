@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DutyLogin;
 use App\Models\DutySchedule;
 use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\PancakeReservation;
 use App\Models\Role;
@@ -51,7 +52,7 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertSee('Working date: Oct 7, 2026')
             ->assertSee('Friday, Nov 6')
             ->assertSee('from Oct 7')
-            ->assertSee('November plans 6,900 leads: Nov 1–4 ran at 100 leads a day');
+            ->assertSee('November plans 6,250 different leads: 0 so far, then up to 250 new leads a day.');
     }
 
     public function test_the_migration_moves_only_the_nov_1_start_to_its_lead_day(): void
@@ -74,7 +75,7 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertSee('Month goals · Joanna')
             ->assertSee('1,400')
             ->assertSee('₱895')
-            ->assertSee('November plans 6,900 leads')
+            ->assertSee('November plans 6,250 different leads')
             ->assertDontSee('Settings · Exclusive Lead Tracker');
     }
 
@@ -95,7 +96,7 @@ class ExclusiveLeadPageTest extends TestCase
 
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['month' => '2026-10']))
             ->assertOk()
-            ->assertSee('November plans 6,900 leads')
+            ->assertSee('November plans 6,250 different leads')
             ->assertSee('Friday, Nov 6');
     }
 
@@ -337,13 +338,81 @@ class ExclusiveLeadPageTest extends TestCase
         $this->assertSame('=SUM(A1) <Ana> & Co', $rows[1][0]);
     }
 
-    public function test_the_segmentation_tracker_has_no_excel_button(): void
+    public function test_the_segmentation_tracker_has_no_excel_or_copy_all_button(): void
     {
         $regina = $this->user(Role::CRA, 'Regina');
         $this->lead($regina, 'Maria Santos', '09170000001', '2026-11-06');
 
         $this->actingAs($regina)->get(route('segmentation.index', ['date' => '2026-11-06']))
-            ->assertOk()->assertDontSee('Download the whole month');
+            ->assertOk()->assertDontSee('Download the whole month')->assertDontSee('data-copy-all-phones');
+    }
+
+    public function test_copy_all_gets_every_number_on_the_months_list_past_the_page_and_each_customer_once(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $list = fn (User $cra, Lead $lead, string $day, string $source = ExclusiveLeads::HANDLED) => ExclusiveListLead::create(['user_id' => $cra->id, 'list_date' => $day, 'lead_id' => $lead->id, 'source' => $source]);
+
+        $expected = [];
+        for ($index = 10; $index < 45; $index++) {
+            $expected[] = '091700000'.$index;
+            $list($joanna, $this->lead($joanna, 'Customer '.$index, '091700000'.$index, '2026-11-03'), '2026-11-03');
+        }
+        $secondOrder = Lead::create(['order_id' => 'SECOND', 'customer_name' => 'Customer 10', 'phone_number' => '09170000010', 'product_name' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2026-06-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-11-04', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $joanna->id]);
+        $list($joanna, $secondOrder, '2026-11-04');
+        $list($joanna, $this->lead($joanna, 'Last Month', '09170002222', '2026-10-30'), '2026-10-30');
+        $list($joanna, $this->lead($joanna, 'Pos Sale', '09170003333', '2026-11-05'), '2026-11-05', ExclusiveLeads::POS);
+        $list($regina, $this->lead($regina, 'Regina Customer', '09170004444', '2026-11-05'), '2026-11-05');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-03']))
+            ->assertOk()->assertSee(route('exclusive-leads.phones', ['cra' => $joanna->id, 'month' => '2026-11']));
+
+        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['month' => '2026-11', 'cra' => $regina->id]))
+            ->assertOk()->assertExactJson(['phones' => $expected]);
+    }
+
+    public function test_copy_all_keeps_the_filters_and_is_not_open_to_a_cra_off_the_page(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $crd = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
+        $fsd = $this->lead($joanna, 'Pedro Reyes', '09170000002', '2026-11-05');
+        $fsd->update(['lead_type' => Lead::TYPE_FSD]);
+        foreach ([$crd, $fsd] as $lead) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+
+        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['type' => Lead::TYPE_FSD]))
+            ->assertOk()->assertExactJson(['phones' => ['09170000002']]);
+
+        $this->actingAs($this->user(Role::CRA, 'Regina'))->getJson(route('exclusive-leads.phones'))->assertNotFound();
+    }
+
+    public function test_the_whole_list_has_the_upcoming_leads_and_leaves_out_those_moved_away(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina');
+        $listed = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
+        $movedAway = $this->lead($joanna, 'Moved Away', '09170000002', '2026-11-05');
+        $upcoming = $this->lead($joanna, 'Upcoming Customer', '09170000003', '2026-11-05');
+        $upcoming->forceFill(['assigned_to' => null])->save();
+        foreach ([$listed, $movedAway] as $lead) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+        $movedAway->forceFill(['assigned_to' => $regina->id])->save();
+        ExclusiveReservedLead::create(['user_id' => $joanna->id, 'month' => '2026-11-01', 'lead_id' => $upcoming->id, 'source' => ExclusiveLeads::RANDOM]);
+
+        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones'))
+            ->assertOk()->assertExactJson(['phones' => ['09170000001', '09170000003']]);
+
+        $rows = $this->downloadedRows($this->actingAs($joanna)->get(route('exclusive-leads.export')));
+        $this->assertSame(['Maria Santos', 'Upcoming Customer'], [$rows[1][0], $rows[2][0]]);
+        $this->assertSame(['Pending', 'Upcoming'], [$rows[1][10], $rows[2][10]]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['view' => 'month']))
+            ->assertOk()->assertSee('Upcoming Customer')->assertDontSee('Moved Away')->assertSee('1 upcoming')
+            ->assertDontSee('data-update-url="'.route('segmentation.update', $upcoming).'"', false);
+
+        $this->actingAs($joanna)->patchJson(route('segmentation.update', $upcoming), ['repeat_purchase' => 'yes'])->assertForbidden();
     }
 
     public function test_a_day_still_shows_only_that_days_leads(): void
