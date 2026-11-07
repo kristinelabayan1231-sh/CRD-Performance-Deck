@@ -1,9 +1,11 @@
-{{-- One list (Pending or Catered) of the selected day in full, shown in the tracker's expand pop-up. --}}
+{{-- One list (Pending, with the follow-up tabs, or Catered) in full, shown in the tracker's expand pop-up, as in the Segmentation Tracker. --}}
 <x-layouts.bare :title="$show === 'processed' ? 'Catered' : 'Pending'">
     @php($lockAssignee = true)
-    @include('segmentation._section', $show === 'processed'
-        ? ['id' => 'processed', 'title' => 'Catered', 'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.', 'empty' => 'No catered customers for this day yet.']
-        : ['id' => 'unprocessed', 'title' => 'Pending', 'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.', 'empty' => 'Nothing pending for this day.'])
+    @if ($show === 'unprocessed')
+        @include('segmentation._pending-lists', ['pendingEmpty' => 'Nothing pending for this filter.'])
+    @else
+        @include('segmentation._section', ['id' => 'processed', 'title' => 'Catered', 'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.', 'empty' => 'No catered customers for this filter yet.'])
+    @endif
 
     @include('segmentation._note-dialog')
     @include('segmentation._recording-dialog')

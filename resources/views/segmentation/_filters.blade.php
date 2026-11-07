@@ -1,11 +1,14 @@
-{{-- Tracker filters, shown under the Daily / Weekly tabs. Icons only, except Type and Product. --}}
+{{-- Tracker filters, shown under the Daily / Weekly tabs and on the Exclusive Lead Tracker ($filtersRoute, no All CRAs). Icons only, except Type and Product. --}}
 @php($field = 'h-9 rounded-lg border border-line bg-white text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none')
 @php($icon = 'pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted')
 
 {{-- One line on a laptop screen and wider: search and filters, then dates and columns on the right; wraps on narrower screens. --}}
-<form method="GET" action="{{ route('segmentation.index') }}" class="flex flex-wrap items-center gap-2">
+<form method="GET" action="{{ route($filtersRoute ?? 'segmentation.index') }}" class="flex flex-wrap items-center gap-2">
     {{-- First submit button, so Enter in the search submits plainly instead of clicking the range's Apply (which needs both dates). --}}
     <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true"></button>
+    @if ($filters['view'] ?? null)
+        <input type="hidden" name="view" value="{{ $filters['view'] }}">
+    @endif
     @if ($filters['repeat'] ?? null)
         <input type="hidden" name="repeat" value="{{ $filters['repeat'] }}">
     @endif
@@ -28,7 +31,9 @@
         <span class="sr-only">CRA</span>
         <svg class="{{ $icon }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path stroke-linecap="round" d="M4 21a8 8 0 0 1 16 0"/></svg>
         <select name="cra" class="{{ $field }} w-32 truncate pr-7 pl-8" onchange="this.form.submit()">
-            <option value="all" @selected($filters['cra'] === 'all')>All</option>
+            @unless ($oneCraAtATime ?? false)
+                <option value="all" @selected($filters['cra'] === 'all')>All</option>
+            @endunless
             @foreach ($cras as $cra)
                 <option value="{{ $cra->id }}" @selected($filters['cra'] === (string) $cra->id)>{{ $cra->displayName() }}{{ $cra->id === auth()->id() ? ' (you)' : '' }}</option>
             @endforeach
@@ -75,7 +80,7 @@
             <span class="whitespace-nowrap">{{ $ranged ? \App\Http\Controllers\SegmentationController::periodLabel(\Carbon\CarbonImmutable::parse($filters['from']), \Carbon\CarbonImmutable::parse($filters['to'])) : 'Range' }}</span>
         </summary>
         <div class="absolute right-0 z-30 mt-2 w-64 rounded-xl border border-line bg-white p-3 shadow-lg">
-            <p class="pb-2 text-xs text-muted">Leads from every lead day in this range.</p>
+            <p class="pb-2 text-xs text-muted">{{ $rangeHint ?? 'Leads from every lead day in this range.' }}</p>
             <label class="mb-2 block">
                 <span class="mb-1 block text-xs font-semibold text-muted">From</span>
                 <input type="date" name="from" value="{{ $filters['from'] ?? '' }}" class="{{ $field }} w-full px-2.5">

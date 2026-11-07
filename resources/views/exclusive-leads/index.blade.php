@@ -4,41 +4,12 @@
             <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· Pick a day on the calendar, then update the leads below.</span></h1>
 
             <div class="flex flex-wrap items-center gap-3 text-sm">
-                @if ($cra)
-                    {{-- Search: name, contact # or order #, across all of this CRA's days (Enter to search) --}}
-                    <form method="GET" action="{{ route('exclusive-leads.index') }}" role="search">
-                        <input type="hidden" name="cra" value="{{ $cra->id }}">
-                        <input type="hidden" name="date" value="{{ $day->toDateString() }}">
-                        <label class="relative block w-56" title="Search leads">
-                            <span class="sr-only">Search leads</span>
-                            <svg class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
-                            <input type="search" name="q" value="{{ $search }}" placeholder="Name, contact or order #" maxlength="100"
-                                   @class(['h-9 w-full rounded-lg border border-line bg-white pr-8 pl-8 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none [&::-webkit-search-cancel-button]:hidden', 'border-brand-500 ring-2 ring-brand-200' => $search])>
-                            @if ($search)
-                                <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" title="Clear search" aria-label="Clear search"
-                                   class="absolute top-1/2 right-2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted hover:text-brand-600">
-                                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
-                                </a>
-                            @endif
-                        </label>
-                    </form>
-                @endif
                 @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
                     {{-- Opens the on-duty pop-up: log in for today, and the calendar to set days off ahead --}}
                     <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
                         <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
                         My schedule
                     </button>
-                @endif
-                @if ($cra && $canViewAll && $cras->count() > 1)
-                    <form method="GET" action="{{ route('exclusive-leads.index') }}">
-                        <label class="sr-only" for="exclusive-cra">CRA</label>
-                        <select id="exclusive-cra" name="cra" onchange="this.form.submit()" class="h-9 rounded-lg border border-line bg-white px-3 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
-                            @foreach ($cras as $option)
-                                <option value="{{ $option->id }}" @selected($option->id === $cra->id)>{{ $option->displayName() }}</option>
-                            @endforeach
-                        </select>
-                    </form>
                 @endif
                 @if ($canManageSettings || $canSetLimits)
                     <button type="button" onclick="document.getElementById('exclusive-settings').showModal()" aria-haspopup="dialog"
@@ -49,6 +20,11 @@
                 @endif
             </div>
         </div>
+
+        @if ($cra)
+            {{-- Same search and filters as the Segmentation Tracker --}}
+            <div class="mb-3 shrink-0">@include('segmentation._filters', ['filtersRoute' => 'exclusive-leads.index', 'oneCraAtATime' => true, 'rangeHint' => "Leads on the lists of every day in this range."])</div>
+        @endif
 
         @if ($errors->hasAny(['effective_from', 'daily_leads', 'month_target', 'orders_per_day']))
             <p role="alert" class="mb-3 shrink-0 rounded-lg border border-coral/40 bg-coral/10 px-4 py-2 text-sm">Limits not saved. {{ $errors->first() }}</p>
@@ -70,6 +46,8 @@
             @php($targets = $metrics['targets'])
             @php($dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
             @php($firstWeekday = $month->startOfMonth()->dayOfWeek)
+            {{-- The calendar and month arrows keep the Type and Product picked --}}
+            @php($kept = array_filter(['cra' => $cra->id, 'type' => $filters['type'], 'product' => $filters['product']]))
 
             @if ($search)
                 <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
@@ -83,12 +61,12 @@
                     <x-slot:actions>
                         <nav class="flex items-center gap-1" aria-label="Month">
                             @if ($canPrev)
-                                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'month' => $prevMonth]) }}" aria-label="Previous month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
+                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $prevMonth]) }}" aria-label="Previous month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
                                     <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m15 6-6 6 6 6"/></svg>
                                 </a>
                             @endif
                             @if ($nextMonth)
-                                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'month' => $nextMonth]) }}" aria-label="Next month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
+                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $nextMonth]) }}" aria-label="Next month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
                                     <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
                                 </a>
                             @endif
@@ -113,7 +91,7 @@
                                     <span class="text-xs tabular-nums">{{ $before ? 'Before transfer' : number_format($cell['quota']) }}</span>
                                 </div>
                             @else
-                                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'date' => $cell['date']]) }}" @if ($selected) aria-current="date" @endif
+                                <a href="{{ route('exclusive-leads.index', [...$kept, 'date' => $cell['date']]) }}" @if ($selected) aria-current="date" @endif
                                    @class(['flex min-h-20 flex-col gap-0.5 rounded-lg border px-2 py-1.5 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
                                        'border-brand-500 bg-brand-50 ring-2 ring-brand-200' => $selected,
                                        'border-line bg-white hover:border-brand-400' => ! $selected])>
@@ -174,13 +152,18 @@
 
             {{-- This day or the whole month's list --}}
             <nav aria-label="Leads shown" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'date' => $day->toDateString()]) }}" @if (! $wholeMonth) aria-current="page" @endif
-                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => ! $wholeMonth, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => $wholeMonth])>{{ $day->format('M j') }} only</a>
-                <a href="{{ route('exclusive-leads.index', ['cra' => $cra->id, 'date' => $day->toDateString(), 'view' => 'month']) }}" @if ($wholeMonth) aria-current="page" @endif
+                <a href="{{ route('exclusive-leads.index', [...$kept, 'date' => $day->toDateString()]) }}" @if (! $wholeMonth && ! $range) aria-current="page" @endif
+                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => ! $wholeMonth && ! $range, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => $wholeMonth || $range])>{{ $day->format('M j') }} only</a>
+                <a href="{{ route('exclusive-leads.index', [...$kept, 'date' => $day->toDateString(), 'view' => 'month']) }}" @if ($wholeMonth) aria-current="page" @endif
                    @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => $wholeMonth, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => ! $wholeMonth])>Whole month</a>
             </nav>
 
-            @if ($wholeMonth)
+            @if ($range)
+                <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
+                    <strong>{{ number_format(count($listedDays)) }} different {{ \Illuminate\Support\Str::plural('lead', count($listedDays)) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} lists {{ \App\Http\Controllers\SegmentationController::periodLabel(...$range) }}, each listed once below.
+                    <a href="{{ request()->fullUrlWithQuery(['from' => null, 'to' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Clear range</a>
+                </p>
+            @elseif ($wholeMonth)
                 <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
                     <strong>{{ number_format($actual['unique_leads']) }} different {{ \Illuminate\Support\Str::plural('lead', $actual['unique_leads']) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} {{ $month->format('F') }} lists so far, {{ number_format($actual['listed']) }} counted toward the {{ number_format($targets['leads']) }} target because a lead carried over counts each day. Days ahead get their leads on the day.
                 </p>
@@ -228,21 +211,14 @@
                     @include('segmentation._section', [
                         'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
                         'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.',
-                        'empty' => $search ? 'No pending leads match this search.' : ($wholeMonth ? 'Nothing pending on this month\'s lists.' : ($dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.')),
+                        'empty' => $search ? 'No pending leads match this search.' : ($filters['type'] || $filters['product'] ? 'Nothing pending for this filter.' : ($range ? 'Nothing pending on these days\' lists.' : ($wholeMonth ? 'Nothing pending on this month\'s lists.' : ($dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.')))),
                     ])
                 @endif
                 @if ($processed)
                     @include('segmentation._section', [
                         'leads' => $processed, 'id' => 'processed', 'title' => 'Catered',
                         'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.',
-                        'empty' => $search ? 'No catered leads match this search.' : ($wholeMonth ? 'No catered customers on this month\'s lists yet.' : 'No catered customers for this day yet.'),
-                    ])
-                @endif
-                {{-- Follow-ups of any month: they were on the Segmentation Tracker before the transfer --}}
-                @if (! $search && ! $wholeMonth && $callbacks->total() > 0)
-                    @include('segmentation._section', [
-                        'leads' => $callbacks, 'id' => 'callback', 'title' => 'Call back for today', 'accent' => 'amber', 'icon' => 'calendar', 'sources' => null,
-                        'hint' => 'Callback date is today or already passed, with no contact since.', 'empty' => 'No callbacks due today.',
+                        'empty' => $search ? 'No catered leads match this search.' : ($filters['type'] || $filters['product'] ? 'No catered customers for this filter yet.' : ($range ? 'No catered customers on these days\' lists yet.' : ($wholeMonth ? 'No catered customers on this month\'s lists yet.' : 'No catered customers for this day yet.'))),
                     ])
                 @endif
             </div>

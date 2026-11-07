@@ -8,8 +8,8 @@ use App\Models\PancakeReservation;
 use App\Models\Product;
 use App\Models\Role;
 use App\Services\ChurnCustomerList;
+use App\Services\LeadFollowUps;
 use App\Services\LeadGenerator;
-use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -73,7 +73,7 @@ class SegmentationController extends Controller
         if ($full) {
             return view('segmentation.full', [
                 'leads' => $unprocessed ?? $processed,
-                ...($show === 'unprocessed' ? $this->followUps($filters, $today) : []),
+                ...($show === 'unprocessed' ? $this->followUps($filters) : []),
                 'show' => $show,
                 'canManage' => $user->can('segmentation.manage'),
                 'canViewAll' => $canViewAll,
@@ -225,41 +225,26 @@ class SegmentationController extends Controller
     }
 
     /**
-     * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day): callbacks due
-     * today, Reactivation and Reserved. They're catered leads, so they're never in Pending itself.
+     * The Pending full view's follow-up lists for the CRA, type and product filters (any lead day).
      *
      * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator, pancakeReserved: LengthAwarePaginator}
      */
-    private function followUps(array $filters, CarbonImmutable $today): array
+    private function followUps(array $filters): array
     {
-        $realToday = WorkingDate::realToday();
-        $base = Lead::query()
-            ->inSegmentationTracker()
-            ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereRaw('1 = 0'))
-            ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
-            ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
-            ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
-            ->with(['assignee', 'notesAuthor', 'transfers.fromUser', 'callRecordings', 'attempts.user']);
-
-        // Callbacks and Reactivation never overlap: Reactivation leaves out leads with a callback date still to be followed, and Reserved ones.
-        return [
-            'callbacks' => (clone $base)->callbackDue($realToday)->orderBy('callback_date')->orderBy('customer_name')->paginate(self::FULL_PER_PAGE, ['*'], 'callback_page')->withQueryString(),
-            'reactivation' => (clone $base)->reactivation($today, $realToday)
-                ->orderBy('listed_on')->orderBy('customer_name')
-                ->paginate(self::FULL_PER_PAGE, ['*'], 'reactivation_page')->withQueryString(),
-            'reserved' => (clone $base)->reserved()
-                ->orderBy('listed_on')->orderBy('customer_name')
-                ->paginate(self::FULL_PER_PAGE, ['*'], 'reserved_page')->withQueryString(),
-            // Reserved in a Pancake conversation, added by the CRAs; latest first.
-            'pancakeReserved' => PancakeReservation::query()
+        return app(LeadFollowUps::class)->lists(
+            Lead::query()
+                ->inSegmentationTracker()
+                ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereRaw('1 = 0'))
+                ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
+                ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
+                ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product)),
+            PancakeReservation::query()
                 ->when($filters['cra'] === 'unassigned', fn (Builder $q) => $q->whereNull('assigned_to'))
                 ->when(ctype_digit($filters['cra']), fn (Builder $q) => $q->where('assigned_to', (int) $filters['cra']))
                 ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
-                ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
-                ->with(['assignee', 'notesAuthor'])
-                ->latest('id')
-                ->paginate(self::FULL_PER_PAGE, ['*'], 'pancake_reserved_page')->withQueryString(),
-        ];
+                ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product)),
+            self::FULL_PER_PAGE,
+        );
     }
 
     /**

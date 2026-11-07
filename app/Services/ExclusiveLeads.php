@@ -24,7 +24,9 @@ use Illuminate\Support\Facades\DB;
  * Days before exclusive_leads.build_from only record the leads the CRA already had. From then on each day fills up to
  * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers who are
  * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned FSD leads no other
- * CRA owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
+ * CRA owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill). Only this class
+ * does, each day before the leftovers carry over: an untouched leftover goes to the CRA who owns the customer, and a CRD
+ * lead with no reason to be theirs goes back to the pool (releaseLeftovers).
  *
  * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
  * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
@@ -43,6 +45,16 @@ class ExclusiveLeads
 
     /** A CRA's own POS sale (PosLeads): shown on the day, never part of the quota. */
     public const POS = 'pos';
+
+    /** recheck()'s groups: another CRA owns the customer, and the lead is untouched or already contacted. */
+    public const OWNED_UNTOUCHED = 'owned_untouched';
+
+    public const OWNED_CONTACTED = 'owned_contacted';
+
+    /** recheck()'s groups: CRD leads with no reason to be theirs, on their current list or held from before it. */
+    public const CRD_ON_LIST = 'crd_on_list';
+
+    public const CRD_OLDER = 'crd_older';
 
     /** Priority order of a day's list. */
     public const PRIORITY = [self::LEFTOVER, self::HIGH_VALUE, self::HANDLED, self::RANDOM];
@@ -102,6 +114,8 @@ class ExclusiveLeads
             return $added;
         }
 
+        $this->releaseLeftovers($cra, $day);
+
         $picks = $this->pick($cra, $day, $room);
         $this->hand($cra, $day, $picks);
 
@@ -152,13 +166,7 @@ class ExclusiveLeads
             ->pluck('lead_id')->flip();
         $onToday = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->pluck('lead_id');
 
-        $lastListDay = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', '<', $day)->where('source', '!=', self::POS)->max('list_date');
-        $leftovers = $lastListDay === null ? collect() : Lead::where('assigned_to', $cra->id)
-            ->whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $lastListDay)->select('lead_id'))
-            ->whereNotIn('id', $onToday)
-            ->withoutPosSales()->unprocessed()->notConverted()
-            ->orderBy('listed_on')->orderBy('id')->get($columns);
-        $leftovers = $backlog->withoutReordered($leftovers, $phoneOf);
+        $leftovers = $backlog->withoutReordered($this->leftovers($cra, $day)->whereNotIn('id', $onToday)->orderBy('listed_on')->orderBy('id')->get($columns), $phoneOf);
         $leftoverIds = $leftovers->pluck('id')->flip();
 
         // Waiting: the unassigned pool and the day's unassigned leads, and untouched backlog of earlier days (only the
@@ -202,6 +210,126 @@ class ExclusiveLeads
             ->concat($inOrder($tiers[self::RANDOM])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::RANDOM]))
             ->take($room)
             ->values();
+    }
+
+    /**
+     * What they didn't cater on their last list day.
+     *
+     * @return Builder<Lead>
+     */
+    private function leftovers(User $cra, CarbonImmutable $day): Builder
+    {
+        $lastListDay = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', '<', $day)->where('source', '!=', self::POS)->max('list_date');
+
+        return Lead::where('assigned_to', $cra->id)
+            ->whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $lastListDay ?? '1000-01-01')->select('lead_id'))
+            ->withoutPosSales()->unprocessed()->notConverted();
+    }
+
+    /**
+     * Before leftovers carry over: an untouched one that isn't the CRA's by the rules leaves them (notHers). A lead someone
+     * wrote on or tagged stays with them, as the backlog fill leaves it too.
+     */
+    private function releaseLeftovers(User $cra, CarbonImmutable $day): void
+    {
+        $leads = $this->leftovers($cra, $day)->untouched()->get(['id', 'assigned_to', 'phone_number', 'product_name', 'listed_on', 'est_out_of_stock_date', 'lead_type']);
+        $classify = $this->classifier($cra, $day, $leads);
+
+        DB::transaction(fn () => $this->release($cra, $day, $leads->map(fn (Lead $lead) => $this->notHers($classify($lead), $lead))->filter()));
+    }
+
+    /**
+     * Where a lead goes if the rules don't make it the CRA's, null if they do: High AOV / VIP and handled customers stay,
+     * as does an FSD lead no other CRA owns. A customer another CRA owns goes to that CRA; any other CRD lead to the pool.
+     *
+     * @param  array{owner: ?int, source: string}  $classified
+     * @return array{lead: Lead, to: ?int}|null
+     */
+    private function notHers(array $classified, Lead $lead): ?array
+    {
+        if ($classified['source'] !== self::RANDOM || ($classified['owner'] === null && $lead->lead_type === Lead::TYPE_FSD)) {
+            return null;
+        }
+
+        return ['lead' => $lead, 'to' => $classified['owner']];
+    }
+
+    /**
+     * Take these leads off the CRA from $day on, and off $day's list: to their new CRA, or back to the pool when that CRA
+     * is gone or there is none. Their old days keep counting them (LeadMove).
+     *
+     * @param  Collection<int, array{lead: Lead, to: ?int}>  $moves
+     */
+    private function release(User $cra, CarbonImmutable $day, Collection $moves): void
+    {
+        $active = LeadGenerator::cras()->keyBy('id');
+
+        foreach ($moves as ['lead' => $lead, 'to' => $to]) {
+            if ($to !== null && $active->has($to)) {
+                $lead->transferTo($active[$to], null, $day);
+
+                continue;
+            }
+
+            if ($lead->listed_on->lessThan($day)) {
+                LeadMove::create(['lead_id' => $lead->id, 'assigned_to' => $cra->id, 'listed_on' => $lead->listed_on->toDateString(), 'moved_to' => $day->toDateString()]);
+            }
+            $lead->forceFill(['assigned_to' => null, 'assigned_at' => null])->save();
+        }
+
+        ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)
+            ->whereIn('lead_id', $moves->map(fn (array $move) => $move['lead']->id)->all())->delete();
+    }
+
+    /**
+     * Every open lead the CRA holds, on any day, checked against the rules: for putting right what was listed before them.
+     * Leads with a purchase or on Reserve, on a status that doesn't carry over, and POS sales are left out.
+     *
+     * @return array<string, Collection<int, array{lead: Lead, to: ?int}>>
+     */
+    public function recheck(User $cra, CarbonImmutable $day): array
+    {
+        $leads = Lead::where('assigned_to', $cra->id)->withoutPosSales()->notConverted()
+            ->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))
+            ->where(fn (Builder $q) => $q->whereNull('repeat_purchase')->orWhereNotIn('repeat_purchase', Lead::reserveRepeatPurchases()))
+            ->orderBy('listed_on')->orderBy('id')->get();
+        $untouched = Lead::where('assigned_to', $cra->id)->untouched()->pluck('id')->flip();
+        $onList = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->pluck('lead_id')->flip();
+        $classify = $this->classifier($cra, $day, $leads);
+        $groups = [self::OWNED_UNTOUCHED => collect(), self::OWNED_CONTACTED => collect(), self::CRD_ON_LIST => collect(), self::CRD_OLDER => collect()];
+
+        foreach ($leads as $lead) {
+            $move = $this->notHers($classify($lead), $lead);
+            $isUntouched = isset($untouched[$lead->id]);
+            $group = match (true) {
+                $move === null => null,
+                $move['to'] !== null => $isUntouched ? self::OWNED_UNTOUCHED : self::OWNED_CONTACTED,
+                ! $isUntouched => null,
+                isset($onList[$lead->id]) => self::CRD_ON_LIST,
+                default => self::CRD_OLDER,
+            };
+
+            if ($group !== null) {
+                $groups[$group]->push($move);
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Move what recheck() found, but for the older CRD leads, which were never on a list.
+     *
+     * @param  array<string, Collection<int, array{lead: Lead, to: ?int}>>  $found
+     * @return int leads moved
+     */
+    public function applyRecheck(User $cra, CarbonImmutable $day, array $found): int
+    {
+        $moves = collect([self::OWNED_UNTOUCHED, self::OWNED_CONTACTED, self::CRD_ON_LIST])->flatMap(fn (string $group) => $found[$group]);
+
+        DB::transaction(fn () => $this->release($cra, $day, $moves));
+
+        return $moves->count();
     }
 
     /**
@@ -334,24 +462,24 @@ class ExclusiveLeads
     }
 
     /**
-     * Every lead on the CRA's lists for real month $month so far, each once. POS sales stay out, as in the month's goals.
+     * Every lead on the CRA's lists for real days $from–$to so far, each once. POS sales stay out, as in the month's goals.
      */
-    public function leadsForMonth(User $cra, CarbonImmutable $month): Builder
+    public function leadsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
-        return Lead::whereIn('id', $this->monthEntries($cra, $month)->select('lead_id'));
+        return Lead::whereIn('id', $this->entriesBetween($cra, $from, $to)->select('lead_id'));
     }
 
     /**
-     * Why each of the month's leads was last listed, and the real day it was last on a list and how many days it was on one.
+     * Why each lead of real days $from–$to was last listed, and the real day it was last on a list and how many days it was on one.
      *
      * @return array{sources: array<int, string>, days: array<int, array{last: string, count: int}>}
      */
-    public function monthListDetails(User $cra, CarbonImmutable $month): array
+    public function listDetailsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
     {
         $lag = WorkingDate::lagDays();
         $details = ['sources' => [], 'days' => []];
 
-        foreach ($this->monthEntries($cra, $month)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
+        foreach ($this->entriesBetween($cra, $from, $to)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
             $details['sources'][$entry->lead_id] = $entry->source;
             $details['days'][$entry->lead_id] = [
                 'last' => $entry->list_date->addDays($lag)->toDateString(),
@@ -365,13 +493,13 @@ class ExclusiveLeads
     /**
      * @return Builder<ExclusiveListLead>
      */
-    private function monthEntries(User $cra, CarbonImmutable $month): Builder
+    private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): Builder
     {
         $lag = WorkingDate::lagDays();
 
         return ExclusiveListLead::where('user_id', $cra->id)->where('source', '!=', self::POS)
-            ->whereDate('list_date', '>=', $month->startOfMonth()->subDays($lag))
-            ->whereDate('list_date', '<=', $month->endOfMonth()->startOfDay()->subDays($lag));
+            ->whereDate('list_date', '>=', $from->subDays($lag))
+            ->whereDate('list_date', '<=', $to->subDays($lag));
     }
 
     /**

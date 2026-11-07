@@ -6,6 +6,7 @@ use App\Models\DutyLogin;
 use App\Models\DutySchedule;
 use App\Models\ExclusiveListLead;
 use App\Models\Lead;
+use App\Models\PancakeReservation;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
@@ -261,6 +262,86 @@ class ExclusiveLeadPageTest extends TestCase
 
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
             ->assertOk()->assertSee('Pedro Reyes')->assertDontSee('Maria Santos')->assertDontSee('Last listed')->assertSee('Whole month');
+    }
+
+    public function test_type_and_product_narrow_the_list_and_the_calendar_keeps_them(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $crd = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
+        $fsd = $this->lead($joanna, 'Pedro Reyes', '09170000002', '2026-11-05');
+        $fsd->update(['lead_type' => Lead::TYPE_FSD]);
+        $otherProduct = $this->lead($joanna, 'Ana Cruz', '09170000003', '2026-11-05');
+        $otherProduct->update(['product_name' => 'Sinuxyl']);
+        foreach ([$crd, $fsd, $otherProduct] as $lead) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05', 'type' => Lead::TYPE_FSD]))
+            ->assertOk()->assertSee('Pedro Reyes')->assertDontSee('Maria Santos')->assertDontSee('Ana Cruz')
+            ->assertSee(route('exclusive-leads.index', ['cra' => $joanna->id, 'type' => Lead::TYPE_FSD, 'date' => '2026-11-03']));
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05', 'product' => 'Sinuxyl']))
+            ->assertOk()->assertSee('Ana Cruz')->assertDontSee('Maria Santos')->assertDontSee('Pedro Reyes');
+    }
+
+    public function test_a_date_range_lists_each_lead_of_those_days_once_in_any_order(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $carried = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-03');
+        $outside = $this->lead($joanna, 'Pedro Reyes', '09170000002', '2026-11-05');
+        foreach ([[$carried, '2026-11-03'], [$carried, '2026-11-04'], [$outside, '2026-11-05']] as [$lead, $day]) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => $day, 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+        }
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['from' => '2026-11-04', 'to' => '2026-11-03']))
+            ->assertOk()->assertSee('Maria Santos')->assertDontSee('Pedro Reyes')->assertSee('Last listed')
+            ->assertSeeInOrder(['1 different lead', 'Clear range'])
+            ->assertViewHas('unprocessed', fn ($leads) => $leads->total() === 1);
+    }
+
+    public function test_the_pending_full_view_has_the_cras_own_follow_up_tabs(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina');
+        $followUps = [
+            ['callback', 'Callback Customer', ['callback_date' => '2026-11-05', 'status' => 'pjr_drop_call', 'contact_date' => '2026-11-01']],
+            ['reactivation', 'Reactivation Customer', ['status' => 'pjr_drop_call', 'contact_date' => '2026-11-01']],
+            ['reserved', 'Reserved Customer', ['repeat_purchase' => Lead::reserveRepeatPurchases()[0], 'status' => 'pjr_drop_call', 'contact_date' => '2026-11-01']],
+        ];
+        foreach ($followUps as $index => [, $name, $fields]) {
+            $this->lead($joanna, $name, '0917000000'.$index, '2026-09-01')->forceFill(['listed_on' => '2026-09-01', ...$fields])->save();
+            $this->lead($regina, 'Regina '.$name, '0918000000'.$index, '2026-09-01')->forceFill(['listed_on' => '2026-09-01', ...$fields])->save();
+        }
+        foreach ([[$joanna, 'Pancake Customer', '09190000001'], [$regina, 'Regina Pancake Customer', '09190000002']] as [$cra, $name, $phone]) {
+            PancakeReservation::create(['assigned_to' => $cra->id, 'created_by' => $cra->id, 'customer_name' => $name, 'phone_number' => $phone, 'phone_key' => substr($phone, 1)]);
+        }
+
+        $tab = fn (?string $list) => $this->actingAs($joanna)->get(route('exclusive-leads.index', array_filter(['show' => 'unprocessed', 'full' => 1, 'list' => $list])));
+
+        $tab(null)->assertOk()->assertSeeInOrder(['Pending', 'Call back for today', 'Reactivation', 'Reserved', 'Reserved - Pancake']);
+        $tab('callback')->assertOk()->assertSee('Callback Customer')->assertDontSee('Regina Callback Customer');
+        $tab('reactivation')->assertOk()->assertSee('Reactivation Customer')->assertDontSee('Regina Reactivation Customer');
+        $tab('reserved')->assertOk()->assertSee('Reserved Customer')->assertDontSee('Regina Reserved Customer');
+        $tab('reserved_pancake')->assertOk()->assertSee('Pancake Customer')->assertDontSee('Regina Pancake Customer');
+    }
+
+    public function test_the_catered_full_view_has_no_follow_up_tabs(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['show' => 'processed', 'full' => 1]))
+            ->assertOk()->assertDontSee('Reserved - Pancake');
+    }
+
+    public function test_the_filters_offer_only_one_cra_at_a_time_and_a_cra_cannot_pick_another(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $other = $this->user(Role::CRA, 'Lhea', '2026-10-02');
+        $otherLead = $this->lead($other, 'Maria Santos', '09170000001', '2026-11-05');
+        ExclusiveListLead::create(['user_id' => $other->id, 'list_date' => '2026-11-05', 'lead_id' => $otherLead->id, 'source' => ExclusiveLeads::HANDLED]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $other->id, 'date' => '2026-11-05']))
+            ->assertOk()->assertDontSee('Maria Santos')->assertDontSee('<option value="all"', false);
     }
 
     public function test_a_search_with_no_match_says_so_and_a_cra_cannot_search_another_cras_list(): void

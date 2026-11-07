@@ -4,20 +4,25 @@ namespace App\Http\Controllers;
 
 use App\Models\ExclusiveLeadLimit;
 use App\Models\Lead;
+use App\Models\PancakeReservation;
+use App\Models\Product;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
+use App\Services\LeadFollowUps;
 use App\Services\LeadGenerator;
 use App\Support\ExclusiveLimits;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * The Exclusive Lead Tracker page: an exclusive CRA's daily list (same table as the Segmentation Tracker) with the
- * month's goals. Settings (transfer a CRA in or out) are in ExclusiveLeadSettingController.
+ * The Exclusive Lead Tracker page: an exclusive CRA's daily list (same table, filters and Pending full view as the
+ * Segmentation Tracker) with the month's goals. Settings (transfer a CRA in or out) are in ExclusiveLeadSettingController.
  */
 class ExclusiveLeadController extends Controller
 {
@@ -50,6 +55,11 @@ class ExclusiveLeadController extends Controller
             'cra' => ['nullable', 'integer'],
             'month' => ['nullable', 'date_format:Y-m'],
             'date' => ['nullable', 'date_format:Y-m-d'],
+            // A date range (both ends, any order): the real days from–to.
+            'from' => ['nullable', 'date_format:Y-m-d'],
+            'to' => ['nullable', 'date_format:Y-m-d'],
+            'type' => ['nullable', Rule::in(array_keys(Lead::TYPES))],
+            'product' => ['nullable', 'string', 'max:255'],
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
             'full' => ['nullable', 'boolean'],
             'q' => ['nullable', 'string', 'max:100'],
@@ -82,6 +92,12 @@ class ExclusiveLeadController extends Controller
         // The page is by real date, when she worked; each day's leads are from its paired lead day (WorkingDate).
         // The month and day: a date picks its month; never past today, never before the transfer.
         $date = isset($filters['date']) ? CarbonImmutable::parse($filters['date']) : null;
+        $range = null;
+        if (! empty($filters['from']) && ! empty($filters['to'])) {
+            [$rangeFrom, $rangeTo] = collect([CarbonImmutable::parse($filters['from']), CarbonImmutable::parse($filters['to'])])->sort()->values()->all();
+            $date = $rangeFrom;
+            $range = $rangeFrom->equalTo($rangeTo) ? null : [$rangeFrom, $rangeTo];
+        }
         $month = $date ?? (isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : $today);
         $lag = WorkingDate::lagDays();
         $first = $cra->exclusive_from->addDays($lag)->startOfDay();
@@ -93,14 +109,17 @@ class ExclusiveLeadController extends Controller
         $day = $day->max($month->max($first));
         $leadDay = $day->subDays($lag);
 
-        // A search looks through all of the CRA's days; the whole month through that month's lists; otherwise the day picked.
+        // A search looks through all of the CRA's days; a range or the whole month through those days' lists; otherwise the day picked.
+        $wholeMonth = $wholeMonth && $range === null;
+        $listedBetween = $range ?? ($wholeMonth ? [$month->startOfMonth(), $month->endOfMonth()->startOfDay()] : null);
+        $listing = $search === null && $listedBetween !== null;
         $scope = match (true) {
             $search !== null => $exclusive->search($cra, $search),
-            $wholeMonth => $exclusive->leadsForMonth($cra, $month),
+            $listing => $exclusive->leadsBetween($cra, ...$listedBetween),
             default => $exclusive->leadsFor($cra, $leadDay),
         };
-        $monthList = $wholeMonth ? $exclusive->monthListDetails($cra, $month) : null;
-        $scope->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
+        $listDetails = $listing ? $exclusive->listDetailsBetween($cra, ...$listedBetween) : null;
+        $this->narrowed($scope, $filters)->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
             ->orderBy('customer_name')
             ->orderByDesc('listed_on');
@@ -113,8 +132,21 @@ class ExclusiveLeadController extends Controller
         $shared = $data + [
             'search' => $search,
             'wholeMonth' => $wholeMonth,
-            'listedDays' => $monthList['days'] ?? null,
-            'sources' => $monthList['sources'] ?? ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
+            'range' => $search === null ? $range : null,
+            'filters' => [
+                'q' => $search,
+                'cra' => (string) $cra->id,
+                'type' => $filters['type'] ?? null,
+                'product' => $filters['product'] ?? null,
+                'month' => $month->format('Y-m'),
+                'date' => $range === null ? $day->toDateString() : null,
+                'from' => $range === null ? null : $range[0]->toDateString(),
+                'to' => $range === null ? null : $range[1]->toDateString(),
+                'view' => $wholeMonth ? 'month' : null,
+            ],
+            'products' => Product::crd()->orderBy('name')->pluck('name'),
+            'listedDays' => $listDetails['days'] ?? null,
+            'sources' => $listDetails['sources'] ?? ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
@@ -125,7 +157,10 @@ class ExclusiveLeadController extends Controller
         ];
 
         if ($full) {
-            return view('exclusive-leads.full', $shared + ['leads' => $unprocessed ?? $processed]);
+            return view('exclusive-leads.full', $shared + [
+                'leads' => $unprocessed ?? $processed,
+                ...($show === 'unprocessed' ? $this->followUps($cra, $filters) : []),
+            ]);
         }
 
         $dayMetrics = collect($metrics['days'])->firstWhere('date', $day->toDateString());
@@ -137,14 +172,41 @@ class ExclusiveLeadController extends Controller
             'quotaNote' => $this->quotaNote($metrics),
             'unprocessed' => $unprocessed,
             'processed' => $processed,
-            'callbacks' => Lead::query()->where('assigned_to', $cra->id)->callbackDue(WorkingDate::realToday())
-                ->orderBy('callback_date')->orderBy('customer_name')
-                ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
-                ->paginate(self::PER_PAGE, ['*'], 'callback_page')->withQueryString(),
             'prevMonth' => $month->subMonth()->format('Y-m'),
             'nextMonth' => $month->addMonth()->startOfMonth()->lessThanOrEqualTo($today) ? $month->addMonth()->format('Y-m') : null,
             'canPrev' => $month->startOfMonth()->greaterThan($first->startOfMonth()),
         ]);
+    }
+
+    /**
+     * Narrow leads or reservations to the Type and Product picked.
+     *
+     * @template TQuery of Builder
+     *
+     * @param  TQuery  $query
+     * @param  array<string, mixed>  $filters
+     * @return TQuery
+     */
+    private function narrowed(Builder $query, array $filters): Builder
+    {
+        return $query
+            ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('lead_type', $type))
+            ->when($filters['product'] ?? null, fn (Builder $q, string $product) => $q->where('product_name', $product));
+    }
+
+    /**
+     * The Pending full view's follow-up lists: the CRA's, from any day, including those from before their transfer.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{callbacks: LengthAwarePaginator, reactivation: LengthAwarePaginator, reserved: LengthAwarePaginator, pancakeReserved: LengthAwarePaginator}
+     */
+    private function followUps(User $cra, array $filters): array
+    {
+        return app(LeadFollowUps::class)->lists(
+            $this->narrowed(Lead::query()->where('assigned_to', $cra->id), $filters),
+            $this->narrowed(PancakeReservation::query()->where('assigned_to', $cra->id), $filters),
+            self::FULL_PER_PAGE,
+        );
     }
 
     /**

@@ -184,7 +184,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->delivered($this->phoneKey($atLine), 895);
         $hersVip = $this->lead('2026-11-06');
         CustomerAccount::create(['phone_key' => $this->phoneKey($hersVip), 'assigned_cra_id' => $this->joanna->id]);
-        $leftover = $this->lead('2026-11-05', $this->joanna);
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD]);
 
         $this->sync('2026-11-06');
 
@@ -264,7 +264,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         config(['exclusive_leads.daily_quota' => 2]);
 
         $done = $this->lead('2026-11-05', $this->joanna, ['status' => 'active']);
-        $left = $this->lead('2026-11-05', $this->joanna);
+        $left = $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD]);
         $this->sync('2026-11-05');
         $this->sync('2026-11-06');
 
@@ -289,7 +289,7 @@ class ExclusiveLeadTrackerTest extends TestCase
     {
         config(['exclusive_leads.daily_quota' => 3]);
 
-        $this->lead('2026-11-05', $this->joanna);
+        $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD]);
         $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $this->sync('2026-11-06');
         $rows = ExclusiveListLead::count();
@@ -321,6 +321,82 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame([$fsdLead->id => 'random'], $this->listOn('2026-11-06'));
         $this->assertNull($crdLead->fresh()->assigned_to);
         $this->assertNull($crdInPool->fresh()->assigned_to);
+    }
+
+    public function test_an_untouched_leftover_of_another_cras_customer_goes_to_that_cra(): void
+    {
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD, 'listed_on' => '2026-11-05']);
+        $this->handledTwiceBy($this->regina, $this->phoneKey($leftover));
+
+        $this->sync('2026-11-06');
+
+        $this->assertArrayNotHasKey($leftover->id, $this->listOn('2026-11-06'));
+        $this->assertSame($this->regina->id, $leftover->fresh()->assigned_to);
+        $this->assertSame('2026-11-06', $leftover->fresh()->listed_on->toDateString());
+        // Her old day keeps counting it, and the move is logged with nobody as its author.
+        $this->assertSame($this->joanna->id, LeadMove::where('lead_id', $leftover->id)->value('assigned_to'));
+        $this->assertNull($leftover->transfers()->first()->transferred_by);
+    }
+
+    public function test_a_crd_leftover_with_no_reason_to_be_hers_goes_back_to_the_pool_and_is_not_picked_again(): void
+    {
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05']);
+
+        $this->sync('2026-11-06');
+
+        $this->assertSame([], $this->listOn('2026-11-06'));
+        $this->assertNull($leftover->fresh()->assigned_to);
+        $this->assertSame($this->joanna->id, LeadMove::where('lead_id', $leftover->id)->value('assigned_to'));
+    }
+
+    public function test_leftovers_that_are_hers_by_the_rules_stay(): void
+    {
+        $fsd = $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD, 'listed_on' => '2026-11-05']);
+        $handled = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05']);
+        $this->handledTwiceBy($this->joanna, $this->phoneKey($handled));
+        $written = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05', 'notes' => 'Call after lunch']);
+        $this->handledTwiceBy($this->regina, $this->phoneKey($written));
+
+        $this->sync('2026-11-06');
+
+        $list = $this->listOn('2026-11-06');
+        foreach ([$fsd, $handled, $written] as $lead) {
+            $this->assertSame('leftover', $list[$lead->id]);
+            $this->assertSame($this->joanna->id, $lead->fresh()->assigned_to);
+        }
+    }
+
+    public function test_the_recheck_only_reports_until_applied_then_moves_what_is_not_hers(): void
+    {
+        $untouched = $this->lead('2026-11-06', $this->joanna, ['listed_on' => '2026-11-06']);
+        $this->handledTwiceBy($this->regina, $this->phoneKey($untouched));
+        $contacted = $this->lead('2026-09-01', $this->joanna, ['listed_on' => '2026-09-01', 'status' => 'pjr_drop_call', 'contact_date' => '2026-10-10']);
+        $this->handledTwiceBy($this->regina, $this->phoneKey($contacted));
+        $bought = $this->lead('2026-09-01', $this->joanna, ['listed_on' => '2026-09-01', 'status' => 'pjr_drop_call', 'repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-10']);
+        $this->handledTwiceBy($this->regina, $this->phoneKey($bought));
+        $crdOnList = $this->lead('2026-11-06', $this->joanna, ['listed_on' => '2026-11-06']);
+        $crdOlder = $this->lead('2026-09-01', $this->joanna, ['listed_on' => '2026-09-01']);
+        $hers = $this->lead('2026-11-06', $this->joanna, ['lead_type' => Lead::TYPE_FSD, 'listed_on' => '2026-11-06']);
+        foreach ([$untouched, $crdOnList, $hers] as $lead) {
+            ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-11-06', 'lead_id' => $lead->id, 'source' => 'random']);
+        }
+
+        $this->artisan('leads:recheck-exclusive')->assertSuccessful();
+
+        $this->assertSame($this->joanna->id, $untouched->fresh()->assigned_to);
+        $this->assertCount(3, $this->listOn('2026-11-06'));
+
+        $this->artisan('leads:recheck-exclusive', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame($this->regina->id, $untouched->fresh()->assigned_to);
+        $this->assertSame($this->regina->id, $contacted->fresh()->assigned_to);
+        $this->assertSame('pjr_drop_call', $contacted->fresh()->status);
+        $this->assertNull($crdOnList->fresh()->assigned_to);
+        $this->assertSame([$hers->id => 'random'], $this->listOn('2026-11-06'));
+        // A purchase and older CRD leads stay; her list keeps nothing it no longer holds, so the same day isn't counted twice.
+        $this->assertSame($this->joanna->id, $bought->fresh()->assigned_to);
+        $this->assertSame($this->joanna->id, $crdOlder->fresh()->assigned_to);
+        $this->assertFalse(LeadMove::where('lead_id', $untouched->id)->exists());
     }
 
     public function test_her_pos_sales_show_on_the_day_without_using_the_quota(): void
@@ -536,7 +612,7 @@ class ExclusiveLeadTrackerTest extends TestCase
     {
         config(['exclusive_leads.daily_quota' => 1]);
 
-        $this->lead('2026-11-05', $this->joanna);
+        $this->lead('2026-11-05', $this->joanna, ['lead_type' => Lead::TYPE_FSD]);
         $this->sync('2026-11-05');
         $this->sync('2026-11-06');
 
@@ -567,7 +643,7 @@ class ExclusiveLeadTrackerTest extends TestCase
     public function test_the_other_modules_read_her_exclusive_list(): void
     {
         config(['exclusive_leads.daily_quota' => 3]);
-        $leftover = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05']);
+        $leftover = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05', 'lead_type' => Lead::TYPE_FSD]);
         $worked = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05', 'status' => 'pjr_drop_call', 'contact_date' => '2026-11-05']);
         $picked = $this->lead('2026-11-06', null, ['listed_on' => '2026-11-06', 'lead_type' => Lead::TYPE_FSD]);
         $this->lead('2026-11-06', $this->regina, ['listed_on' => '2026-11-06']);
