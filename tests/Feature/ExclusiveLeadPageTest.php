@@ -490,6 +490,20 @@ class ExclusiveLeadPageTest extends TestCase
         Http::assertSent(fn (ClientRequest $request) => $request->url() === "{$webhook}?number=09171234567&lead={$lead->id}");
     }
 
+    public function test_clicking_a_row_has_the_cras_spiels_and_the_customers_chat_to_open(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $joanna->spiels()->create(['title' => 'Exclusive Leads', 'body' => '<p>Hello {name}</p>', 'position' => 1]);
+        $lead = $this->lead($joanna, 'Maria Santos', '9171234567', '2026-11-05');
+        ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()
+            ->assertSee('data-spiels-panel', false)
+            ->assertSee('Exclusive Leads')
+            ->assertSee('data-spiel-row data-chat-url="'.route('segmentation.chat', $lead).'"', false);
+    }
+
     public function test_the_segmentation_tracker_has_no_tag_column(): void
     {
         $regina = $this->user(Role::CRA, 'Regina');
