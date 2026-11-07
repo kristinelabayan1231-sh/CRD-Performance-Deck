@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Days before exclusive_leads.build_from only record the leads the CRA already had. From then on each day fills up to
  * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers who are
- * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned leads no other CRA
- * owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
+ * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned FSD leads no other
+ * CRA owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
  *
  * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
  * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
@@ -182,7 +182,7 @@ class ExclusiveLeads
                 || ($holder !== null && isset($otherExclusive[$holder]))
                 || ($owner !== null && $owner !== $cra->id)
                 || ($holder !== null && $holder !== $cra->id && $owner !== $cra->id)
-                || ($source === self::RANDOM && ! $niches->allows($cra->id, $lead->product_name));
+                || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
 
             if (! $skip) {
                 $tiers[$source][] = $lead;
