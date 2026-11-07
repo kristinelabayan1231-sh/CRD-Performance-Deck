@@ -11,6 +11,8 @@ return [
     | Each day's list is daily_quota leads, except the days in quota_overrides. Days before
     | build_from keep the leads the CRA already had and are never topped up. All dates here
     | are lead days (real Nov 1, 2026 = lead day Oct 2). The page shows the real dates.
+    | daily_quota, month_target and confirmed_orders_per_day apply until limits are set in
+    | the page's Settings (ExclusiveLimits).
     |
     */
 

@@ -10,7 +10,9 @@ use App\Services\BacklogFill;
 use App\Services\SegmentationStats;
 use App\Services\SegmentationSummary;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class BacklogFillTest extends TestCase
@@ -140,6 +142,27 @@ class BacklogFillTest extends TestCase
 
         $this->assertSame([], $this->fill($this->july));
         $this->assertSame(5, Lead::where('assigned_to', $this->july->id)->count());
+    }
+
+    public function test_a_fill_that_fails_moves_nothing_and_the_cra_can_be_filled_again(): void
+    {
+        $own = $this->lead('2026-09-01', $this->july);
+        Schema::rename('backlog_handouts', 'backlog_handouts_away');
+
+        try {
+            $this->fill($this->july);
+            $this->fail('The fill should have failed.');
+        } catch (QueryException) {
+            Schema::rename('backlog_handouts_away', 'backlog_handouts');
+        }
+
+        $this->assertSame('2026-09-01', $own->fresh()->listed_on->toDateString());
+        $this->assertSame(0, LeadMove::count());
+
+        $this->assertSame([$this->july->id => 1], $this->fill($this->july));
+        $this->assertSame('2026-09-19', $own->fresh()->listed_on->toDateString());
+        $this->assertSame(1, LeadMove::count());
+        $this->assertSame([], $this->fill($this->july));
     }
 
     public function test_an_untouched_moved_lead_moves_again_on_a_later_day(): void

@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
 use App\Support\DutyGoals;
+use App\Support\ExclusiveLimits;
 use App\Support\NicheRules;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
@@ -305,9 +306,13 @@ class ExclusiveLeads
         };
     }
 
-    public static function quotaFor(CarbonImmutable $day): int
+    /**
+     * A lead day's list size: limits start on real dates, so it goes by the real day paired with $leadDay.
+     */
+    public static function quotaFor(CarbonImmutable $leadDay): int
     {
-        return (int) (config('exclusive_leads.quota_overrides')[$day->toDateString()] ?? config('exclusive_leads.daily_quota'));
+        return (int) (config('exclusive_leads.quota_overrides')[$leadDay->toDateString()]
+            ?? ExclusiveLimits::on($leadDay->addDays(WorkingDate::lagDays()))['daily_leads']);
     }
 
     public static function buildFrom(): CarbonImmutable
@@ -315,9 +320,9 @@ class ExclusiveLeads
         return CarbonImmutable::parse(config('exclusive_leads.build_from'));
     }
 
-    public static function repeatTarget(): int
+    public static function repeatTarget(int $monthTarget): int
     {
-        return (int) round(config('exclusive_leads.month_target') * config('exclusive_leads.repeat_goal_percent') / 100);
+        return (int) round($monthTarget * config('exclusive_leads.repeat_goal_percent') / 100);
     }
 
     /**
@@ -326,6 +331,27 @@ class ExclusiveLeads
     public function leadsFor(User $cra, CarbonImmutable $day): Builder
     {
         return Lead::whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->select('lead_id'));
+    }
+
+    /**
+     * The CRA's leads matching $term (name, contact # or order #) on any day: their lists' and any lead they hold.
+     */
+    public function search(User $cra, string $term): Builder
+    {
+        return Lead::query()
+            ->where(fn (Builder $q) => $q->where('assigned_to', $cra->id)
+                ->orWhereIn('id', ExclusiveListLead::where('user_id', $cra->id)->select('lead_id')))
+            ->search($term);
+    }
+
+    /**
+     * Why each lead was last on the CRA's list, for search results across days.
+     *
+     * @return Collection<int, string> lead id => source
+     */
+    public function latestSources(User $cra): Collection
+    {
+        return ExclusiveListLead::where('user_id', $cra->id)->orderBy('list_date')->pluck('source', 'lead_id');
     }
 
     /**
@@ -343,12 +369,13 @@ class ExclusiveLeads
      * the tracker's rule (Repeat Purchase = Yes, on the day bought, one per customer: once in the month, once on a day).
      * Confirmed orders, gross and AOV come from Segmentation Productivity. The confirmed orders target is daily: a day
      * off (DutyGoals) or a day before the transfer has none, and the month's is the sum of its days, the daily target
-     * × working_days. A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
+     * × working_days. Targets follow the limits set in Settings (ExclusiveLimits). A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
      * while on that day's list. $month and the days are real dates, when the CRA did the work; each day's list and quota
      * are its paired lead day's (WorkingDate), so November's days hold October's leads while the team is a month behind.
      *
      * @return array{
      *     targets: array{leads: int, repeat: int, repeat_percent: int, confirmed_orders: int, confirmed_orders_per_day: int, working_days: int, high_aov_min: int},
+     *     limits: array{daily_leads: int, orders_rate_changed: bool},
      *     planned: array{leads: int, target: int, short_of_target: int},
      *     actual: array{listed: int, unique_leads: int, repeat: int, confirmed: int, gross: float, aov: ?float, mix: array<string, int>},
      *     days: list<array{date: string, lead_date: string, quota: int, is_history: bool, listed: int, worked: int, left: int, pos: int, mix: array<string, int>, repeat: int, repeat_goal: int, confirmed: int, confirmed_goal: int, is_day_off: bool, gross: float, aov: ?float}>
@@ -376,7 +403,9 @@ class ExclusiveLeads
 
         $sales = app(SegmentationProductivity::class)->days(collect([$cra]), $start, $end)[$cra->id] ?? [];
         $goalPercent = (int) config('exclusive_leads.repeat_goal_percent');
-        $confirmedPerDay = (int) config('exclusive_leads.confirmed_orders_per_day');
+        // The month goes by the limits its last day ends on; each day's orders target by that day's.
+        $monthLimits = ExclusiveLimits::on($end);
+        $orderRates = [];
         $offDays = DutyGoals::offDays(LeadGenerator::cras(), $start, $end);
         $workingDays = 0;
         $mixOf = fn (Collection $rows) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $rows->where('source', $source)->count()])->all();
@@ -394,6 +423,10 @@ class ExclusiveLeads
             $isDayOff = isset($offDays[$date][$cra->id]);
             $isWorkingDay = $quota > 0 && ! $isDayOff;
             $workingDays += (int) $isWorkingDay;
+            $confirmedGoal = $isWorkingDay ? ExclusiveLimits::on($day)['orders_per_day'] : 0;
+            if ($isWorkingDay) {
+                $orderRates[] = $confirmedGoal;
+            }
 
             $days[] = [
                 'date' => $date,
@@ -408,14 +441,14 @@ class ExclusiveLeads
                 'repeat' => (int) ($repeatByDay[$date] ?? 0),
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
                 'confirmed' => (int) ($sales[$date]['confirmed'] ?? 0),
-                'confirmed_goal' => $isWorkingDay ? $confirmedPerDay : 0,
+                'confirmed_goal' => $confirmedGoal,
                 'is_day_off' => $isDayOff,
                 'gross' => (float) ($sales[$date]['gross'] ?? 0),
                 'aov' => $sales[$date]['aov'] ?? null,
             ];
         }
 
-        $target = (int) config('exclusive_leads.month_target');
+        $target = $monthLimits['month_target'];
         $counted = $entries->where('source', '!=', self::POS);
         $confirmed = (int) collect($days)->sum('confirmed');
         $gross = (float) collect($days)->sum('gross');
@@ -423,13 +456,14 @@ class ExclusiveLeads
         return [
             'targets' => [
                 'leads' => $target,
-                'repeat' => self::repeatTarget(),
+                'repeat' => self::repeatTarget($target),
                 'repeat_percent' => $goalPercent,
-                'confirmed_orders' => $confirmedPerDay * $workingDays,
-                'confirmed_orders_per_day' => $confirmedPerDay,
+                'confirmed_orders' => array_sum($orderRates),
+                'confirmed_orders_per_day' => $monthLimits['orders_per_day'],
                 'working_days' => $workingDays,
                 'high_aov_min' => (int) config('exclusive_leads.high_aov_min'),
             ],
+            'limits' => ['daily_leads' => $monthLimits['daily_leads'], 'orders_rate_changed' => count(array_unique($orderRates)) > 1],
             'planned' => ['leads' => $planned, 'target' => $target, 'short_of_target' => max(0, $target - $planned)],
             'actual' => [
                 'listed' => $counted->count(),

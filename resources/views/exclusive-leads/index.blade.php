@@ -1,11 +1,28 @@
 <x-layouts.app title="Exclusive Lead Tracker">
-    @php($standard = (int) config('exclusive_leads.daily_quota'))
-
     <div class="flex flex-col">
         <div class="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
             <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· Pick a day on the calendar, then update the leads below.</span></h1>
 
             <div class="flex flex-wrap items-center gap-3 text-sm">
+                @if ($cra)
+                    {{-- Search: name, contact # or order #, across all of this CRA's days (Enter to search) --}}
+                    <form method="GET" action="{{ route('exclusive-leads.index') }}" role="search">
+                        <input type="hidden" name="cra" value="{{ $cra->id }}">
+                        <input type="hidden" name="date" value="{{ $day->toDateString() }}">
+                        <label class="relative block w-56" title="Search leads">
+                            <span class="sr-only">Search leads</span>
+                            <svg class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="m20 20-3.5-3.5"/></svg>
+                            <input type="search" name="q" value="{{ $search }}" placeholder="Name, contact or order #" maxlength="100"
+                                   @class(['h-9 w-full rounded-lg border border-line bg-white pr-8 pl-8 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none [&::-webkit-search-cancel-button]:hidden', 'border-brand-500 ring-2 ring-brand-200' => $search])>
+                            @if ($search)
+                                <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" title="Clear search" aria-label="Clear search"
+                                   class="absolute top-1/2 right-2 grid size-5 -translate-y-1/2 place-items-center rounded text-muted hover:text-brand-600">
+                                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                                </a>
+                            @endif
+                        </label>
+                    </form>
+                @endif
                 @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
                     {{-- Opens the on-duty pop-up: log in for today, and the calendar to set days off ahead --}}
                     <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
@@ -23,7 +40,7 @@
                         </select>
                     </form>
                 @endif
-                @if ($canManageSettings)
+                @if ($canManageSettings || $canSetLimits)
                     <button type="button" onclick="document.getElementById('exclusive-settings').showModal()" aria-haspopup="dialog"
                             class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
                         <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path stroke-linecap="round" stroke-linejoin="round" d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
@@ -32,6 +49,10 @@
                 @endif
             </div>
         </div>
+
+        @if ($errors->hasAny(['effective_from', 'daily_leads', 'month_target', 'orders_per_day']))
+            <p role="alert" class="mb-3 shrink-0 rounded-lg border border-coral/40 bg-coral/10 px-4 py-2 text-sm">Limits not saved. {{ $errors->first() }}</p>
+        @endif
 
         @unless ($cra)
             <div class="rounded-2xl border border-line bg-white px-6 py-12 text-center shadow-sm">
@@ -44,11 +65,18 @@
                 @endif
             </div>
         @else
+            @php($standard = $metrics['limits']['daily_leads'])
             @php($actual = $metrics['actual'])
             @php($targets = $metrics['targets'])
             @php($dow = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
             @php($firstWeekday = $month->startOfMonth()->dayOfWeek)
 
+            @if ($search)
+                <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
+                    Search results for <strong>“{{ $search }}”</strong> across all days in {{ $cra->is(auth()->user()) ? 'your leads' : $cra->displayName()."'s leads" }}.
+                    <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Clear search</a>
+                </p>
+            @else
             <div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
                 {{-- Month calendar: pick the day --}}
                 <x-panel :title="$month->format('F Y').' · pick a day'" accent="brand" icon="calendar" title-id="exclusive-calendar-title" :tinted="false" body-class="">
@@ -115,7 +143,7 @@
                     <div class="grid grid-cols-3 gap-2 p-4">
                         @include('exclusive-leads._ring', ['label' => 'Leads', 'value' => $actual['listed'], 'target' => $targets['leads'], 'stroke' => 'stroke-brand-500', 'sub' => $standard.' a day'])
                         @include('exclusive-leads._ring', ['label' => 'Repeat purchases', 'value' => $actual['repeat'], 'target' => $targets['repeat'], 'stroke' => 'stroke-teal-700', 'sub' => 'Goal '.$targets['repeat_percent'].'% of leads'])
-                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => number_format($targets['confirmed_orders_per_day']).' a day × '.$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
+                        @include('exclusive-leads._ring', ['label' => 'Confirmed orders', 'value' => $actual['confirmed'], 'target' => $targets['confirmed_orders'], 'stroke' => 'stroke-coral-700', 'sub' => ($metrics['limits']['orders_rate_changed'] ? 'Across ' : number_format($targets['confirmed_orders_per_day']).' a day × ').$targets['working_days'].' working '.\Illuminate\Support\Str::plural('day', $targets['working_days'])])
                     </div>
                     <div class="grid gap-3 border-t border-line p-4 text-sm">
                         @php($aov = $actual['aov'])
@@ -178,6 +206,7 @@
                     @endif
                 </div>
             </x-panel>
+            @endif
 
             @php($lockAssignee = true)
             <div class="flex flex-col gap-3">
@@ -185,18 +214,18 @@
                     @include('segmentation._section', [
                         'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
                         'hint' => 'No status or contact date yet: pick a customer and reach out. Right-click a row to mark it catered.',
-                        'empty' => $dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.',
+                        'empty' => $search ? 'No pending leads match this search.' : ($dayMetrics['listed'] === 0 && ! $day->isSameDay($today) ? 'No leads were listed this day.' : 'Nothing pending for this day.'),
                     ])
                 @endif
                 @if ($processed)
                     @include('segmentation._section', [
                         'leads' => $processed, 'id' => 'processed', 'title' => 'Catered',
                         'hint' => 'Status or contact date set, or marked as catered. Right-click a row to unmark it.',
-                        'empty' => 'No catered customers for this day yet.',
+                        'empty' => $search ? 'No catered leads match this search.' : 'No catered customers for this day yet.',
                     ])
                 @endif
                 {{-- Follow-ups of any month: they were on the Segmentation Tracker before the transfer --}}
-                @if ($callbacks->total() > 0)
+                @if (! $search && $callbacks->total() > 0)
                     @include('segmentation._section', [
                         'leads' => $callbacks, 'id' => 'callback', 'title' => 'Call back for today', 'accent' => 'amber', 'icon' => 'calendar', 'sources' => null,
                         'hint' => 'Callback date is today or already passed, with no contact since.', 'empty' => 'No callbacks due today.',
@@ -223,7 +252,7 @@
         @include('segmentation._recording-dialog')
     @endif
 
-    @if ($canManageSettings)
+    @if ($canManageSettings || $canSetLimits)
         @include('exclusive-leads._settings')
         <script>
             document.querySelectorAll('[data-dialog-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog').close()));

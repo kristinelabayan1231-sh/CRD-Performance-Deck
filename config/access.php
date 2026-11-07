@@ -56,6 +56,7 @@ $modules = [
         'exclusive_leads.view' => 'View own exclusive leads and goals',
         'exclusive_leads.view_all' => 'View every exclusive CRA',
         'exclusive_leads.manage' => 'Transfer CRAs into and out of the Exclusive Lead Tracker',
+        'exclusive_leads.limits' => 'Set the leads a day, leads a month and orders a day',
     ],
     'Segmentation Productivity' => [
         'productivity.view' => 'View own productivity numbers',

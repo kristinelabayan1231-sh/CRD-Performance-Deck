@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
+use App\Services\PresentationBoardCras;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -11,7 +12,7 @@ use Illuminate\View\View;
 
 class PresentationBoardController extends Controller
 {
-    public function __invoke(Request $request, PresentationBoard $board, PancakePageBackfill $backfill): View
+    public function __invoke(Request $request, PresentationBoard $board, PresentationBoardCras $cras, PancakePageBackfill $backfill): View
     {
         $filters = $request->validate([
             'from' => ['nullable', 'date_format:Y-m'],
@@ -31,9 +32,11 @@ class PresentationBoardController extends Controller
         $to = min($filters['to'] ?? end($months), end($months));
 
         $figures = $board->range($snapshot, $from, $to, $period);
+        $craSnapshot = $cras->snapshot();
 
         return view('presentation-board.index', [
             ...$figures,
+            'craPerformance' => $craSnapshot ? $cras->range($craSnapshot, $from, $to) : null,
             'insights' => $board->insights($figures['months'], $figures['totals'], $figures['products']),
             'snapshot' => $snapshot,
             'monthOptions' => collect($months)->mapWithKeys(fn (string $month) => [$month => CarbonImmutable::parse($month.'-01')->format('M Y')])->all(),

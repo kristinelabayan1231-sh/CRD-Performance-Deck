@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExclusiveLeadLimit;
 use App\Models\Lead;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
 use App\Services\LeadGenerator;
+use App\Support\ExclusiveLimits;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
@@ -38,6 +40,7 @@ class ExclusiveLeadController extends Controller
         $today = WorkingDate::realToday();
         $canViewAll = $user->can('exclusive_leads.view_all');
         $canManageSettings = $user->can('exclusive_leads.manage');
+        $canSetLimits = $user->can('exclusive_leads.limits');
 
         $exclusiveCras = User::query()->whereNotNull('exclusive_from')->where('is_active', true)
             ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
@@ -49,8 +52,10 @@ class ExclusiveLeadController extends Controller
             'date' => ['nullable', 'date_format:Y-m-d'],
             'show' => ['nullable', Rule::in(['all', 'unprocessed', 'processed'])],
             'full' => ['nullable', 'boolean'],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
         $show = $filters['show'] ?? 'all';
+        $search = trim((string) ($filters['q'] ?? '')) ?: null;
 
         $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
 
@@ -60,6 +65,11 @@ class ExclusiveLeadController extends Controller
             'canViewAll' => $canViewAll,
             'canManageSettings' => $canManageSettings,
             'settingsCras' => $canManageSettings ? $this->settingsCras($exclusiveCras) : null,
+            'canSetLimits' => $canSetLimits,
+            'limitsNow' => ExclusiveLimits::on($today),
+            'limitChanges' => $canSetLimits
+                ? ExclusiveLeadLimit::whereDate('effective_from', '>=', $today->startOfMonth())->with('setter')->orderBy('effective_from')->get()
+                : collect(),
             'today' => $today,
         ];
 
@@ -81,10 +91,12 @@ class ExclusiveLeadController extends Controller
         $day = $day->max($month->max($first));
         $leadDay = $day->subDays($lag);
 
-        $scope = $exclusive->leadsFor($cra, $leadDay)
+        // A search looks through all of the CRA's days; otherwise the day picked.
+        $scope = ($search ? $exclusive->search($cra, $search) : $exclusive->leadsFor($cra, $leadDay))
             ->with(['assignee', 'notesAuthor', 'callRecordings', 'attempts.user'])
             ->orderByRaw('lead_type = ? desc', [Lead::TYPE_CRD])
-            ->orderBy('customer_name');
+            ->orderBy('customer_name')
+            ->orderByDesc('listed_on');
 
         $full = $request->boolean('full') && $show !== 'all';
         $perPage = $full ? self::FULL_PER_PAGE : self::PER_PAGE;
@@ -92,7 +104,8 @@ class ExclusiveLeadController extends Controller
         $processed = in_array($show, ['all', 'processed'], true) ? (clone $scope)->processed()->paginate($perPage, ['*'], 'processed_page')->withQueryString() : null;
 
         $shared = $data + [
-            'sources' => $exclusive->sourcesFor($cra, $leadDay),
+            'search' => $search,
+            'sources' => $search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay),
             'canManage' => $user->can('segmentation.manage'),
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
@@ -146,7 +159,7 @@ class ExclusiveLeadController extends Controller
      */
     private function quotaNote(array $metrics): ?string
     {
-        $standard = (int) config('exclusive_leads.daily_quota');
+        $standard = $metrics['limits']['daily_leads'];
         $short = collect($metrics['days'])->filter(fn (array $day) => $day['quota'] > 0 && $day['quota'] !== $standard);
         $planned = $metrics['planned'];
 

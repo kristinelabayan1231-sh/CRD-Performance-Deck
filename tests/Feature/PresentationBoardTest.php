@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
+use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\Product;
@@ -13,13 +14,17 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
 use App\Services\CustomerChurn;
+use App\Services\DailyIncomeStatement;
 use App\Services\DeliveredRetention;
+use App\Services\HighValueCustomers;
 use App\Services\LeadGenerator;
 use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
+use App\Services\PresentationBoardCras;
 use App\Services\SegmentationStats;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
@@ -293,6 +298,96 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(3, $both['totals']['fsd_leads']);
         $this->assertSame($weekly['totals']['fsd_leads'], collect($weekly['periods'])->sum('fsd_leads'));
         $this->assertCount(61, $both['periods']);
+    }
+
+    public function test_cra_performance_gross_matches_the_boards_sales_and_capacity_divides_by_days_answered(): void
+    {
+        $this->sale('2026-06-03', 700)->forceFill(['conversion_type' => null])->save();
+        $this->sale('2026-08-03', 1000);
+        $this->sale('2026-08-04', 400, status: PancakeOrder::CANCELED);
+        $this->sale('2026-08-06', 900, shecom: 800);
+        PancakeEngagement::create(['pancake_user_id' => 'U1', 'staff_name' => self::CRD_SELLER, 'date' => '2026-08-03', 'engagements' => 30]);
+        PancakeEngagement::create(['pancake_user_id' => 'U1', 'staff_name' => self::CRD_SELLER, 'date' => '2026-08-04', 'engagements' => 10]);
+        $this->mock(DailyIncomeStatement::class)->shouldReceive('netIncome')->andReturn([$this->cra->id => 0.0]);
+
+        $cras = app(PresentationBoardCras::class);
+        $snapshot = $cras->build(CarbonImmutable::parse('2026-11-06'));
+        $row = $cras->range($snapshot, '2026-08', '2026-08')['rows'][0];
+        $board = app(PresentationBoard::class)->range($this->snapshot(), '2026-08', '2026-08', 'monthly');
+
+        $this->assertEquals($board['totals']['gross'], $row['gross']);
+        $this->assertEquals(2200, $row['gross']);
+        $this->assertEquals(20, $row['capacity']);
+        $this->assertSame(2, $row['answered_days']);
+        $this->assertEquals(2900, $cras->range($snapshot, '2026-01', '2026-11')['gross']);
+    }
+
+    public function test_cra_performance_ni_shows_only_with_november_in_the_range_and_ranks_by_gross(): void
+    {
+        $other = User::create([
+            'email' => 'lhea@example.com', 'display_name' => 'Lhea', 'pancake_name' => 'CRD LHEA',
+            'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true,
+        ]);
+        $empty = ['gross' => 0.0, 'answered' => 0, 'answered_days' => 0, 'ni' => null];
+        $snapshot = [
+            'months' => [
+                '2026-10' => [$this->cra->id => [...$empty, 'gross' => 100.0], $other->id => [...$empty, 'gross' => 900.0]],
+                '2026-11' => [$this->cra->id => [...$empty, 'gross' => 100.0, 'ni' => -50.0], $other->id => [...$empty, 'gross' => 100.0, 'ni' => 0.0]],
+            ],
+            'high_value' => [$this->cra->id => ['high_aov' => 3, 'vip' => 1]],
+        ];
+        $cras = app(PresentationBoardCras::class);
+
+        $october = $cras->range($snapshot, '2026-10', '2026-10');
+        $this->assertSame('Lhea', $october['rows'][0]['user']->displayName());
+        $this->assertSame(1, $october['rows'][0]['rank']);
+        $this->assertEquals(.9, $october['rows'][0]['share']);
+        $this->assertNull($october['rows'][0]['ni']);
+
+        $both = $cras->range($snapshot, '2026-10', '2026-11');
+        $this->assertEquals(0.0, $both['rows'][0]['ni']);
+        $this->assertNotNull($both['rows'][0]['ni']);
+        $this->assertEquals(-50.0, $both['rows'][1]['ni']);
+        $this->assertSame(3, $both['high_aov']);
+    }
+
+    public function test_cra_performance_counts_high_aov_and_vip_under_the_cra_assigned_now(): void
+    {
+        $this->mock(HighValueCustomers::class, function ($mock) {
+            $mock->shouldReceive('all')->andReturn([
+                '9171' => ['high_aov' => true, 'vip' => true],
+                '9172' => ['high_aov' => true, 'vip' => false],
+                '9173' => ['high_aov' => true, 'vip' => false],
+            ]);
+            $mock->shouldReceive('crasFor')->andReturn(['9171' => $this->cra->id, '9172' => $this->cra->id]);
+        });
+        $this->mock(DailyIncomeStatement::class)->shouldReceive('netIncome')->andReturn([$this->cra->id => 0.0]);
+
+        $high = app(PresentationBoardCras::class)->build(CarbonImmutable::parse('2026-11-06'))['high_value'][$this->cra->id];
+
+        $this->assertSame(['high_aov' => 2, 'vip' => 1], $high);
+    }
+
+    public function test_the_page_shows_each_cras_card_and_says_so_until_the_first_cra_snapshot(): void
+    {
+        Cache::forever(PresentationBoard::CACHE_KEY, $this->snapshot());
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index'))
+            ->assertOk()->assertSee('These figures appear after the next scheduled refresh.');
+
+        Cache::forever(PresentationBoardCras::CACHE_KEY, [
+            'months' => ['2026-11' => [$this->cra->id => ['gross' => 2000.0, 'answered' => 120, 'answered_days' => 2, 'ni' => -500.0]]],
+            'high_value' => [$this->cra->id => ['high_aov' => 7, 'vip' => 2]],
+        ]);
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index'))
+            ->assertOk()
+            ->assertSee('CRA performance, year to date')
+            ->assertSee('Regina')
+            ->assertSee('₱2,000')
+            ->assertSee('−₱500')
+            ->assertSee('100.0% of team gross')
+            ->assertDontSee('These figures appear after the next scheduled refresh.');
     }
 
     public function test_the_page_needs_its_permission_and_says_so_until_the_first_snapshot(): void

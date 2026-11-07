@@ -19,6 +19,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
 use App\Http\Controllers\ExclusiveLeadController;
+use App\Http\Controllers\ExclusiveLeadLimitController;
 use App\Http\Controllers\ExclusiveLeadSettingController;
 use App\Http\Controllers\HighValueCustomerController;
 use App\Http\Controllers\LeadAttemptController;
@@ -227,6 +228,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::prefix('settings')->name('settings.')->group(function () {
+        Route::prefix('exclusive-lead-limits')->name('exclusive-lead-limits.')->middleware('can:exclusive_leads.limits')->group(function () {
+            Route::post('/', [ExclusiveLeadLimitController::class, 'store'])->name('store');
+            Route::delete('/{limit}', [ExclusiveLeadLimitController::class, 'destroy'])->name('destroy');
+        });
+
         Route::prefix('exclusive-leads')->name('exclusive-leads.')->middleware('can:exclusive_leads.manage')->group(function () {
             Route::post('/{user}', [ExclusiveLeadSettingController::class, 'store'])->name('store');
             Route::delete('/{user}', [ExclusiveLeadSettingController::class, 'destroy'])->name('destroy');

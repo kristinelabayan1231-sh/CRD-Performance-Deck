@@ -281,6 +281,70 @@
                 </section>
             </div>
 
+            <section id="cra-performance" aria-labelledby="cra-performance-title" style="{{ $glass }}">
+                <header class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2" style="{{ $head }}">
+                    <h2 id="cra-performance-title" style="{{ $h2 }}">CRA performance, year to date</h2>
+                    @if ($craPerformance)
+                        <p style="margin: 0; font-size: 13px; {{ $muted }}">Team: <strong style="color: #f1eef8">{{ $peso($craPerformance['gross']) }}</strong> gross · <strong style="color: #f1eef8">{{ $number($craPerformance['high_aov']) }}</strong> High AOV · <strong style="color: #f1eef8">{{ $number($craPerformance['vip']) }}</strong> VIP</p>
+                    @endif
+                </header>
+
+                @if (! $craPerformance)
+                    <p role="status" style="{{ $note }}; padding: 16px">These figures appear after the next scheduled refresh.</p>
+                @else
+                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(214px, 1fr)); padding: 16px">
+                        @foreach ($craPerformance['rows'] as $row)
+                            <article class="flex flex-col gap-3.5" style="padding: 16px; background: rgb(255 255 255 / .05); border: 1px solid rgb(255 255 255 / .1); border-radius: 14px">
+                                <div class="flex items-center gap-3">
+                                    <x-avatar :user="$row['user']" style="width: 64px; height: 64px; font-size: 20px; font-weight: 700; color: #f1eef8; background: {{ $crdTint }}; border: 2px solid rgb(195 155 255 / .7)" />
+                                    <div class="min-w-0">
+                                        <p style="margin: 0; font-size: 12px; font-weight: 600; color: {{ $accent }}">Rank {{ $row['rank'] }}</p>
+                                        <h3 style="margin: 1px 0 0; font-size: 16px; font-weight: 700">{{ $row['user']->displayName() }}</h3>
+                                        @if ($row['user']->exclusive_from)
+                                            <p style="margin: 2px 0 0; font-size: 12px; {{ $muted }}">Exclusive leads</p>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <p style="margin: 0; font-size: 12px; font-weight: 600; {{ $muted }}">Gross sales</p>
+                                    <p style="margin: 2px 0 8px; font-size: 26px; font-weight: 700">{{ $peso($row['gross']) }}</p>
+                                    <div aria-hidden="true" style="height: 6px; border-radius: 999px; background: rgb(255 255 255 / .12)">
+                                        <div style="width: {{ round($row['share'] * 100, 1) }}%; height: 6px; border-radius: 999px; background: {{ $accent }}"></div>
+                                    </div>
+                                    <p style="margin: 5px 0 0; font-size: 12px; {{ $muted }}">{{ number_format($row['share'] * 100, 1) }}% of team gross</p>
+                                </div>
+
+                                <dl class="grid grid-cols-2 gap-x-2.5 gap-y-3" style="margin: 0; padding-top: 12px; border-top: 1px solid rgb(255 255 255 / .1)">
+                                    <div>
+                                        <dt style="font-size: 12px; {{ $muted }}">NI, from Nov</dt>
+                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700; color: {{ $row['ni'] === null ? '#f1eef8' : ($row['ni'] < 0 ? $lost : $added) }}">{{ $row['ni'] === null ? '—' : ($row['ni'] < 0 ? '−' : '').$peso(abs($row['ni'])) }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt style="font-size: 12px; {{ $muted }}">Capacity a day</dt>
+                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $row['capacity'] === null ? '—' : number_format($row['capacity']) }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt style="font-size: 12px; {{ $muted }}">High AOV</dt>
+                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $number($row['high_aov']) }}</dd>
+                                    </div>
+                                    <div>
+                                        <dt style="font-size: 12px; {{ $muted }}">VIP</dt>
+                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $number($row['vip']) }}</dd>
+                                    </div>
+                                </dl>
+                            </article>
+                        @endforeach
+                    </div>
+
+                    <div class="grid gap-x-6 gap-y-2" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); padding: 14px 16px; border-top: 1px solid rgb(255 255 255 / .1)">
+                        <p style="{{ $note }}"><strong style="color: #f1eef8">NI:</strong> the Daily I.S. CRA card's Net Income. Shows only when November or later is in the months picked.</p>
+                        <p style="{{ $note }}"><strong style="color: #f1eef8">Capacity a day:</strong> customers answered ÷ days they answered anyone (tracker contact dates + Pancake engagements).</p>
+                        <p style="{{ $note }}"><strong style="color: #f1eef8">High AOV and VIP:</strong> customers assigned to the CRA now, from all their orders. Doesn't change with the months picked.</p>
+                    </div>
+                @endif
+            </section>
+
             <section id="months" aria-labelledby="months-title" style="{{ $glass }}">
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 id="months-title" style="{{ $h2 }}">Month by month</h2>

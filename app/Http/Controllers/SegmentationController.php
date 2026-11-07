@@ -439,9 +439,13 @@ class SegmentationController extends Controller
             $lead->pickFeedbacks(array_filter($data['feedbacks'] ?? []));
         }
 
-        // Tagging a customer means they were just contacted: Date and Time of contact follow (now, Manila time),
-        // unless they were sent too. An hour outside the Time of contact choices leaves the time as it is.
-        if (! empty($data['customer_tag']) && $lead->isDirty('customer_tag')) {
+        // Tagging a customer means they were just contacted, and so does an exclusive CRA picking Repeat Purchase: Date and
+        // Time of contact follow (now, Manila time), unless they were sent too. An hour outside the Time of contact choices
+        // leaves the time as it is.
+        $wasTagged = ! empty($data['customer_tag']) && $lead->isDirty('customer_tag');
+        $exclusiveRepeatPicked = ! empty($data['repeat_purchase']) && $lead->isDirty('repeat_purchase') && $lead->assignee?->isExclusiveOn(Lead::today());
+
+        if ($wasTagged || $exclusiveRepeatPicked) {
             $now = CarbonImmutable::now(config('segmentation.timezone'));
             $hour = $now->format('H');
 
@@ -511,7 +515,7 @@ class SegmentationController extends Controller
                 // The page mirrors it into the row's Customer's Feedback cell (it can follow the status).
                 'feedback' => $lead->feedback,
                 'feedbacks' => $lead->feedbackKeys(),
-                // And into Date / Time of contact (a customer tag sets them).
+                // And into Date / Time of contact (a customer tag or an exclusive CRA's Repeat Purchase sets them).
                 'contact_date' => $lead->contact_date?->toDateString(),
                 'contact_time' => $lead->contact_time,
                 'notes' => $lead->notes,
