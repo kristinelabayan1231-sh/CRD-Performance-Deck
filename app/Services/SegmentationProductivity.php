@@ -56,22 +56,11 @@ class SegmentationProductivity
             }
         }
 
-        $calls = $this->grouped(
-            Lead::whereIn('assigned_to', $ids)->withoutPosSales()->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
-                ->selectRaw('assigned_to as cra, date(contact_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
-        );
+        $calls = $this->calls($ids, $from, $to);
 
         // Pancake account name => CRA id.
         $accounts = ConversionBreakdown::accounts($cras);
-
-        $chat = [];
-        PancakeEngagement::whereIn('staff_name', $accounts->keys())
-            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
-            ->get()
-            ->each(function (PancakeEngagement $row) use (&$chat, $accounts) {
-                $cra = $accounts[$row->staff_name];
-                $chat[$cra][$row->date->toDateString()] = ($chat[$cra][$row->date->toDateString()] ?? 0) + $row->engagements;
-            });
+        $chat = $this->chats($accounts, $from, $to);
 
         [$alc, $pc] = $this->conversions($accounts, $from, $to);
         $tagged = $this->breakdown->orders($accounts, $from, $to);
@@ -91,6 +80,59 @@ class SegmentationProductivity
         }
 
         return $result;
+    }
+
+    /**
+     * Answered alone, for a whole year's reading without days()' orders: only days with someone answered.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array<string, int>> cra id => Y-m-d => answered
+     */
+    public function answeredPerDay(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $answered = $this->calls($cras->pluck('id'), $from, $to);
+
+        foreach ($this->chats(ConversionBreakdown::accounts($cras), $from, $to) as $cra => $perDay) {
+            foreach ($perDay as $day => $n) {
+                $answered[$cra][$day] = ($answered[$cra][$day] ?? 0) + $n;
+            }
+        }
+
+        return $answered;
+    }
+
+    /**
+     * Tracker leads with that Contact Date.
+     *
+     * @param  Collection<int, int>  $ids
+     * @return array<int, array<string, int>> cra id => Y-m-d => count
+     */
+    private function calls(Collection $ids, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return $this->grouped(
+            Lead::whereIn('assigned_to', $ids)->withoutPosSales()->whereDate('contact_date', '>=', $from)->whereDate('contact_date', '<=', $to)
+                ->selectRaw('assigned_to as cra, date(contact_date) as day, count(*) as n')->groupBy('cra', 'day')->get(),
+        );
+    }
+
+    /**
+     * Pancake customer engagements of the CRA's Pancake accounts.
+     *
+     * @param  Collection<string, int>  $accounts
+     * @return array<int, array<string, int>> cra id => Y-m-d => engagements
+     */
+    private function chats(Collection $accounts, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $chat = [];
+        PancakeEngagement::whereIn('staff_name', $accounts->keys())
+            ->whereDate('date', '>=', $from)->whereDate('date', '<=', $to)
+            ->get()
+            ->each(function (PancakeEngagement $row) use (&$chat, $accounts) {
+                $cra = $accounts[$row->staff_name];
+                $chat[$cra][$row->date->toDateString()] = ($chat[$cra][$row->date->toDateString()] ?? 0) + $row->engagements;
+            });
+
+        return $chat;
     }
 
     /**

@@ -140,6 +140,13 @@ Schedule::command('presentation-board:refresh')
     ->withoutOverlapping(60)
     ->runInBackground();
 
+// Presentation Board → CRA performance, half an hour after the board so the two don't compete for memory.
+Schedule::command('presentation-board:refresh-cras')
+    ->cron('30 */2 * * *')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
 // Presentation Board: older orders' Pancake pages, a little at a time (the web service and syncs share one instance); does nothing once finished.
 Schedule::command('pancake:backfill-pages --minutes=8')
     ->everyTenMinutes()
