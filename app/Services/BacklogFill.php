@@ -11,6 +11,7 @@ use App\Support\OnDuty;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Tops each on-duty CRA's day up to the daily maximum (segmentation.max_leads_per_cra) once their own leads
@@ -28,6 +29,8 @@ use Illuminate\Support\Facades\Cache;
  */
 class BacklogFill
 {
+    private const LOCK_SECONDS = 300;
+
     /**
      * Fill the CRAs logged in today (Segmentation Tracker), together so the pool splits evenly.
      *
@@ -47,8 +50,24 @@ class BacklogFill
     public function fill(CarbonImmutable $day, Collection $cras): array
     {
         $day = $day->startOfDay();
+
+        // One fill at a time, so a log-in and the hourly sync can't both fill a CRA. A fill that dies keeps the lock until it
+        // expires; the next hourly sync then tries again. A run that finds it taken leaves the CRAs to that sync too.
+        return Cache::lock('segmentation.backlog_fill.'.$day->toDateString(), self::LOCK_SECONDS)
+            ->get(fn () => $this->fillOnce($day, $cras)) ?: [];
+    }
+
+    /**
+     * Fill the CRAs not filled yet. They're marked filled only once their leads have moved, all of them or none, so a
+     * failure never leaves a CRA short for the day.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, int> CRA id => leads moved to $day
+     */
+    private function fillOnce(CarbonImmutable $day, Collection $cras): array
+    {
         $cras = $cras->reject(fn (User $cra) => $cra->isExclusiveOn($day) || Cache::has(self::filledKey($day, $cra->id)))->values();
-        $cras->each(fn (User $cra) => Cache::put(self::filledKey($day, $cra->id), true, now()->addDays(3)));
+        $markFilled = fn () => $cras->each(fn (User $cra) => Cache::put(self::filledKey($day, $cra->id), true, now()->addDays(3)));
         $max = (int) config('segmentation.max_leads_per_cra');
         $listed = Lead::whereDate('listed_on', $day)->whereIn('assigned_to', $cras->pluck('id'))->withoutPosSales()
             ->selectRaw('assigned_to, count(*) as total')->groupBy('assigned_to')->pluck('total', 'assigned_to');
@@ -56,6 +75,8 @@ class BacklogFill
         $moved = array_fill_keys(array_keys($room), 0);
 
         if ($room === []) {
+            $markFilled();
+
             return $moved;
         }
 
@@ -124,28 +145,32 @@ class BacklogFill
             }
         }
 
-        foreach ($taken as $craId => $leads) {
-            // The day each own lead leaves keeps counting it (LeadMove).
-            foreach (array_chunk(array_filter($leads, fn (Lead $lead) => $lead->assigned_to !== null), 500) as $chunk) {
-                // The CRA who had it: their own, or another CRA's when it goes back to its customer's CRA.
-                LeadMove::insert(array_map(fn (Lead $lead) => [
-                    'lead_id' => $lead->id, 'assigned_to' => $lead->assigned_to, 'listed_on' => $lead->listed_on->toDateString(),
-                    'moved_to' => $day->toDateString(), 'created_at' => now(), 'updated_at' => now(),
-                ], $chunk));
-            }
+        DB::transaction(function () use ($taken, $day, &$moved) {
+            foreach ($taken as $craId => $leads) {
+                // The day each own lead leaves keeps counting it (LeadMove).
+                foreach (array_chunk(array_filter($leads, fn (Lead $lead) => $lead->assigned_to !== null), 500) as $chunk) {
+                    // The CRA who had it: their own, or another CRA's when it goes back to its customer's CRA.
+                    LeadMove::insert(array_map(fn (Lead $lead) => [
+                        'lead_id' => $lead->id, 'assigned_to' => $lead->assigned_to, 'listed_on' => $lead->listed_on->toDateString(),
+                        'moved_to' => $day->toDateString(), 'created_at' => now(), 'updated_at' => now(),
+                    ], $chunk));
+                }
 
-            // Who got each one, for Segmentation Productivity's Backlog progress.
-            foreach (array_chunk($leads, 500) as $chunk) {
-                BacklogHandout::insert(array_map(fn (Lead $lead) => [
-                    'lead_id' => $lead->id, 'user_id' => $craId, 'handed_on' => $day->toDateString(),
-                    'source' => $lead->assigned_to !== null ? BacklogHandout::OWN : BacklogHandout::POOL,
-                    'created_at' => now(), 'updated_at' => now(),
-                ], $chunk));
-            }
+                // Who got each one, for Segmentation Productivity's Backlog progress.
+                foreach (array_chunk($leads, 500) as $chunk) {
+                    BacklogHandout::insert(array_map(fn (Lead $lead) => [
+                        'lead_id' => $lead->id, 'user_id' => $craId, 'handed_on' => $day->toDateString(),
+                        'source' => $lead->assigned_to !== null ? BacklogHandout::OWN : BacklogHandout::POOL,
+                        'created_at' => now(), 'updated_at' => now(),
+                    ], $chunk));
+                }
 
-            $this->move(array_map(fn (Lead $lead) => $lead->id, $leads), $craId, $day);
-            $moved[$craId] = count($leads);
-        }
+                $this->move(array_map(fn (Lead $lead) => $lead->id, $leads), $craId, $day);
+                $moved[$craId] = count($leads);
+            }
+        });
+
+        $markFilled();
 
         return $moved;
     }
@@ -161,13 +186,22 @@ class BacklogFill
     public function withoutReordered(Collection $waiting, callable $phoneOf): Collection
     {
         // Lead numbers are stored as entered: 9…, 09…, 639… or +639….
-        $formats = $waiting->map($phoneOf)->filter()->unique()->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key]);
-        $lastDelivered = $formats->chunk(1000)
-            ->flatMap(fn (Collection $chunk) => Lead::whereIn('phone_number', $chunk->values()->all())->get(['phone_number', 'product_name', 'delivered_date']))
-            ->groupBy(fn (Lead $lead) => $phoneOf($lead).'|'.$lead->product_name)
-            ->map(fn (Collection $leads) => $leads->max('delivered_date'));
+        $formats = $waiting->map($phoneOf)->filter()->unique()->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key])->all();
+        $lastDelivered = [];
 
-        return $waiting->reject(fn (Lead $lead) => $lastDelivered->get($phoneOf($lead).'|'.$lead->product_name)?->greaterThan($lead->delivered_date) ?? false)->values();
+        // Plain rows, a chunk at a time: these customers have tens of thousands of leads, too many to hold as models.
+        foreach (array_chunk($formats, 1000) as $chunk) {
+            foreach (Lead::whereIn('phone_number', $chunk)->toBase()->get(['phone_number', 'product_name', 'delivered_date']) as $row) {
+                $key = LeadGenerator::normalizePhone((string) $row->phone_number).'|'.$row->product_name;
+                $delivered = substr((string) $row->delivered_date, 0, 10);
+
+                if ($delivered > ($lastDelivered[$key] ?? '')) {
+                    $lastDelivered[$key] = $delivered;
+                }
+            }
+        }
+
+        return $waiting->reject(fn (Lead $lead) => ($lastDelivered[$phoneOf($lead).'|'.$lead->product_name] ?? '') > $lead->delivered_date->toDateString())->values();
     }
 
     /**

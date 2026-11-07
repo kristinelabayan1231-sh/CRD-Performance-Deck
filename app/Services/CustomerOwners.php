@@ -10,7 +10,6 @@ use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Collection;
 
 /**
  * Each customer's own CRA: the one who has handled the most of their orders and, when CRAs are level, the one who
@@ -83,10 +82,6 @@ class CustomerOwners
         }
 
         $numbers = array_values(array_unique(array_merge(...array_values($numbersOf))));
-        $orders = $this->orders($numbers);
-        // Keyed by order number (numeric strings), so the chunks are joined with + to keep the keys.
-        $claimed = $orders->pluck('pancake_order_id')->chunk(1000)->reduce(fn (array $all, Collection $ids) => $all
-            + CvrOrderEntry::whereNotNull('user_id')->whereIn('pancake_order_id', $ids->values())->pluck('user_id', 'pancake_order_id')->all(), []);
         $active = $cras->pluck('id')->flip();
 
         // Per customer and CRA: how many orders they handled, and when the first and latest were.
@@ -98,14 +93,22 @@ class CustomerOwners
         };
 
         $oldestDay = [];
-        foreach ($orders as $order) {
-            $customer = $primaryOf[$order->phone_key] ?? $order->phone_key;
-            $at = $order->ordered_at ?? $order->ordered_on;
-            $oldestDay[$customer] = min($oldestDay[$customer] ?? '9999', $at->toDateString());
+        // Plain rows, a chunk at a time: a day's backlog reaches tens of thousands of orders, too many to hold as models.
+        foreach (array_chunk($numbers, 1000) as $chunk) {
+            $orders = PancakeOrder::whereIn('phone_key', $chunk)->counted()->toBase()
+                ->get(['pancake_order_id', 'phone_key', 'seller_name', 'ordered_on', 'ordered_at']);
+            $claimed = CvrOrderEntry::whereNotNull('user_id')->whereIn('pancake_order_id', $orders->pluck('pancake_order_id'))
+                ->pluck('user_id', 'pancake_order_id');
 
-            $craId = isset($claimed[$order->pancake_order_id]) ? (int) $claimed[$order->pancake_order_id] : ($bySeller[$order->seller_name] ?? null);
-            if ($craId !== null && isset($active[$craId])) {
-                $tally($customer, $craId, $at->toDateTimeString());
+            foreach ($orders as $order) {
+                $customer = $primaryOf[$order->phone_key] ?? $order->phone_key;
+                $at = $order->ordered_at !== null ? substr((string) $order->ordered_at, 0, 19) : substr((string) $order->ordered_on, 0, 10).' 00:00:00';
+                $oldestDay[$customer] = min($oldestDay[$customer] ?? '9999', substr($at, 0, 10));
+
+                $craId = isset($claimed[$order->pancake_order_id]) ? (int) $claimed[$order->pancake_order_id] : ($bySeller[$order->seller_name] ?? null);
+                if ($craId !== null && isset($active[$craId])) {
+                    $tally($customer, $craId, $at);
+                }
             }
         }
 
@@ -184,17 +187,5 @@ class CustomerOwners
         }
 
         return $primaryOf;
-    }
-
-    /**
-     * The counted Pancake orders of these numbers.
-     *
-     * @param  list<string>  $numbers
-     * @return Collection<int, PancakeOrder>
-     */
-    private function orders(array $numbers): Collection
-    {
-        return collect(array_chunk($numbers, 1000))->flatMap(fn (array $chunk) => PancakeOrder::whereIn('phone_key', $chunk)->counted()
-            ->get(['pancake_order_id', 'phone_key', 'seller_name', 'ordered_on', 'ordered_at']));
     }
 }
