@@ -175,8 +175,8 @@ class ExclusiveLeadTrackerTest extends TestCase
     {
         config(['exclusive_leads.daily_quota' => 5]);
 
-        $random = $this->lead('2026-11-06');
-        $belowLine = $this->lead('2026-11-06');
+        $random = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+        $belowLine = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $this->delivered($this->phoneKey($belowLine), 894);
         $handled = $this->lead('2026-11-06');
         $this->handledTwiceBy($this->joanna, $this->phoneKey($handled));
@@ -290,7 +290,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         config(['exclusive_leads.daily_quota' => 3]);
 
         $this->lead('2026-11-05', $this->joanna);
-        $this->lead('2026-11-06');
+        $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $this->sync('2026-11-06');
         $rows = ExclusiveListLead::count();
         $moves = LeadMove::count();
@@ -301,11 +301,26 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame($moves, LeadMove::count());
         $this->assertCount(2, $this->listOn('2026-11-06'));
 
-        $this->lead('2026-11-06');
-        $this->lead('2026-11-06');
+        $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+        $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
         $this->artisan('leads:build-exclusive')->assertSuccessful();
 
         $this->assertCount(3, $this->listOn('2026-11-06'));
+    }
+
+    public function test_random_leads_are_fsd_leads_only(): void
+    {
+        config(['exclusive_leads.daily_quota' => 3]);
+
+        $crdLead = $this->lead('2026-11-06');
+        $crdInPool = $this->lead('2026-11-02');
+        $fsdLead = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
+
+        $this->sync('2026-11-06');
+
+        $this->assertSame([$fsdLead->id => 'random'], $this->listOn('2026-11-06'));
+        $this->assertNull($crdLead->fresh()->assigned_to);
+        $this->assertNull($crdInPool->fresh()->assigned_to);
     }
 
     public function test_her_pos_sales_show_on_the_day_without_using_the_quota(): void
@@ -313,7 +328,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         config(['exclusive_leads.daily_quota' => 1]);
 
         $sale = $this->lead('2026-11-06', $this->joanna, ['order_id' => 'POS-1', 'repeat_purchase' => 'yes']);
-        $pool = $this->lead('2026-11-06');
+        $pool = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
 
         $this->sync('2026-11-06');
 
@@ -330,12 +345,13 @@ class ExclusiveLeadTrackerTest extends TestCase
             'product_name' => 'Pterygium', 'qty' => 1, 'delivered_date' => '2026-10-23', 'consumption_days_per_unit' => 15, 'estimated_out_of_stock_date' => '2026-11-06',
         ])->all();
         Http::fake(['*/management/retention-stockout' => Http::response(['count' => 3, 'stock_outs' => $rows, 'retention_detail' => []])]);
+        $fsdLead = $this->lead('2026-11-06', null, ['lead_type' => Lead::TYPE_FSD]);
 
         app(LeadGenerator::class)->generate(CarbonImmutable::parse('2026-11-06'));
 
+        $this->assertSame([$fsdLead->id => 'random'], $this->listOn('2026-11-06'));
         $this->assertSame(1, Lead::where('assigned_to', $this->joanna->id)->whereDate('listed_on', '2026-11-06')->count());
-        $this->assertSame(2, Lead::where('assigned_to', $this->regina->id)->whereDate('listed_on', '2026-11-06')->count());
-        $this->assertCount(1, $this->listOn('2026-11-06'));
+        $this->assertSame(3, Lead::where('assigned_to', $this->regina->id)->whereDate('listed_on', '2026-11-06')->count());
     }
 
     public function test_the_segmentation_assignment_and_fill_leave_her_and_her_customers_alone(): void
@@ -553,7 +569,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         config(['exclusive_leads.daily_quota' => 3]);
         $leftover = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05']);
         $worked = $this->lead('2026-11-05', $this->joanna, ['listed_on' => '2026-11-05', 'status' => 'pjr_drop_call', 'contact_date' => '2026-11-05']);
-        $picked = $this->lead('2026-11-06', null, ['listed_on' => '2026-11-06']);
+        $picked = $this->lead('2026-11-06', null, ['listed_on' => '2026-11-06', 'lead_type' => Lead::TYPE_FSD]);
         $this->lead('2026-11-06', $this->regina, ['listed_on' => '2026-11-06']);
 
         $this->sync('2026-11-06');
@@ -580,9 +596,9 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame(1, $today['summary']['engaged']);
         $this->assertSame(1, app(CvrTracker::class)->day($joanna, CarbonImmutable::parse('2026-11-05'))['summary']['not_answering']);
 
-        // Repeat Purchases: the same rows as her page's goal.
+        // Repeat Purchases: the same rows as her page's goal; an FSD lead's purchase is on the Retained tile.
         $this->assertSame(1, $month['actual']['repeat']);
-        $this->assertSame([$picked->id], app(SegmentationStats::class)->repeatPurchases(collect([$joanna]), 'repeat', CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-30'))->pluck('id')->all());
+        $this->assertSame([$picked->id], app(SegmentationStats::class)->repeatPurchases(collect([$joanna]), 'retained', CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-30'))->pluck('id')->all());
 
         // The page's pickers still list her everywhere but the Segmentation Tracker.
         $this->actingAs($this->supervisor)->get(route('pc-report.index', ['date' => '2026-11-06']))->assertOk()->assertSee('Joanna Rose');

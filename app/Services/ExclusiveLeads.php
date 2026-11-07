@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Days before exclusive_leads.build_from only record the leads the CRA already had. From then on each day fills up to
  * its quota in priority order: what they didn't cater on their last list day, High AOV / VIP customers, customers who are
- * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned leads no other CRA
- * owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
+ * theirs by orders handled (CustomerOwners), then random leads (the day's and the pool's unassigned FSD leads no other
+ * CRA owns). A lead listed for them stays theirs: nothing else moves it (LeadGenerator, BacklogFill).
  *
  * The list's leads are ordinary rows of the leads table, assigned to the CRA and listed on the day (a carried lead moves
  * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
@@ -182,7 +182,7 @@ class ExclusiveLeads
                 || ($holder !== null && isset($otherExclusive[$holder]))
                 || ($owner !== null && $owner !== $cra->id)
                 || ($holder !== null && $holder !== $cra->id && $owner !== $cra->id)
-                || ($source === self::RANDOM && ! $niches->allows($cra->id, $lead->product_name));
+                || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
 
             if (! $skip) {
                 $tiers[$source][] = $lead;
@@ -331,6 +331,47 @@ class ExclusiveLeads
     public function leadsFor(User $cra, CarbonImmutable $day): Builder
     {
         return Lead::whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->select('lead_id'));
+    }
+
+    /**
+     * Every lead on the CRA's lists for real month $month so far, each once. POS sales stay out, as in the month's goals.
+     */
+    public function leadsForMonth(User $cra, CarbonImmutable $month): Builder
+    {
+        return Lead::whereIn('id', $this->monthEntries($cra, $month)->select('lead_id'));
+    }
+
+    /**
+     * Why each of the month's leads was last listed, and the real day it was last on a list and how many days it was on one.
+     *
+     * @return array{sources: array<int, string>, days: array<int, array{last: string, count: int}>}
+     */
+    public function monthListDetails(User $cra, CarbonImmutable $month): array
+    {
+        $lag = WorkingDate::lagDays();
+        $details = ['sources' => [], 'days' => []];
+
+        foreach ($this->monthEntries($cra, $month)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
+            $details['sources'][$entry->lead_id] = $entry->source;
+            $details['days'][$entry->lead_id] = [
+                'last' => $entry->list_date->addDays($lag)->toDateString(),
+                'count' => ($details['days'][$entry->lead_id]['count'] ?? 0) + 1,
+            ];
+        }
+
+        return $details;
+    }
+
+    /**
+     * @return Builder<ExclusiveListLead>
+     */
+    private function monthEntries(User $cra, CarbonImmutable $month): Builder
+    {
+        $lag = WorkingDate::lagDays();
+
+        return ExclusiveListLead::where('user_id', $cra->id)->where('source', '!=', self::POS)
+            ->whereDate('list_date', '>=', $month->startOfMonth()->subDays($lag))
+            ->whereDate('list_date', '<=', $month->endOfMonth()->startOfDay()->subDays($lag));
     }
 
     /**
