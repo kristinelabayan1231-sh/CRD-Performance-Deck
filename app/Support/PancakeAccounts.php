@@ -59,6 +59,46 @@ class PancakeAccounts
     }
 
     /**
+     * Accounts used in FSD before their CRA joined the CRD team, as staff keys => the first day they count as CRD
+     * (config customers.crd_accounts_from), e.g. LHEA GATDULA from 2026-07-29.
+     *
+     * @return array<string, string>
+     */
+    public static function crdFrom(): array
+    {
+        return collect(config('customers.crd_accounts_from', []))
+            ->mapWithKeys(fn (string $day, string $account) => [PancakeEngagement::staffKey($account) => $day])
+            ->all();
+    }
+
+    /**
+     * Whether an order by this seller (staff key) on $day (Y-m-d) was sold while the account was CRD's (crdFrom()).
+     */
+    public static function crdOn(?string $sellerKey, string $day): bool
+    {
+        $from = self::crdFrom()[(string) $sellerKey] ?? null;
+
+        return $from === null || $day >= $from;
+    }
+
+    /**
+     * Leave out the orders accounts in crdFrom() sold before they were CRD's.
+     *
+     * @template TQuery of \Illuminate\Contracts\Database\Query\Builder
+     *
+     * @param  TQuery  $query
+     * @return TQuery
+     */
+    public static function whereSoldAsCrd($query, string $sellerColumn = 'seller_name', string $dayColumn = 'ordered_on')
+    {
+        foreach (self::crdFrom() as $account => $from) {
+            $query->where(fn ($q) => $q->whereNull($sellerColumn)->orWhere($sellerColumn, '!=', $account)->orWhere($dayColumn, '>=', $from));
+        }
+
+        return $query;
+    }
+
+    /**
      * Save the CRD team accounts (blanks and repeats dropped), relabel the Pancake POS deliveries
      * saved before the logistics report starts (CRD = sold by one of them) and have the customers
      * delivered in the month before checked again for earlier CRA orders.

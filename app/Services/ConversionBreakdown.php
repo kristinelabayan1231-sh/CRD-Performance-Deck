@@ -129,6 +129,7 @@ class ConversionBreakdown
      * status but deleted, as the CVR Tracker counts them: an order counted for another CRA there goes to that CRA (also when made
      * under an account not in $accounts), and its Type of Order there wins over the tag. Each order carries
      * counted_type (broadcast / segmentation) and counted_for (the CVR Tracker's CRA id, or null: its seller's CRA).
+     * An account used in FSD before its CRA joined the CRD team counts only from that day (PancakeAccounts::crdFrom()).
      *
      * @param  Collection<string, int>  $accounts  Pancake account name => CRA id
      */
@@ -142,7 +143,10 @@ class ConversionBreakdown
             ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhere('pancake_orders.status', '!=', CraPerformance::DELETED))
             ->where('pancake_orders.ordered_on', '>=', $from->toDateString())->where('pancake_orders.ordered_on', '<', $to->addDay()->toDateString())
             ->where(fn (Builder $q) => $q
-                ->where(fn (Builder $q) => $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()))
+                ->where(fn (Builder $q) => PancakeAccounts::whereSoldAsCrd(
+                    $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()),
+                    'pancake_orders.seller_name', 'pancake_orders.ordered_on',
+                ))
                 ->orWhereIn('cvr.user_id', $accounts->values()))
             ->select('pancake_orders.*')
             ->selectRaw("coalesce(cvr.order_type, pancake_orders.conversion_type, '".PancakeOrder::UNTAGGED."') as counted_type, cvr.user_id as counted_for");

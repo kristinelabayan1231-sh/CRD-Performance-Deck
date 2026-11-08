@@ -37,6 +37,12 @@ return [
         'CRD Sharie',
     ],
 
+    // Accounts used in FSD before their CRA moved to the CRD team: their orders count as CRD
+    // (CRA sales, CRD leads) only from this day. Account => Y-m-d, matched like crd_accounts.
+    'crd_accounts_from' => [
+        'Lhea Gatdula' => '2026-07-29',
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Product CLTV

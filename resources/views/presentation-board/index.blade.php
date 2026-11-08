@@ -3,7 +3,8 @@
     $number = fn (int|float|null $value) => $value === null ? '—' : number_format($value);
     $signed = fn (int|float $value) => ($value > 0 ? '+' : ($value < 0 ? '−' : '')).number_format(abs($value));
     $peso = fn (int|float|null $value) => $value === null ? '—' : '₱'.number_format($value);
-    $millions = fn (int|float $value) => '₱'.number_format($value / 1000000, 2).'M';
+    // Short sales label: ₱2.99M from a million, ₱460K below it.
+    $millions = fn (int|float $value) => abs($value) >= 1000000 ? '₱'.number_format($value / 1000000, 2).'M' : '₱'.number_format($value / 1000).'K';
     $percent = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 1).'%';
     // A rate with what it is out of.
     $of = fn (int|float $part, int|float $base) => $base ? number_format($part / $base * 100, 1).'% ('.number_format($part).' of '.number_format($base).')' : '—';
@@ -69,7 +70,7 @@
                 $tiles = [
                     ['label' => 'FSD leads', 'dot' => $fsd, 'value' => $number($totals['fsd_leads']), 'sub' => '+'.$number($totals['fsd_waiting']).' waiting', 'spark' => $spark($col('fsd_leads'), $fsd), 'url' => $listUrl('fsd_leads')],
                     ['label' => 'CRD leads', 'dot' => $crd, 'value' => $number($totals['crd_leads']), 'sub' => '+'.$number($totals['crd_waiting']).' waiting', 'spark' => $spark($col('crd_leads'), $crd), 'url' => $listUrl('crd_leads')],
-                    ['label' => 'Added from FSD', 'dot' => $added, 'value' => $number($totals['added']), 'sub' => '+'.$number($totals['added_waiting']).' waiting', 'spark' => $spark($col('added'), $added), 'url' => $listUrl('added')],
+                    ['label' => 'Acquired leads', 'dot' => $added, 'value' => $number($totals['added']), 'sub' => '+'.$number($totals['added_waiting']).' waiting', 'spark' => $spark($col('added'), $added), 'url' => $listUrl('added')],
                     ['label' => 'CRD repeat', 'dot' => $crd, 'value' => $number($totals['repeat']), 'sub' => $percent($totals['repeat_rate']).' of '.$number($totals['repeat_base']), 'spark' => $spark($col('repeat'), $crd), 'url' => $listUrl('repeat')],
                     ['label' => 'FSD retained', 'dot' => $fsd, 'value' => $number($totals['retained']), 'sub' => $percent($totals['retained_rate']).' of '.$number($totals['retained_base']), 'spark' => $spark($col('retained'), $fsd), 'url' => $listUrl('retained')],
                     ['label' => 'Conversion', 'dot' => $accent, 'value' => $percent($totals['conversion_rate']), 'sub' => 'From October', 'spark' => $spark(array_map(fn ($rate) => $rate ?? 0, $col('conversion_rate')), $accent)],
@@ -270,8 +271,26 @@
                         <div style="{{ $productColumns }}; padding-bottom: 6px; border-bottom: 1px solid rgb(255 255 255 / .14); font-size: 13px; font-weight: 600; {{ $muted }}">
                             <span class="text-left">Product</span><span>Sales</span><span>Share</span><span>Orders</span><span>Qty</span>
                         </div>
-                        <div style="max-height: 400px; overflow-y: auto; min-width: 470px">
+                        <div style="max-height: 560px; overflow-y: auto; min-width: 470px">
                             @foreach ($products as $rank => $product)
+                                @if ($product['name'] === \App\Services\PresentationBoard::OTHERS && $others)
+                                    {{-- Others opens into the items it holds, by their own name in the order. --}}
+                                    <details data-others style="{{ $rowLine }}">
+                                        <summary class="cursor-pointer" style="{{ $productColumns }}; align-items: center; padding: 7px 0; list-style: none">
+                                            <span class="flex flex-col gap-1 text-left"><span style="font-weight: 600">Others <span style="font-size: 12px; font-weight: 500; {{ $muted }}">· {{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption, click to see</span></span><span aria-hidden="true" style="display: block; height: 6px; border-radius: 999px; background: rgb(255 255 255 / .1)"><span style="display: block; width: {{ min(100, round($product['sales'] / $productPeak * 100)) }}%; height: 6px; border-radius: 999px; background: {{ $crd }}"></span></span></span>
+                                            <span>{{ $peso($product['sales']) }}</span><span style="{{ $muted }}">{{ number_format($product['share'] * 100) }}%</span><span>{{ $number($product['orders']) }}</span><span>{{ $number($product['qty']) }}</span>
+                                        </summary>
+                                        <div style="margin: 0 0 8px; border-radius: 8px; background: rgb(33 31 45 / .55)">
+                                            @foreach ($others as $other)
+                                                <div style="{{ $productColumns }}; min-width: 0; align-items: center; padding: 5px 8px; font-size: 13px; {{ $rowLine }}">
+                                                    <span class="text-left" style="overflow-wrap: anywhere">{{ $other['name'] }}</span>
+                                                    <span>{{ $peso($other['sales']) }}</span><span style="{{ $muted }}">{{ $other['share'] >= .005 ? number_format($other['share'] * 100).'%' : '<1%' }}</span><span>{{ $number($other['orders']) }}</span><span>{{ $number($other['qty']) }}</span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                    @continue
+                                @endif
                                 <div style="{{ $productColumns }}; align-items: center; padding: 7px 0; {{ $rowLine }}">
                                     <span class="flex flex-col gap-1 text-left"><span style="font-weight: 600">{{ $product['name'] === \App\Services\PresentationBoard::OTHERS ? '' : ($rank + 1).'. ' }}{{ $product['name'] }}</span><span aria-hidden="true" style="display: block; height: 6px; border-radius: 999px; background: rgb(255 255 255 / .1)"><span style="display: block; width: {{ min(100, round($product['sales'] / $productPeak * 100)) }}%; height: 6px; border-radius: 999px; background: {{ $crd }}"></span></span></span>
                                     <span>{{ $peso($product['sales']) }}</span><span style="{{ $muted }}">{{ number_format($product['share'] * 100) }}%</span><span>{{ $number($product['orders']) }}</span><span>{{ $number($product['qty']) }}</span>
@@ -355,37 +374,43 @@
                 </header>
                 <div class="overflow-x-auto">
                     @php
-                        $ledger = 'display: grid; grid-template-columns: 44px repeat(10, 1fr) .8fr .8fr 1.5fr 70px; gap: 6px; min-width: 1040px; padding-inline: 12px; text-align: right; font-size: 13px';
+                        $ledger = 'display: grid; grid-template-columns: 44px repeat(11, minmax(0, 1fr)); gap: 6px; min-width: 980px; padding-inline: 12px; text-align: right; font-size: 13px';
+                        $netStyle = fn (int|float $value) => 'font-weight: 700; color: '.($value < 0 ? $lost : $added);
+                        $key = fn (string $color) => '<span aria-hidden="true" style="display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: '.$color.'"></span>';
                     @endphp
-                    <div style="{{ $ledger }}; padding-top: 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; {{ $muted }}">
-                        <span></span>
-                        <span style="grid-column: span 2; text-align: left; border-bottom: 1px solid rgb(255 255 255 / .3); padding-bottom: 3px">Leads</span>
-                        <span style="grid-column: span 3; text-align: left; border-bottom: 1px solid rgb(255 255 255 / .3); padding-bottom: 3px">Customers</span>
-                        <span style="grid-column: span 5; text-align: left; border-bottom: 1px solid rgb(255 255 255 / .3); padding-bottom: 3px">Rates</span>
-                        <span style="grid-column: span 3; text-align: left; border-bottom: 1px solid rgb(255 255 255 / .3); padding-bottom: 3px">Sales</span>
-                        <span></span>
-                    </div>
-                    <div style="{{ $ledger }}; padding-block: 7px; border-bottom: 1px solid rgb(255 255 255 / .14); font-weight: 600; {{ $muted }}">
-                        <span class="text-left">Month</span><span>FSD</span><span>CRD</span><span>Added</span><span>Churned</span><span>Net</span><span>Retained</span><span>Retain %</span><span>Repeat</span><span>Repeat %</span><span>Conv. %</span><span>Orders</span><span>AOV</span><span>Gross</span><span class="text-left" title="Where Retained and Repeat come from">Source</span>
+                    <div style="{{ $ledger }}; padding-top: 12px; padding-bottom: 7px; border-bottom: 1px solid rgb(255 255 255 / .14); font-weight: 600; {{ $muted }}">
+                        <span class="text-left">Month</span><span>{!! $key($fsd) !!}FSD</span><span>{!! $key($crd) !!}CRD</span><span>{!! $key($added) !!}Acquired leads</span>
+                        <span>Orders</span><span>AOV</span><span>Retained</span><span>Retained %</span><span>Repeat</span><span>Repeat %</span><span>Net</span><span>{!! $key($lost) !!}Churn</span>
                     </div>
                     @foreach ($months as $month)
                         <div style="{{ $ledger }}; padding-block: 7px; {{ $rowLine }}">
                             <span class="text-left" style="font-weight: 700">{{ $month['label'] }}</span>
                             <span><a href="{{ $listUrl('fsd_leads', $month['key']) }}" style="{{ $link }}">{{ $number($month['fsd_leads']) }}</a>@if ($month['fsd_waiting'])<br><a href="{{ $listUrl('fsd_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['fsd_waiting']) }}</a>@endif</span>
                             <span><a href="{{ $listUrl('crd_leads', $month['key']) }}" style="{{ $link }}">{{ $number($month['crd_leads']) }}</a>@if ($month['crd_waiting'])<br><a href="{{ $listUrl('crd_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['crd_waiting']) }}</a>@endif</span>
-                            <span><a href="{{ $listUrl('added', $month['key']) }}" style="{{ $link }}">{{ $number($month['added']) }}</a>@if ($month['added_waiting'])<br><a href="{{ $listUrl('added_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['added_waiting']) }}</a>@endif</span><span><a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="{{ $link }}">{{ $number($month['all_lost']) }}</a></span><span style="font-weight: 700">{{ $signed($month['net']) }}</span>
-                            <span><a href="{{ $listUrl('retained', $month['key']) }}" style="{{ $link }}">{{ $number($month['retained']) }}</a></span><span>{{ $percent($month['retained_rate']) }}<span style="{{ $small }}">of {{ $number($month['retained_base']) }}</span></span><span><a href="{{ $listUrl('repeat', $month['key']) }}" style="{{ $link }}">{{ $number($month['repeat']) }}</a></span><span>{{ $percent($month['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($month['repeat_base']) }}</span></span><span>{{ $percent($month['conversion_rate']) }}@if ($month['conversion'])<span style="{{ $small }}">of {{ $number($month['conversion']['all']['base']) }}</span>@endif</span>
-                            <span><a href="{{ $ordersUrl($month['key']) }}" style="{{ $link }}">{{ $number($month['orders']) }}</a></span><span>{{ $peso($month['aov']) }}</span><span style="font-weight: 600"><a href="{{ $ordersUrl($month['key']) }}" style="{{ $link }}">{{ $peso($month['gross']) }}</a></span>
-                            <span class="text-left"><span style="border-radius: 999px; padding: 2px 6px; font-size: 11px; font-weight: 600; background: {{ $month['source'] === 'tracker' ? 'rgb(63 209 185 / .22)' : 'rgb(42 159 201 / .28)' }}">{{ $month['source'] === 'tracker' ? 'Tracker' : 'Deliveries' }}</span></span>
+                            <span><a href="{{ $listUrl('added', $month['key']) }}" style="{{ $link }}">{{ $number($month['added']) }}</a>@if ($month['added_waiting'])<br><a href="{{ $listUrl('added_waiting', $month['key']) }}" style="font-size: 11px; {{ $muted }}; {{ $link }}">+{{ $number($month['added_waiting']) }}</a>@endif</span>
+                            <span><a href="{{ $ordersUrl($month['key']) }}" style="{{ $link }}">{{ $number($month['orders']) }}</a></span><span>{{ $peso($month['aov']) }}</span>
+                            <span><a href="{{ $listUrl('retained', $month['key']) }}" style="{{ $link }}">{{ $number($month['retained']) }}</a></span><span>{{ $percent($month['retained_rate']) }}<span style="{{ $small }}">of {{ $number($month['retained_base']) }}</span></span>
+                            <span><a href="{{ $listUrl('repeat', $month['key']) }}" style="{{ $link }}">{{ $number($month['repeat']) }}</a></span><span>{{ $percent($month['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($month['repeat_base']) }}</span></span>
+                            <span style="{{ $netStyle($month['net']) }}">{{ $signed($month['net']) }}</span>
+                            <span><a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="{{ $link }}">{{ $number($month['all_lost']) }}</a>{{ $star($month) }}<span style="{{ $small }}">{{ $percent($month['churn_rate']) }} of {{ $number($month['all_due']) }} due</span></span>
                         </div>
                     @endforeach
-                    <div style="{{ $ledger }}; padding-block: 10px; font-weight: 700; background: rgb(70 58 108 / .5); border-radius: 0 0 16px 16px">
+                    <div style="{{ $ledger }}; padding-block: 10px; font-weight: 700; background: rgb(70 58 108 / .5)">
                         <span class="text-left">Total</span>
                         <span>{{ $number($totals['fsd_leads']) }}@if ($totals['fsd_waiting'])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($totals['fsd_waiting']) }}</span>@endif</span>
                         <span>{{ $number($totals['crd_leads']) }}@if ($totals['crd_waiting'])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($totals['crd_waiting']) }}</span>@endif</span>
-                        <span>{{ $number($totals['added'] + $totals['added_waiting']) }}</span><span>{{ $number($totals['all_lost']) }}</span><span>{{ $signed($totals['net']) }}</span>
-                        <span>{{ $number($totals['retained']) }}</span><span>{{ $percent($totals['retained_rate']) }}<span style="{{ $small }}">of {{ $number($totals['retained_base']) }}</span></span><span>{{ $number($totals['repeat']) }}</span><span>{{ $percent($totals['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($totals['repeat_base']) }}</span></span><span>{{ $percent($totals['conversion_rate']) }}@if ($totals['conversion_base'])<span style="{{ $small }}">of {{ $number($totals['conversion_base']) }}</span>@endif</span>
-                        <span>{{ $number($totals['orders']) }}</span><span>{{ $peso($totals['aov']) }}</span><span>{{ $peso($totals['gross']) }}</span><span></span>
+                        <span>{{ $number($totals['added']) }}@if ($totals['added_waiting'])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($totals['added_waiting']) }}</span>@endif</span>
+                        <span>{{ $number($totals['orders']) }}</span><span>{{ $peso($totals['aov']) }}</span>
+                        <span>{{ $number($totals['retained']) }}</span><span>{{ $percent($totals['retained_rate']) }}<span style="{{ $small }}">of {{ $number($totals['retained_base']) }}</span></span>
+                        <span>{{ $number($totals['repeat']) }}</span><span>{{ $percent($totals['repeat_rate']) }}<span style="{{ $small }}">of {{ $number($totals['repeat_base']) }}</span></span>
+                        <span style="{{ $netStyle($totals['net']) }}">{{ $signed($totals['net']) }}</span>
+                        <span>{{ $number($totals['all_lost']) }}<span style="{{ $small }}">{{ $percent($totals['churn_rate']) }} {{ $totals['churn_label'] }}</span></span>
+                    </div>
+                    <div class="flex flex-col gap-1" style="padding: 12px 16px">
+                        <p style="{{ $note }}"><strong style="color: #f1eef8">Acquired leads</strong>: a customer's first delivery on record, from FSD. <strong style="color: #f1eef8">Net</strong>: acquired leads minus churned. <strong style="color: #f1eef8">Churn</strong>: churned customers, with the rate of those due.</p>
+                        @if ($hasPartial)
+                            <p style="{{ $note }}">* Churn is partial before July: tracker leads start in June. The total's rate uses {{ $totals['churn_label'] }} only.</p>
+                        @endif
                     </div>
                 </div>
             </section>
@@ -432,7 +457,7 @@
                             <div class="overflow-auto" style="max-height: 300px; font-size: 13px; border-radius: 8px">
                                 <div style="{{ $columns }}; position: sticky; top: 0; background: #36324b; font-weight: 600; color: #e4dff0">
                                     <span class="text-left">{{ ['daily' => 'Day', 'weekly' => 'Week', 'monthly' => 'Month'][$period] }}</span><span>Leads</span>
-                                    @if ($team['added'])<span title="New customers">New</span>@endif
+                                    @if ($team['added'])<span title="Acquired leads">Acquired</span>@endif
                                     <span title="What the rate is out of">Base</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churn %</span>
                                 </div>
                                 @foreach ($periods as $row)
@@ -452,9 +477,9 @@
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 id="churn-title" style="{{ $h2 }}">Acquisition vs churn</h2>
                     <ul class="flex flex-wrap gap-3.5" style="margin: 0; padding: 0; list-style: none; font-size: 13px">
-                                <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $added }}"></span>Added {{ $number($totals['added']) }}</li>
+                                <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $added }}"></span>Acquired leads {{ $number($totals['added']) }}</li>
                                 @if ($totals['added_waiting'])
-                                    <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $addedTint }}"></span>Added, waiting {{ $number($totals['added_waiting']) }}</li>
+                                    <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $addedTint }}"></span>Acquired leads, waiting {{ $number($totals['added_waiting']) }}</li>
                                 @endif
                                 <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $lost }}"></span>Churned {{ $number($totals['all_lost']) }}</li>
                                 <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $reactivation }}"></span>For reactivation {{ $number($totals['all_reactivation']) }}</li>
@@ -481,7 +506,7 @@
                             <div data-chart class="flex gap-1" style="min-width: 760px; font-size: 13px">
                                 <div style="width: 90px; flex: none; font-weight: 600; {{ $muted }}">
                                     <div style="height: 222px"></div>
-                                    @foreach (['Month', 'Added', 'Churned', 'Reactivation', 'Net'] as $label)
+                                    @foreach (['Month', 'Acquired', 'Churned', 'Reactivation', 'Net'] as $label)
                                         <div style="height: 24px; line-height: 24px">{{ $label }}</div>
                                     @endforeach
                                     @foreach (['Churn %', 'FSD %', 'CRD %'] as $label)
@@ -489,7 +514,7 @@
                                     @endforeach
                                 </div>
                                 @foreach ($months as $month)
-                                    <div data-point="{{ $month['key'] }}" title="{{ $month['label'] }}: added {{ $number($month['added']) }}, plus {{ $number($month['added_waiting']) }} waiting, {{ $number($month['all_lost']) }} churned and {{ $number($month['all_reactivation']) }} for reactivation of {{ $number($month['all_due']) }} due" class="min-w-0 flex-1 text-center" style="background: transparent; border-radius: 6px">
+                                    <div data-point="{{ $month['key'] }}" title="{{ $month['label'] }}: acquired leads {{ $number($month['added']) }}, plus {{ $number($month['added_waiting']) }} waiting, {{ $number($month['all_lost']) }} churned and {{ $number($month['all_reactivation']) }} for reactivation of {{ $number($month['all_due']) }} due" class="min-w-0 flex-1 text-center" style="background: transparent; border-radius: 6px">
                                         <span class="flex flex-col items-center justify-end gap-0.5" style="height: 120px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added_waiting'] / $churnPeak * 100) }}%; border-radius: 4px 4px 0 0; background: {{ $addedTint }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added'] / $churnPeak * 100) }}%; background: {{ $added }}"></span></span>
                                         <span style="display: block; height: 2px; background: rgb(255 255 255 / .35)"></span>
                                         <span class="flex flex-col items-center justify-start gap-0.5" style="height: 100px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_lost'] / $churnPeak * 100) }}%; background: {{ $lost }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_reactivation'] / $churnPeak * 100) }}%; border-radius: 0 0 4px 4px; background: {{ $reactivation }}"></span></span>
@@ -512,7 +537,7 @@
                             <p style="{{ $note }}">* Partial: tracker leads start in June. Rates above use {{ $totals['churn_label'] }} only.</p>
                         @endif
                         @if ($totals['added_waiting'])
-                            <p style="{{ $note }}">Added and Net rows include customers waiting for their page check.</p>
+                            <p style="{{ $note }}">Acquired leads and Net rows include customers waiting for their page check.</p>
                         @endif
                     </div>
                 </div>
@@ -527,7 +552,7 @@
                     @foreach ([
                         'Leads' => '1 customer = 1 lead per month, by est. out-of-stock date. CRD-catered products and listed pages only. In both teams: counts under CRD. Jan–Mar months are approximate (quantity from order items).',
                         'Waiting' => 'Page not confirmed yet. Not in the totals until the backfill checks it.',
-                        'Added' => 'First delivery on record (from June 2025), from FSD.',
+                        'Acquired leads' => 'First delivery on record (from June 2025), from FSD.',
                         'Churned' => 'A CRA reached them (contact date, status or attempt), 30 days passed, no order since, not marked bought or Reserve.',
                         'Churn rate' => 'Churned ÷ due, for FSD, CRD and overall. Range totals, not an average of months. Overall counts a customer on both lists once.',
                         'For reactivation' => 'Everyone else due with no order in time. Not in the rate.',

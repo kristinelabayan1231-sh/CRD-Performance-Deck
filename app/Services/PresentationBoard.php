@@ -10,6 +10,7 @@ use App\Models\PancakePage;
 use App\Models\User;
 use App\Support\DashboardRange;
 use App\Support\MonthWeeks;
+use App\Support\PancakeAccounts;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\DB;
  * product and a page in Settings → Pancake Pages: one customer = one lead per month, on their first out-of-stock day.
  * CRD = sold by a CRD team account (Settings → Pancake Accounts); FSD = not yet handled by a CRA by then (no earlier CRD
  * order, no lead assigned). In both in one month, they count under CRD. Orders whose page isn't known yet are kept apart
- * as waiting until PancakePageBackfill finishes their month. Added = a customer's first delivery ever, from FSD.
+ * as waiting until PancakePageBackfill finishes their month. Acquired leads (added) = a customer's first delivery ever, from FSD.
  * Retained, Repeat and Conversion are the Dashboard's, month by month; churned and for reactivation are Customer
  * Churn's, by the end of each customer's reorder window; Sales are Conversion Breakdown's gross sales of every CRA.
  */
@@ -47,8 +48,8 @@ class PresentationBoard
         'crd_leads' => ['CRD leads', 'Est. out of stock'],
         'fsd_waiting' => ['FSD leads waiting for page check', 'Est. out of stock'],
         'crd_waiting' => ['CRD leads waiting for page check', 'Est. out of stock'],
-        'added' => ['Customers added from FSD', 'First delivery'],
-        'added_waiting' => ['Customers added, waiting for page check', 'First delivery'],
+        'added' => ['Acquired leads from FSD', 'First delivery'],
+        'added_waiting' => ['Acquired leads waiting for page check', 'First delivery'],
         'retained' => ['FSD customers retained', 'Delivered or bought'],
         'repeat' => ['CRD customers who repeated', 'Delivered or bought'],
     ];
@@ -111,7 +112,7 @@ class PresentationBoard
         }
         $months = [];
         for ($month = $yearStart; $month->lessThanOrEqualTo($today); $month = $month->addMonth()) {
-            $months[$month->format('Y-m')] = ['products' => [], 'conversion' => null, 'source' => null];
+            $months[$month->format('Y-m')] = ['products' => [], 'others' => [], 'conversion' => null, 'source' => null];
         }
 
         $this->addLeads($days, $yearStart, $today);
@@ -210,7 +211,7 @@ class PresentationBoard
      * add the months up, so a customer counts once per month.
      *
      * @param  array<string, mixed>  $snapshot
-     * @return array{months: list<array<string, mixed>>, totals: array<string, mixed>, periods: list<array<string, mixed>>, products: list<array<string, mixed>>}
+     * @return array{months: list<array<string, mixed>>, totals: array<string, mixed>, periods: list<array<string, mixed>>, products: list<array<string, mixed>>, others: list<array<string, mixed>>}
      */
     public function range(array $snapshot, string $from, string $to, string $period): array
     {
@@ -234,12 +235,16 @@ class PresentationBoard
 
         $withConversion = $months->filter(fn (array $month) => $month['conversion'] !== null);
         $products = [];
+        $others = [];
         foreach ($months as $month) {
-            foreach ($snapshot['months'][$month['key']]['products'] as $name => $figures) {
-                foreach ($figures as $key => $value) {
-                    $products[$name][$key] = ($products[$name][$key] ?? 0) + $value;
+            foreach (['products' => &$products, 'others' => &$others] as $list => &$into) {
+                foreach ($snapshot['months'][$month['key']][$list] ?? [] as $name => $figures) {
+                    foreach ($figures as $key => $value) {
+                        $into[$name][$key] = ($into[$name][$key] ?? 0) + $value;
+                    }
                 }
             }
+            unset($into);
         }
         $gross = (float) $months->sum('gross');
 
@@ -265,6 +270,9 @@ class PresentationBoard
                 ->map(fn (array $figures, string $name) => [...$figures, 'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0])
                 ->sort(fn (array $a, array $b) => [$a['name'] === self::OTHERS, $b['sales']] <=> [$b['name'] === self::OTHERS, $a['sales']])
                 ->values()->all(),
+            'others' => collect($others)
+                ->map(fn (array $figures, string $name) => [...$figures, 'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0])
+                ->sortByDesc('sales')->values()->all(),
         ];
     }
 
@@ -392,7 +400,7 @@ class PresentationBoard
     }
 
     /**
-     * Leads and customers added, from every delivery on record.
+     * Leads and acquired leads, from every delivery on record.
      *
      * @param  array<string, array<string, int|float>>  $days
      */
@@ -509,7 +517,7 @@ class PresentationBoard
                 foreach ($rows as $row) {
                     // FSD deliveries keep their quantity in delivered_orders; order items can read low.
                     $row->qty ??= $row->saved_qty;
-                    $consider($row, self::teamOf($row->seller_name, $row->team, $accounts), (string) $row->product);
+                    $consider($row, self::teamOf($row->seller_name, $row->team, $accounts, $row->ordered_on), (string) $row->product);
                 }
             }, 'logistics_orders.id', 'id');
 
@@ -526,7 +534,7 @@ class PresentationBoard
             ->chunkById(2000, function (Collection $rows) use ($consider, $accounts) {
                 foreach ($rows as $row) {
                     $row->customer_key = $row->customer_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
-                    $consider($row, self::teamOf($row->seller_name, LogisticsOrder::TEAM_FSD, $accounts), (string) $row->product_raw);
+                    $consider($row, self::teamOf($row->seller_name, LogisticsOrder::TEAM_FSD, $accounts, $row->ordered_on), (string) $row->product_raw);
                 }
             }, 'delivered_orders.id', 'id');
 
@@ -534,17 +542,19 @@ class PresentationBoard
     }
 
     /**
-     * CRD = sold by an account on the CRD team list; an order Pancake doesn't have keeps its delivery's team.
+     * CRD = sold by an account on the CRD team list, once it was CRD's (PancakeAccounts::crdFrom()); an order Pancake
+     * doesn't have keeps its delivery's team.
      *
      * @param  list<string>  $accounts
      */
-    private static function teamOf(?string $seller, string $deliveryTeam, array $accounts): string
+    private static function teamOf(?string $seller, string $deliveryTeam, array $accounts, ?string $orderedOn): string
     {
         if ($seller === null) {
             return $deliveryTeam;
         }
 
-        return PancakeOrder::isCrdAccount($seller, $accounts) ? LogisticsOrder::TEAM_CRD : LogisticsOrder::TEAM_FSD;
+        return PancakeOrder::isCrdAccount($seller, $accounts) && PancakeAccounts::crdOn($seller, substr((string) $orderedOn, 0, 10))
+            ? LogisticsOrder::TEAM_CRD : LogisticsOrder::TEAM_FSD;
     }
 
     /**
@@ -572,7 +582,7 @@ class PresentationBoard
     {
         $first = [];
 
-        DB::table('pancake_orders')->whereIn('seller_name', PancakeOrder::crdAccounts())->whereNotNull('phone_key')
+        PancakeAccounts::whereSoldAsCrd(DB::table('pancake_orders')->whereIn('seller_name', PancakeOrder::crdAccounts())->whereNotNull('phone_key'))
             ->selectRaw('phone_key, min(ordered_on) as first_on')->groupBy('phone_key')->get()
             ->each(function (object $row) use (&$first) {
                 $first[$row->phone_key] = substr((string) $row->first_on, 0, 10);
@@ -712,6 +722,19 @@ class PresentationBoard
                     if ($counted && ! isset($names[$name])) {
                         $names[$name] = true;
                         $months[$month]['products'][$name]['orders']++;
+                    }
+
+                    // What Others holds, by the item's own name in the order.
+                    if (! $item['listed']) {
+                        $others = &$months[$month]['others'][$item['name']];
+                        $others ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
+                        $others['sales'] += $item['sales'];
+                        $others['qty'] += $counted ? $item['qty'] : 0;
+                        if ($counted && ! isset($names['others:'.$item['name']])) {
+                            $names['others:'.$item['name']] = true;
+                            $others['orders']++;
+                        }
+                        unset($others);
                     }
                 }
             }

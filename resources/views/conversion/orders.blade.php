@@ -54,13 +54,14 @@
                         <tbody class="divide-y divide-line">
                             @foreach ($orders as $order)
                                 @php($status = $statuses[$order->status] ?? null)
-                                <tr>
+                                @php($flags = $highValue[$order->phone_key] ?? [])
+                                <tr @class(['bg-[#fbf1d6]' => $flags['vip'] ?? false, 'bg-brand-50' => ! ($flags['vip'] ?? false) && ($flags['high_aov'] ?? false)])>
                                     <td class="px-4 py-3 whitespace-nowrap tabular-nums">{{ ($order->ordered_at?->timezone(config('segmentation.timezone')) ?? $order->ordered_on)->format($order->ordered_at ? 'M j, g:i A' : 'M j') }}</td>
                                     <td class="px-4 py-3 tabular-nums">{{ $order->pancake_order_id }}</td>
                                     <td class="px-4 py-3">{{ $craFor($order)?->displayName() ?? '—' }}</td>
                                     <td class="px-4 py-3">
                                         {{ $order->customer_name ?: '—' }}
-                                        @include('customers._value-pill', ['flags' => $highValue[$order->phone_key] ?? []])
+                                        @include('customers._value-pill', ['flags' => $flags])
                                         @if ($order->phone_number)
                                             <span class="block text-xs text-muted tabular-nums">{{ $order->phone_number }}</span>
                                         @endif

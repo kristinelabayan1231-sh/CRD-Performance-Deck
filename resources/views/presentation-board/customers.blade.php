@@ -28,14 +28,15 @@
                 </thead>
                 <tbody class="divide-y divide-line tabular-nums">
                     @forelse ($customers as $customer)
-                        <tr>
+                        @php($flags = $highValue[$customer['customer']] ?? [])
+                        <tr @class(['bg-[#fbf1d6]' => $flags['vip'] ?? false, 'bg-brand-50' => ! ($flags['vip'] ?? false) && ($flags['high_aov'] ?? false)])>
                             <td class="px-4 py-3">
                                 @can('customers.view')
                                     <a href="{{ route('customers.index', ['search' => $customer['customer']]) }}" class="font-medium hover:text-brand-600 hover:underline" title="Open in the Customer Database">{{ $customer['name'] }}</a>
                                 @else
                                     <span class="font-medium">{{ $customer['name'] }}</span>
                                 @endcan
-                                @include('customers._value-pill', ['flags' => $highValue[$customer['customer']] ?? []])
+                                @include('customers._value-pill', ['flags' => $flags])
                                 <span class="block text-xs text-muted">{{ $customer['phone'] }}</span>
                             </td>
                             <td class="px-4 py-3">{{ $customer['product'] }}</td>

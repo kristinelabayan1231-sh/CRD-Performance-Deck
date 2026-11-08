@@ -7,6 +7,12 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-08 · Presentation Board, Conversion Breakdown, Dashboard · Lhea's old account (Lhea Gatdula) counts as CRD only from Jul 29, 2026, when she joined the CRD team: her earlier sales are no longer CRA sales and those customers count as FSD leads · shots: none
+- 2026-11-08 · Presentation Board · Month by month columns are now FSD, CRD, Acquired leads, Orders, AOV, Retained, Retained %, Repeat, Repeat %, Net, Churn (with its rate); Conv. %, Gross and Source left out, and no group headings · shots: presentation-board
+- 2026-11-08 · Presentation Board · "Added" is now "Acquired leads" (top tile, Acquisition vs churn, daily table, customer list titles) · shots: presentation-board
+- 2026-11-08 · Presentation Board · Top products: the Others row opens into the item names it holds, with their sales, share, orders and qty. Total sales by month labels read ₱460K below a million · shots: presentation-board
+- 2026-11-08 · Presentation Board customer list, Customer Database → Churn, Confirmed Orders · VIP rows are tinted gold and High AOV rows lilac, with a colour key beside the filters · shots: customer-churn
+
 - 2026-11-07 · Exclusive Lead Tracker · From real Nov 8 the month is a flat 7,000 different leads: up to 250 new leads a day until reached (or fewer if too few qualify), leftovers carry on top without using the 250, and leads qualifying for the rest of the month are held for the CRA so no other CRA gets them. Whole month, Excel and All show those as upcoming and leave out leads moved to another CRA. The list never takes a lead another CRA holds · shots: exclusive lead tracker
 - 2026-11-07 · Exclusive Lead Tracker · "All" copy button in the Contact # header: copies every number on the whole month's list so far, each customer once, ready to paste into Pancake POS. The plain copy icon still copies the page shown · shots: exclusive lead tracker
 - 2026-11-07 · Exclusive Lead Tracker · When the tracker's leads can't reach the month's target, FSD deliveries that never became leads are added as new leads held for the exclusive CRA, newest first (command leads:fill-exclusive-fsd) · shots: none
