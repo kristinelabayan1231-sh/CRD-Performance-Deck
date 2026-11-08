@@ -29,6 +29,12 @@
 
     {{ $slot }}
 
+    {{-- The colour key of the rows below: whole rows are tinted so VIP and High AOV customers stand out while scrolling. --}}
+    <div class="flex flex-wrap items-center gap-3 self-center text-xs font-semibold text-muted" aria-label="Row colours">
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-[#e2c77f] bg-[#fbf1d6]"></span>VIP</span>
+        <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-brand-200 bg-brand-50"></span>High AOV</span>
+    </div>
+
     @if (filled($filters['search'] ?? null) || ($filters['show'] ?? 'all') !== 'all')
         <a href="{{ $clearUrl }}" class="h-9 content-center text-sm font-medium text-muted hover:text-brand-600">Clear</a>
     @endif

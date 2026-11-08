@@ -120,7 +120,7 @@
                             @foreach ($customers as $customer)
                                 <tr tabindex="0" role="button" aria-label="Order history of {{ $customer['name'] }}"
                                     data-customer-url="{{ route('customers.churn.history', ['phoneKey' => $customer['phone_key'], ...Arr::only($customer, ['order_id', 'team', 'delivered', 'ran_out', 'deadline']), 'churned' => $customer['churned'] ? 1 : null]) }}"
-                                    class="cursor-pointer align-top hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
+                                    @class(['cursor-pointer align-top hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none', 'bg-[#fbf1d6]' => $customer['high_value']['vip'] ?? false, 'bg-brand-50' => ! ($customer['high_value']['vip'] ?? false) && ($customer['high_value']['high_aov'] ?? false)])>
                                     <td class="px-4 py-3">
                                         <a href="{{ route('customers.index', ['search' => $customer['phone_key']]) }}" class="font-medium hover:text-brand-600 hover:underline"
                                            title="Open in the Customer Database">{{ $customer['name'] }}</a>

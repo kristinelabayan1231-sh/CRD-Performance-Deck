@@ -284,6 +284,46 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(2, $range['products'][0]['orders']);
     }
 
+    public function test_an_account_used_in_fsd_counts_as_crd_only_from_the_day_its_cra_joined(): void
+    {
+        config(['customers.crd_accounts_from' => ['Crd Rej  Vergara' => '2026-07-29']]);
+        $this->sale('2026-07-28', 1000);
+        $this->sale('2026-07-29', 400);
+        // Delivered under the account before it was CRD's, so it runs out Mar 2 as an FSD lead.
+        $this->delivery('0955', '2026-02-01', LogisticsOrder::TEAM_CRD);
+
+        $snapshot = $this->snapshot();
+        $july = $this->month($snapshot, '2026-07');
+        $breakdown = ConversionBreakdown::sum(app(ConversionBreakdown::class)->days(LeadGenerator::cras(), CarbonImmutable::parse('2026-07-01'), CarbonImmutable::parse('2026-07-31'))[$this->cra->id]);
+
+        $this->assertEquals(400, $july['gross']);
+        $this->assertSame(1, $july['orders']);
+        $this->assertEquals($breakdown['gross'], $july['gross']);
+        $this->assertSame(1, $this->month($snapshot, '2026-03')['fsd_leads']);
+        $this->assertSame(0, $this->month($snapshot, '2026-03')['crd_leads']);
+        $this->assertSame(1, $this->month($snapshot, '2026-02')['added']);
+    }
+
+    public function test_others_opens_into_the_unlisted_items_it_holds(): void
+    {
+        PancakeOrder::create([
+            'pancake_order_id' => 'MIX', 'ordered_on' => '2026-08-03', 'seller_name' => self::CRD_SELLER, 'phone_key' => '0977', 'status' => 3,
+            'total_price' => 1500, 'conversion_type' => PancakeOrder::SEGMENTATION, 'items' => [['name' => 'Sinuxyl', 'qty' => 1], ['name' => 'Mystery Tea', 'qty' => 2]],
+        ]);
+        $this->sale('2026-08-04', 300)->forceFill(['items' => [['name' => 'Garlic Oil', 'qty' => 1]]])->save();
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+
+        $others = $board->range($board->snapshot(), '2026-08', '2026-08', 'monthly')['others'];
+
+        // Highest sales first: an item without an SRP takes a small share of its order.
+        $this->assertSame(['Garlic Oil', 'Mystery Tea'], array_column($others, 'name'));
+        $this->assertSame([1, 2], array_column($others, 'qty'));
+        $this->assertSame([1, 1], array_column($others, 'orders'));
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
+            ->assertOk()->assertSee('2 items not in Product Consumption')->assertSee('Mystery Tea')->assertSee('Garlic Oil');
+    }
+
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void
     {
         $this->delivery('1101', '2026-02-01', LogisticsOrder::TEAM_FSD);
