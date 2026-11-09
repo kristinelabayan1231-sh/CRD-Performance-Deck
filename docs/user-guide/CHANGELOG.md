@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-09 · Daily I.S. · Product Cost from Nov 3 is each order's product cost from Shecom's Sales Report (so each CRA's product cost matches Shecom v2's report); an order Shecom hasn't sent yet keeps the per-item cost · shots: none
 - 2026-11-09 · Exclusive Leads Dashboard · New page under Exclusive Leads (supervisors, managers, team leads): Today / This month / Year to date of the exclusive CRA's assigned leads as a product × bottles grid (bottles in the delivered order); clicking a number lists those customers, soonest est. out of stock first, red within 2 days and amber within 7; call-back count opens the Call back list, Reactivation count highlighted. Contact # header: copy icon copies the page's numbers, All copies every number of the picked cell, each customer once · shots: new (exclusive-dashboard)
 - 2026-11-09 · Sidebar · Exclusive Lead Tracker moved out of Segmentation into its own Exclusive Leads group, right after Segmentation · shots: none
 - 2026-11-08 · Presentation Board, Conversion Breakdown, Dashboard · Lhea's old account (Lhea Gatdula) counts as CRD only from Jul 29, 2026, when she joined the CRD team: her earlier sales are no longer CRA sales and those customers count as FSD leads · shots: none

@@ -198,6 +198,39 @@ class ShecomClient
     }
 
     /**
+     * Each order's product cost for orders dated $from–$to, by order id (Pancake's display id), as Shecom's sales
+     * report counts it per CRA and product.
+     *
+     * @return array<string, float> order id => product cost
+     */
+    public function orderProductCosts(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $key = config('services.shecom.product_cost_key');
+
+        if (! $key) {
+            throw new RuntimeException('SHECOM_PRODUCT_COST_API_KEY is not set in .env.');
+        }
+
+        $response = Http::withToken($key)
+            ->acceptJson()
+            ->timeout(120)
+            ->retry(2, 2000, throw: false)
+            ->get(rtrim(config('services.shecom.external_url'), '/').'/orders', [
+                'from' => $from->toDateString(),
+                'to' => $to->toDateString(),
+            ]);
+
+        if ($response->failed()) {
+            throw new RuntimeException("Orders API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
+        }
+
+        return collect($response->json('rows') ?? [])
+            ->filter(fn (array $row) => ($row['orderId'] ?? '') !== '' && is_numeric($row['productCost'] ?? null))
+            ->mapWithKeys(fn (array $row) => [(string) $row['orderId'] => (float) $row['productCost']])
+            ->all();
+    }
+
+    /**
      * The decoded retention report.
      *
      * @return array<string, mixed>

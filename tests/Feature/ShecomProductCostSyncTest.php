@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\ShecomProductCost;
 use App\Models\User;
@@ -13,6 +14,26 @@ use Tests\TestCase;
 class ShecomProductCostSyncTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_the_sales_sync_saves_each_orders_product_cost_from_shecoms_orders(): void
+    {
+        config(['services.shecom.product_cost_key' => 'test-key', 'services.shecom.sales_key' => 'sales-key']);
+        PancakeOrder::create(['pancake_order_id' => '1389472', 'ordered_on' => '2026-11-09', 'seller_name' => 'CRD REJ', 'customer_name' => 'Buyer', 'status' => 1, 'total_price' => 500, 'tags' => [], 'non_crd' => false]);
+        Http::fake([
+            '*/management/sales*' => Http::response(['orders' => []]),
+            '*/orders*' => Http::response(['rows' => [
+                ['orderId' => '1389472', 'productCost' => 35],
+                ['orderId' => '1389473', 'productCost' => null],
+            ]]),
+        ]);
+
+        $this->artisan('pancake:sync', ['--date' => '2026-11-09', '--sales' => true])
+            ->expectsOutputToContain('Shecom product costs 2026-11-09 to 2026-11-09: 1 orders updated.')->assertSuccessful();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/external/v1/orders') && $request['from'] === '2026-11-09'
+            && $request['to'] === '2026-11-09' && $request->hasHeader('Authorization', 'Bearer test-key'));
+        $this->assertEqualsWithDelta(35, (float) PancakeOrder::where('pancake_order_id', '1389472')->value('shecom_product_cost'), 0.001);
+    }
 
     public function test_the_sync_keeps_each_cost_from_its_effective_day_and_skips_items_without_one(): void
     {

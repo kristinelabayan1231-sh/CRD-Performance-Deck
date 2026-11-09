@@ -270,6 +270,24 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta(120, $cost('2026-11-03'), 0.001);
     }
 
+    public function test_from_nov_3_an_order_with_shecoms_sales_report_cost_uses_it_whole(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $this->travelTo(CarbonImmutable::parse('2026-11-04 09:00', 'Asia/Manila'));
+        ShecomProductCost::create(['product' => '3 Bottles Sinuxyl', 'cost' => 30, 'effective_from' => '2026-11-03']);
+        $items = ['items' => [['qty' => 1, 'pieces' => 3, 'name' => '3 Bottles Sinuxyl']]];
+        // Synced from Shecom's orders: its ₱75 (not 3 × ₱30). Not synced yet: 3 × ₱30. Oct 30 keeps Settings' 3 × ₱35.
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => '2026-11-03', ...$items]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => '2026-11-03', ...$items]);
+        $this->order($regina, 'Sinuxyl Nasal Spray', 999, ['ordered_on' => '2026-10-30', ...$items]);
+        PancakeOrder::whereIn('pancake_order_id', ['1374001', '1374003'])->update(['shecom_product_cost' => 75]);
+
+        $cost = fn (string $day) => $this->actingAs($this->user('Sup '.$day, Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => $day]))->viewData('data')['cras'][$regina->id]['products']['sinuxyl']['product_cost'];
+
+        $this->assertEqualsWithDelta(75 + 90, $cost('2026-11-03'), 0.001);
+        $this->assertEqualsWithDelta(105, $cost('2026-10-30'), 0.001);
+    }
+
     public function test_settings_lists_shecoms_costs_for_crd_and_tsd_products_only_and_the_sold_items_without_one(): void
     {
         $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');

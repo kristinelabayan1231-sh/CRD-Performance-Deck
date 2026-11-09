@@ -42,6 +42,7 @@ class PancakeOrder extends Model
             'status' => 'integer',
             'total_price' => 'decimal:2',
             'shecom_sales' => 'decimal:2',
+            'shecom_product_cost' => 'decimal:2',
             'total_discount' => 'decimal:2',
             'tags' => 'array',
             'items' => 'array',
