@@ -4,11 +4,30 @@ namespace App\Services;
 
 use App\Models\LogisticsOrder;
 use Carbon\CarbonImmutable;
+use Closure;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class ShecomClient
 {
+    /** Held while the full retention report is read and worked on (~150 MB decoded). */
+    public const REPORT_LOCK = 'shecom-report';
+
+    /**
+     * Run $work (which reads the full retention report) once no other process is: the web service, the scheduler's
+     * lead sync and the logistics refresh share one small instance, and two reports at once run it out of memory.
+     *
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $work
+     * @return TResult
+     */
+    public static function oneAtATime(Closure $work): mixed
+    {
+        return Cache::lock(self::REPORT_LOCK, 900)->block(600, $work);
+    }
+
     /**
      * All delivered orders with their estimated out-of-stock date. The same
      * response's retention numbers are kept for the dashboard on the way.
@@ -117,29 +136,6 @@ class ShecomClient
         }
 
         return array_values($orders);
-    }
-
-    /**
-     * Every delivered order, split by the team that sold it: CRD (repeat
-     * orders, plus the out-of-stock list) and FSD (Facebook Sales).
-     *
-     * @return array{crd: list<array<string, mixed>>, fsd: list<array<string, mixed>>}
-     */
-    public function deliveredOrders(): array
-    {
-        return self::splitDelivered($this->fetch());
-    }
-
-    /**
-     * @param  array<string, mixed>  $body  the decoded retention report
-     * @return array{crd: list<array<string, mixed>>, fsd: list<array<string, mixed>>}
-     */
-    public static function splitDelivered(array $body): array
-    {
-        return [
-            'crd' => [...($body['stock_outs'] ?? []), ...($body['repeat_detail'] ?? [])],
-            'fsd' => $body['retention_detail'] ?? [],
-        ];
     }
 
     /**

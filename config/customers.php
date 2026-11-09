@@ -139,19 +139,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | One-time backfill
+    | Orders from
     |--------------------------------------------------------------------------
     |
-    | `customers:backfill` fetches Pancake POS orders (and, before
-    | logistics_from, POS deliveries) day by day in windows of this many
-    | months, oldest first, up to yesterday; then it is done for good and the
-    | regular syncs keep the database current. Orders start a week before
+    | The first day of saved Pancake POS orders the Customer Database reads (a
+    | customer's other orders: pending, canceled…). Orders start a week before
     | delivered_from: they are placed a few days before they are delivered.
     |
     */
 
     'backfill_from' => '2025-12-25',
-
-    'backfill_window_months' => 2,
 
 ];

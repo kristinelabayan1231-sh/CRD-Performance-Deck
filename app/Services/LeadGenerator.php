@@ -33,6 +33,16 @@ class LeadGenerator
      */
     public function generate(CarbonImmutable $date): array
     {
+        return ShecomClient::oneAtATime(fn () => $this->generateNow($date));
+    }
+
+    /**
+     * generate() once no other Shecom report read is running.
+     *
+     * @return array{found: int, created: int, crd: int, fsd: int, assigned: int, unassigned: int, source: string, fallback_reason: ?string}
+     */
+    private function generateNow(CarbonImmutable $date): array
+    {
         $date = $date->startOfDay();
         // Product names are grouped under Settings → Product Consumption products.
         $catalog = new ProductCatalog;
