@@ -28,6 +28,7 @@
     ],
     'System' => [
         'settings.connections.index' => ['Connections', 'connections.check'],
+        'settings.api-keys.index' => ['API Keys', 'api_keys.manage'],
     ],
 ])
 @php($user = auth()->user())

@@ -46,6 +46,9 @@ $modules = [
     'Settings · Connections' => [
         'connections.check' => 'Run the connection check (database, Shecom, Pancake) from the server',
     ],
+    'Settings · API Keys' => [
+        'api_keys.manage' => 'Make and revoke the keys other departments use to read CRD\'s daily figures through the API',
+    ],
     'Segmentation Tracker' => [
         'segmentation.view' => 'View own assigned leads and update their status',
         'segmentation.view_all' => 'View all leads and filter by CRA',

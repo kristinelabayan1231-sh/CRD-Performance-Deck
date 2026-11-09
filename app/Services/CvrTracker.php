@@ -202,7 +202,7 @@ class CvrTracker
      * @param  list<string>  $phoneKeys
      * @return array<string, int>
      */
-    private function deliveredBefore(array $phoneKeys, CarbonImmutable $day): array
+    public function deliveredBefore(array $phoneKeys, CarbonImmutable $day): array
     {
         if ($phoneKeys === []) {
             return [];
