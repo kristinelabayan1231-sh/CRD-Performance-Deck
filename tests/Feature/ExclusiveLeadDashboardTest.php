@@ -80,7 +80,8 @@ class ExclusiveLeadDashboardTest extends TestCase
             ->assertOk()
             ->assertViewHas('grid', fn (array $grid) => $this->cells($grid['products']) === ['ClearSight' => [1 => 3, 2 => 1], 'Pterygium' => [4 => 1]]
                 && $grid['leads'] === 5 && $grid['bottles'] === 1 + 1 + 1 + 2 + 5)
-            ->assertSeeInOrder(['ClearSight · 1 bottle · 3 customers', 'Ana Runs Out Soon', 'Nov 8 · in 2 days', 'Bea Runs Out Later', 'Cora Already Out', 'Nov 1 · out'])
+            ->assertSeeInOrder(['ClearSight · 1 bottle · 3 customers', 'Ana Runs Out Soon', 'Nov 8 · in 2 days', 'Bea Runs Out Later', 'Cora Already Out', 'Nov 1'])
+            ->assertDontSee('Nov 1 · out')
             ->assertDontSee('Regina Customer')
             ->assertDontSee('Dina Two Bottles');
     }
@@ -127,5 +128,57 @@ class ExclusiveLeadDashboardTest extends TestCase
             ->assertExactJson(['phones' => ['09172222222', '09171111111']]);
 
         $this->actingAs($this->joanna)->getJson(route('exclusive-leads.dashboard.phones'))->assertForbidden();
+    }
+
+    public function test_a_search_by_name_or_number_lists_the_periods_matching_customers_from_any_cell(): void
+    {
+        $this->listed($this->joanna, 'Bernardet Venida', '2026-11-04', ['phone_number' => '09193007651', 'qty' => 2]);
+        $this->listed($this->joanna, 'Ronaldo Elegado', '2026-11-05', ['phone_number' => '09531042390']);
+        $this->listed($this->joanna, 'October Bernardet', '2026-10-20');
+        $this->listed($this->user(Role::CRA, 'Regina', '2026-10-02'), 'Bernardet Other', '2026-11-04');
+        $supervisor = $this->user(Role::CRA_SUPERVISOR, 'Supervisor');
+
+        // By name: this month's only, whatever cell is picked; another CRA's and last month's left out.
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['product' => 'ClearSight', 'qty' => 1, 'q' => 'bernardet']))
+            ->assertOk()
+            ->assertSee('Search “bernardet” · 1 customer')
+            ->assertSee('Bernardet Venida')
+            ->assertDontSee('Ronaldo Elegado')
+            ->assertDontSee('October Bernardet')
+            ->assertDontSee('Bernardet Other');
+
+        // By number, typed with +63.
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['q' => '+63 953 104 2390']))
+            ->assertSee('Ronaldo Elegado')
+            ->assertDontSee('Bernardet Venida');
+
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['q' => 'nobody']))
+            ->assertSee('No customer of Joanna\'s matches “nobody” for this month.');
+
+        // Copy all gives the search's numbers.
+        $this->actingAs($supervisor)->getJson(route('exclusive-leads.dashboard.phones', ['q' => 'bernardet']))
+            ->assertExactJson(['phones' => ['09193007651']]);
+    }
+
+    public function test_the_customer_list_expands_full_size_keeping_the_cell_and_search(): void
+    {
+        foreach (range(1, 30) as $n) {
+            $this->listed($this->joanna, 'Customer '.$n, '2026-11-04');
+        }
+        $supervisor = $this->user(Role::CRA_SUPERVISOR, 'Supervisor');
+
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['product' => 'ClearSight', 'qty' => 1]))
+            ->assertSee(route('exclusive-leads.dashboard', ['cra' => $this->joanna->id, 'period' => 'month', 'product' => 'ClearSight', 'qty' => 1, 'full' => 1]));
+
+        // Full size: every one of the 30 on one page, no sidebar.
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['product' => 'ClearSight', 'qty' => 1, 'full' => 1]))
+            ->assertOk()
+            ->assertViewIs('exclusive-leads.dashboard-full')
+            ->assertViewHas('leads', fn ($leads) => $leads->count() === 30)
+            ->assertDontSee('Customers by product × bottles ordered');
+
+        $this->actingAs($supervisor)->get(route('exclusive-leads.dashboard', ['q' => 'Customer 12', 'full' => 1]))
+            ->assertViewHas('leads', fn ($leads) => $leads->pluck('customer_name')->all() === ['Customer 12'])
+            ->assertSee('<input type="hidden" name="full" value="1">', false);
     }
 }
