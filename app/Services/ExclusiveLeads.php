@@ -599,6 +599,28 @@ class ExclusiveLeads
     }
 
     /**
+     * Every lead still theirs on the CRA's lists from Jan 1 of $today's year to $today, and those held for this month's days ahead.
+     */
+    public function yearLeads(User $cra, CarbonImmutable $today): Builder
+    {
+        return Lead::where(fn (Builder $q) => $q
+            ->where(fn (Builder $q) => $q->where('assigned_to', $cra->id)
+                ->whereIn('id', $this->entriesBetween($cra, $today->startOfYear(), $today)->select('lead_id')))
+            ->orWhereIn('id', ExclusiveReservedLead::where('user_id', $cra->id)->whereDate('month', $today->startOfMonth())->select('lead_id')));
+    }
+
+    /**
+     * Every active CRA on the Exclusive Lead Tracker, by name.
+     *
+     * @return Collection<int, User>
+     */
+    public function cras(): Collection
+    {
+        return User::query()->whereNotNull('exclusive_from')->where('is_active', true)
+            ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
+    }
+
+    /**
      * Why each lead held for the real month's days ahead qualifies.
      *
      * @return array<int, string> lead id => source

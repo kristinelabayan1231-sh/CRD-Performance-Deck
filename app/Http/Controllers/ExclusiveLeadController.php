@@ -289,8 +289,7 @@ class ExclusiveLeadController extends Controller
      */
     private function exclusiveCras(): Collection
     {
-        return User::query()->whereNotNull('exclusive_from')->where('is_active', true)
-            ->get()->sortBy(fn (User $cra) => mb_strtolower($cra->displayName()))->values();
+        return app(ExclusiveLeads::class)->cras();
     }
 
     /**
