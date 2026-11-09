@@ -1063,7 +1063,8 @@ export function initSegmentation() {
         new ResizeObserver(() => fitVisibleRows()).observe(document.body);
     }
     if (document.querySelector('[data-lead-section]')) initRowMenu();
-    if (document.querySelector('[data-lead-section]')) initCopyPhones();
+    // The Exclusive Leads Dashboard's customer list has the same copy buttons, without the tracker's lead sections.
+    if (document.querySelector('[data-lead-section], [data-copy-all-phones]')) initCopyPhones();
     if (document.querySelector('[data-lead-section]')) initOrderHistory();
     if (document.querySelector('[data-call-url]')) initCallButtons();
     initRecordingPlayer();

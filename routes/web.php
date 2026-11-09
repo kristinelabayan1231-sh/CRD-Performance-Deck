@@ -19,6 +19,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
 use App\Http\Controllers\ExclusiveLeadController;
+use App\Http\Controllers\ExclusiveLeadDashboardController;
 use App\Http\Controllers\ExclusiveLeadLimitController;
 use App\Http\Controllers\ExclusiveLeadSettingController;
 use App\Http\Controllers\ExclusiveLeadTagController;
@@ -127,6 +128,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::get('/exclusive-leads', [ExclusiveLeadController::class, 'index'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.index');
+    Route::get('/exclusive-leads/dashboard', [ExclusiveLeadDashboardController::class, 'index'])->middleware('can:exclusive_leads.view_all')->name('exclusive-leads.dashboard');
+    Route::get('/exclusive-leads/dashboard/phones', [ExclusiveLeadDashboardController::class, 'phones'])->middleware('can:exclusive_leads.view_all')->name('exclusive-leads.dashboard.phones');
     Route::get('/exclusive-leads/export', [ExclusiveLeadController::class, 'export'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.export');
     Route::get('/exclusive-leads/phones', [ExclusiveLeadController::class, 'phones'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.phones');
     Route::post('/exclusive-leads/leads/{lead}/order-tag', ExclusiveLeadTagController::class)->middleware(['can:exclusive_leads.view', 'throttle:30,1'])->name('exclusive-leads.order-tag');

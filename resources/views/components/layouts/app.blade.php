@@ -25,17 +25,20 @@
     {{-- fit: on large screens the page fills the window and only its own sections scroll. --}}
     <div @class(['flex min-h-screen', 'lg:h-dvh lg:overflow-hidden' => $fit])>
         {{-- Sidebar --}}
-        {{-- Sidebar: Dashboard and Report Summary, then the modules in four groups that open one at a time (the group
+        {{-- Sidebar: Dashboard and Report Summary, then the modules in five groups that open one at a time (the group
              holding this page starts open), then User Access and Settings. --}}
         @php
             $navGroups = collect([
                 ['name' => 'Segmentation', 'icon' => 'chart', 'items' => [
                     ['Segmentation Tracker', route('segmentation.index'), request()->routeIs('segmentation.*'), $user->can('segmentation.view')],
-                    ['Exclusive Lead Tracker', route('exclusive-leads.index'), request()->routeIs('exclusive-leads.*'), $user->can('exclusive_leads.view')],
                     ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
                     ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
                     ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view')],
                     ['CRA Schedule', route('cra-schedule.index'), request()->routeIs('cra-schedule.*'), $user->can('on_duty.view')],
+                ]],
+                ['name' => 'Exclusive Leads', 'icon' => 'target', 'items' => [
+                    ['Exclusive Lead Tracker', route('exclusive-leads.index'), request()->routeIs('exclusive-leads.*') && ! request()->routeIs('exclusive-leads.dashboard'), $user->can('exclusive_leads.view')],
+                    ['Exclusive Leads Dashboard', route('exclusive-leads.dashboard'), request()->routeIs('exclusive-leads.dashboard'), $user->can('exclusive_leads.view_all')],
                 ]],
                 ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
                     ['CVR Tracker', route('cvr-tracker.index'), request()->routeIs('cvr-tracker.*'), $user->can('cvr_tracker.view')],
