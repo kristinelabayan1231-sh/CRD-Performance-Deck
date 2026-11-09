@@ -2,13 +2,11 @@
 
 namespace Tests\Feature;
 
-use App\Console\Commands\BackfillCustomerDatabase;
 use App\Models\CustomerHistory;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
-use App\Models\Setting;
 use App\Models\User;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
@@ -306,42 +304,6 @@ class CustomerDatabaseTest extends TestCase
             ->assertOk()
             ->assertSeeInOrder(['Delivered', '₱650.00'])
             ->assertDontSee('not in Pancake yet');
-    }
-
-    public function test_backfill_runs_oldest_first_in_two_month_windows_then_stops_for_good(): void
-    {
-        $this->travelTo(CarbonImmutable::parse('2026-03-03 18:00', 'Asia/Manila'));
-        config([
-            'services.pancake.key' => 'pos-key', 'services.pancake.shop_id' => '1',
-            'customers.backfill_from' => '2025-12-30', 'customers.delivered_from' => '2026-01-01', 'customers.logistics_from' => '2026-01-02',
-        ]);
-        $orderDays = [];
-        $deliveryDays = [];
-        Http::fake(function (Request $request) use (&$orderDays, &$deliveryDays) {
-            parse_str(parse_url($request->url(), PHP_URL_QUERY), $query);
-            $day = CarbonImmutable::createFromTimestamp($query['startDateTime'], 'Asia/Manila')->toDateString();
-            $query['updateStatus'] === '3' ? $deliveryDays[] = $day : $orderDays[] = $day;
-
-            return Http::response(['success' => true, 'total_pages' => 1, 'data' => $query['updateStatus'] === '3' ? [[
-                'display_id' => 9001, 'inserted_at' => '2025-12-29T02:00:00', 'status' => 3, 'total_price' => 1200,
-                'bill_phone_number' => '09176666666', 'bill_full_name' => 'Faye Cruz', 'assigning_seller' => ['name' => 'Lhea Gatdula'],
-                'items' => [['quantity' => 2, 'variation_info' => ['name' => 'Canpro']]],
-            ]] : []]);
-        });
-
-        // Window 1 (Dec 30 – Feb 28) in one run, then March in the next; then it never runs again.
-        $this->artisan('customers:backfill', ['--window' => true])->expectsOutputToContain('Jan–Feb 2026 done.')->assertSuccessful();
-        $this->artisan('customers:backfill')->expectsOutputToContain('backfill finished')->assertSuccessful();
-        $this->artisan('customers:backfill')->expectsOutputToContain('is finished')->assertSuccessful();
-
-        $this->assertCount(63, $orderDays);
-        $this->assertSame(['2025-12-30', '2026-03-02'], [$orderDays[0], end($orderDays)]);
-        // POS deliveries only before the logistics report starts.
-        $this->assertSame(['2026-01-01'], $deliveryDays);
-        $delivery = LogisticsOrder::firstWhere('order_id', '9001');
-        $this->assertSame(['crd', 'pos', '9176666666', '2026-01-01'], [$delivery->team, $delivery->source, $delivery->phone_key, $delivery->delivered_date->toDateString()]);
-        $this->assertSame('1200.00', PancakeOrder::firstWhere('pancake_order_id', '9001')->total_price);
-        $this->assertSame('2026-03-02', Setting::value(BackfillCustomerDatabase::DONE_THROUGH));
     }
 
     public function test_a_failed_history_lookup_waits_while_the_others_are_saved(): void

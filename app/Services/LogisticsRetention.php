@@ -80,9 +80,11 @@ class LogisticsRetention
 
     public function refresh(): void
     {
-        $report = $this->client->report();
-        self::store($report);
-        LogisticsOrder::remember($report['delivered']);
+        ShecomClient::oneAtATime(function () {
+            $report = $this->client->report();
+            self::store($report);
+            LogisticsOrder::remember($report['delivered']);
+        });
     }
 
     /**

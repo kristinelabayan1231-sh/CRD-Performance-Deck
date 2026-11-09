@@ -92,14 +92,6 @@ Schedule::command('leads:record-pos-sales --last=7')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(30);
 
-// Customer Database: one-time backfill from Pancake POS, a few days per run, oldest
-// first in 2-month windows from January; once it reaches yesterday it does nothing.
-Schedule::command('customers:backfill')
-    ->everyFifteenMinutes()
-    ->timezone(config('segmentation.timezone'))
-    ->withoutOverlapping(45)
-    ->runInBackground();
-
 // Customer Database: each CRD customer's earlier orders (before the first covered day),
 // looked up once in Pancake, so Retained vs Repeat counts them. New CRD customers are
 // picked up within 15 minutes.
