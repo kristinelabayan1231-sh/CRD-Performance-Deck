@@ -25,7 +25,8 @@ use Illuminate\Support\Str;
  * Conversion rate = orders ÷ engagements; AOV = Gross Sales ÷ orders.
  * Actual Cancelled = those orders now Canceled or Waiting for goods, by their status today: one that comes back
  * leaves an earlier day's Actual Cancelled. Projected Returns = Gross Sales × the month's % Projected Returns (typed once
- * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = each
+ * a month, for every card). Projected Delivered = Gross Sales − Actual Cancelled − Projected Returns. Product Cost = from
+ * SHECOM_COSTS_FROM, Shecom's product cost of each order (as Shecom's sales report per CRA and product) once synced; else each
  * item's cost per piece × its pieces (qty × pieces: a 5-bottle bundle bought once is 5). From SHECOM_COSTS_FROM the cost
  * is Shecom's current one (a change shows on earlier days too), by the item's Pancake name ("1 Bottle Sinuxyl"), ₱0 without one; before it, the
  * product's unit cost in Settings → Product Consumption, as the CRD Sales Report sheet had it. Items not on Product
@@ -235,8 +236,10 @@ class DailyIncomeStatement
     }
 
     /**
-     * Each order's Product Cost: its items on Product Consumption (on $day), each its pieces (qty × pieces) × its Shecom
-     * cost per piece now, 0 without one (before SHECOM_COSTS_FROM: the product's Settings unit cost). Only the
+     * Each order's Product Cost. From SHECOM_COSTS_FROM, Shecom's own cost of the order once synced (shecom_product_cost,
+     * what Shecom's sales report adds up per CRA and product). Otherwise its items on Product Consumption (on $day), each
+     * its pieces (qty × pieces) × its Shecom cost per piece now, 0 without one (before SHECOM_COSTS_FROM: the product's
+     * Settings unit cost). Only the
      * card's own product counts: another product on the order (a TSD upsell add-on, or e.g. a CanPro on a Prime Man
      * order) is left out, even a TSD product named after the card's (a Sinuxyl Inhaler on a Sinuxyl order). An order with
      * none of the card's product keeps its CRD products (or, with only TSD upsell products, those).
@@ -251,7 +254,16 @@ class DailyIncomeStatement
         $shecom = $fromShecom ? ShecomProductCost::current() : [];
         $costs = [];
 
-        foreach (PancakeOrder::whereIn('id', $orderIds)->pluck('items', 'id') as $id => $items) {
+        foreach (PancakeOrder::whereIn('id', $orderIds)->get(['id', 'items', 'shecom_product_cost']) as $order) {
+            $id = $order->id;
+            $items = $order->items;
+            // Shecom's product cost for the order, as its sales report has it per CRA and product.
+            if ($fromShecom && $order->shecom_product_cost !== null) {
+                $costs[$id] = (float) $order->shecom_product_cost;
+
+                continue;
+            }
+
             $costs[$id] = 0.0;
             $listed = collect($items ?? [])
                 ->map(fn (array $item) => [$item, $this->catalog->matchSold(trim((string) ($item['name'] ?? '')), $day->toDateString())])

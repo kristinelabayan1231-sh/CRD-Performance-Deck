@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AgeBracketController;
+use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\Auth\GoogleController;
 use App\Http\Controllers\BacklogTransferController;
 use App\Http\Controllers\CallRecordingController;
@@ -257,6 +258,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
                 request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
                 request()->user()->can('call_recordings.manage') => 'settings.call-recordings.index',
                 request()->user()->can('segmentation.view') => 'settings.spiels.index',
+                request()->user()->can('api_keys.manage') => 'settings.api-keys.index',
                 default => 'settings.connections.index',
             }
         ))->name('index');
@@ -325,6 +327,12 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {
             Route::get('/', [ProductQtyDisplayController::class, 'index'])->name('index');
             Route::patch('/{user}', [ProductQtyDisplayController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('api-keys')->name('api-keys.')->middleware('can:api_keys.manage')->group(function () {
+            Route::get('/', [ApiKeyController::class, 'index'])->name('index');
+            Route::post('/', [ApiKeyController::class, 'store'])->name('store');
+            Route::delete('/{apiKey}', [ApiKeyController::class, 'destroy'])->name('destroy');
         });
 
         Route::prefix('connections')->name('connections.')->middleware('can:connections.check')->group(function () {
