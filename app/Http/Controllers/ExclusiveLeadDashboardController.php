@@ -19,10 +19,15 @@ use Illuminate\View\View;
  * Exclusive Leads Dashboard, for supervisors, managers and leads: an exclusive CRA's leads (the month's 7,000 assigned to
  * them) by product and bottles in the delivered order that made them a lead, for today, this month or the year so far,
  * with the customers of the cell picked, their est. out-of-stock date beside them, and their callbacks and Reactivation.
+ * A search (name, contact number or order #) lists the period's customers that match instead of the cell's, and the list
+ * opens full size in a pop-up (full=1).
  */
 class ExclusiveLeadDashboardController extends Controller
 {
     private const PER_PAGE = 25;
+
+    /** Rows per page in the list's full-size pop-up. */
+    private const FULL_PER_PAGE = 100;
 
     /** Bottle buckets: 0 = qty unknown, 4 = four or more. */
     public const BUCKETS = [1 => '1 bottle', 2 => '2 bottles', 3 => '3 bottles', 4 => '4+ bottles', 0 => 'Qty unknown'];
@@ -38,25 +43,39 @@ class ExclusiveLeadDashboardController extends Controller
 
     public function index(Request $request, ExclusiveLeads $exclusive): View
     {
-        ['cra' => $cra, 'cras' => $cras, 'period' => $period, 'grid' => $grid, 'picked' => $picked, 'cellLeads' => $cellLeads] = $this->resolve($request, $exclusive);
+        ['cra' => $cra, 'cras' => $cras, 'period' => $period, 'grid' => $grid, 'picked' => $picked, 'search' => $search, 'cellLeads' => $cellLeads] = $this->resolve($request, $exclusive);
+        $full = $request->boolean('full');
 
         if (! $cra) {
             return view('exclusive-leads.dashboard', ['cra' => null, 'cras' => $cras]);
         }
 
+        $listFilters = ['cra' => $cra->id, 'period' => $period, 'product' => $picked['product'] ?? null, 'qty' => $picked['qty'] ?? null, 'q' => $search];
+        $leads = $cellLeads?->paginate($full ? self::FULL_PER_PAGE : self::PER_PAGE)->withQueryString();
+        $list = [
+            'cra' => $cra,
+            'period' => $period,
+            'picked' => $picked,
+            'search' => $search,
+            'leads' => $leads,
+            'leadToday' => Lead::today(),
+            'listFilters' => array_filter($listFilters, fn (mixed $value) => $value !== null),
+            'phonesUrl' => $cellLeads ? route('exclusive-leads.dashboard.phones', array_filter($listFilters, fn (mixed $value) => $value !== null)) : null,
+        ];
+
+        if ($full) {
+            return view('exclusive-leads.dashboard-full', $list);
+        }
+
         $today = WorkingDate::realToday();
         $craLeads = Lead::query()->where('assigned_to', $cra->id);
 
-        return view('exclusive-leads.dashboard', [
+        return view('exclusive-leads.dashboard', $list + [
             'cra' => $cra,
             'cras' => $cras,
             'period' => $period,
             'periodRange' => $this->periodRange($period, $today, $cra->exclusive_from->addDays(WorkingDate::lagDays())),
             'grid' => $grid,
-            'picked' => $picked,
-            'leads' => $cellLeads?->paginate(self::PER_PAGE)->withQueryString(),
-            'phonesUrl' => $picked ? route('exclusive-leads.dashboard.phones', ['cra' => $cra->id, 'period' => $period, 'product' => $picked['product'], 'qty' => $picked['qty']]) : null,
-            'leadToday' => Lead::today(),
             'callbacks' => (clone $craLeads)->callbackDue($today)->count(),
             'reactivation' => (clone $craLeads)->reactivation(Lead::today(), $today)->count(),
             'callbacksUrl' => route('exclusive-leads.index', ['cra' => $cra->id, 'show' => 'unprocessed', 'full' => 1, 'list' => 'callback']),
@@ -64,7 +83,7 @@ class ExclusiveLeadDashboardController extends Controller
     }
 
     /**
-     * Every contact number of the picked cell's customers, each customer once, for pasting into Pancake POS's search.
+     * Every contact number of the picked cell's customers (or the search's), each customer once, for pasting into Pancake POS's search.
      */
     public function phones(Request $request, ExclusiveLeads $exclusive): JsonResponse
     {
@@ -80,10 +99,11 @@ class ExclusiveLeadDashboardController extends Controller
     }
 
     /**
-     * The CRA, period, grid and picked cell asked for, and the picked cell's customers in list order: not yet out of
-     * stock first, soonest first, then those already out, the latest first.
+     * The CRA, period, grid and picked cell asked for, and the customers listed in list order: the picked cell's, or with a
+     * search every customer of the period that matches; not yet out of stock first, soonest first, then those already
+     * out, the latest first.
      *
-     * @return array{cra: ?User, cras: Collection<int, User>, period: string, grid: ?array<string, mixed>, picked: ?array{product: string, qty: int, count: int}, cellLeads: ?Builder<Lead>}
+     * @return array{cra: ?User, cras: Collection<int, User>, period: string, grid: ?array<string, mixed>, picked: ?array{product: string, qty: int, count: int}, search: ?string, cellLeads: ?Builder<Lead>}
      */
     private function resolve(Request $request, ExclusiveLeads $exclusive): array
     {
@@ -92,14 +112,16 @@ class ExclusiveLeadDashboardController extends Controller
             'period' => ['nullable', Rule::in(array_keys(self::PERIODS))],
             'product' => ['nullable', 'string', 'max:255'],
             'qty' => ['nullable', 'integer', Rule::in(array_keys(self::BUCKETS))],
+            'q' => ['nullable', 'string', 'max:100'],
         ]);
+        $search = trim((string) ($filters['q'] ?? '')) ?: null;
 
         $cras = $exclusive->cras();
         $cra = $cras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $cras->first();
         $period = $filters['period'] ?? 'month';
 
         if (! $cra) {
-            return ['cra' => null, 'cras' => $cras, 'period' => $period, 'grid' => null, 'picked' => null, 'cellLeads' => null];
+            return ['cra' => null, 'cras' => $cras, 'period' => $period, 'grid' => null, 'picked' => null, 'search' => $search, 'cellLeads' => null];
         }
 
         $today = WorkingDate::realToday();
@@ -113,15 +135,19 @@ class ExclusiveLeadDashboardController extends Controller
         $picked = $this->pickedCell($grid, $filters);
         $leadToday = Lead::today()->toDateString();
 
-        $cellLeads = $picked ? $scope()->where('product_name', $picked['product'])
-            ->whereRaw(self::BUCKET_SQL.' = ?', [$picked['qty']])
-            ->orderByRaw('case when est_out_of_stock_date >= ? then 0 else 1 end', [$leadToday])
+        $listed = match (true) {
+            $search !== null => $scope()->search($search),
+            $picked !== null => $scope()->where('product_name', $picked['product'])->whereRaw(self::BUCKET_SQL.' = ?', [$picked['qty']]),
+            default => null,
+        };
+
+        $cellLeads = $listed?->orderByRaw('case when est_out_of_stock_date >= ? then 0 else 1 end', [$leadToday])
             ->orderByRaw('case when est_out_of_stock_date >= ? then est_out_of_stock_date end', [$leadToday])
             ->orderByDesc('est_out_of_stock_date')
             ->orderBy('customer_name')
-            ->orderBy('id') : null;
+            ->orderBy('id');
 
-        return ['cra' => $cra, 'cras' => $cras, 'period' => $period, 'grid' => $grid, 'picked' => $picked, 'cellLeads' => $cellLeads];
+        return ['cra' => $cra, 'cras' => $cras, 'period' => $period, 'grid' => $grid, 'picked' => $picked, 'search' => $search, 'cellLeads' => $cellLeads];
     }
 
     /**
