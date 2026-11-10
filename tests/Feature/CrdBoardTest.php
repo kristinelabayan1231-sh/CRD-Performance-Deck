@@ -70,7 +70,7 @@ class CrdBoardTest extends TestCase
 
         $board = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board'))
             ->assertOk()
-            ->assertSeeInOrder(['Running sales today', 'Wed, Oct 14', 'Thu, Oct 15', 'Top seller · Oct 16', 'Regina', 'Top product · Oct 16', 'SINUXYL NASAL SPRAY'])
+            ->assertSeeInOrder(['Running sales today', 'Wed, Oct 14', 'Thu, Oct 15', 'TOP SELLER · Oct 16', 'Regina', 'TOP PRODUCT · Oct 16', 'SINUXYL NASAL SPRAY'])
             ->assertDontSee('July Ann')
             ->viewData('today');
 
@@ -108,7 +108,7 @@ class CrdBoardTest extends TestCase
 
         $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('dashboard.board', ['day' => 'yesterday']))
             ->assertOk()
-            ->assertSeeInOrder(['Sales yesterday · Thu, Oct 15, whole day', 'Tue, Oct 13', 'Wed, Oct 14', 'Top seller · Oct 15', 'Regina'])
+            ->assertSeeInOrder(['Sales yesterday · Thu, Oct 15, whole day', 'Tue, Oct 13', 'Wed, Oct 14', 'TOP SELLER · Oct 15', 'Regina'])
             ->assertDontSee('Running sales today');
 
         // Oct 15 is the big figure; today's (Oct 16) sale isn't on the board.
