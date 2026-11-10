@@ -2,8 +2,10 @@
     Spiels panel: clicking a lead's row opens the customer's Pancake chat in its own window (on the left of the screen)
     and this panel on the right with the user's spiels (Settings → My Spiels), {name} and {product} filled in for the
     customer, to copy into the chat. Filled in by spiels.js from the row's data-spiel-* and data-spiels.
+    The JSON is escaped with {{ }} (not @json, which splits its argument on commas and loses its escaping): an apostrophe
+    in a spiel would otherwise end the attribute, and the broken JSON stops every row click on the page.
 --}}
-<aside hidden data-spiels-panel aria-label="Spiels" data-spiels='@json(auth()->user()->spiels->map->only(['id', 'title', 'body'])->values())'
+<aside hidden data-spiels-panel aria-label="Spiels" data-spiels="{{ auth()->user()->spiels->map->only(['id', 'title', 'body'])->values()->toJson() }}"
        class="fixed inset-y-0 right-0 z-40 flex w-full flex-col bg-white shadow-2xl sm:w-[26.25rem]">
     <div class="space-y-3 border-b border-line p-5">
         <div class="flex items-start gap-3">

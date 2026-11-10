@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-10 · Settings → API Keys · Each key reads one thing: Retention daily figures or MC / salaries. New MC / salaries API (GET /api/external/v1/crd/mc/summary and /roster?month=YYYY-MM) with CRD - MC's payroll per month, CRD's answers to the sales report's rules, and a Reads column in the key list. Every CRD - MC change and a daily save keep each month's figures, frozen once the month ends · shots: api-keys
+
+- 2026-11-10 · Segmentation Tracker, Exclusive Lead Tracker · Fixed: a spiel with an apostrophe stopped row clicks from opening the Spiels panel and the Pancake chat · shots: none
+
 - 2026-11-09 · Exclusive Leads Dashboard · Customer list: search box (name, contact # or order #) looks through the CRA's customers for the period picked, whatever cell is picked, and All copies the search's numbers; Expand button opens the list full size in a pop-up, 100 a page, with the same search · shots: exclusive-dashboard
 - 2026-11-09 · Daily I.S. · Product Cost from Nov 3 is each order's product cost from Shecom's Sales Report (so each CRA's product cost matches Shecom v2's report); an order Shecom hasn't sent yet keeps the per-item cost · shots: none
 - 2026-11-09 · Settings → API Keys · New System tab (Super Admins, or roles given "api_keys.manage"): make a key per team/system (shown once, copy button), see when each was last used, revoke it; the page explains the retention daily API (GET /api/external/v1/retention/daily?from=&to=, up to 92 days) and what each field counts · shots: new (settings-api-keys)

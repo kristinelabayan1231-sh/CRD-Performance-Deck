@@ -5,13 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\MonthlyCostRow;
 use App\Models\Setting;
 use App\Services\LeadGenerator;
+use App\Services\McPayroll;
 use App\Support\MonthlyCost;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * CRD - MC: the Customer Retention Dept.'s positions, salaries and monthly cost (managers and supervisors only).
+ * CRD - MC: the Customer Retention Dept.'s positions, salaries and monthly cost (managers and supervisors only). Each
+ * change is saved as this month's payroll for the MC / salaries API.
  */
 class MonthlyCostController extends Controller
 {
@@ -33,7 +35,7 @@ class MonthlyCostController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, McPayroll $payroll): RedirectResponse
     {
         MonthlyCostRow::create([
             ...$this->validatedRow($request),
@@ -41,19 +43,25 @@ class MonthlyCostController extends Controller
             'updated_by' => $request->user()->id,
         ]);
 
+        $payroll->record();
+
         return back()->with('status', 'Row added.');
     }
 
-    public function update(Request $request, MonthlyCostRow $row): RedirectResponse
+    public function update(Request $request, MonthlyCostRow $row, McPayroll $payroll): RedirectResponse
     {
         $row->update([...$this->validatedRow($request), 'updated_by' => $request->user()->id]);
+
+        $payroll->record();
 
         return back()->with('status', 'Row saved.');
     }
 
-    public function destroy(MonthlyCostRow $row): RedirectResponse
+    public function destroy(MonthlyCostRow $row, McPayroll $payroll): RedirectResponse
     {
         $row->delete();
+
+        $payroll->record();
 
         return back()->with('status', 'Row deleted.');
     }
@@ -62,7 +70,7 @@ class MonthlyCostController extends Controller
      * Save the shared salaries, government benefits, daily rates and incentives. Only the settings sent
      * are saved, so the Gov. benefits card can save its three on their own.
      */
-    public function settings(Request $request): RedirectResponse
+    public function settings(Request $request, McPayroll $payroll): RedirectResponse
     {
         $rules = collect(config('monthly_cost.defaults'))->map(fn ($default, string $key) => match (true) {
             str_ends_with($key, '_share') => ['sometimes', 'required', 'numeric', 'min:0', 'max:100'],
@@ -73,6 +81,8 @@ class MonthlyCostController extends Controller
         foreach ($request->validate($rules) as $key => $value) {
             Setting::put(MonthlyCost::PREFIX.$key, $value, $request->user());
         }
+
+        $payroll->record();
 
         return back()->with('status', 'Settings saved.');
     }

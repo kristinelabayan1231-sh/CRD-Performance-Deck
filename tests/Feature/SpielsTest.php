@@ -129,4 +129,19 @@ class SpielsTest extends TestCase
             ->assertSee('Lhea greeting')
             ->assertDontSee('Regina greeting');
     }
+
+    public function test_a_spiel_with_an_apostrophe_or_quote_keeps_the_panels_data_whole(): void
+    {
+        Http::fake(['*' => Http::response(['count' => 0, 'stock_outs' => []])]);
+        $body = "<div>Wag mo 'tong palampasin, \"{name}\" &amp; 𝐒ale!</div>";
+        Spiel::factory()->create(['user_id' => $this->lhea->id, 'title' => "Lhea's promo", 'body' => $body]);
+
+        $html = $this->actingAs($this->lhea)->get(route('segmentation.index'))->assertOk()->getContent();
+
+        // What the browser reads back from data-spiels is the whole list, as JSON that parses.
+        $this->assertSame(1, preg_match('/data-spiels="([^"]*)"/', $html, $match));
+        $spiels = json_decode(html_entity_decode($match[1], ENT_QUOTES | ENT_HTML5), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame("Lhea's promo", $spiels[0]['title']);
+        $this->assertSame($body, $spiels[0]['body']);
+    }
 }

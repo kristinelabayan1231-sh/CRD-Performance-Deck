@@ -145,3 +145,9 @@ Schedule::command('pancake:backfill-pages --minutes=8')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
+
+// MC / salaries API: save CRD - MC as this month's payroll every day, so each month has its figures even when nobody
+// edits CRD - MC or calls the API, and a month keeps what it had once it ends. Edits in CRD - MC save it too.
+Schedule::command('mc:snapshot')
+    ->dailyAt('00:10')
+    ->timezone(config('segmentation.timezone'));
