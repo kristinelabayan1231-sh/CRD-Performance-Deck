@@ -762,9 +762,11 @@ class ExclusiveLeads
     }
 
     /**
-     * Targets and actuals for the month and each of its days. Listed leads leave out POS sales. Repeat purchases follow
-     * the tracker's rule (Repeat Purchase = Yes, on the day bought, one per customer: once in the month, once on a day).
-     * Confirmed orders, gross and AOV come from Segmentation Productivity. The confirmed orders target is daily: a day
+     * Targets and actuals for the month and each of its days. Listed leads leave out POS sales. Repeat (CRD Lead) and
+     * Retained (FSD Lead), confirmed orders, gross and AOV count only customers on the lists (repeatsBetween(),
+     * ordersBetween()): a day's are the customers on that day's list, the month's those on any of its lists so far, so
+     * the month can be more than its days added up (a lead listed on the 3rd who bought on the 9th). The repeat purchases
+     * goal is met by Repeat + Retained. The confirmed orders target is daily: a day
      * off (DutyGoals) or a day before the transfer has none, and the month's is the sum of its days, the daily target
      * × working_days. Targets follow the limits set in Settings (ExclusiveLimits). A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
      * while on that day's list. $month and the days are real dates, when the CRA did the work; each day's list and quota
@@ -774,8 +776,8 @@ class ExclusiveLeads
      *     targets: array{leads: int, repeat: int, repeat_percent: int, confirmed_orders: int, confirmed_orders_per_day: int, working_days: int, high_aov_min: int},
      *     limits: array{daily_leads: int, orders_rate_changed: bool},
      *     planned: array{leads: int, target: int, short_of_target: int},
-     *     actual: array{listed: int, unique_leads: int, repeat: int, confirmed: int, gross: float, aov: ?float, mix: array<string, int>},
-     *     days: list<array{date: string, lead_date: string, quota: int, is_history: bool, listed: int, worked: int, left: int, pos: int, mix: array<string, int>, repeat: int, repeat_goal: int, confirmed: int, confirmed_goal: int, is_day_off: bool, gross: float, aov: ?float}>
+     *     actual: array{listed: int, unique_leads: int, repeat: int, retained: int, confirmed: int, gross: float, aov: ?float, mix: array<string, int>},
+     *     days: list<array{date: string, lead_date: string, quota: int, is_history: bool, listed: int, worked: int, left: int, pos: int, mix: array<string, int>, repeat: int, retained: int, repeat_goal: int, confirmed: int, confirmed_goal: int, is_day_off: bool, gross: float, aov: ?float}>
      * }
      */
     public function month(User $cra, CarbonImmutable $month): array
@@ -791,14 +793,12 @@ class ExclusiveLeads
             ->get();
         $byDay = $entries->groupBy(fn (ExclusiveListLead $entry) => $entry->list_date->toDateString());
 
-        $bought = Lead::where('assigned_to', $cra->id)->repeatPurchasedBetween($start, $end)
-            ->orderBy('repeat_purchase_on')->orderBy('id')
-            ->get(['phone_number', 'repeat_purchase_on']);
-        $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
-        $repeatByDay = $bought->groupBy(fn (Lead $lead) => $lead->repeat_purchase_on->toDateString())
-            ->map(fn (Collection $leads) => $leads->unique($phoneOf)->count());
-
-        $sales = app(SegmentationProductivity::class)->days(collect([$cra]), $start, $end)[$cra->id] ?? [];
+        // Only days that have started: the customers on the day's list who bought or ordered that day.
+        $today = WorkingDate::realToday();
+        $none = ['repeat' => 0, 'retained' => 0, 'orders' => 0, 'gross' => 0.0];
+        $listSales = fn (CarbonImmutable $from, CarbonImmutable $to) => $from->greaterThan($today)
+            ? $none
+            : [...$this->repeatsBetween($cra, $from, $to->min($today)), ...$this->ordersBetween($cra, $from, $to->min($today))];
         $goalPercent = (int) config('exclusive_leads.repeat_goal_percent');
         // The month goes by the limits its last day ends on; each day's orders target by that day's.
         $monthLimits = ExclusiveLimits::on($end);
@@ -839,6 +839,7 @@ class ExclusiveLeads
                 $orderRates[] = $confirmedGoal;
             }
 
+            $sales = $day->lessThan($firstDay) ? $none : $listSales($day, $day);
             $days[] = [
                 'date' => $date,
                 'lead_date' => $leadDay->toDateString(),
@@ -851,20 +852,20 @@ class ExclusiveLeads
                 'left' => $counted->count() - $worked,
                 'pos' => $rows->count() - $counted->count(),
                 'mix' => $mixOf($rows),
-                'repeat' => (int) ($repeatByDay[$date] ?? 0),
+                'repeat' => $sales['repeat'],
+                'retained' => $sales['retained'],
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
-                'confirmed' => (int) ($sales[$date]['confirmed'] ?? 0),
+                'confirmed' => $sales['orders'],
                 'confirmed_goal' => $confirmedGoal,
                 'is_day_off' => $isDayOff,
-                'gross' => (float) ($sales[$date]['gross'] ?? 0),
-                'aov' => $sales[$date]['aov'] ?? null,
+                'gross' => $sales['gross'],
+                'aov' => $sales['orders'] ? $sales['gross'] / $sales['orders'] : null,
             ];
         }
 
         $counted = $entries->where('source', '!=', self::POS);
         $planned = count($seen) + $held;
-        $confirmed = (int) collect($days)->sum('confirmed');
-        $gross = (float) collect($days)->sum('gross');
+        $monthSales = $listSales($firstDay->max($start), $end);
 
         return [
             'targets' => [
@@ -881,10 +882,11 @@ class ExclusiveLeads
             'actual' => [
                 'listed' => $counted->count(),
                 'unique_leads' => count($seen),
-                'repeat' => $bought->unique($phoneOf)->count(),
-                'confirmed' => $confirmed,
-                'gross' => $gross,
-                'aov' => $confirmed ? $gross / $confirmed : null,
+                'repeat' => $monthSales['repeat'],
+                'retained' => $monthSales['retained'],
+                'confirmed' => $monthSales['orders'],
+                'gross' => $monthSales['gross'],
+                'aov' => $monthSales['orders'] ? $monthSales['gross'] / $monthSales['orders'] : null,
                 'mix' => $mixOf($entries),
             ],
             'days' => $days,
