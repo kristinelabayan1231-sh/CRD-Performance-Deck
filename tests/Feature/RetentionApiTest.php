@@ -169,7 +169,7 @@ class RetentionApiTest extends TestCase
     {
         $admin = $this->user('Admin', Role::SUPER_ADMIN);
 
-        $made = $this->actingAs($admin)->post(route('settings.api-keys.store'), ['name' => 'Finance report']);
+        $made = $this->actingAs($admin)->post(route('settings.api-keys.store'), ['name' => 'Finance report', 'scope' => ApiKey::RETENTION]);
 
         $token = session('new_key')['token'];
         $made->assertRedirect(route('settings.api-keys.index'));
