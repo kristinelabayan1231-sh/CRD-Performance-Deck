@@ -61,6 +61,7 @@ use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
 use App\Http\Controllers\WorkingDateController;
 use App\Http\Middleware\EnsureUserIsActive;
+use App\Support\SettingsTabs;
 use Illuminate\Support\Facades\Route;
 
 // Public: linked from the Google sign-in (consent) screen.
@@ -247,21 +248,13 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         });
 
         // The first Settings tab this user may open.
-        Route::get('/', fn () => redirect()->route(
-            match (true) {
-                request()->user()->can('product_consumption.view') => 'settings.product-consumption.index',
-                request()->user()->can('pancake_pages.manage') => 'settings.pancake-pages.index',
-                request()->user()->can('pancake_accounts.manage') => 'settings.pancake-accounts.index',
-                request()->user()->can('sales_goals.manage') => 'settings.sales-goals.index',
-                request()->user()->can('segmentation_options.manage') => 'settings.segmentation-options.index',
-                request()->user()->can('niches.manage') => 'settings.niches.index',
-                request()->user()->can('daily_is_products.manage') => 'settings.daily-is.index',
-                request()->user()->can('call_recordings.manage') => 'settings.call-recordings.index',
-                request()->user()->can('segmentation.view') => 'settings.spiels.index',
-                request()->user()->can('api_keys.manage') => 'settings.api-keys.index',
-                default => 'settings.connections.index',
-            }
-        ))->name('index');
+        // The first Settings tab the user can open (App\Support\SettingsTabs).
+        Route::get('/', function () {
+            $landing = SettingsTabs::landingFor(request()->user());
+            abort_if($landing === null, 403);
+
+            return redirect()->route($landing);
+        })->name('index');
 
         // Everyone with the Segmentation Tracker: their own spiels for its Spiels panel.
         Route::prefix('spiels')->name('spiels.')->middleware('can:segmentation.view')->group(function () {

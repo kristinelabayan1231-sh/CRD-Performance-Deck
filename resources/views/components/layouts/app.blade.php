@@ -104,12 +104,13 @@
                     </details>
                 @endforeach
 
-                @canany(['user_access.view', 'product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'niches.manage', 'connections.check', 'segmentation.view'])
+                @canany(['user_access.view', ...\App\Support\SettingsTabs::permissions()])
                     <div class="mt-auto flex flex-col gap-1 border-t border-white/10 pt-3">
                         @can('user_access.view')
                             <x-nav-link :href="route('user-access.index')" :active="request()->routeIs('user-access.*', 'roles.*')" icon="users">User Access</x-nav-link>
                         @endcan
-                        @canany(['product_consumption.view', 'pancake_pages.manage', 'pancake_accounts.manage', 'sales_goals.manage', 'segmentation_options.manage', 'niches.manage', 'connections.check', 'segmentation.view'])
+                        {{-- Anyone who can open a Settings tab (App\Support\SettingsTabs), API Keys alone included. --}}
+                        @canany(\App\Support\SettingsTabs::permissions())
                             <x-nav-link :href="route('settings.index')" :active="request()->routeIs('settings.*')" icon="settings">Settings</x-nav-link>
                         @endcanany
                     </div>

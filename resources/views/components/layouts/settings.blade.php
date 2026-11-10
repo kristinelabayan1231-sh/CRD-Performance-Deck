@@ -1,38 +1,8 @@
 @props(['title' => 'Settings'])
 
 {{-- Settings pages: sub tabs in a vertical nav on the left, the page on the right. --}}
-{{-- Add more Settings sub tabs here: group => [route name => [label, permission]]. --}}
-@php($groups = [
-    'Personal' => [
-        'settings.spiels.index' => ['My Spiels', 'segmentation.view'],
-    ],
-    'Products' => [
-        'settings.product-consumption.index' => ['Product Consumption', 'product_consumption.view'],
-        'settings.product-stage.index' => ['Testing Products', 'product_consumption.view'],
-        'settings.product-qty.index' => ['Product Qty', 'product_qty.manage'],
-        'settings.age-bracket.index' => ['Age Bracket', 'product_consumption.view'],
-    ],
-    'Pancake' => [
-        'settings.pancake-pages.index' => ['Pancake Pages', 'pancake_pages.manage'],
-        'settings.pancake-accounts.index' => ['Pancake Accounts', 'pancake_accounts.manage'],
-    ],
-    'Goals' => [
-        'settings.sales-goals.index' => ['Sales Goals', 'sales_goals.manage'],
-        'settings.working-date.index' => ['Working Date', 'sales_goals.manage'],
-    ],
-    'Modules' => [
-        'settings.segmentation-options.index' => ['Segmentation Tracker', 'segmentation_options.manage'],
-        'settings.niches.index' => ['Niche', 'niches.manage'],
-        'settings.daily-is.index' => ['Daily I.S.', 'daily_is_products.manage'],
-        'settings.call-recordings.index' => ['Call Recordings', 'call_recordings.manage'],
-    ],
-    'System' => [
-        'settings.connections.index' => ['Connections', 'connections.check'],
-        'settings.api-keys.index' => ['API Keys', 'api_keys.manage'],
-    ],
-])
-@php($user = auth()->user())
-@php($groups = collect($groups)->map(fn ($tabs) => collect($tabs)->filter(fn ($tab) => $user->can($tab[1])))->filter->isNotEmpty())
+{{-- The sub tabs and their permissions are in App\Support\SettingsTabs; add new Settings pages there. --}}
+@php($groups = collect(\App\Support\SettingsTabs::for(auth()->user()))->map(fn (array $tabs) => collect($tabs)))
 
 <x-layouts.app :title="$title">
     <h1 class="mb-4 text-xl font-semibold">Settings <span class="text-sm font-normal text-muted">· Reference data used across the deck.</span></h1>
