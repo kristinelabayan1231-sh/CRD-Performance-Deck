@@ -639,24 +639,32 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertNotNull($this->joanna->fresh()->exclusive_from);
     }
 
-    public function test_repeat_purchases_count_on_the_day_bought_once_per_customer(): void
+    public function test_repeat_and_retained_count_only_customers_on_the_days_list_once_per_customer(): void
     {
         $bought = ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-03'];
-        // Same customer in two number formats on two leads, bought the same day and again later.
-        $this->lead('2026-11-01', $this->joanna, [...$bought, 'phone_number' => '09171112222']);
-        $this->lead('2026-11-02', $this->joanna, [...$bought, 'phone_number' => '+639171112222']);
-        $this->lead('2026-10-20', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-04', 'phone_number' => '639171112222']);
-        $this->lead('2026-11-01', $this->joanna, [...$bought, 'phone_number' => '09173334444']);
-        // Not counted: another CRA's, another month's, and a Yes-less lead.
-        $this->lead('2026-11-01', $this->regina, [...$bought, 'phone_number' => '09175556666']);
-        $this->lead('2026-10-01', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-30', 'phone_number' => '09177778888']);
-        $this->lead('2026-11-01', $this->joanna, ['repeat_purchase' => 'no', 'phone_number' => '09179990000']);
+        $onList = function (string $listDay, array $extra, ?User $cra = null): Lead {
+            $lead = $this->lead($listDay, $cra ?? $this->joanna, $extra);
+            ExclusiveListLead::create(['user_id' => ($cra ?? $this->joanna)->id, 'list_date' => $listDay, 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+
+            return $lead;
+        };
+        // On Nov 3's list and bought that day: the same customer in two number formats counts once; an FSD Lead is Retained.
+        $onList('2026-11-03', [...$bought, 'phone_number' => '09171112222']);
+        $onList('2026-11-03', [...$bought, 'phone_number' => '+639171112222']);
+        $onList('2026-11-03', [...$bought, 'phone_number' => '09173334444', 'lead_type' => Lead::TYPE_FSD]);
+        // Listed Nov 1, bought Nov 4 when not on that day's list: the month's, not Nov 4's.
+        $onList('2026-11-01', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-04', 'phone_number' => '09175550000']);
+        // Not counted: bought but on no list (e.g. another CRA's High AOV), another CRA's list, a Yes-less lead.
+        $this->lead('2026-11-03', $this->joanna, [...$bought, 'phone_number' => '09177778888']);
+        $onList('2026-11-03', [...$bought, 'phone_number' => '09175556666'], $this->regina);
+        $onList('2026-11-03', ['repeat_purchase' => 'no', 'phone_number' => '09179990000']);
 
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
+        $day = fn (string $date) => array_intersect_key(collect($month['days'])->firstWhere('date', $date), array_flip(['repeat', 'retained']));
 
-        $this->assertSame(2, $month['actual']['repeat']);
-        $this->assertSame(2, collect($month['days'])->firstWhere('date', '2026-11-03')['repeat']);
-        $this->assertSame(1, collect($month['days'])->firstWhere('date', '2026-11-04')['repeat']);
+        $this->assertSame(['repeat' => 1, 'retained' => 1], $day('2026-11-03'));
+        $this->assertSame(['repeat' => 0, 'retained' => 0], $day('2026-11-04'));
+        $this->assertSame([2, 1], [$month['actual']['repeat'], $month['actual']['retained']]);
     }
 
     public function test_a_real_day_shows_its_results_with_the_paired_lead_days_list(): void
@@ -667,7 +675,7 @@ class ExclusiveLeadTrackerTest extends TestCase
         $listed = $this->lead('2026-10-06', $this->joanna, ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-05']);
         ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-10-06', 'lead_id' => $listed->id, 'source' => ExclusiveLeads::HIGH_VALUE]);
         PancakeOrder::create(['pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => '2026-11-05', 'ordered_at' => '2026-11-05 02:00:00',
-            'seller_name' => $this->joanna->pancake_name, 'phone_key' => '91700'.$this->seq, 'status' => 3, 'total_price' => 800,
+            'seller_name' => $this->joanna->pancake_name, 'phone_key' => $this->phoneKey($listed), 'status' => 3, 'total_price' => 800,
             'conversion_type' => PancakeOrder::SEGMENTATION]);
         DutySchedule::create(['user_id' => $this->joanna->id, 'date' => '2026-11-05', 'type' => DutySchedule::REST]);
 
@@ -688,21 +696,22 @@ class ExclusiveLeadTrackerTest extends TestCase
             ->assertSee($listed->customer_name);
     }
 
-    public function test_confirmed_orders_gross_and_aov_follow_segmentation_productivity(): void
+    public function test_confirmed_orders_gross_and_aov_count_only_customers_on_the_list(): void
     {
-        foreach ([[800, 3], [1000, 2], [5000, PancakeOrder::NOT_COUNTED_STATUSES[0]]] as [$total, $status]) {
+        $listed = $this->lead('2026-11-03', $this->joanna);
+        ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-11-03', 'lead_id' => $listed->id, 'source' => ExclusiveLeads::HANDLED]);
+        // The listed customer's two orders count (as Segmentation Productivity, the canceled one doesn't); a customer off the list doesn't.
+        foreach ([[800, 3, $this->phoneKey($listed)], [1000, 2, $this->phoneKey($listed)], [5000, PancakeOrder::NOT_COUNTED_STATUSES[0], $this->phoneKey($listed)], [700, 3, '9170000999']] as [$total, $status, $phoneKey]) {
             PancakeOrder::create(['pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => '2026-11-03', 'ordered_at' => '2026-11-03 02:00:00',
-                'seller_name' => $this->joanna->pancake_name, 'phone_key' => '91700'.$this->seq, 'status' => $status, 'total_price' => $total,
+                'seller_name' => $this->joanna->pancake_name, 'phone_key' => $phoneKey, 'status' => $status, 'total_price' => $total,
                 'conversion_type' => PancakeOrder::SEGMENTATION]);
         }
 
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
         $day = collect($month['days'])->firstWhere('date', '2026-11-03');
 
-        $this->assertSame(2, $day['confirmed']);
-        $this->assertSame(2, $month['actual']['confirmed']);
-        $this->assertSame($day['gross'], $month['actual']['gross']);
-        $this->assertSame($day['gross'] / 2, $month['actual']['aov']);
+        $this->assertSame([2, 1800.0, 900.0], [$day['confirmed'], $day['gross'], $day['aov']]);
+        $this->assertSame([2, 1800.0, 900.0], [$month['actual']['confirmed'], $month['actual']['gross'], $month['actual']['aov']]);
     }
 
     public function test_the_month_counts_a_carried_lead_on_each_list_and_once_as_a_unique_lead(): void
@@ -769,8 +778,8 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertSame(1, $today['summary']['engaged']);
         $this->assertSame(1, app(CvrTracker::class)->day($joanna, CarbonImmutable::parse('2026-11-05'))['summary']['not_answering']);
 
-        // Repeat Purchases: the same rows as her page's goal; an FSD lead's purchase is on the Retained tile.
-        $this->assertSame(1, $month['actual']['repeat']);
+        // Repeat Purchases: the same rows as her page's goal; an FSD lead's purchase is Retained, there and on the Retained tile.
+        $this->assertSame([0, 1], [$month['actual']['repeat'], $month['actual']['retained']]);
         $this->assertSame([$picked->id], app(SegmentationStats::class)->repeatPurchases(collect([$joanna]), 'retained', CarbonImmutable::parse('2026-11-01'), CarbonImmutable::parse('2026-11-30'))->pluck('id')->all());
 
         // The page's pickers still list her everywhere but the Segmentation Tracker.
