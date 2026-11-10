@@ -15,7 +15,9 @@ use Illuminate\Support\Collection;
 /**
  * Order Database → Product Report: the Pancake POS orders the seller accounts sold, by the day the order was
  * created, per product (Settings → Product Consumption); an item not on that list is its own row under its Pancake
- * name, after the listed ones ("Other products" in the filter shows them all). Deleted orders (status 7) are left out.
+ * name, after the listed ones ("Other products" in the filter shows them all). Deleted orders (status 7) are left out;
+ * the rows also leave out a TSD add-on on an order with a CRD product (Shecom's sales and the Daily I.S. leave out that
+ * child row; Product Performance's TSD tab still counts it), while an order of TSD products only counts them.
  *
  * As Pancake's own Product Performance: Total qty is the pieces sold (a "5 Pterygium Drops" bundle is 5; 3 + 5 bottles
  * in two orders = 8) and sales are each item at its Pancake price. Product cost follows the Daily I.S.: from its
@@ -46,7 +48,7 @@ class ProductReport
     /**
      * One row per product sold $from–$to by $sellers (staff key => name shown), most pieces first; only $product when
      * given. Like logistics' Product Performance, items not on Settings → Product Consumption (on the order's day) are
-     * left out: no row, and not in the TOTAL. Per-CRA figures live on CRA's Performance, not here.
+     * left out: no row, and not in the TOTAL. So is a TSD add-on on a CRD order, as in the Daily I.S. (Shecom's sales). Per-CRA figures live on CRA's Performance, not here.
      *
      * @param  array<string, string>  $sellers
      * @return Collection<int, array{product: string, statuses: array<int, int>, qty: int, sales: float, cost: ?float, delivered: float, rts: float, shipped: float, listed: bool}>
@@ -55,6 +57,7 @@ class ProductReport
     {
         $lines = $this->lines($sellers, $from, $to)
             ->where('listed', true)
+            ->where('add_on', false)
             ->when(filled($product), fn (Collection $lines) => $lines->where('product', $product));
 
         return $this->rowsFrom($lines);
@@ -64,7 +67,7 @@ class ProductReport
      * Each order's products sold $from–$to by $sellers, with the order's day and hour (segmentation timezone).
      *
      * @param  array<string, string>  $sellers
-     * @return Collection<int, array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool}>
+     * @return Collection<int, array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool, add_on: bool}>
      */
     public function lines(array $sellers, CarbonImmutable $from, CarbonImmutable $to): Collection
     {
@@ -157,19 +160,22 @@ class ProductReport
      *
      * @param  Collection<string, ?string>  $costs  product name => unit cost
      * @param  array<string, float>  $shecom  lowercased item name => Shecom's cost per piece
-     * @return list<array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool}>
+     * @return list<array{order: int, seller: string, status: int, product: string, qty: int, sales: float, cost: ?float, day: string, hour: int, listed: bool, add_on: bool}>
      */
     private function linesOf(object $order, Collection $costs, array $shecom, DateTimeZone $timezone, ?string $seller = null): array
     {
         $products = [];
-        foreach (json_decode((string) $order->items, true) ?? [] as $item) {
+        $day = isset($order->ordered_on) ? substr((string) $order->ordered_on, 0, 10) : null;
+        // On the list (CRD or TSD upsell) on the order's day (a product added later counts from its day).
+        $matched = array_map(fn (array $item) => [$item, $this->catalog->matchSold(trim((string) ($item['name'] ?? '')), $day)], json_decode((string) $order->items, true) ?? []);
+        // A TSD add-on riding on a CRD product: Shecom's sales and the Daily I.S. leave out that child row.
+        $hasCrdProduct = in_array(true, array_map(fn (array $line) => $line[1] !== null && ! $line[1]->is_tsd, $matched), true);
+        foreach ($matched as [$item, $product]) {
             $itemName = trim((string) ($item['name'] ?? ''));
-            // On the list (CRD or TSD upsell) on the order's day (a product added later counts from its day).
-            $product = $this->catalog->matchSold($itemName, isset($order->ordered_on) ? substr((string) $order->ordered_on, 0, 10) : null);
             // Not on the list: its own row under its Pancake name.
             $name = $product?->name ?? ($itemName === '' ? CraPerformance::OTHER_PRODUCTS : $itemName);
             $qty = max(1, (int) ($item['qty'] ?? 1));
-            $products[$name] ??= ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => $product !== null, 'price' => 0.0, 'cost' => 0.0, 'shecom_cost' => 0.0];
+            $products[$name] ??= ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => $product !== null, 'add_on' => $hasCrdProduct && $product?->is_tsd, 'price' => 0.0, 'cost' => 0.0, 'shecom_cost' => 0.0];
             $products[$name]['units'] += $qty;
             // Pieces: a 5-piece bundle bought twice is 10.
             $products[$name]['qty'] += $qty * (int) ($item['pieces'] ?? 1);
@@ -181,7 +187,7 @@ class ProductReport
         }
 
         if ($products === []) {
-            $products[CraPerformance::OTHER_PRODUCTS] = ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => false, 'price' => null, 'cost' => null, 'shecom_cost' => 0.0];
+            $products[CraPerformance::OTHER_PRODUCTS] = ['units' => 0, 'qty' => 0, 'weight' => 0, 'listed' => false, 'add_on' => false, 'price' => null, 'cost' => null, 'shecom_cost' => 0.0];
         }
 
         $salesOf = self::salesOf($order, $products);
@@ -210,6 +216,7 @@ class ProductReport
                 'day' => substr((string) $order->ordered_on, 0, 10),
                 'hour' => $hour,
                 'listed' => $product['listed'],
+                'add_on' => $product['add_on'],
             ];
         }
 
@@ -223,7 +230,7 @@ class ProductReport
      * in the order the listed ones share Shecom's sales and the others the rest of the price (a ₱1,999 Pterygium +
      * Lumicare with ₱999 Shecom sales: ₱999 and ₱1,000).
      *
-     * @param  array<string, array{units: int, weight: float, listed: bool, price: ?float}>  $products
+     * @param  array<string, array{units: int, weight: float, listed: bool, add_on: bool, price: ?float}>  $products
      * @return array<string, float>
      */
     private static function salesOf(object $order, array $products): array
@@ -233,7 +240,7 @@ class ProductReport
         }
 
         $gross = (float) $order->total_price + (float) ($order->total_discount ?? 0);
-        $listed = array_filter($products, fn (array $product) => $product['listed']);
+        $listed = array_filter($products, fn (array $product) => $product['listed'] && ! $product['add_on']);
         $unlisted = array_diff_key($products, $listed);
         $pools = $order->shecom_sales !== null && $listed !== [] && $unlisted !== []
             ? [[$listed, (float) $order->shecom_sales], [$unlisted, max(0.0, $gross - (float) $order->shecom_sales)]]

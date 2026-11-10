@@ -26,11 +26,11 @@
         </p>
         <div class="mt-3 grid grid-cols-2">
             <div style="border-right: 1px solid rgb(255 255 255 / .14)">
-                <p style="{{ $label }}">Gross Sales</p>
+                <p style="{{ $label }}">GROSS SALES</p>
                 <p style="margin: 0; font-size: clamp(22px, 5.6vw, 50px); font-weight: 700; line-height: 1.1; letter-spacing: -1px; white-space: nowrap">{{ $money($today['gross']) }}</p>
             </div>
             <div>
-                <p style="{{ $label }}">Net Income</p>
+                <p style="{{ $label }}">NET INCOME</p>
                 <p style="margin: 0; font-size: clamp(22px, 5.6vw, 50px); font-weight: 700; line-height: 1.1; letter-spacing: -1px; white-space: nowrap; {{ $net($today['net']) }}">{{ $money($today['net']) }}</p>
             </div>
         </div>
@@ -38,7 +38,7 @@
 
     <section aria-label="Last two days" style="{{ $glass }}">
         <p class="grid grid-cols-3" style="{{ $head }}; background: linear-gradient(90deg, rgb(70 58 108 / .65), rgb(58 49 87 / .3))">
-            <span>Last two days</span><span style="color: #bdb6cf">Gross Sales</span><span style="color: #bdb6cf">Net Income</span>
+            <span>Last two days</span><span style="color: #bdb6cf">GROSS SALES</span><span style="color: #bdb6cf">NET INCOME</span>
         </p>
         @foreach ($days as $row)
             <div class="grid grid-cols-3 items-center" style="padding: 12px 18px; {{ $loop->last ? '' : 'border-bottom: 1px solid rgb(255 255 255 / .08)' }}">
@@ -51,7 +51,7 @@
 
     <div class="grid gap-4 sm:grid-cols-2">
         <section aria-label="Top seller" class="flex flex-col" style="{{ $glass }}">
-            <p style="{{ $head }}; background: linear-gradient(90deg, rgb(58 54 82 / .65), rgb(52 48 74 / .3))">Top seller · {{ $topDay->format('M j') }}</p>
+            <p style="{{ $head }}; background: linear-gradient(90deg, rgb(58 54 82 / .65), rgb(52 48 74 / .3))">TOP SELLER · {{ $topDay->format('M j') }}</p>
             @if ($topSeller)
                 <div class="flex grow flex-col items-center" style="padding: 14px 18px">
                     <span style="border-radius: 50%; box-shadow: 0 0 0 2px #2d2a3e, 0 0 0 4px #c39bff">
@@ -59,8 +59,8 @@
                     </span>
                     <p style="margin: 8px 0 0; font-size: 17px; font-weight: 700">{{ $topSeller['user']->displayName() }}</p>
                     <div class="mt-1.5 grid w-full grid-cols-2 gap-2.5">
-                        <div><p style="{{ $label }}">Gross Sales</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap">{{ $money($topSeller['gross']) }}</p></div>
-                        <div><p style="{{ $label }}">Net Income</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap; {{ $net($topSeller['net']) }}">{{ $money($topSeller['net']) }}</p></div>
+                        <div><p style="{{ $label }}">GROSS SALES</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap">{{ $money($topSeller['gross']) }}</p></div>
+                        <div><p style="{{ $label }}">NET INCOME</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap; {{ $net($topSeller['net']) }}">{{ $money($topSeller['net']) }}</p></div>
                     </div>
                 </div>
             @else
@@ -71,13 +71,13 @@
         @php($photo = $topProduct['image'] ?? null)
         <section aria-label="Top product" class="flex flex-col overflow-hidden"
                  style="{{ $glass }}{{ $photo ? "; border-color: rgb(255 255 255 / .2); background: linear-gradient(180deg, rgb(33 31 45 / .1) 0%, rgb(33 31 45 / .45) 40%, rgb(33 31 45 / .92) 78%), url('{$photo}') center 30% / cover no-repeat" : '' }}">
-            <p style="{{ $head }}; {{ $photo ? 'background: rgb(33 31 45 / .55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px)' : 'background: linear-gradient(90deg, rgb(36 66 63 / .65), rgb(38 54 52 / .3))' }}">Top product · {{ $topDay->format('M j') }}</p>
+            <p style="{{ $head }}; {{ $photo ? 'background: rgb(33 31 45 / .55); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px)' : 'background: linear-gradient(90deg, rgb(36 66 63 / .65), rgb(38 54 52 / .3))' }}">TOP PRODUCT · {{ $topDay->format('M j') }}</p>
             @if ($topProduct)
                 <div class="flex grow flex-col items-center {{ $photo ? 'justify-end' : 'justify-center' }}" style="padding: 14px 18px; {{ $photo ? 'min-height: 150px; text-shadow: 0 1px 8px rgb(0 0 0 / .6)' : '' }}">
                     <p style="margin: 0; font-size: 19px; font-weight: 700">{{ $topProduct['name'] }}</p>
                     <div class="mt-2.5 grid w-full grid-cols-2 gap-2.5">
-                        <div><p style="{{ $label }}">Gross Sales</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap">{{ $money($topProduct['gross']) }}</p></div>
-                        <div><p style="{{ $label }}">Net Income</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap; {{ $net($topProduct['net']) }}">{{ $money($topProduct['net']) }}</p></div>
+                        <div><p style="{{ $label }}">GROSS SALES</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap">{{ $money($topProduct['gross']) }}</p></div>
+                        <div><p style="{{ $label }}">NET INCOME</p><p style="margin: 0; font-size: 20px; font-weight: 700; white-space: nowrap; {{ $net($topProduct['net']) }}">{{ $money($topProduct['net']) }}</p></div>
                     </div>
                 </div>
             @else

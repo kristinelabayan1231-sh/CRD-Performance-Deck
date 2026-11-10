@@ -2,8 +2,12 @@
     $control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm text-ink normal-case focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
     $state = array_filter([
         'period' => $mode, 'month' => $month->format('Y-m'), 'week' => $period['number'] ?? null, 'date' => $day->toDateString(),
+        'to' => $isRange ? $rangeEnd->toDateString() : null,
     ]);
-    $dayLink = fn (\Carbon\CarbonImmutable $d) => route('report-summary.index', [...$state, 'date' => $d->toDateString()]);
+    $dayLink = fn (\Carbon\CarbonImmutable $d) => route('report-summary.index', [...\Illuminate\Support\Arr::except($state, 'to'), 'date' => $d->toDateString()]);
+    $dayTitle = $isRange
+        ? 'Daily sales report · '.$day->format($rangeEnd->isSameYear($day) ? 'M j' : 'M j, Y').' – '.$rangeEnd->format('M j, Y')
+        : 'Daily sales report · '.$day->format('D, M j, Y');
 @endphp
 
 <x-layouts.app title="Report Summary">
@@ -65,22 +69,52 @@
         </div>
 
         {{-- Daily --}}
-        <x-panel :title="'Daily sales report · '.$day->format('D, M j, Y')" accent="sky" icon="clock" title-id="day-title" :tinted="false" body-class="">
+        <x-panel :title="$dayTitle" accent="sky" icon="clock" title-id="day-title" :tinted="false" body-class="">
             <x-slot:badges>
-                <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#156c8c] shadow-sm">{{ $day->equalTo($today) ? 'Today' : 'Daily' }}</span>
+                <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#156c8c] shadow-sm">{{ $isRange ? count($dayReports).' days' : ($day->equalTo($today) ? 'Today' : 'Daily') }}</span>
             </x-slot:badges>
             <x-slot:actions>
-                <a href="{{ $dayLink($day->subDay()) }}" class="grid size-9 place-items-center rounded-lg border border-line bg-white text-muted hover:border-brand-400 hover:text-brand-600" aria-label="Day before">‹</a>
-                <label>
-                    <span class="sr-only">Day</span>
+                @unless ($isRange)
+                    <a href="{{ $dayLink($day->subDay()) }}" class="grid size-9 place-items-center rounded-lg border border-line bg-white text-muted hover:border-brand-400 hover:text-brand-600" aria-label="Day before">‹</a>
+                @endunless
+                <label class="flex items-center gap-1.5 text-xs font-semibold text-muted">
+                    <span @class(['sr-only' => ! $isRange])>From</span>
                     <input type="date" name="date" form="report-filters" value="{{ $day->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }}">
                 </label>
-                @if ($day->lessThan($today))
+                @if (! $isRange && $day->lessThan($today))
                     <a href="{{ $dayLink($day->addDay()) }}" class="grid size-9 place-items-center rounded-lg border border-line bg-white text-muted hover:border-brand-400 hover:text-brand-600" aria-label="Day after">›</a>
+                @endif
+                <label class="flex items-center gap-1.5 text-xs font-semibold text-muted">
+                    To
+                    <input type="date" name="to" form="report-filters" value="{{ $isRange ? $rangeEnd->toDateString() : '' }}" min="{{ $day->toDateString() }}" max="{{ $today->toDateString() }}" onchange="this.form.submit()" class="{{ $control }}" aria-describedby="day-range-hint">
+                </label>
+                @if ($isRange)
+                    <a href="{{ $dayLink($day) }}" class="text-xs font-semibold text-brand-600 hover:underline">Single day</a>
                 @endif
             </x-slot:actions>
 
-            @include('report-summary._table', ['report' => $dayReport, 'perCra' => true])
+            @if ($isRange)
+                <p id="day-range-hint" class="border-b border-line px-4 py-2 text-xs text-muted">
+                    One table per day, oldest first. Scroll sideways to compare days.
+                    @if ($isCapped) Showing the first {{ \App\Http\Controllers\ReportSummaryController::MAX_RANGE_DAYS }} days. @endif
+                </p>
+                <div class="overflow-x-auto overscroll-x-contain" tabindex="0" aria-label="Daily tables, scroll sideways">
+                    <div class="flex w-max divide-x-4 divide-canvas">
+                        @foreach ($dayReports as $entry)
+                            <section class="w-[93.5rem] shrink-0" aria-labelledby="day-{{ $entry['day']->toDateString() }}">
+                                <h3 id="day-{{ $entry['day']->toDateString() }}" class="sticky left-0 inline-block px-4 py-2 text-sm font-semibold">
+                                    {{ $entry['day']->format('D, M j') }}
+                                    @if ($entry['day']->equalTo($today)) <span class="ml-1 rounded-full bg-[#ebf7fc] px-2 py-0.5 text-xs font-semibold text-[#156c8c]">Today</span> @endif
+                                </h3>
+                                @include('report-summary._table', ['report' => $entry['report'], 'perCra' => true, 'scroll' => false])
+                            </section>
+                        @endforeach
+                    </div>
+                </div>
+            @else
+                <p id="day-range-hint" class="sr-only">Pick a To date to show each day of a range side by side.</p>
+                @include('report-summary._table', ['report' => $dayReport, 'perCra' => true])
+            @endif
         </x-panel>
 
         <noscript><button type="submit" form="report-filters" class="h-9 rounded-lg bg-brand-600 px-4 text-sm font-semibold text-white">Apply</button></noscript>
@@ -95,7 +129,7 @@
                 <div><dt class="font-semibold text-ink">Net income and I.BSC %</dt><dd>Net income = the CRA card's NET INCOME in the Daily I.S., added up over the days shown. I.BSC % = Net income ÷ Total gross sales (BC &amp; SC). Average IBSC per CRA = Net income ÷ CRAs on duty.</dd></div>
                 <div><dt class="font-semibold text-ink">No. of Customer Retention Associates (On Duty)</dt><dd>CRAs who clicked "Log in" in the Segmentation Tracker that day (the real date).</dd></div>
                 <div><dt class="font-semibold text-ink">Average Sales per Customer Retention Associate</dt><dd>Gross sales (Broadcast) ÷ CRAs on duty. The per-CRA lines are under the daily table only, as in the CRD sheet.</dd></div>
-                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Weeks and month to date</dt><dd>Weeks run 1–7, 8–14… from the 1st, as in Conversion Breakdown. Month to date runs from the 1st to today (the whole month for a past month). The daily section picks its day on its own, so any day can be compared with any week.</dd></div>
+                <div class="sm:col-span-2"><dt class="font-semibold text-ink">Weeks and month to date</dt><dd>Weeks run 1–7, 8–14… from the 1st, as in Conversion Breakdown. Month to date runs from the 1st to today (the whole month for a past month). The daily section picks its day on its own, so any day can be compared with any week. Pick a To date to show a range of days (up to 31), one table per day side by side; scroll sideways to compare them.</dd></div>
             </dl>
         </details>
     </div>

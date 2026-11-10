@@ -12,6 +12,7 @@ use App\Services\DailyIncomeStatement;
 use App\Services\LeadGenerator;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class ReportSummaryTest extends TestCase
@@ -141,6 +142,24 @@ class ReportSummaryTest extends TestCase
         $this->actingAs($this->supervisor)->get(route('report-summary.index', ['period' => 'mtd']))->assertOk()
             ->assertViewHas('periodReport', fn (array $mtd) => $mtd['total']['bc_gross'] === 11000.0 && $mtd['total']['gross'] === 16500.0)
             ->assertSeeText('Month to date · Oct 1–9, 2026');
+    }
+
+    public function test_a_daily_range_shows_each_days_table_in_date_order(): void
+    {
+        // A range up to today syncs Pancake; no real calls.
+        Http::fake();
+        $this->sheetOrders();
+        $days = fn (array $reports) => array_map(fn (array $entry) => [$entry['day']->toDateString(), $entry['report']['total']['gross']], $reports);
+
+        $this->actingAs($this->supervisor)->get(route('report-summary.index', ['date' => '2026-10-01', 'to' => '2026-10-03']))->assertOk()
+            ->assertViewHas('dayReports', fn (array $reports) => $days($reports) === [['2026-10-01', 6500.0], ['2026-10-02', 4000.0], ['2026-10-03', 0.0]])
+            ->assertSeeTextInOrder(['Daily sales report · Oct 1 – Oct 3, 2026', 'Thu, Oct 1', '₱6,500.00', 'Fri, Oct 2', '₱4,000.00', 'Sat, Oct 3']);
+
+        // A To date before the day swaps them; a range past today stops at today.
+        $this->actingAs($this->supervisor)->get(route('report-summary.index', ['date' => '2026-10-02', 'to' => '2026-10-01']))
+            ->assertViewHas('dayReports', fn (array $reports) => array_column($days($reports), 0) === ['2026-10-01', '2026-10-02']);
+        $this->actingAs($this->supervisor)->get(route('report-summary.index', ['date' => '2026-10-08', 'to' => '2026-12-01']))
+            ->assertViewHas('dayReports', fn (array $reports) => array_column($days($reports), 0) === ['2026-10-08', '2026-10-09']);
     }
 
     public function test_a_days_on_duty_count_entered_by_hand_is_used_instead_of_its_log_ins(): void

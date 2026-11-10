@@ -69,13 +69,16 @@ class ExclusiveLeadDashboardController extends Controller
 
         $today = WorkingDate::realToday();
         $craLeads = Lead::query()->where('assigned_to', $cra->id);
+        $periodFrom = $this->periodFrom($period, $today, $cra->exclusive_from->addDays(WorkingDate::lagDays()));
 
         return view('exclusive-leads.dashboard', $list + [
             'cra' => $cra,
             'cras' => $cras,
             'period' => $period,
-            'periodRange' => $this->periodRange($period, $today, $cra->exclusive_from->addDays(WorkingDate::lagDays())),
+            'periodRange' => $this->periodRange($periodFrom, $today),
             'grid' => $grid,
+            'repeats' => $exclusive->repeatsBetween($cra, $periodFrom, $today),
+            'listOrders' => $exclusive->ordersBetween($cra, $periodFrom, $today),
             'callbacks' => (clone $craLeads)->callbackDue($today)->count(),
             'reactivation' => (clone $craLeads)->reactivation(Lead::today(), $today)->count(),
             'callbacksUrl' => route('exclusive-leads.index', ['cra' => $cra->id, 'show' => 'unprocessed', 'full' => 1, 'list' => 'callback']),
@@ -213,17 +216,24 @@ class ExclusiveLeadDashboardController extends Controller
     }
 
     /**
-     * "Mon, Nov 9" / "Nov 1–9" / "Jan 1 – Nov 9", never before the CRA's first exclusive day.
+     * The period's first real day, never before the CRA's first exclusive day.
      */
-    private function periodRange(string $period, CarbonImmutable $today, CarbonImmutable $firstDay): string
+    private function periodFrom(string $period, CarbonImmutable $today, CarbonImmutable $firstDay): CarbonImmutable
     {
         $from = match ($period) {
             'today' => $today,
             'month' => $today->startOfMonth(),
             'year' => $today->startOfYear(),
         };
-        $from = $from->max($firstDay->startOfDay())->min($today);
 
+        return $from->max($firstDay->startOfDay())->min($today);
+    }
+
+    /**
+     * "Mon, Nov 9" / "Nov 1–9" / "Jan 1 – Nov 9".
+     */
+    private function periodRange(CarbonImmutable $from, CarbonImmutable $today): string
+    {
         return match (true) {
             $from->isSameDay($today) => $today->format('D, M j'),
             $from->isSameMonth($today) => $from->format('M j').'–'.$today->format('j'),
