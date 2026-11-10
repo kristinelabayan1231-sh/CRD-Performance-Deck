@@ -59,9 +59,17 @@
                         </select>
                     </label>
                 @endif
+                {{-- Saves the section's tables, scrolled parts too, as one PNG (resources/js/report-summary-shot.js). --}}
+                <button type="button" data-rs-shot="rs-shot-period" data-rs-shot-title="Report Summary · {{ $period['title'] }} · {{ $period['label'] }}" data-rs-shot-file="Report Summary - {{ $mode === 'mtd' ? 'Month to date' : 'Week '.$period['number'] }} - {{ $period['from']->toDateString() }} to {{ $period['to']->toDateString() }}.png"
+                        class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 text-xs font-semibold text-ink hover:border-brand-400 hover:text-brand-700 disabled:opacity-60">
+                    <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                    <span data-rs-shot-label>Screenshot</span>
+                </button>
             </x-slot:actions>
 
-            @include('report-summary._table', ['report' => $periodReport, 'perCra' => false])
+            <div id="rs-shot-period" class="rounded-b-2xl bg-white">
+                @include('report-summary._table', ['report' => $periodReport, 'perCra' => false])
+            </div>
         </x-panel>
 
         <div class="flex items-center gap-3 text-[0.6875rem] font-semibold tracking-widest text-muted uppercase" aria-hidden="true">
@@ -91,6 +99,12 @@
                 @if ($isRange)
                     <a href="{{ $dayLink($day) }}" class="text-xs font-semibold text-brand-600 hover:underline">Single day</a>
                 @endif
+                {{-- Saves the section's tables, scrolled parts too, as one PNG (resources/js/report-summary-shot.js). --}}
+                <button type="button" data-rs-shot="rs-shot-day" data-rs-shot-title="Report Summary · {{ $dayTitle }}" data-rs-shot-file="Report Summary - Daily - {{ $day->toDateString() }}{{ $isRange ? ' to '.$rangeEnd->toDateString() : '' }}.png"
+                        class="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-2.5 text-xs font-semibold text-ink hover:border-brand-400 hover:text-brand-700 disabled:opacity-60">
+                    <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+                    <span data-rs-shot-label>Screenshot</span>
+                </button>
             </x-slot:actions>
 
             @if ($isRange)
@@ -98,7 +112,7 @@
                     One table per day, oldest first. Scroll sideways to compare days.
                     @if ($isCapped) Showing the first {{ \App\Http\Controllers\ReportSummaryController::MAX_RANGE_DAYS }} days. @endif
                 </p>
-                <div class="overflow-x-auto overscroll-x-contain" tabindex="0" aria-label="Daily tables, scroll sideways">
+                <div id="rs-shot-day" class="overflow-x-auto overscroll-x-contain rounded-b-2xl bg-white" tabindex="0" aria-label="Daily tables, scroll sideways">
                     <div class="flex w-max divide-x-4 divide-canvas">
                         @foreach ($dayReports as $entry)
                             <section class="w-[93.5rem] shrink-0" aria-labelledby="day-{{ $entry['day']->toDateString() }}">
@@ -113,7 +127,9 @@
                 </div>
             @else
                 <p id="day-range-hint" class="sr-only">Pick a To date to show each day of a range side by side.</p>
-                @include('report-summary._table', ['report' => $dayReport, 'perCra' => true])
+                <div id="rs-shot-day" class="rounded-b-2xl bg-white">
+                    @include('report-summary._table', ['report' => $dayReport, 'perCra' => true])
+                </div>
             @endif
         </x-panel>
 

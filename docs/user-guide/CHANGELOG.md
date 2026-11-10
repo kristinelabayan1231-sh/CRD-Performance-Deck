@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-10 · Report Summary · Screenshot button on the weekly / month to date section and on the daily section: saves the section's table as one PNG titled with its week, month to date or dates, the columns and days scrolled out of view included · shots: report-summary
 - 2026-11-10 · Exclusive Lead Tracker · Calendar, month goals and the day's tiles count repeat purchases and confirmed orders (gross, AOV) only from customers on the CRA's lists: each day from that day's list, the month from any of its lists. Repeat (CRD Lead) and Retained (FSD Lead) show separately; the Repeat purchases ring counts both · shots: exclusive-lead-tracker
 - 2026-11-10 · Report Summary · Daily sales report has a To date beside the day: pick a range (up to 31 days) and each day's full table shows side by side, oldest first, scrolling sideways to compare; "Single day" goes back · shots: report-summary
 - 2026-11-10 · Exclusive Leads Dashboard · Repeat, Retained, Confirmed orders and Gross sales tiles for Today / This month / Year to date, counting only customers on the CRA's Exclusive Lead Tracker lists for those days (POS sales on the list too); a sale to a customer kept off the list doesn't count here · shots: exclusive-leads-dashboard

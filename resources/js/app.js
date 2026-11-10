@@ -13,6 +13,7 @@ import { initPoster } from './poster';
 import { initPresentationBoard } from './presentation-board';
 import { initProductPerformance } from './product-performance';
 import { initProductTargetMarket } from './product-target-market';
+import { initReportSummaryShot } from './report-summary-shot';
 import { initResultsFlip } from './results-flip';
 import { initSegmentation } from './segmentation';
 import { initSpiels } from './spiels';
@@ -31,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initPoster();
     initPresentationBoard();
     initDailyIsShot();
+    initReportSummaryShot();
     initResultsFlip();
     initLive();
     initCustomers();
