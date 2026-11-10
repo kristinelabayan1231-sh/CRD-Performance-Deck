@@ -45,6 +45,22 @@
                 </div>
             </div>
 
+            {{-- Repeat, Retained and orders: only customers on the CRA's Exclusive lists for the period --}}
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="From the Exclusive Lead Tracker lists">
+                @foreach ([
+                    ['Repeat', number_format($repeats['repeat']), 'CRD leads on the list who bought again'],
+                    ['Retained', number_format($repeats['retained']), 'FSD leads on the list who bought again'],
+                    ['Confirmed orders', number_format($listOrders['orders']), 'from customers on the list'],
+                    ['Gross sales', '₱'.number_format($listOrders['gross']), $listOrders['orders'] ? 'AOV ₱'.number_format($listOrders['gross'] / $listOrders['orders']) : 'from customers on the list'],
+                ] as [$label, $value, $note])
+                    <div class="rounded-2xl border border-line bg-white px-5 py-3 shadow-sm">
+                        <p class="text-xs font-semibold tracking-wide text-muted uppercase">{{ $label }}</p>
+                        <p class="text-2xl font-semibold tabular-nums">{{ $value }}</p>
+                        <p class="text-xs text-muted">{{ $note }}</p>
+                    </div>
+                @endforeach
+            </div>
+
             <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
                 {{-- Product × bottles --}}
                 <x-panel :title="'Customers by product × bottles ordered · '.\App\Http\Controllers\ExclusiveLeadDashboardController::PERIODS[$period]" icon="table" title-id="grid-title" :tinted="false" body-class="">

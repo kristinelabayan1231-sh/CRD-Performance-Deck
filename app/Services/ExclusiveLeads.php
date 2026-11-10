@@ -656,11 +656,61 @@ class ExclusiveLeads
     /**
      * @return Builder<ExclusiveListLead>
      */
-    private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): Builder
+    /**
+     * The customers on the CRA's lists for real days $from–$to who bought again in those days (Repeat Purchase = Yes),
+     * each once: Repeat for a CRD Lead, Retained for an FSD Lead. Only leads on the lists count, POS sales on them too, so
+     * a sale to a customer kept off the list (another CRA's High AOV/VIP, an old lead) stays out.
+     *
+     * @return array{repeat: int, retained: int}
+     */
+    public function repeatsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $bought = Lead::where('assigned_to', $cra->id)
+            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
+            ->repeatPurchasedBetween($from, $to)
+            ->orderBy('repeat_purchase_on')->orderBy('id')
+            ->get(['id', 'phone_number', 'lead_type'])
+            ->unique(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number) ?: 'lead-'.$lead->id);
+
+        return [
+            'repeat' => $bought->where('lead_type', Lead::TYPE_CRD)->count(),
+            'retained' => $bought->where('lead_type', Lead::TYPE_FSD)->count(),
+        ];
+    }
+
+    /**
+     * The CRA's confirmed orders on real days $from–$to (as Segmentation Productivity: tagged CRD orders counted for them,
+     * canceled and deleted left out) from customers on their lists for those days, POS sales included, with their gross.
+     *
+     * @return array{orders: int, gross: float}
+     */
+    public function ordersBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $listed = Lead::where('assigned_to', $cra->id)
+            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
+            ->pluck('phone_number')
+            ->map(fn (?string $phone) => LeadGenerator::normalizePhone((string) $phone))
+            ->filter()->unique()->values();
+        $accounts = ConversionBreakdown::accounts(collect([$cra]));
+        if ($listed->isEmpty() || $accounts->isEmpty()) {
+            return ['orders' => 0, 'gross' => 0.0];
+        }
+
+        $orders = $listed->chunk(1000)->flatMap(fn (Collection $phones) => ConversionBreakdown::taggedOrders($accounts, $from, $to)
+            ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES))
+            ->whereIn('pancake_orders.phone_key', $phones->all())
+            ->get())
+            ->filter(fn (PancakeOrder $order) => ConversionBreakdown::craFor($order, $accounts) === $cra->id)
+            ->unique('id');
+
+        return ['orders' => $orders->count(), 'gross' => (float) $orders->sum(fn (PancakeOrder $order) => $order->sales())];
+    }
+
+    private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to, bool $withPos = false): Builder
     {
         $lag = WorkingDate::lagDays();
 
-        return ExclusiveListLead::where('user_id', $cra->id)->where('source', '!=', self::POS)
+        return ExclusiveListLead::where('user_id', $cra->id)->when(! $withPos, fn (Builder $q) => $q->where('source', '!=', self::POS))
             ->whereDate('list_date', '>=', $from->subDays($lag))
             ->whereDate('list_date', '<=', $to->subDays($lag));
     }
