@@ -102,6 +102,22 @@ class ProductReportTest extends TestCase
             ->assertOk()->assertSeeText('₱1,200')->assertDontSeeText('₱800');
     }
 
+    public function test_a_tsd_add_on_on_a_crd_order_is_left_out_as_in_the_daily_is(): void
+    {
+        Product::create(['name' => 'Lumicare', 'is_tsd' => true, 'counts_from' => '2026-10-01']);
+        // Sinuxyl ₱999 + Lumicare ₱1,000 on one order: Shecom and the Daily I.S. count only the ₱999.
+        PancakeOrder::create(['pancake_order_id' => '1', 'ordered_on' => '2026-10-05', 'seller_name' => 'CRD LHEI', 'status' => 2, 'total_price' => 1999, 'shecom_sales' => 999,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1, 'price' => 999], ['name' => 'LUMICARE OIL', 'qty' => 1, 'price' => 1000]]]);
+        // An order of the TSD product alone still counts.
+        PancakeOrder::create(['pancake_order_id' => '2', 'ordered_on' => '2026-10-05', 'seller_name' => 'CRD LHEI', 'status' => 2, 'total_price' => 500, 'tsd_upsell' => true,
+            'items' => [['name' => 'LUMICARE OIL', 'qty' => 1, 'price' => 500]]]);
+
+        $rows = app(ProductReport::class)->rows(['CRD LHEI' => 'CRD Lhei'], CarbonImmutable::parse('2026-10-05'), CarbonImmutable::parse('2026-10-05'));
+
+        $this->assertEqualsCanonicalizing(['Sinuxyl' => 999.0, 'Lumicare' => 500.0], $rows->pluck('sales', 'product')->all());
+        $this->assertEqualsWithDelta(1499.0, ProductReport::total($rows)['sales'], 0.001);
+    }
+
     public function test_items_not_on_the_list_are_left_out_with_their_share_of_the_price(): void
     {
         // Sinuxyl + an oil for ₱800: Shecom's ₱300 is the Sinuxyl's, the other ₱500 the oil's (left out, as logistics does).

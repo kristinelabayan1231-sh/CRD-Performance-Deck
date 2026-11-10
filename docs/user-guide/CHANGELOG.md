@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-10 · Order Database · Product Report leaves out a TSD add-on (Lumicare, Haplunas, Belo Set…) sold on the same order as a CRD product, as Shecom and the Daily I.S. do, so its sales tally with the I.S.; an order of TSD products only still counts · shots: none
+
 - 2026-11-10 · Settings → API Keys · Each key reads one thing: Retention daily figures or MC / salaries. New MC / salaries API (GET /api/external/v1/crd/mc/summary and /roster?month=YYYY-MM) with CRD - MC's payroll per month, CRD's answers to the sales report's rules, and a Reads column in the key list. Every CRD - MC change and a daily save keep each month's figures, frozen once the month ends · shots: api-keys
 
 - 2026-11-10 · Segmentation Tracker, Exclusive Lead Tracker · Fixed: a spiel with an apostrophe stopped row clicks from opening the Spiels panel and the Pancake chat · shots: none
