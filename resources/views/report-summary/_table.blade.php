@@ -2,7 +2,8 @@
     One Report Summary table: a row per CRA and the TOTAL row; the daily one also has the three per-CRA lines,
     as in the CRD sheet.
     Both sections use the same fixed column widths, so each daily figure sits right under its weekly one.
-    $report: ReportSummary::for(); $perCra: show the per-CRA lines (daily only).
+    $report: ReportSummary::for(); $perCra: show the per-CRA lines (daily only); $scroll (default true): false when an
+    outer box scrolls instead (the daily range's tables side by side).
 --}}
 @php
     $money = fn ($value) => $value === null ? '—' : ($value < 0 ? '−' : '').'₱'.number_format(abs($value), 2);
@@ -33,7 +34,7 @@
     $teamCell = 'sticky left-0 z-10 border-r border-line';
 @endphp
 
-<div class="overflow-x-auto">
+<div @class(['overflow-x-auto' => $scroll ?? true])>
     <table class="w-full min-w-[93.5rem] table-fixed text-sm">
         <colgroup>
             <col class="w-[12.5rem]">
