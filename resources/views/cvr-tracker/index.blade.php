@@ -6,7 +6,6 @@
     $dash = '<span class="text-muted">—</span>';
     $tile = 'grid content-start gap-0.5 rounded-xl border border-line bg-white px-3 py-2.5';
     $label = 'text-[0.6875rem] font-bold tracking-wide text-muted uppercase';
-    $pending = 'w-max rounded-full bg-[#fff6d6] px-2 py-px text-[0.6875rem] font-semibold text-[#8a5f00]';
     $classes = fn (array $options) => collect($options)->map(fn ($o) => $o[1]);
     $s = $data['summary'] ?? null;
 @endphp
@@ -103,9 +102,9 @@
                     <div class="{{ $tile }}"><span class="{{ $label }}">Total orders</span><span class="text-xl font-bold">{{ $s['orders'] }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">AOV</span><span class="text-xl font-bold">{{ $peso($s['aov']) }}</span><span class="text-xs text-muted">Gross ÷ orders{{ $s['canceled']['orders'] ? ' (canceled in gross)' : '' }}</span></div>
                     <div class="{{ $tile }}"><span class="{{ $label }}">CVR</span><span class="text-xl font-bold">{{ $s['cvr'] === null ? '—' : number_format($s['cvr'] * 100, 1).'%' }}</span>
-                        @if ($s['cvr'] === null)<span class="{{ $pending }}">Needs engagements</span>@else<span class="text-xs text-muted">Segmentation ÷ engagements</span>@endif
+                        <span class="text-xs text-muted">Daily I.S. overall conversion rate</span>
                     </div>
-                    <div class="{{ $tile }}"><span class="{{ $label }}"># of engagements</span><span class="text-xl font-bold">{{ $s['engagements'] ?? '—' }}</span><span class="{{ $pending }}">From Daily I.S.</span></div>
+                    <div class="{{ $tile }}"><span class="{{ $label }}"># of engagements</span><span class="text-xl font-bold">{{ number_format($s['engagements']) }}</span><span class="text-xs text-muted">Daily I.S. total engagements</span></div>
                 </div>
 
                 <div class="grid gap-2.5 tabular-nums lg:grid-cols-[1fr_2.4fr_1.3fr]">
