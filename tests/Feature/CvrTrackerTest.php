@@ -7,8 +7,11 @@ use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
+use App\Models\PcReportEntry;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\DailyIncomeStatement;
+use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Factory;
@@ -103,10 +106,26 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([
             'gross' => 2199.0, 'bc_orders' => 1, 'bc_amount' => 500.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
             'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1099.5,
-            'engagements' => null, 'cvr' => null, 'contacted' => 1, 'unconfirmed' => 2, 'engaged' => 1, 'reserved' => 1, 'not_answering' => 1,
+            'engagements' => 0, 'cvr' => null, 'contacted' => 1, 'unconfirmed' => 2, 'engaged' => 1, 'reserved' => 1, 'not_answering' => 1,
             'status_total' => 5, 'pancake_leads' => 1, 'assigned_leads' => 1,
         ], $data['summary']);
         $response->assertSee('Unresolved tagging: 1 of Regina');
+    }
+
+    public function test_engagements_and_cvr_are_the_cras_daily_is_card(): void
+    {
+        ProductGroups::save([['name' => 'Pterygium', 'pages' => ['Pterygium Eye Repair Drops']]]);
+        PcReportEntry::create(['user_id' => $this->regina->id, 'page' => 'Pterygium Eye Repair Drops', 'category' => '', 'date' => '2026-10-16', 'inquiries' => 30, 'engagements' => 8]);
+        PcReportEntry::create(['user_id' => $this->julyAnn->id, 'page' => 'Pterygium Eye Repair Drops', 'category' => '', 'date' => '2026-10-16', 'inquiries' => 50, 'engagements' => 20]);
+        foreach ([PancakeOrder::SEGMENTATION, PancakeOrder::BROADCAST] as $type) {
+            $this->order($this->regina, $type, 500, '91700000'.$this->seq, ['ordered_on' => '2026-10-16']);
+        }
+
+        $summary = $this->actingAs($this->regina)->get(route('cvr-tracker.index', ['date' => '2026-10-16']))->assertOk()->viewData('data')['summary'];
+
+        $card = app(DailyIncomeStatement::class)->day(collect([$this->regina, $this->julyAnn]), CarbonImmutable::parse('2026-10-16'))['cras'][$this->regina->id]['total'];
+        $this->assertSame([8, 0.25], [$summary['engagements'], $summary['cvr']]);
+        $this->assertSame([$card['engagements'], $card['conversion']], [$summary['engagements'], $summary['cvr']]);
     }
 
     public function test_cra_changing_the_type_of_order_moves_it_between_broadcast_and_segmentation(): void

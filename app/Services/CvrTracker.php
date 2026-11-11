@@ -28,6 +28,7 @@ use Illuminate\Support\Collection;
  * Engaged / Reserved / Not answering = the CRA's Segmentation Tracker leads on that day's list (the paired lead day when
  * a working date is set): a Time of Contact and feedback other than PURCHASED / Repeat Purchase = Reserve /
  * status PJR/Inactive/CBR/Drop call. An exclusive CRA's are their Exclusive Lead Tracker leads, the same rows on that day's list.
+ * # of engagements and CVR = the CRA's Daily I.S. card that day: its Total number of engagements and Overall conversion rate.
  */
 class CvrTracker
 {
@@ -242,8 +243,8 @@ class CvrTracker
             'not_answering' => (clone $leads)->where('status', 'pjr_drop_call')->count(),
         ];
         $unconfirmed = CvrDayEntry::where('user_id', $cra->id)->whereDate('date', $day)->value('unconfirmed');
-        // # of engagements will come from the Daily I.S.; until then CVR can't be worked out.
-        $engagements = null;
+        // # of engagements and CVR: the CRA's Daily I.S. card (Total number of engagements, Overall conversion rate).
+        $statement = app(DailyIncomeStatement::class)->day(collect([$cra]), $day)['cras'][$cra->id]['total'];
 
         return [
             'gross' => $gross,
@@ -255,8 +256,8 @@ class CvrTracker
                 'bc_amount' => $canceledOf(PancakeOrder::BROADCAST), 'sc_amount' => $canceledOf(PancakeOrder::SEGMENTATION)],
             'orders' => $rows->count(),
             'aov' => $rows->isEmpty() ? null : $gross / $rows->count(),
-            'engagements' => $engagements,
-            'cvr' => $engagements ? $ofType(PancakeOrder::SEGMENTATION)->count() / $engagements : null,
+            'engagements' => (int) $statement['engagements'],
+            'cvr' => $statement['conversion'],
             'contacted' => $rows->whereNotNull('point_of_contact')->count(),
             'unconfirmed' => $unconfirmed,
             ...$status,
