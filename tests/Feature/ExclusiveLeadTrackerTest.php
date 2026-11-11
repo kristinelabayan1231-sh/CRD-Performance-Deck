@@ -209,12 +209,12 @@ class ExclusiveLeadTrackerTest extends TestCase
 
         $sale = fn (User $cra, Lead $lead, string $on) => PancakeOrder::create(['pancake_order_id' => 'H'.++$this->seq, 'ordered_on' => $on, 'ordered_at' => $on.' 02:00:00',
             'seller_name' => $cra->pancake_name, 'phone_key' => $this->phoneKey($lead), 'status' => 3, 'total_price' => 300]);
-        // One order is enough to make a customer hers, and one with Regina first stays Regina's.
+        // One order is enough to make a customer hers, and one level with Regina, who handled them last, stays Regina's.
         $hers = $this->lead('2026-11-06');
         $sale($this->joanna, $hers, '2026-08-01');
         $reginasFirst = $this->lead('2026-11-06');
-        $sale($this->regina, $reginasFirst, '2026-07-01');
-        $sale($this->joanna, $reginasFirst, '2026-08-01');
+        $sale($this->joanna, $reginasFirst, '2026-07-01');
+        $sale($this->regina, $reginasFirst, '2026-08-01');
         // Regina has processed this one, so even though the customer is Joanna's it stays with her.
         $processed = $this->lead('2026-11-05', $this->regina, ['status' => 'pjr_drop_call']);
         $sale($this->joanna, $processed, '2026-08-01');

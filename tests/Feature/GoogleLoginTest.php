@@ -52,7 +52,7 @@ class GoogleLoginTest extends TestCase
     {
         $this->fakeGoogleUser('KristineLabayan1231@gmail.com', 'Kristine');
 
-        $this->get('/auth/google/callback')->assertRedirect('/dashboard');
+        $this->get('/auth/google/callback')->assertRedirect(route('home'));
 
         $user = User::firstWhere('email', 'kristinelabayan1231@gmail.com');
         $this->assertNotNull($user);
@@ -78,7 +78,7 @@ class GoogleLoginTest extends TestCase
         User::create(['email' => 'teammate@gmail.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
         $this->fakeGoogleUser('teammate@gmail.com', 'Team Mate');
 
-        $this->get('/auth/google/callback')->assertRedirect('/dashboard');
+        $this->get('/auth/google/callback')->assertRedirect(route('home'));
 
         $this->assertAuthenticated();
         $this->assertSame('Team Mate', User::firstWhere('email', 'teammate@gmail.com')->name);
@@ -96,7 +96,7 @@ class GoogleLoginTest extends TestCase
         Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
         $this->get('/auth/google/redirect?remember=1')->assertRedirect();
-        $callback = $this->get('/auth/google/callback')->assertRedirect('/dashboard');
+        $callback = $this->get('/auth/google/callback')->assertRedirect(route('home'));
 
         $recaller = Auth::guard()->getRecallerName();
         $cookie = $callback->getCookie($recaller, decrypt: false);

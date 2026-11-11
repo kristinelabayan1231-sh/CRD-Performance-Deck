@@ -75,6 +75,23 @@ return [
 
     'high_aov_min' => 999,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Up for reassignment
+    |--------------------------------------------------------------------------
+    |
+    | A CRA's customer (High AOV and VIP too) who hasn't ordered again within
+    | reassign_after_days of their last delivery, or of being claimed, can be
+    | claimed by another CRA (CRA Dashboard). Only deliveries from
+    | reassign_from on, the day the rule started, count: a customer last
+    | delivered before it never opens unless claimed.
+    |
+    */
+
+    'reassign_after_days' => 30,
+
+    'reassign_from' => '2026-11-11',
+
     'cra_account_aliases' => [
         'LHEA GATDULA' => 'CRD LHEI',
         'CRD JULY DE LOS SANTOS' => 'CRD JULY ANN',

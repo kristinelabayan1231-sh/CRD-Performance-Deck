@@ -61,12 +61,15 @@
               ->map(fn (array $group) => [...$group, 'holdsPage' => collect($group['items'])->contains(fn (array $item) => $item[2])]);
         @endphp
         <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-[#1b1530] text-[#e9e4f5] transition-transform lg:sticky lg:top-0 lg:h-dvh lg:shrink-0 lg:translate-x-0">
-            <a href="{{ route('dashboard') }}" class="flex h-16 shrink-0 items-center gap-3 px-5">
+            <a href="{{ route('home') }}" class="flex h-16 shrink-0 items-center gap-3 px-5">
                 <x-crd-logo class="size-9" />
                 <span class="text-lg font-bold text-white">CRD Deck</span>
             </a>
 
             <nav class="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4 text-sm" aria-label="Main">
+                @if ($user->role?->slug === \App\Models\Role::CRA || $user->can('segmentation.view_all'))
+                    <x-nav-link :href="route('cra-dashboard')" :active="request()->routeIs('cra-dashboard')" icon="users">CRA Dashboard</x-nav-link>
+                @endif
                 <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" icon="home">Dashboard</x-nav-link>
                 @can('report_summary.view')
                     <x-nav-link :href="route('report-summary.index')" :active="request()->routeIs('report-summary.*')" icon="report">Report Summary</x-nav-link>
