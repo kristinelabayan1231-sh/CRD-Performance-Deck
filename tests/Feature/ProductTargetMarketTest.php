@@ -177,8 +177,9 @@ class ProductTargetMarketTest extends TestCase
         CustomerAge::query()->delete();
         $this->actingAs($this->owner)->post(route('product-target-market.ages'))
             ->assertRedirect()->assertSessionHas('status');
+        $this->runBackgroundCommands();
 
-        // The page's fetch runs after the response: the last 3 months, without saving the orders themselves.
+        // The page's fetch runs in its own process: the last 3 months, without saving the orders themselves.
         $this->assertSame(['9170000001' => [45, '2026-10-01']], $this->savedAges());
         $this->assertSame(0, PancakeOrder::count());
         Http::assertSent(fn ($request) => str_contains($request->url(), 'startDateTime='.CarbonImmutable::parse('2026-07-11', 'Asia/Manila')->getTimestamp()));

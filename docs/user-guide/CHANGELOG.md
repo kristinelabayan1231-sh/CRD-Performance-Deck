@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-11 · Report Summary · Conv % and AOV tally with the Daily I.S. CRA card: they count the I.S. orders, canceled orders included (Conv % = I.S. orders ÷ Engagement, AOV = I.S. Gross Sales ÷ I.S. orders); Orders BC / SC still leave canceled orders out · shots: none
 - 2026-11-11 · Settings · Fixed: a role given only API Keys, Daily I.S. or Call Recordings now sees Settings in the sidebar, and Settings opens on the first page the role can use · shots: none
 - 2026-11-10 · Report Summary · Screenshot button on the weekly / month to date section and on the daily section: saves the section's table as one PNG titled with its week, month to date or dates, the columns and days scrolled out of view included · shots: report-summary
 - 2026-11-10 · Exclusive Lead Tracker · Calendar, month goals and the day's tiles count repeat purchases and confirmed orders (gross, AOV) only from customers on the CRA's lists: each day from that day's list, the month from any of its lists. Repeat (CRD Lead) and Retained (FSD Lead) show separately; the Repeat purchases ring counts both · shots: exclusive-lead-tracker

@@ -419,11 +419,25 @@ class DailyIncomeStatement
      */
     public function netIncome(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $totals = $cras->mapWithKeys(fn (User $cra) => [$cra->id => 0.0])->all();
+        return array_map(fn (array $totals) => $totals['net_income'], $this->cardTotals($cras, $from, $to));
+    }
+
+    /**
+     * Each CRA's card over $from–$to, every day added up: NET INCOME, orders (canceled included) and Gross Sales
+     * (Report Summary).
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{net_income: float, orders: int, gross: float}> cra id => totals
+     */
+    public function cardTotals(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $totals = $cras->mapWithKeys(fn (User $cra) => [$cra->id => ['net_income' => 0.0, 'orders' => 0, 'gross' => 0.0]])->all();
 
         for ($day = $from; $day->lte($to); $day = $day->addDay()) {
             foreach ($this->day($cras, $day)['cras'] as $craId => $statement) {
-                $totals[$craId] += (float) $statement['total']['net_income'];
+                $totals[$craId]['net_income'] += (float) $statement['total']['net_income'];
+                $totals[$craId]['orders'] += (int) $statement['total']['orders'];
+                $totals[$craId]['gross'] += (float) $statement['total']['gross'];
             }
         }
 

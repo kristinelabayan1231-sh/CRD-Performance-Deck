@@ -11,11 +11,11 @@ use Illuminate\Support\Collection;
  * Report Summary per CRA for a day, week or month to date, as in the CRD sheet.
  *
  * Orders BC / SC and Gross BC / SC are Conversion Breakdown's. Total gross = Gross BC + Gross SC.
- * AOV = Total gross ÷ (Orders BC + Orders SC). Average sales per CRA = Gross BC ÷ CRAs on duty.
+ * Average sales per CRA = Gross BC ÷ CRAs on duty.
  * Leads and Engagement are the Daily I.S. totals (PC Report Total Inquiries / Total Engagement on the product pages),
- * added up over the days. Conv % = (Orders BC + Orders SC) ÷ Engagement. Net income is the Daily I.S. CRA card's
- * NET INCOME, added up over the days. I.BSC % = Net income ÷ Total gross (BC & SC). Average IBSC per CRA = Net income
- * ÷ CRAs on duty.
+ * added up over the days. Conv % and AOV tally with the Daily I.S. CRA card: Conv % = its orders (canceled included)
+ * ÷ Engagement, AOV = its Gross Sales ÷ its orders. Net income is the Daily I.S. CRA card's NET INCOME, added up over
+ * the days. I.BSC % = Net income ÷ Total gross (BC & SC). Average IBSC per CRA = Net income ÷ CRAs on duty.
  */
 class ReportSummary
 {
@@ -29,17 +29,21 @@ class ReportSummary
     {
         $days = $this->breakdown->days($cras, $from, $to);
         $reach = $this->statement->reach($cras, $from, $to);
-        $netIncome = $this->statement->netIncome($cras, $from, $to);
+        $cards = $this->statement->cardTotals($cras, $from, $to);
 
         $rows = $cras->map(fn (User $cra) => [
             'cra' => $cra,
-            'metrics' => self::metrics(ConversionBreakdown::sum($days[$cra->id] ?? []), $reach[$cra->id], $netIncome[$cra->id]),
+            'metrics' => self::metrics(ConversionBreakdown::sum($days[$cra->id] ?? []), $reach[$cra->id], $cards[$cra->id]),
         ])->values();
 
         $total = self::metrics(ConversionBreakdown::sum($rows->pluck('metrics')), [
             'leads' => $rows->sum('metrics.is_leads'),
             'engagements' => $rows->sum('metrics.is_engagements'),
-        ], $rows->sum('metrics.net_income'));
+        ], [
+            'net_income' => $rows->sum('metrics.net_income'),
+            'orders' => $rows->sum('metrics.is_orders'),
+            'gross' => $rows->sum('metrics.is_gross'),
+        ]);
         $onDuty = OnDuty::countFor($from, $to);
 
         return [
@@ -54,19 +58,21 @@ class ReportSummary
     /**
      * @param  array<string, int|float|null>  $sum
      * @param  array{leads: int, engagements: int}  $reach  Daily I.S. leads and engagements
-     * @param  float  $netIncome  Daily I.S. NET INCOME
+     * @param  array{net_income: float, orders: int, gross: float}  $card  Daily I.S. CRA card: NET INCOME, orders, Gross Sales
      * @return array<string, int|float|null>
      */
-    private static function metrics(array $sum, array $reach, float $netIncome): array
+    private static function metrics(array $sum, array $reach, array $card): array
     {
         return [
             ...$sum,
-            'aov' => $sum['orders'] ? $sum['gross'] / $sum['orders'] : null,
+            'is_orders' => $card['orders'],
+            'is_gross' => $card['gross'],
+            'aov' => $card['orders'] ? $card['gross'] / $card['orders'] : null,
             'is_leads' => $reach['leads'],
             'is_engagements' => $reach['engagements'],
-            'conv' => $reach['engagements'] ? $sum['orders'] / $reach['engagements'] : null,
-            'net_income' => $netIncome,
-            'ibsc' => $sum['gross'] ? $netIncome / $sum['gross'] : null,
+            'conv' => $reach['engagements'] ? $card['orders'] / $reach['engagements'] : null,
+            'net_income' => $card['net_income'],
+            'ibsc' => $sum['gross'] ? $card['net_income'] / $sum['gross'] : null,
         ];
     }
 }

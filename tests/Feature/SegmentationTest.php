@@ -697,8 +697,9 @@ class SegmentationTest extends TestCase
         $this->cra('alice@gmail.com');
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
 
-        // The sync runs after the page is sent; the next load shows the leads.
+        // The page starts the sync in its own process; the next load shows the leads.
         $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        $this->runBackgroundCommands();
         $this->assertNotNull(Lead::first()->assigned_to);
         Http::assertSentCount(1);
         $this->actingAs($this->owner)->get('/segmentation')->assertSee('Customer 1')->assertSee('Auto-synced');
@@ -706,10 +707,12 @@ class SegmentationTest extends TestCase
         // Fresh for an hour: no extra API calls.
         $this->travel(30)->minutes();
         $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        $this->runBackgroundCommands();
         Http::assertSentCount(1);
 
         $this->travel(31)->minutes();
         $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        $this->runBackgroundCommands();
         Http::assertSentCount(2);
     }
 
@@ -719,6 +722,7 @@ class SegmentationTest extends TestCase
         $this->fakeApi([$this->row('1', '9171111111', '2026-10-05')]);
 
         $this->actingAs($alice)->get('/segmentation')->assertOk();
+        $this->runBackgroundCommands();
 
         $this->actingAs($alice)->get('/segmentation')->assertSee('Customer 1');
     }
@@ -728,6 +732,7 @@ class SegmentationTest extends TestCase
         Http::fake(['*' => Http::response(['error' => 'Invalid or missing API key.'], 401)]);
 
         $this->actingAs($this->owner)->get('/segmentation')->assertOk();
+        $this->runBackgroundCommands();
 
         $this->actingAs($this->owner)->get('/segmentation')
             ->assertOk()

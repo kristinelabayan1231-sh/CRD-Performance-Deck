@@ -25,7 +25,7 @@ RUN install-php-extensions pdo_pgsql pdo_mysql intl zip bcmath opcache pcntl
 # below 1024). Hosts like Render refuse to run binaries with file capabilities
 # ("exec: frankenphp: Operation not permitted"); we listen on $PORT, so drop it.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libcap2-bin \
+    && apt-get install -y --no-install-recommends libcap2-bin tini \
     && setcap -r "$(command -v frankenphp)" \
     && apt-get purge -y libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
@@ -51,4 +51,5 @@ ENV APP_ENV=production \
 
 EXPOSE 8080
 
-ENTRYPOINT ["docker/entrypoint.sh"]
+# tini as PID 1 reaps the syncs pages start in the background (frankenphp would leave them as zombies).
+ENTRYPOINT ["tini", "--", "docker/entrypoint.sh"]

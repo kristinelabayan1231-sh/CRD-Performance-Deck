@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\BackgroundArtisan;
 use App\Support\NicheRules;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
@@ -267,30 +268,32 @@ class LeadGenerator
      * already running.
      */
     /**
-     * syncIfStale() after the page has been sent, so a slow or failing sync
-     * (Shecom, a remote database, a short request time limit) never breaks the
-     * page. A failure is kept for lastSyncError().
-     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     * syncIfStale() in its own process (syncs:page), so a slow or failing sync never holds up or breaks a page,
+     * and never runs inside the web server. Started at most every ten minutes per day.
      */
     public function syncLater(CarbonImmutable $date): void
     {
-        if (self::isBuiltInServer()) {
+        $last = self::lastSync($date);
+
+        if ($last && $last->greaterThan(now()->subMinutes(60))) {
             return;
         }
 
-        defer(function () use ($date) {
-            // The page is already sent: let the sync finish past the request time limit.
-            set_time_limit(0);
-            ignore_user_abort(true);
+        BackgroundArtisan::start('syncs:page', ['leads', '--date='.$date->toDateString()], 'leads-'.$date->toDateString(), 600);
+    }
 
-            try {
-                $this->syncIfStale($date);
-                Cache::forget(self::errorKey($date));
-            } catch (Throwable $e) {
-                Log::warning('Automatic lead sync failed', ['date' => $date->toDateString(), 'message' => $e->getMessage()]);
-                Cache::put(self::errorKey($date), $e->getMessage(), now()->addDay());
-            }
-        }, 'lead-sync-'.$date->toDateString());
+    /**
+     * The syncs:page run of syncLater(). A failure is kept for lastSyncError().
+     */
+    public function syncInThisProcess(CarbonImmutable $date): void
+    {
+        try {
+            $this->syncIfStale($date);
+            Cache::forget(self::errorKey($date));
+        } catch (Throwable $e) {
+            Log::warning('Automatic lead sync failed', ['date' => $date->toDateString(), 'message' => $e->getMessage()]);
+            Cache::put(self::errorKey($date), $e->getMessage(), now()->addDay());
+        }
     }
 
     /**
@@ -314,7 +317,9 @@ class LeadGenerator
             return null;
         }
 
-        return Cache::lock('segmentation-sync-'.$date->toDateString(), 120)
+        // Held for as long as a sync can take (waiting up to 10 minutes for the Shecom report, then reading it),
+        // so a slow one isn't joined by a second.
+        return Cache::lock('segmentation-sync-'.$date->toDateString(), 1200)
             ->get(fn () => $this->generate($date)) ?: null;
     }
 
@@ -630,14 +635,5 @@ class LeadGenerator
                 ?? (($ordersPerPhone[$phone] ?? 0) >= config('segmentation.crd_lead_min_orders') ? Lead::TYPE_CRD : Lead::TYPE_FSD),
             'qty_unknown' => (bool) ($row['qty_unknown'] ?? false),
         ];
-    }
-
-    /**
-     * `php artisan serve` (PHP's built-in server) keeps the browser waiting until deferred work
-     * finishes, so local pages would hang for minutes; `php artisan schedule:work` syncs instead.
-     */
-    private static function isBuiltInServer(): bool
-    {
-        return PHP_SAPI === 'cli-server';
     }
 }

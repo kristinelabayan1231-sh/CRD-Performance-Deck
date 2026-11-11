@@ -55,7 +55,7 @@ class ReportSummaryTest extends TestCase
         $this->seq++;
         PancakeOrder::create([
             'pancake_order_id' => "P{$this->seq}", 'ordered_on' => $day, 'ordered_at' => $day.' 02:00:00', 'seller_name' => $seller,
-            'customer_name' => "Buyer {$this->seq}", 'page_name' => 'Trusted Eye Care', 'status' => $status, 'total_price' => $total, 'conversion_type' => $type,
+            'customer_name' => "Buyer {$this->seq}", 'page_name' => 'Sinuxyl Nasal Spray', 'status' => $status, 'total_price' => $total, 'conversion_type' => $type,
         ]);
     }
 
@@ -63,7 +63,7 @@ class ReportSummaryTest extends TestCase
     {
         $this->order('CRD LHEI', PancakeOrder::BROADCAST, 1000, '2026-10-01');
         $this->order('CRD LHEI', PancakeOrder::SEGMENTATION, 2000, '2026-10-01');
-        $this->order('CRD LHEI', PancakeOrder::SEGMENTATION, 500, '2026-10-01', status: 6);   // canceled: in gross, not in orders
+        $this->order('CRD LHEI', PancakeOrder::SEGMENTATION, 500, '2026-10-01', status: 6);   // canceled: in gross and the Daily I.S. orders, not in Orders BC / SC
         $this->order('CRD REJ VERGARA', PancakeOrder::SEGMENTATION, 3000, '2026-10-01');
         $this->order('CRD LHEI', PancakeOrder::BROADCAST, 4000, '2026-10-02');
         $this->order('CRD REJ VERGARA', PancakeOrder::BROADCAST, 6000, '2026-10-08');         // week 2: month to date only
@@ -83,21 +83,22 @@ class ReportSummaryTest extends TestCase
             ->assertViewHas('periodReport', function (array $week) use ($row) {
                 $lhea = $row($week, $this->lhea);
 
-                return [$lhea['bc_orders'], $lhea['sc_orders'], $lhea['bc_gross'], $lhea['sc_gross'], $lhea['gross'], $lhea['aov']] === [2, 1, 5000.0, 2500.0, 7500.0, 2500.0]
+                // AOV is the Daily I.S. card's: Gross Sales ÷ its orders, the canceled one included (7,500 ÷ 4).
+                return [$lhea['bc_orders'], $lhea['sc_orders'], $lhea['bc_gross'], $lhea['sc_gross'], $lhea['gross'], $lhea['aov']] === [2, 1, 5000.0, 2500.0, 7500.0, 1875.0]
                     && $row($week, $this->rose)['aov'] === null
-                    && [$week['total']['orders'], $week['total']['gross'], $week['total']['aov']] === [4, 10500.0, 2625.0]
+                    && [$week['total']['orders'], $week['total']['gross'], $week['total']['aov']] === [4, 10500.0, 2100.0]
                     && $week['on_duty'] === 1.5
                     && round($week['average_sales'], 2) === 3333.33;
             })
             ->assertViewHas('dayReport', fn (array $day) => $day['total']['gross'] === 6500.0 && $day['on_duty'] === 2.0 && $day['average_sales'] === 500.0)
             // The per-CRA lines are under the daily table only, as in the sheet.
-            ->assertSeeTextInOrder(['1st week · October 1–7, 2026', 'Lhea', '₱7,500.00', '₱2,500.00', 'TOTAL', '₱10,500.00',
+            ->assertSeeTextInOrder(['1st week · October 1–7, 2026', 'Lhea', '₱7,500.00', '₱1,875.00', 'TOTAL', '₱10,500.00',
                 'Daily sales report · Thu, Oct 1, 2026', 'TOTAL', 'No. of Customer Retention Associates (On Duty)', '2',
                 'Average Sales per Customer Retention Associate', '₱500.00'])
             ->assertDontSeeText('₱3,333.33');
     }
 
-    public function test_leads_engagement_and_conv_come_from_the_daily_is(): void
+    public function test_leads_engagement_conv_and_aov_tally_with_the_daily_is(): void
     {
         $this->sheetOrders();
         // Lhea's PC Report counts on a Sinuxyl page; a page in no product group is left out.
@@ -107,9 +108,9 @@ class ReportSummaryTest extends TestCase
         $reach = fn (array $report) => array_map(fn (string $key) => $report['rows']->firstWhere('cra.id', $this->lhea->id)['metrics'][$key], ['is_leads', 'is_engagements', 'conv']);
 
         $this->actingAs($this->supervisor)->get(route('report-summary.index', ['month' => '2026-10', 'week' => 1, 'date' => '2026-10-01']))->assertOk()
-            // The week: Lhea's 3 orders (the canceled one left out) over 140 engagements.
-            ->assertViewHas('periodReport', fn (array $week) => $reach($week) === [250, 140, 3 / 140] && $week['total']['is_leads'] === 250)
-            ->assertViewHas('dayReport', fn (array $day) => $reach($day) === [200, 100, 0.02]);
+            // The week: Lhea's 4 Daily I.S. orders (the canceled one included, as on her card) over 140 engagements.
+            ->assertViewHas('periodReport', fn (array $week) => $reach($week) === [250, 140, 4 / 140] && $week['total']['is_leads'] === 250)
+            ->assertViewHas('dayReport', fn (array $day) => $reach($day) === [200, 100, 0.03]);
     }
 
     public function test_net_income_adds_up_the_daily_is_cra_card_and_ibsc_is_it_over_total_gross(): void

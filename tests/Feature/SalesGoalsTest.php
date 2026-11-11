@@ -311,6 +311,8 @@ class SalesGoalsTest extends TestCase
         // Opening the dashboard records Lhea's POS sales: the chat customer (O3) joins the tracker as a lead who bought.
         // Segmentation CVR = Converted 2 of 5 leads; Broadcast CVR = 2 customers of 10 engagements; Broadcast + Segmentation =
         // the same 2 customers, once, of 15. One tile, words spelled out, no BC / SC.
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk();
+        $this->runBackgroundCommands();
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSeeTextInOrder(['Total confirmed orders', '3', 'Broadcast 2 · Segmentation 1'])

@@ -126,15 +126,16 @@ Schedule::command('shecom:product-costs')
     ->withoutOverlapping(10);
 
 // Presentation Board: the year's figures, kept as a snapshot because they read every order of the year.
+// At :35, away from the top of the hour, when the lead sync, Pancake sync and Running Sales all start.
 Schedule::command('presentation-board:refresh')
-    ->everyTwoHours()
+    ->cron('35 */2 * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(60)
     ->runInBackground();
 
 // Presentation Board → CRA performance, half an hour after the board so the two don't compete for memory.
 Schedule::command('presentation-board:refresh-cras')
-    ->cron('30 */2 * * *')
+    ->cron('5 1-23/2 * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(60)
     ->runInBackground();
