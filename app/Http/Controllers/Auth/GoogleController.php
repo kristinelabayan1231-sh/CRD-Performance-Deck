@@ -82,7 +82,7 @@ class GoogleController extends Controller
         Auth::login($user, (bool) $request->session()->pull('login.remember', false));
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard'));
+        return redirect()->intended(route('home'));
     }
 
     public function logout(Request $request): RedirectResponse

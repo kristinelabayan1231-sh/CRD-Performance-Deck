@@ -7,6 +7,9 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-11 · CRA Dashboard (new) · A CRA's home page on login: Pending today (opens their Segmentation / Exclusive tracker), running sales today against the daily goal, net income today and this month, sales this month, their High AOV and VIP counts, their customers at risk, and Up for reassignment with a Claim button · shots: cra-dashboard (new)
+- 2026-11-11 · Lead assignment · Customers level on orders now go to the CRA who handled them last (was first). A customer (High AOV / VIP too) with no reorder within 30 days of their last delivery is up for reassignment (only deliveries from Nov 11, 2026 on count); a claim makes them and their uncontacted leads the claiming CRA's, beating most orders, until 30 days without a reorder again · shots: none
+- 2026-11-11 · Exclusive Lead Tracker · A lead moved to another CRA no longer shows on the exclusive CRA's day list or in her search (the day's counts still show what was listed that day) · shots: none
 - 2026-11-11 · CVR Tracker · # of engagements and CVR now filled in from the CRA's Daily I.S. card that day (Total number of engagements, Overall conversion rate = I.S. orders ÷ engagements); no more "Needs engagements" badge · shots: cvr-tracker
 - 2026-11-11 · Report Summary · Conv % and AOV tally with the Daily I.S. CRA card: they count the I.S. orders, canceled orders included (Conv % = I.S. orders ÷ Engagement, AOV = I.S. Gross Sales ÷ I.S. orders); Orders BC / SC still leave canceled orders out · shots: none
 - 2026-11-11 · Settings · Fixed: a role given only API Keys, Daily I.S. or Call Recordings now sees Settings in the sidebar, and Settings opens on the first page the role can use · shots: none

@@ -9,6 +9,7 @@ use App\Http\Controllers\CallRecordingSettingController;
 use App\Http\Controllers\CancelledOrderController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
+use App\Http\Controllers\CraDashboardController;
 use App\Http\Controllers\CraScheduleController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
@@ -61,6 +62,7 @@ use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
 use App\Http\Controllers\WorkingDateController;
 use App\Http\Middleware\EnsureUserIsActive;
+use App\Models\Role;
 use App\Support\SettingsTabs;
 use Illuminate\Support\Facades\Route;
 
@@ -75,7 +77,10 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
-    Route::redirect('/', '/dashboard');
+    // Home: a CRA opens on their CRA Dashboard, everyone else on the Dashboard.
+    Route::get('/', fn () => redirect()->route(auth()->user()->role?->slug === Role::CRA ? 'cra-dashboard' : 'dashboard'))->name('home');
+    Route::get('/my-dashboard', [CraDashboardController::class, 'index'])->name('cra-dashboard');
+    Route::post('/my-dashboard/claims', [CraDashboardController::class, 'claim'])->middleware('throttle:30,1')->name('cra-dashboard.claim');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
     Route::get('/dashboard/board', DashboardBoardController::class)->middleware('can:daily_is.view_all')->name('dashboard.board');

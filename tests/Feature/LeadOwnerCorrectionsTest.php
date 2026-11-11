@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CustomerAccount;
+use App\Models\CustomerLink;
 use App\Models\ExclusiveListLead;
 use App\Models\Lead;
 use App\Models\PancakeOrder;
@@ -92,10 +93,10 @@ class LeadOwnerCorrectionsTest extends TestCase
         $this->assertSame($this->july->id, $own->fresh()->assigned_to);
     }
 
-    public function test_a_level_customer_goes_to_who_handled_them_first_unless_the_holder_is_their_saved_cra(): void
+    public function test_a_level_customer_goes_to_who_handled_them_last_unless_the_holder_is_their_saved_cra(): void
     {
-        $level = $this->lead($this->regina, [$this->july->id => 1, $this->regina->id => 1]);
-        $savedLevel = $this->lead($this->regina, [$this->july->id => 1, $this->regina->id => 1]);
+        $level = $this->lead($this->regina, [$this->regina->id => 1, $this->july->id => 1]);
+        $savedLevel = $this->lead($this->regina, [$this->regina->id => 1, $this->july->id => 1]);
         $this->savedCra($savedLevel, $this->regina);
 
         $this->artisan('leads:correct-owners --apply')->assertSuccessful();
@@ -115,6 +116,18 @@ class LeadOwnerCorrectionsTest extends TestCase
         $this->assertSame($this->july->id, $lead->fresh()->assigned_to);
         $this->assertSame($this->july->id, CustomerAccount::first()->assigned_cra_id);
         $this->assertSame(0, ExclusiveListLead::count());
+    }
+
+    public function test_a_merged_numbers_saved_cra_moves_on_the_main_number(): void
+    {
+        $lead = $this->lead($this->joanna, [$this->joanna->id => 1, $this->july->id => 2]);
+        CustomerLink::create(['phone_key' => LeadGenerator::normalizePhone($lead->phone_number), 'primary_phone_key' => '9179999999']);
+        CustomerAccount::create(['phone_key' => '9179999999', 'assigned_cra_id' => $this->joanna->id]);
+
+        $this->artisan('leads:correct-owners --apply')->assertSuccessful();
+
+        $this->assertSame($this->july->id, $lead->fresh()->assigned_to);
+        $this->assertSame($this->july->id, CustomerAccount::firstWhere('phone_key', '9179999999')->assigned_cra_id);
     }
 
     public function test_a_third_cras_saved_customer_is_left_for_their_own_rule(): void

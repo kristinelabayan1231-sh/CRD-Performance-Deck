@@ -38,8 +38,11 @@ class LeadOwnerCorrections
         $counts = $this->owners->orderCounts($phones);
         $niches = NicheRules::current();
         $exclusive = User::exclusiveOn($day)->pluck('id')->flip();
-        $primaryOf = collect(array_chunk($phones, 1000))
-            ->flatMap(fn (array $chunk) => CustomerLink::whereIn('phone_key', $chunk)->pluck('primary_phone_key', 'phone_key')->all());
+        // A loop, not flatMap: numeric phone keys would be renumbered.
+        $primaryOf = [];
+        foreach (array_chunk($phones, 1000) as $chunk) {
+            $primaryOf += CustomerLink::whereIn('phone_key', $chunk)->pluck('primary_phone_key', 'phone_key')->all();
+        }
         $moves = collect();
         $heldForExclusive = 0;
 

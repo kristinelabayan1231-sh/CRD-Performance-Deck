@@ -119,6 +119,14 @@ Schedule::command('customers:warm-cache')
     ->withoutOverlapping(10)
     ->runInBackground();
 
+// CRA Dashboard: the customers up for reassignment (no reorder within 30 days of their last delivery), worked out
+// ahead and kept past the next run; in its own process, as it reads every CRA customer's orders.
+Schedule::command('customers:refresh-reassignment')
+    ->everyTenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(20)
+    ->runInBackground();
+
 // Daily I.S. Product Cost: Shecom's cost of each Pancake item, every hour at :10 (a change counts from its effective day).
 Schedule::command('shecom:product-costs')
     ->hourlyAt(10)

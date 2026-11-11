@@ -438,7 +438,7 @@ class HighValueCustomers
     }
 
     /**
-     * Give each listed customer without a CRA one, which then stays theirs: the CRA who handled two of their orders
+     * Give each listed customer without a CRA one, which then stays theirs: the CRA who claimed them, else the CRA who handled two of their orders
      * (CustomerOwners), else the CRA of the order that made them High AOV (firstReorderCras) or VIP
      * (vipQualifyingCras). A CRA an admin or manager set or cleared by hand is left alone. Customers with neither
      * wait for a CRA to claim them or their lead to be handed out (claimForLeads).
@@ -461,7 +461,9 @@ class HighValueCustomers
             return 0;
         }
 
-        $found = app(CustomerOwners::class)->forHighValue($keys);
+        // A customer a CRA claimed from the up-for-reassignment list is theirs (CustomerReassignment).
+        $owners = app(CustomerOwners::class);
+        $found = $owners->claimed($keys) + $owners->forHighValue($keys);
         $rest = array_values(array_filter($keys, fn (string $key) => ! isset($found[$key])));
         $found += $this->firstReorderCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['high_aov'])));
         $found += $this->vipQualifyingCras(array_values(array_filter($rest, fn (string $key) => $listed[$key]['vip'] && ! isset($found[$key]))));
@@ -509,8 +511,11 @@ class HighValueCustomers
     private function primariesOf(array $phoneKeys): array
     {
         $phoneKeys = array_values(array_filter(array_map('strval', $phoneKeys)));
-        $primaries = collect(array_chunk($phoneKeys, 1000))
-            ->flatMap(fn (array $chunk) => CustomerLink::whereIn('phone_key', $chunk)->pluck('primary_phone_key', 'phone_key'));
+        // A loop, not flatMap: numeric phone keys would be renumbered.
+        $primaries = [];
+        foreach (array_chunk($phoneKeys, 1000) as $chunk) {
+            $primaries += CustomerLink::whereIn('phone_key', $chunk)->pluck('primary_phone_key', 'phone_key')->all();
+        }
 
         return collect($phoneKeys)->mapWithKeys(fn (string $key) => [$key => (string) ($primaries[$key] ?? $key)])->all();
     }

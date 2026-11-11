@@ -636,6 +636,24 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertOk()->assertSee('Pedro Reyes')->assertDontSee('Maria Santos')->assertDontSee('Last listed')->assertSee('Whole month');
     }
 
+    public function test_a_lead_moved_to_another_cra_leaves_her_day_and_her_search(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
+        $kept = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
+        $movedAway = $this->lead($joanna, 'Maria Moved', '09170000002', '2026-11-05');
+        foreach ([$kept, $movedAway] as $lead) {
+            ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::RANDOM]);
+        }
+        $movedAway->forceFill(['assigned_to' => $regina->id])->save();
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()->assertSee('Maria Santos')->assertDontSee('Maria Moved');
+
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['q' => 'maria']))
+            ->assertOk()->assertSee('Maria Santos')->assertDontSee('Maria Moved');
+    }
+
     public function test_type_and_product_narrow_the_list_and_the_calendar_keeps_them(): void
     {
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');

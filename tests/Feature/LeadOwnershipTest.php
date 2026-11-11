@@ -69,9 +69,9 @@ class LeadOwnershipTest extends TestCase
         ]);
     }
 
-    public function test_a_customers_cra_is_the_one_with_the_most_orders_and_the_first_when_level(): void
+    public function test_a_customers_cra_is_the_one_with_the_most_orders_and_the_last_when_level(): void
     {
-        // One order is enough. 9171111111: Ben once, then Anna once: Ben was first.
+        // One order is enough. 9171111111: Ben once, then Anna once: Anna was last.
         $this->sale('9171111111', 'CRD BEN', '2026-05-01');
         $this->sale('9171111111', 'CRD ANNA', '2026-06-01');
         // Two beat a first CRA with one. 9172222222: Ben once, then Anna twice.
@@ -100,7 +100,7 @@ class LeadOwnershipTest extends TestCase
         $owners = app(CustomerOwners::class)->for(['9171111111', '9172222222', '9173333333', '9174444444', '9175555555', '9177777777']);
 
         $this->assertSame([
-            9171111111 => $this->ben->id,
+            9171111111 => $this->anna->id,
             9172222222 => $this->anna->id,
             9173333333 => $this->anna->id,
             9174444444 => $this->ben->id,
@@ -110,14 +110,14 @@ class LeadOwnershipTest extends TestCase
 
     public function test_orders_older_than_the_saved_ones_count_without_counting_a_saved_order_twice(): void
     {
-        // Ben's 2024 order is only in the history; his 2026 one is in both, so it stays one order, level with Anna's one. Ben was first.
+        // Ben's 2024 order is only in the history; Anna's 2026 one is in both, so it stays one order, level with Ben's one.
         $this->sale('9171111111', 'CRD ANNA', '2026-02-01');
         CustomerHistory::create(['phone_key' => '9171111111', 'prior_cra_orders' => 2, 'checked_at' => now(), 'prior_cra_sales' => [
             ['at' => '2024-03-01T02:00:00Z', 'amount' => 800, 'seller' => 'CRD BEN'],
             ['at' => '2026-02-01T02:00:00Z', 'amount' => 800, 'seller' => 'CRD ANNA'],
         ]]);
 
-        $this->assertSame([9171111111 => $this->ben->id], app(CustomerOwners::class)->for(['9171111111']));
+        $this->assertSame([9171111111 => [$this->anna->id => 1, $this->ben->id => 1]], app(CustomerOwners::class)->orderCounts(['9171111111']));
     }
 
     public function test_leads_a_cra_processed_stay_with_them_when_the_customer_belongs_to_another_cra(): void

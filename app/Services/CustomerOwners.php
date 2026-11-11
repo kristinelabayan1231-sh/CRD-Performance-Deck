@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerClaim;
 use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
 use App\Models\CvrOrderEntry;
@@ -12,8 +13,9 @@ use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 
 /**
- * Each customer's own CRA: the one who has handled the most of their orders and, when CRAs are level, the one who
- * handled the customer first. So one order is enough, two beat a CRA with one, and five beat a later CRA with two. The
+ * Each customer's own CRA: the CRA who claimed them from the up-for-reassignment list (CustomerReassignment), else the
+ * one who has handled the most of their orders and, when CRAs are level, the one who handled the customer last. So one
+ * order is enough, two beat a CRA with one, and five beat a later CRA with two. The
  * customer's leads go to them from then on (LeadGenerator, BacklogFill, ExclusiveLeads). An order is handled by the CRA
  * it was claimed for in the CVR Tracker, else the CRA whose Pancake account sold it; canceled and deleted orders don't
  * count, and merged numbers (Customer Database) are one customer. Orders from before the saved Pancake orders count
@@ -32,10 +34,38 @@ class CustomerOwners
      */
     public function for(array $phoneKeys): array
     {
-        return $this->pick($phoneKeys, true, fn (array $byCra) => collect($byCra)
+        $owners = $this->pick($phoneKeys, true, fn (array $byCra) => collect($byCra)
             ->map(fn (array $counted, int $craId) => [...$counted, 'cra' => $craId])
-            ->sortBy([['count', 'desc'], ['first', 'asc'], ['cra', 'asc']])
+            ->sortBy([['count', 'desc'], ['latest', 'desc'], ['cra', 'asc']])
             ->first()['cra']);
+
+        return $this->claimed(array_values(array_unique(array_filter($phoneKeys)))) + $owners;
+    }
+
+    /**
+     * The active CRA who claimed each of these numbers' customers (numbers with no claim left out).
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, int> phone key => CRA id
+     */
+    public function claimed(array $phoneKeys): array
+    {
+        if ($phoneKeys === [] || ! CustomerClaim::query()->exists()) {
+            return [];
+        }
+
+        $primaryOf = $this->primaries($phoneKeys);
+        $active = LeadGenerator::cras()->pluck('id')->flip();
+        // A loop, not flatMap: numeric phone keys would be renumbered.
+        $claims = [];
+        foreach (array_chunk(array_values(array_unique($primaryOf)), 1000) as $chunk) {
+            $claims += CustomerClaim::whereIn('phone_key', $chunk)->pluck('user_id', 'phone_key')->all();
+        }
+
+        return collect($primaryOf)
+            ->map(fn (string $primary) => $claims[$primary] ?? null)
+            ->filter(fn (?int $craId) => $craId !== null && isset($active[$craId]))
+            ->all();
     }
 
     /**

@@ -572,11 +572,12 @@ class ExclusiveLeads
     }
 
     /**
-     * The leads on the CRA's list for $day, for the tracker table.
+     * The leads still the CRA's on their list for $day, for the tracker table: a lead moved to another CRA since leaves it.
      */
     public function leadsFor(User $cra, CarbonImmutable $day): Builder
     {
-        return Lead::whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->select('lead_id'));
+        return Lead::where('assigned_to', $cra->id)
+            ->whereIn('id', ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->select('lead_id'));
     }
 
     /**
@@ -716,14 +717,12 @@ class ExclusiveLeads
     }
 
     /**
-     * The CRA's leads matching $term (name, contact # or order #) on any day: their lists' and any lead they hold.
+     * The CRA's leads matching $term (name, contact # or order #) on any day: only leads they still hold, so one moved
+     * to another CRA no longer turns up.
      */
     public function search(User $cra, string $term): Builder
     {
-        return Lead::query()
-            ->where(fn (Builder $q) => $q->where('assigned_to', $cra->id)
-                ->orWhereIn('id', ExclusiveListLead::where('user_id', $cra->id)->select('lead_id')))
-            ->search($term);
+        return Lead::where('assigned_to', $cra->id)->search($term);
     }
 
     /**

@@ -106,6 +106,13 @@ class HighValueCustomersTest extends TestCase
             ->assertDontSee('Ana Cruz');
     }
 
+    public function test_a_merged_number_gets_its_main_customers_high_aov_flag(): void
+    {
+        $this->customers();
+
+        $this->assertTrue(app(HighValueCustomers::class)->flagsForNumbers(['9176666666'])['9176666666']['high_aov']);
+    }
+
     public function test_a_cra_claims_customers_nobody_has_and_a_supervisor_sets_anyone(): void
     {
         $this->customers();
