@@ -138,7 +138,14 @@ class SyncPancake extends Command
                     continue;
                 }
 
-                $result = $sync->sync($day);
+                $result = $sync->syncUnlessRunning($day);
+
+                if ($result === null) {
+                    $this->info("Pancake {$day->toDateString()}: already being synced by another process.");
+
+                    continue;
+                }
+
                 $this->info("Pancake {$day->toDateString()}: {$result['staff']} staff with engagements, {$result['orders']} orders, {$result['delivered']} delivered, {$result['sales']} Shecom sales.");
 
                 if ($result['engagement_error']) {

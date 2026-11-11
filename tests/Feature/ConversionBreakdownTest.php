@@ -761,6 +761,7 @@ class ConversionBreakdownTest extends TestCase
         $this->actingAs($this->owner)->post(route('conversion.sync'), ['date' => '2026-10-01'])
             ->assertRedirect()
             ->assertSessionHas('status');
+        $this->runBackgroundCommands();
 
         $this->assertDatabaseHas('pancake_orders', ['seller_name' => 'CRD LHEI', 'conversion_type' => PancakeOrder::SEGMENTATION]);
     }

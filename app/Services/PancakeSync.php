@@ -8,6 +8,7 @@ use App\Models\LogisticsOrder;
 use App\Models\OrderStatusChange;
 use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
+use App\Support\BackgroundArtisan;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -30,6 +31,9 @@ class PancakeSync
 
     /** How old (minutes) a day's sync may be before pages and the dashboard refresh it. */
     public const FRESH_MINUTES = 10;
+
+    /** A full day's sync can take over ten minutes; its lock outlasts it. */
+    private const SYNC_LOCK_SECONDS = 1800;
 
     /** How often (seconds) a page visit may re-check the header's flagged orders in Pancake. */
     public const ISSUES_RECHECK_SECONDS = 120;
@@ -559,32 +563,49 @@ class PancakeSync
             return null;
         }
 
-        return Cache::lock('pancake-sync-'.$day->toDateString(), 300)
+        return $this->syncUnlessRunning($day);
+    }
+
+    /**
+     * sync() unless another process is syncing $day (the scheduler, a page or a Sync button). The lock is
+     * held for as long as a full day can take, so two full syncs never run (and fill memory) side by side.
+     * Returns null when another sync has it.
+     */
+    public function syncUnlessRunning(CarbonImmutable $day): ?array
+    {
+        return Cache::lock(self::syncLockKey($day), self::SYNC_LOCK_SECONDS)
             ->get(fn () => $this->sync($day)) ?: null;
     }
 
     /**
-     * Sync $day after the response is sent (a full day takes minutes). Failures
-     * are logged, and pages keep showing the last good sync time.
-     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
+     * Sync $day in its own process (syncs:page), so the minutes it takes never hold up the web server.
+     * Without $force, only when over ten minutes old and not already syncing, and started at most every
+     * ten minutes; a Sync button ($force) starts it unless one was started in the last minute.
      */
     public function syncLater(CarbonImmutable $day, bool $force = false): void
     {
-        if (self::isBuiltInServer()) {
+        if (! $force && (! self::isStale($day) || self::isRunning($day))) {
             return;
         }
 
-        defer(function () use ($day, $force) {
-            // The page is already sent: let the sync finish past the request time limit.
-            set_time_limit(0);
-            ignore_user_abort(true);
+        BackgroundArtisan::start(
+            'syncs:page',
+            ['pancake', '--date='.$day->toDateString(), ...($force ? ['--force'] : [])],
+            'pancake-'.($force ? 'force-' : '').$day->toDateString(),
+            $force ? 60 : 600,
+        );
+    }
 
-            try {
-                $this->syncIfStale($day, $force ? 0 : self::FRESH_MINUTES);
-            } catch (Throwable $e) {
-                Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
-            }
-        }, 'pancake-sync-'.$day->toDateString());
+    /**
+     * The syncs:page run of syncLater(). Failures are logged, and pages keep showing the last good sync time.
+     */
+    public function syncInThisProcess(CarbonImmutable $day, bool $force): void
+    {
+        try {
+            $this->syncIfStale($day, $force ? 0 : self::FRESH_MINUTES);
+        } catch (Throwable $e) {
+            Log::warning('Pancake sync failed', ['date' => $day->toDateString(), 'message' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -643,6 +664,11 @@ class PancakeSync
     private static function runningKey(CarbonImmutable $day): string
     {
         return 'pancake.syncing.'.$day->toDateString();
+    }
+
+    private static function syncLockKey(CarbonImmutable $day): string
+    {
+        return 'pancake-sync-'.$day->toDateString();
     }
 
     private static function syncKey(CarbonImmutable $day): string
@@ -788,28 +814,30 @@ class PancakeSync
     }
 
     /**
-     * syncAges() for the last 3 months after the response is sent (it fetches every order, so it takes a while).
+     * syncAges() for the last 3 months in its own process (syncs:page; it fetches every order, so it takes a while).
      * Does nothing while one is already running.
-     * Skipped under `php artisan serve`: its built-in server holds the page until deferred work ends.
      */
     public function syncAgesLater(CarbonImmutable $today): void
     {
-        if (self::isBuiltInServer() || ! Cache::add(self::AGES_RUNNING_KEY, true, now()->addHour())) {
+        if (! Cache::add(self::AGES_RUNNING_KEY, true, now()->addHour())) {
             return;
         }
 
-        defer(function () use ($today) {
-            set_time_limit(0);
-            ignore_user_abort(true);
+        BackgroundArtisan::start('syncs:page', ['ages', '--date='.$today->toDateString()], 'pancake-ages', 60);
+    }
 
-            try {
-                $this->syncAges($today->subMonths(3)->addDay(), $today);
-            } catch (Throwable $e) {
-                Log::warning('Pancake noted ages failed', ['message' => $e->getMessage()]);
-            } finally {
-                Cache::forget(self::AGES_RUNNING_KEY);
-            }
-        }, 'pancake-ages');
+    /**
+     * The syncs:page run of syncAgesLater().
+     */
+    public function syncAgesInThisProcess(CarbonImmutable $today): void
+    {
+        try {
+            $this->syncAges($today->subMonths(3)->addDay(), $today);
+        } catch (Throwable $e) {
+            Log::warning('Pancake noted ages failed', ['message' => $e->getMessage()]);
+        } finally {
+            Cache::forget(self::AGES_RUNNING_KEY);
+        }
     }
 
     /** When the last 3 months' ages were last fetched, and whether a fetch is running. */

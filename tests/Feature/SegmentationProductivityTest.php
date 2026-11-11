@@ -18,7 +18,10 @@ use App\Services\SegmentationProductivity;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Process\PendingProcess;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
 class SegmentationProductivityTest extends TestCase
@@ -287,11 +290,39 @@ class SegmentationProductivityTest extends TestCase
             ->assertRedirect()
             ->assertSessionHas('status');
 
+        // The page only starts the sync in its own process; nothing is fetched inside the request.
+        Process::assertRan(fn (PendingProcess $process) => str_contains($process->command, "'syncs:page' 'pancake' '--date=2026-10-01' '--force'"));
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'pages.fm'));
+
+        $this->artisan('syncs:page', ['task' => 'pancake', '--date' => '2026-10-01', '--force' => true])->assertSuccessful();
+
         $this->assertDatabaseHas('pancake_orders', ['phone_key' => '9998887777', 'seller_name' => 'CRD LHEI', 'ordered_on' => '2026-10-01']);
         // Stored under the shop's order number, not Pancake's internal id.
         $this->assertDatabaseHas('pancake_orders', ['pancake_order_id' => '1374947']);
         $this->assertDatabaseHas('pancake_engagements', ['staff_name' => 'CRD LHEI', 'engagements' => 12]);
         $this->assertNotNull(PancakeSync::lastSync(Lead::today()));
+    }
+
+    public function test_opening_the_page_starts_one_background_sync_of_a_stale_day(): void
+    {
+        $this->actingAs($this->owner)->get(route('productivity.index'))->assertOk();
+        $this->actingAs($this->owner)->get(route('productivity.index'))->assertOk();
+
+        Process::assertRanTimes(fn (PendingProcess $process) => str_contains($process->command, "'syncs:page' 'pancake' '--date=2026-10-01'"), 1);
+        Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'pages.fm'));
+    }
+
+    public function test_scheduled_sync_skips_a_day_another_process_is_syncing(): void
+    {
+        $lock = Cache::lock('pancake-sync-2026-10-01', 60);
+        $lock->get();
+
+        $this->artisan('pancake:sync')
+            ->expectsOutputToContain('already being synced by another process')
+            ->assertSuccessful();
+
+        $this->assertNull(PancakeSync::lastSync(Lead::today()));
+        $lock->release();
     }
 
     public function test_engagements_backfill_saves_only_engagements_and_dry_run_saves_nothing(): void

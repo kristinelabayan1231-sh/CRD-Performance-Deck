@@ -3,12 +3,11 @@
 namespace App\Services;
 
 use App\Models\LogisticsOrder;
+use App\Support\BackgroundArtisan;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
-
-use function Illuminate\Support\defer;
 
 /**
  * "Live from Logistics" retention numbers: the logistics website's Retention
@@ -55,7 +54,7 @@ class LogisticsRetention
     }
 
     /**
-     * Read Shecom now when nothing is saved yet; refresh after the response when over $maxAgeMinutes old.
+     * Read Shecom now when nothing is saved yet; refresh in its own process (syncs:page) when over $maxAgeMinutes old.
      */
     public function ensureFresh(int $maxAgeMinutes = 60): void
     {
@@ -68,13 +67,19 @@ class LogisticsRetention
         }
 
         if ($at->lessThanOrEqualTo(now()->subMinutes($maxAgeMinutes))) {
-            defer(function () {
-                try {
-                    Cache::lock('logistics-retention-refresh', 300)->get(fn () => $this->refresh());
-                } catch (Throwable $e) {
-                    Log::warning('Logistics retention refresh failed', ['message' => $e->getMessage()]);
-                }
-            }, 'logistics-retention-refresh');
+            BackgroundArtisan::start('syncs:page', ['logistics'], 'logistics-retention', 600);
+        }
+    }
+
+    /**
+     * The syncs:page run of ensureFresh(): refresh() unless another process is already refreshing.
+     */
+    public function refreshInThisProcess(): void
+    {
+        try {
+            Cache::lock('logistics-retention-refresh', 1200)->get(fn () => $this->refresh());
+        } catch (Throwable $e) {
+            Log::warning('Logistics retention refresh failed', ['message' => $e->getMessage()]);
         }
     }
 
