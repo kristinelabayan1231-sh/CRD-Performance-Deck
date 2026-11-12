@@ -16,6 +16,9 @@
         </header>
 
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
+            @if ($data['fromSheet'])
+                <span class="font-semibold">From the CRD Sales Report sheet:</span> {{ $month->format('F Y') }} shows the sheet's Actual Income as it is, every line, so it can't be typed in here.
+            @else
             <span class="font-semibold">How it works:</span>
             @if ($canEdit)
                 type the amounts in the boxes; each saves when you leave the box and the cards update.
@@ -26,6 +29,7 @@
             Shipping Fee = Orders × ₱75, COD Fee = Delivered × 2%, Fulfillment Fee = Orders × ₱25; Product Research = the CRD's ÷ 3;
             Salaries, 13th Month, SIL and Government Benefits are the CRA's 1M Monthly MNI figures.
             Gross Profit = Delivered − Tax Allocation − Product Cost. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
+            @endif
         </div>
 
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActualIncomeInput;
+use App\Models\ActualIncomeStatement;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActualIncome;
@@ -73,6 +74,36 @@ class CraGrossSalesTest extends TestCase
         $this->assertSame(1423186.0, $data['totals'][0]['gross']);
         $this->assertEqualsWithDelta($january[$joanna->id]['net_income'] + $january[$regina->id]['net_income'], $data['totals'][0]['net'], 0.001);
         $this->assertSame(2029833.0, $data['year']['gross']);
+    }
+
+    public function test_a_cra_who_left_shows_for_the_sheet_months_they_have_a_card(): void
+    {
+        $this->user('Joanna Rose', Role::CRA);
+        $sharie = $this->user('Sharie', Role::CRA);
+        $sharie->update(['is_active' => false]);
+        ActualIncomeStatement::create(['month' => '2026-06-01', 'user_id' => $sharie->id, 'figures' => ['gross' => 116783, 'net_income' => -85261.84]]);
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))
+            ->assertSee('Sharie')
+            ->viewData('data');
+
+        $this->assertSame(['gross' => 116783.0, 'net' => -85261.84], $data['cras'][$sharie->id]['months'][5]);
+        $this->assertNull($data['cras'][$sharie->id]['months'][6]);
+    }
+
+    public function test_the_top_seller_is_the_cra_with_the_most_gross_sales_and_the_goal_is_250k_a_month(): void
+    {
+        $joanna = $this->user('Joanna Rose', Role::CRA);
+        $regina = $this->user('Regina', Role::CRA);
+        // Regina sells more in February though Joanna keeps more Net Income.
+        $this->type('2026-02-01', $joanna, ['gross' => 601167, 'delivered' => 600000]);
+        $this->type('2026-02-01', $regina, ['gross' => 677181, 'delivered' => 300000]);
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]));
+
+        $this->assertSame($regina->id, $response->viewData('data')['top'][1]);
+        $this->assertNull($response->viewData('data')['top'][0]);
+        $this->assertSame(250000.0, $response->viewData('goal'));
     }
 
     public function test_a_cra_cannot_see_it(): void

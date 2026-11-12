@@ -105,6 +105,19 @@ class SalesGoalsTest extends TestCase
             ->assertSessionHasErrors('net_income_monthly');
     }
 
+    public function test_the_cra_monthly_net_income_goal_defaults_to_250k_and_can_be_changed(): void
+    {
+        $this->assertSame(250000.0, SalesGoals::craNetIncomeMonthly());
+
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 30, 'repeat_rate' => 30, 'cra_net_income_monthly' => 300000])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(300000.0, SalesGoals::craNetIncomeMonthly());
+
+        $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 77000, 'crd_monthly' => 1000000, 'retained_rate' => 30, 'repeat_rate' => 30, 'cra_net_income_monthly' => -1])
+            ->assertSessionHasErrors('cra_net_income_monthly');
+    }
+
     public function test_goals_must_be_amounts(): void
     {
         $this->actingAs($this->owner)->put(route('settings.sales-goals.update'), ['cra_daily' => 'lots', 'crd_monthly' => -5, 'retained_rate' => 101, 'repeat_rate' => ''])

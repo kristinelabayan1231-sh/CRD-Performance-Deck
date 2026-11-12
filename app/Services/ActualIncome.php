@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ActualIncomeInput;
+use App\Models\ActualIncomeStatement;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -22,6 +23,10 @@ use Illuminate\Support\Collection;
  *
  * Gross Profit = Delivered − Tax Allocation − Product Cost. Total Selling Costs = Advertising Cost to Packaging Costs.
  * Total Operating Costs = Salaries to HMO Expense. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
+ *
+ * A month taken from the CRD Sales Report sheet (actual_income_statements: January to August 2026) shows the sheet's cards
+ * as they are, every line, nothing worked out, and can't be typed in. Its cards are the CRAs on the sheet, inactive
+ * ones included; lines only the sheet had (SHEET_ONLY_LINES) show when a card has an amount on them.
  */
 class ActualIncome
 {
@@ -88,6 +93,15 @@ class ActualIncome
         ['NET INCOME', 'net_income', 'net', 'formula', 'formula'],
     ];
 
+    /** Lines only some of the sheet's months have, each shown after a line of LINES: that line's key => [label, key]. */
+    public const SHEET_ONLY_LINES = [
+        'ads_vat' => ['AI Expense', 'ai_expense'],
+        'cod' => ['VAT on COD Fee', 'vat_on_cod'],
+        'fulfillment' => ['Product Samples', 'product_samples'],
+        'managers_allowance' => ['Training Allowance', 'training_allowance'],
+        'electricity' => ['Other Company Car Expenses', 'other_car_expenses'],
+    ];
+
     /** Selling costs, Advertising Cost to Packaging Costs. */
     private const SELLING = ['advertising', 'ads_vat', 'shipping', 'cod', 'fulfillment', 'product_research', 'packaging'];
 
@@ -119,26 +133,81 @@ class ActualIncome
     }
 
     /**
+     * The month's cards. $cras are the CRAs shown (and the number the CRD's costs are shared by), except in a month taken
+     * from the sheet, whose cards are the CRAs on it.
+     *
      * @param  Collection<int, User>  $cras
-     * @return array{department: array<string, float|null>, cras: array<int, array<string, float|null>>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>}}
+     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, filled: array<int, bool>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>}}
      */
     public function month(Collection $cras, CarbonImmutable $month): array
     {
+        $sheet = ActualIncomeStatement::whereDate('month', $month->startOfMonth())->get(['user_id', 'figures']);
+        if ($sheet->isNotEmpty()) {
+            return self::fromSheet($sheet);
+        }
+
         $typed = ActualIncomeInput::whereDate('month', $month->startOfMonth())
             ->where(fn ($query) => $query->whereNull('user_id')->orWhereIn('user_id', $cras->pluck('id')))
             ->get(['user_id', 'field', 'amount']);
         $department = $typed->whereNull('user_id')->pluck('amount', 'field')->all();
+        $craTyped = $cras->mapWithKeys(fn (User $cra) => [$cra->id => $typed->where('user_id', $cra->id)->pluck('amount', 'field')->all()])->all();
         $craCount = max($cras->count(), 1);
         $mni = $this->mni->for(LeadGenerator::cras(), $month->startOfMonth(), '1m')['cras'];
 
-        $cards = $cras->mapWithKeys(fn (User $cra) => [$cra->id => self::craCard(
-            $typed->where('user_id', $cra->id)->pluck('amount', 'field')->all(), $department, $mni[$cra->id] ?? [], $craCount,
-        )])->all();
+        $cards = $cras->mapWithKeys(fn (User $cra) => [$cra->id => self::craCard($craTyped[$cra->id], $department, $mni[$cra->id] ?? [], $craCount)])->all();
 
         return [
+            'shown' => $cras,
+            'fromSheet' => false,
+            'lines' => self::LINES,
             'department' => self::departmentCard($cards, $department),
             'cras' => $cards,
-            'typed' => ['department' => $department, 'cras' => array_map(fn (User $cra) => $typed->where('user_id', $cra->id)->pluck('amount', 'field')->all(), $cras->keyBy('id')->all())],
+            'filled' => array_map(fn (array $amounts) => $amounts !== [], $craTyped),
+            'typed' => ['department' => $department, 'cras' => $craTyped],
+        ];
+    }
+
+    /**
+     * A month taken from the sheet: its cards as they are, every line; the sheet-only lines a card has an amount on.
+     *
+     * @param  Collection<int, ActualIncomeStatement>  $sheet
+     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, filled: array<int, bool>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>}}
+     */
+    private static function fromSheet(Collection $sheet): array
+    {
+        $extras = array_column(self::SHEET_ONLY_LINES, 1);
+        $card = function (array $figures) use ($extras): array {
+            $values = [];
+            foreach ([...array_filter(array_column(self::LINES, 1)), ...$extras] as $key) {
+                $values[$key] = in_array($key, ['conversion', 'aov'], true)
+                    ? (isset($figures[$key]) ? (float) $figures[$key] : null)
+                    : (float) ($figures[$key] ?? 0);
+            }
+
+            return $values;
+        };
+
+        $shown = User::whereIn('id', $sheet->pluck('user_id')->filter())->inCraOrder()->get();
+        $cards = $shown->mapWithKeys(fn (User $cra) => [$cra->id => $card($sheet->firstWhere('user_id', $cra->id)->figures)])->all();
+        $department = $card($sheet->firstWhere('user_id', null)?->figures ?? []);
+
+        $lines = [];
+        foreach (self::LINES as $line) {
+            $lines[] = $line;
+            $extra = $line[1] === null ? null : (self::SHEET_ONLY_LINES[$line[1]] ?? null);
+            if ($extra !== null && collect([$department, ...$cards])->contains(fn (array $values) => $values[$extra[1]] !== 0.0)) {
+                $lines[] = [$extra[0], $extra[1], 'money', 'input', 'input'];
+            }
+        }
+
+        return [
+            'shown' => $shown,
+            'fromSheet' => true,
+            'lines' => $lines,
+            'department' => $department,
+            'cras' => $cards,
+            'filled' => array_fill_keys($shown->pluck('id')->all(), true),
+            'typed' => ['department' => [], 'cras' => []],
         ];
     }
 
@@ -152,6 +221,9 @@ class ActualIncome
     {
         $card = [];
         foreach (self::LINES as [, $key, , , $source]) {
+            if ($key === null) {
+                continue;
+            }
             $card[$key] = match ($source) {
                 'input' => (float) ($typed[$key] ?? 0),
                 'share' => (float) ($department[$key] ?? 0) / $craCount,
@@ -176,6 +248,9 @@ class ActualIncome
     {
         $card = [];
         foreach (self::LINES as [, $key, , $source]) {
+            if ($key === null) {
+                continue;
+            }
             $card[$key] = match ($source) {
                 'input' => (float) ($typed[$key] ?? 0),
                 'sum' => (float) array_sum(array_column($cards, $key)),
