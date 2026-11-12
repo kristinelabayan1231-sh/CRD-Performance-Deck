@@ -1,27 +1,20 @@
 @use('App\Services\ActualIncome')
 {{--
     The CRD card and a card per CRA, laid out like the CRD sheet. Re-drawn after each amount is saved
-    (X-Actual-Income-Cards). Each value is tinted by where it comes from: typed in, the CRA cards added up, or the CRD
-    card shared out. Money lines show their % of the card's Gross Sales.
+    (X-Actual-Income-Cards). Money lines show their % of the card's Gross Sales.
 --}}
 @php
     $cards = collect([['title' => 'Customer Retention Department', 'sub' => 'All CRAs', 'cra' => null, 'figures' => $data['department'], 'typed' => $data['typed']['department'], 'department' => true]])
         ->concat($cras->map(fn ($cra) => ['title' => $cra->displayName(), 'sub' => 'CRA', 'cra' => $cra->id, 'figures' => $data['cras'][$cra->id], 'typed' => $data['typed']['cras'][$cra->id] ?? [], 'department' => false]));
-    $tints = [
-        'input' => 'bg-[#fff1e3]',
-        'sum' => 'bg-[#e3f6fb]',
-        'share' => 'bg-[#e8f5e8]',
-        'research' => 'bg-[#e8f5e8]',
-    ];
-    $box = 'h-7 w-full rounded-md border border-[#f1c89b] bg-[#fff1e3] px-1.5 text-right text-[0.8125rem] font-semibold tabular-nums placeholder:font-normal placeholder:text-muted/60 focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-200 focus:outline-none';
+    $box = 'h-7 w-full rounded-md border border-line bg-white px-1.5 text-right text-[0.8125rem] font-semibold tabular-nums placeholder:font-normal placeholder:text-muted/60 focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-200 focus:outline-none';
 @endphp
 
-<div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
+<div class="x-scrollbar flex snap-x items-start gap-3 overflow-x-auto pb-2" tabindex="0" aria-label="CRD and CRA cards, scroll sideways">
     @foreach ($cards as $card)
         @php
             $f = $card['figures'];
         @endphp
-        <article class="overflow-hidden rounded-2xl border border-line bg-white shadow-sm" aria-label="{{ $card['title'] }}">
+        <article class="w-[350px] shrink-0 snap-start overflow-hidden rounded-2xl border border-line bg-white shadow-sm" aria-label="{{ $card['title'] }}">
             <header @class([
                 'flex min-h-10 items-center justify-between gap-2 border-b px-3 py-2 text-[0.8125rem] font-bold whitespace-nowrap',
                 'border-brand-700 bg-gradient-to-r from-brand-600 to-brand-700 text-white' => $card['department'],
@@ -68,7 +61,7 @@
                                            aria-label="{{ $label }} for {{ $card['title'] }}" class="{{ $box }}">
                                 </td>
                             @else
-                                <td class="py-0.5 pr-1.5 text-right"><span class="block rounded-md px-1.5 py-0.5 {{ $tints[$source] ?? '' }}">{{ $shown }}</span></td>
+                                <td class="py-0.5 pr-1.5 text-right"><span class="block px-1.5 py-0.5">{{ $shown }}</span></td>
                             @endif
                             <td class="py-0.5 pr-3 text-right text-xs">
                                 @if (! $isKpi && $f['gross'] > 0)

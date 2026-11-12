@@ -18,9 +18,9 @@
         <div role="note" class="rounded-lg border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-2 text-sm text-[#473821]">
             <span class="font-semibold">How it works:</span>
             @if ($canEdit)
-                type the amounts in the orange boxes; each saves when you leave the box and the cards update.
+                type the amounts in the boxes; each saves when you leave the box and the cards update.
             @else
-                the orange amounts are typed in by the CRA Supervisor or Team Lead.
+                the amounts are typed in by the CRA Supervisor or Team Lead.
             @endif
             On a CRA card: Unfulfilled Sales = Gross − Cancelled − Fulfilled − Returns/Returning − Delivered; Conversion Rate = Orders ÷ Target Leads; AOV = Gross Sales ÷ Orders;
             Shipping Fee = Orders × ₱75, COD Fee = Delivered × 2%, Fulfillment Fee = Orders × ₱25; Product Research = the CRD's ÷ 3;
@@ -28,11 +28,6 @@
             Gross Profit = Delivered − Tax Allocation − Product Cost. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
         </div>
 
-        <ul class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted" aria-label="Colour key">
-            <li class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-[#f1c89b] bg-[#fff1e3]"></span>Typed in</li>
-            <li class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-[#9fdcec] bg-[#e3f6fb]"></span>Sum of the CRA cards</li>
-            <li class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-[#b5dcb5] bg-[#e8f5e8]"></span>CRD ÷ {{ max($cras->count(), 1) }} CRAs (Product Research ÷ 3)</li>
-        </ul>
 
         <div data-actual-income-cards>
             @include('actual-income._cards')

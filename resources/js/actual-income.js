@@ -1,4 +1,4 @@
-// Actual Income: each orange box saves when it changes (empty clears it), then the cards are redrawn from the server.
+// Actual Income: each box saves when it changes (empty clears it), then the cards are redrawn from the server.
 async function send(url, body) {
     const response = await fetch(url, {
         method: 'PUT',
@@ -23,8 +23,11 @@ export function initActualIncome() {
         // Keep the box the user tabbed into focused after the cards are redrawn.
         const focused = document.activeElement?.closest?.('[data-actual-income-input]');
         const selector = focused ? `[data-actual-income-input][data-cra="${focused.dataset.cra}"][data-field="${focused.dataset.field}"]` : null;
+        // ...and the row of cards where it was scrolled to.
+        const scrolled = host.firstElementChild?.scrollLeft ?? 0;
         host.innerHTML = await response.text();
-        if (selector) host.querySelector(selector)?.focus();
+        if (host.firstElementChild) host.firstElementChild.scrollLeft = scrolled;
+        if (selector) host.querySelector(selector)?.focus({ preventScroll: true });
     };
 
     root.addEventListener('change', async (event) => {
