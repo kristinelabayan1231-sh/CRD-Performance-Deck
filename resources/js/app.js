@@ -6,6 +6,7 @@ import { initDailyIsShot } from './daily-is-shot';
 import { initDutySchedule } from './duty-schedule';
 import { initLive } from './live';
 import { initMni } from './mni';
+import { initActualIncome } from './actual-income';
 import { initMonthlyCost } from './monthly-cost';
 import { initPageLoader } from './page-loader';
 import { initPcReport, initProductGroups } from './pc-report';
@@ -42,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initPcReport();
     initCvrTracker();
     initMni();
+    initActualIncome();
     initProductGroups();
     initProductPerformance();
     initProductTargetMarket();

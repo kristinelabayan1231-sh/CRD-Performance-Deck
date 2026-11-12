@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActualIncomeController;
 use App\Http\Controllers\AgeBracketController;
 use App\Http\Controllers\ApiKeyController;
 use App\Http\Controllers\Auth\GoogleController;
@@ -209,6 +210,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::put('/daily-is/returns', [DailyIncomeStatementController::class, 'updateReturns'])->middleware('can:daily_is.view_all')->name('daily-is.returns.update');
     Route::post('/daily-is/product-costs/refresh', [DailyIncomeStatementController::class, 'refreshProductCosts'])
         ->middleware(['can:daily_is.view_all', 'throttle:6,1'])->name('daily-is.product-costs.refresh');
+
+    Route::prefix('actual-income')->name('actual-income.')->middleware('can:actual_income.view')->group(function () {
+        Route::get('/', [ActualIncomeController::class, 'index'])->name('index');
+        Route::put('/', [ActualIncomeController::class, 'update'])->middleware('can:actual_income.manage')->name('update');
+    });
 
     Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
         Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
