@@ -61,6 +61,10 @@ class LeadConflictsTest extends TestCase
         $this->customer('Agreed Customer', '9172222222', $this->july, $this->july, 2, $this->july);
         $supervisor = User::create(['email' => 'lead@example.com', 'display_name' => 'Lead', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
 
+        // Never worked out inside the page: nothing until the background job has run.
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertOk()->assertDontSee('Check who gets these leads');
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
+
         $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertOk()
             ->assertSee('Check who gets these leads')
             ->assertSeeInOrder(['Split Customer', 'Regina', 'Regina · High AOV', 'July Ann · 2 orders', 'Regina'])
@@ -73,6 +77,7 @@ class LeadConflictsTest extends TestCase
     {
         $this->customer('Agreed Customer', '9172222222', $this->july, $this->july, 2, $this->july);
         $supervisor = User::create(['email' => 'lead@example.com', 'display_name' => 'Lead', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
 
         $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertOk()->assertDontSee('Check who gets these leads');
     }
