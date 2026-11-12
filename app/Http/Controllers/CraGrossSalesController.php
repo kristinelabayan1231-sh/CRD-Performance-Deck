@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\CraGrossSales;
 use App\Services\LeadGenerator;
+use App\Support\SalesGoals;
 use App\Support\WorkingDate;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -17,12 +18,14 @@ class CraGrossSalesController extends Controller
     {
         $filters = $request->validate(['year' => ['nullable', 'integer', 'min:2020', 'max:2100']]);
         $year = (int) ($filters['year'] ?? WorkingDate::realToday()->year);
-        $cras = LeadGenerator::cras();
+        $data = $sales->year(LeadGenerator::cras(), $year);
 
         return view('cra-gross-sales.index', [
             'year' => $year,
-            'cras' => $cras,
-            'data' => $sales->year($cras, $year),
+            'cras' => $data['rows'],
+            'data' => $data,
+            // Each CRA's monthly Net Income goal: a month under it shows red.
+            'goal' => SalesGoals::craNetIncomeMonthly(),
         ]);
     }
 }

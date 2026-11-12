@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActualIncomeInput;
+use App\Models\ActualIncomeStatement;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\MonthlyMni;
@@ -124,6 +125,37 @@ class ActualIncomeTest extends TestCase
 
         $this->actingAs($joanna)->get(route('actual-income.index'))->assertForbidden();
         $this->actingAs($joanna)->putJson(route('actual-income.update'), ['month' => '2026-11', 'cra' => $joanna->id, 'field' => 'orders', 'value' => 1])->assertForbidden();
+
+        $this->assertDatabaseCount('actual_income_inputs', 0);
+    }
+
+    public function test_a_month_from_the_sheet_shows_its_cards_as_they_are_and_cannot_be_typed_in(): void
+    {
+        $joanna = $this->fiveCras()[2];
+        $sharie = $this->user('Sharie', Role::CRA);
+        $sharie->update(['is_active' => false]);
+        // January 2026 as in the sheet: its Shipping Fee and NET INCOME aren't what the formulas would give.
+        ActualIncomeStatement::create(['month' => '2026-01-01', 'user_id' => null, 'figures' => ['gross' => 1952486, 'shipping' => 175132, 'net_income' => 758698.72]]);
+        ActualIncomeStatement::create(['month' => '2026-01-01', 'user_id' => $joanna->id, 'figures' => [
+            'orders' => 926, 'aov' => 800, 'gross' => 733282, 'shipping' => 66046, 'vat_on_cod' => 1072.09, 'ai_expense' => 0, 'net_income' => 292860.75,
+        ]]);
+        ActualIncomeStatement::create(['month' => '2026-01-01', 'user_id' => $sharie->id, 'figures' => ['gross' => 100, 'net_income' => -5]]);
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+
+        $response = $this->actingAs($supervisor)->get(route('actual-income.index', ['month' => '2026-01']));
+
+        $data = $response->viewData('data');
+        $this->assertSame([$joanna->id, $sharie->id], $data['shown']->pluck('id')->sort()->values()->all());
+        $this->assertSame([66046.0, 292860.75, 800.0], [$data['cras'][$joanna->id]['shipping'], $data['cras'][$joanna->id]['net_income'], $data['cras'][$joanna->id]['aov']]);
+        $this->assertSame(758698.72, $data['department']['net_income']);
+        // A sheet-only line shows when a card has an amount on it.
+        $labels = array_column($data['lines'], 0);
+        $this->assertContains('VAT on COD Fee', $labels);
+        $this->assertNotContains('AI Expense', $labels);
+        $this->assertFalse($response->viewData('canEdit'));
+
+        $this->actingAs($supervisor)->putJson(route('actual-income.update'), ['month' => '2026-01', 'cra' => $joanna->id, 'field' => 'orders', 'value' => 1])
+            ->assertUnprocessable();
 
         $this->assertDatabaseCount('actual_income_inputs', 0);
     }

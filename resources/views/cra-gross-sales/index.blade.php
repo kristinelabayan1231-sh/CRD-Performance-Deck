@@ -21,6 +21,11 @@
             A month shows — until something is typed on the CRA's Actual Income card. TOTAL adds up the CRAs; the {{ $year }} columns add up the months.
         </div>
 
+        <ul class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted" aria-label="Colour key">
+            <li class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-sky-700"></span><span><span class="font-bold text-sky-700">Blue</span>: the month's top seller (most Gross Sales)</span></li>
+            <li class="flex items-center gap-1.5"><span aria-hidden="true" class="size-2.5 rounded-full bg-coral-700"></span><span><span class="font-bold text-coral-700">Red</span>: Net Income below the ₱{{ number_format($goal) }} CRA Scorecard (Settings → Sales Goals)</span></li>
+        </ul>
+
         <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
             <div class="x-scrollbar overflow-x-auto">
                 <table class="min-w-full border-separate border-spacing-0 text-[0.8125rem] tabular-nums">
@@ -48,8 +53,8 @@
                             @endphp
                             <tr>
                                 <td class="{{ $name }} border-b border-line py-2 font-semibold whitespace-nowrap">{{ $cra->displayName() }}</td>
-                                @foreach ($row['months'] as $cell)
-                                    @include('cra-gross-sales._cells', ['cell' => $cell, 'class' => 'border-b border-line', 'first' => 'border-l'])
+                                @foreach ($row['months'] as $index => $cell)
+                                    @include('cra-gross-sales._cells', ['cell' => $cell, 'class' => 'border-b border-line', 'first' => 'border-l', 'top' => $data['top'][$index] === $cra->id, 'goal' => $goal])
                                 @endforeach
                                 @include('cra-gross-sales._cells', ['cell' => $row['year'], 'class' => 'border-b border-line '.$yearCell, 'first' => 'border-l-2 border-l-brand-200'])
                             </tr>

@@ -8,37 +8,55 @@ use Illuminate\Support\Collection;
 
 /**
  * CRA Gross Sales & IBSC: each CRA's Gross Sales and NET INCOME per month of a year, from their Actual Income card. A
- * CRA's month is empty (null) until something is typed on their Actual Income card for it; TOTAL adds up the months
- * shown.
+ * CRA's month is empty (null) until something is typed on their Actual Income card for it (a month from the CRD Sales
+ * Report sheet: until they have a card there); TOTAL adds up the CRAs shown. Each month's top seller is the CRA with the
+ * most Gross Sales.
  */
 class CraGrossSales
 {
     public function __construct(private ActualIncome $income) {}
 
     /**
+     * Rows: $cras (the active CRAs) and anyone else on a sheet month's cards that year (a CRA who has left).
+     *
      * @param  Collection<int, User>  $cras
-     * @return array{months: list<CarbonImmutable>, cras: array<int, array{months: array<int, array{gross: float, net: float}|null>, year: array{gross: float, net: float}|null}>, totals: array<int, array{gross: float, net: float}|null>, year: array{gross: float, net: float}|null}
+     * @return array{months: list<CarbonImmutable>, rows: Collection<int, User>, top: array<int, int|null>, cras: array<int, array{months: array<int, array{gross: float, net: float}|null>, year: array{gross: float, net: float}|null}>, totals: array<int, array{gross: float, net: float}|null>, year: array{gross: float, net: float}|null}
      */
     public function year(Collection $cras, int $year): array
     {
         $months = array_map(fn (int $month) => CarbonImmutable::create($year, $month, 1), range(1, 12));
-        $cells = $cras->mapWithKeys(fn (User $cra) => [$cra->id => []])->all();
+        $monthly = array_map(fn (CarbonImmutable $month) => $this->income->month($cras, $month), $months);
+        $rows = $cras->concat(collect($monthly)->pluck('shown')->flatten())
+            ->unique('id')->sortBy(fn (User $user) => $user->craSortKey())->values();
 
-        foreach ($months as $index => $month) {
-            $data = $this->income->month($cras, $month);
-            foreach ($cras as $cra) {
-                $cells[$cra->id][$index] = ($data['typed']['cras'][$cra->id] ?? []) === []
-                    ? null
-                    : ['gross' => (float) $data['cras'][$cra->id]['gross'], 'net' => (float) $data['cras'][$cra->id]['net_income']];
+        $cells = [];
+        foreach ($rows as $cra) {
+            foreach ($monthly as $index => $data) {
+                $cells[$cra->id][$index] = ($data['filled'][$cra->id] ?? false)
+                    ? ['gross' => (float) $data['cras'][$cra->id]['gross'], 'net' => (float) $data['cras'][$cra->id]['net_income']]
+                    : null;
             }
         }
 
         $totals = array_map(fn (int $index) => self::add(array_column($cells, $index)), array_keys($months));
+        // The month's top seller: the CRA with the most Gross Sales (the first in CRA order on a tie).
+        $top = array_map(function (int $index) use ($cells): ?int {
+            $best = null;
+            foreach ($cells as $craId => $row) {
+                if ($row[$index] !== null && ($best === null || $row[$index]['gross'] > $cells[$best][$index]['gross'])) {
+                    $best = $craId;
+                }
+            }
+
+            return $best;
+        }, array_keys($months));
 
         return [
             'months' => $months,
+            'rows' => $rows,
             'cras' => array_map(fn (array $row) => ['months' => $row, 'year' => self::add($row)], $cells),
             'totals' => $totals,
+            'top' => $top,
             'year' => self::add($totals),
         ];
     }

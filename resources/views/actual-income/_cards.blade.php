@@ -1,4 +1,3 @@
-@use('App\Services\ActualIncome')
 {{--
     The CRD card and a card per CRA, laid out like the CRD sheet. Re-drawn after each amount is saved
     (X-Actual-Income-Cards). Money lines show their % of the card's Gross Sales.
@@ -29,7 +28,7 @@
             <table class="w-full table-fixed text-[0.8125rem] tabular-nums">
                 <colgroup><col><col class="w-[7.5rem]"><col class="w-16"></colgroup>
                 <tbody>
-                    @foreach (ActualIncome::LINES as [$label, $key, $kind, $crdSource, $craSource])
+                    @foreach ($data['lines'] as [$label, $key, $kind, $crdSource, $craSource])
                         @if ($kind === 'section')
                             <tr>
                                 <td colspan="3" class="truncate px-3 pt-3 pb-1 text-xs font-bold tracking-wide text-muted uppercase">{{ $label }}</td>

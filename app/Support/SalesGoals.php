@@ -7,7 +7,7 @@ use App\Models\User;
 
 /**
  * Sales goals from Settings → Sales Goals: each CRA's daily base, CRD's
- * monthly target and CRD's monthly net income goal. Sales are Conversion Breakdown's gross sales (orders tagged
+ * monthly target, CRD's monthly net income goal and each CRA's monthly net income goal. Sales are Conversion Breakdown's gross sales (orders tagged
  * CRD - BROADCAST + CRD - SEGMENTATION).
  */
 class SalesGoals
@@ -17,6 +17,8 @@ class SalesGoals
     public const CRD_MONTHLY = 'sales_goal.crd_monthly';
 
     public const NET_INCOME_MONTHLY = 'sales_goal.net_income_monthly';
+
+    public const CRA_NET_INCOME_MONTHLY = 'sales_goal.cra_net_income_monthly';
 
     public const RETAINED_RATE = 'sales_goal.retained_rate';
 
@@ -48,6 +50,14 @@ class SalesGoals
         $value = Setting::value(self::NET_INCOME_MONTHLY);
 
         return $value === null ? null : (float) $value;
+    }
+
+    /**
+     * Each CRA's Net Income goal for a month (CRA Gross Sales & IBSC).
+     */
+    public static function craNetIncomeMonthly(): float
+    {
+        return (float) Setting::value(self::CRA_NET_INCOME_MONTHLY, config('segmentation.sales_goals.cra_net_income_monthly'));
     }
 
     /**

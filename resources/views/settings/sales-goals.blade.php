@@ -39,6 +39,14 @@
                     </span>
                     <span class="mt-1 block text-xs text-muted">The CRD team's net income target for the month. Leave blank if there's none.</span>
                 </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-semibold">CRA Scorecard <span class="font-normal text-muted">(monthly Net Income)</span></span>
+                    <span class="relative block">
+                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted">₱</span>
+                        <input type="number" name="cra_net_income_monthly" min="0" step="0.01" required value="{{ old('cra_net_income_monthly', $craNetIncomeMonthly + 0) }}" class="{{ $control }}">
+                    </span>
+                    <span class="mt-1 block text-xs text-muted">The same for every CRA, each month. CRA Gross Sales &amp; IBSC shows a Net Income below it in red.</span>
+                </label>
             </div>
             @if ($lastChange?->editor)
                 <p class="mt-4 text-xs text-muted">Last changed by {{ $lastChange->editor->displayName() }} on {{ $lastChange->updated_at->timezone(config('segmentation.timezone'))->format('M j, Y g:i A') }}.</p>

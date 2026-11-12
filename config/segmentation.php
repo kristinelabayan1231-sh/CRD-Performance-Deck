@@ -46,6 +46,8 @@ return [
     'sales_goals' => [
         'cra_daily' => 77000,
         'crd_monthly' => 1000000,
+        // Each CRA's Net Income goal for a month (CRA Gross Sales & IBSC shows a positive Net Income under it in red).
+        'cra_net_income_monthly' => 250000,
         // Monthly customer goals: % of all the leads delivered in the dates picked.
         'retained_rate' => 30,
         'repeat_rate' => 30,
