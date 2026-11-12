@@ -49,6 +49,8 @@
                 ['name' => 'Income & Products', 'icon' => 'statement', 'items' => [
                     ['Monthly MNI', route('mni.index'), request()->routeIs('mni.*'), $user->can('mni.view')],
                     ['Daily I.S.', route('daily-is.index'), request()->routeIs('daily-is.*'), $user->can('daily_is.view')],
+                    ['Actual Income', route('actual-income.index'), request()->routeIs('actual-income.*'), $user->can('actual_income.view')],
+                    ['CRA Gross Sales & IBSC', route('cra-gross-sales.index'), request()->routeIs('cra-gross-sales.*'), $user->can('cra_gross_sales.view')],
                     ['Product Performance', route('product-performance.index'), request()->routeIs('product-performance.*'), $user->can('product_performance.view')],
                     ['Product Target Market', route('product-target-market.index'), request()->routeIs('product-target-market.*'), $user->can('product_target_market.view')],
                 ]],

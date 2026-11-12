@@ -102,6 +102,13 @@ $modules = [
         'daily_is.view' => 'View own Daily I.S. (income statement per product, per day)',
         'daily_is.view_all' => 'View the department\'s and every CRA\'s Daily I.S.',
     ],
+    'Actual Income' => [
+        'actual_income.view' => 'View the Actual Income (the month\'s overall CRD card and each CRA\'s card)',
+        'actual_income.manage' => 'Type in the Actual Income amounts (each CRA\'s orders and sales, the CRD\'s Tax Allocation, Advertising Cost and operating costs)',
+    ],
+    'CRA Gross Sales & IBSC' => [
+        'cra_gross_sales.view' => 'View CRA Gross Sales & IBSC (each CRA\'s Gross Sales and Net Income per month of a year, from the Actual Income)',
+    ],
     'Monthly MNI' => [
         'mni.view' => 'View the Monthly MNI (each CRA\'s monthly targets and target income statement)',
         'mni.manage' => 'Type in the Monthly MNI targets (orders, conversion rate, AOV, percentages, Tax Allocation, Advertising Cost)',
