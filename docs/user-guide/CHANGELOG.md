@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-12 · User Access (every module) · A module's "view" permission now comes with its wider ones: a role given a module's "every CRA's" (view all), "manage" or "edit" permission sees it in the menu and can open it (e.g. a Visitor with only "every CRA's Daily I.S."). A role that may only look can't tag Exclusive Leads POS orders (the lead's CRA or Exclusive Leads manage only) or add Pancake reservations (CRAs and managers only) · shots: none
+
 - 2026-11-12 · CRA Dashboard · Supervisors (and Team Leads) see "Check who gets these leads" when a customer with an open lead has CRAs that disagree: their High AOV / VIP CRA isn't the CRA with the most orders, or someone else claimed them. Shows who has the lead, the claim, the High AOV / VIP CRA, the most-orders CRA (with order count) and who the rules give it to (claim, then High AOV / VIP, then most orders); hidden when there are none · shots: cra-dashboard
 - 2026-11-12 · Segmentation / Exclusive Lead Tracker · Leads the app never made (customers whose last delivery ran out of stock with no lead and no reorder since) added once as untouched backlog on their out-of-stock day: for the customer's CRA, else in the pool for the daily fill · shots: none
 

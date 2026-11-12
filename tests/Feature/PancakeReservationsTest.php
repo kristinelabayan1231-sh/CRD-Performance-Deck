@@ -45,6 +45,15 @@ class PancakeReservationsTest extends TestCase
         ]);
     }
 
+    public function test_a_role_that_may_only_look_cannot_add_reservations(): void
+    {
+        $visitor = User::create(['email' => 'visitor@example.com', 'display_name' => 'Visitor', 'is_active' => true,
+            'role_id' => Role::create(['name' => 'Visitor', 'slug' => 'visitor-test', 'permissions' => ['segmentation.view_all']])->id]);
+
+        $this->actingAs($visitor)->post(route('segmentation.reservations.store'), ['phone_number' => '09171234567'])->assertForbidden();
+        $this->assertSame(0, PancakeReservation::count());
+    }
+
     public function test_adding_a_reservation_fills_it_from_their_last_delivered_order_and_tags_it_reserved_and_contacted_now(): void
     {
         $this->delivery('9171234567', '2026-10-01');

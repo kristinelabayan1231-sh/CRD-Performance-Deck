@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class RoleTest extends TestCase
@@ -86,6 +87,30 @@ class RoleTest extends TestCase
         $empty = Role::create(['slug' => 'empty', 'name' => 'Empty', 'permissions' => []]);
         $this->actingAs($this->owner)->delete("/user-access/roles/{$empty->id}");
         $this->assertModelMissing($empty);
+    }
+
+    /**
+     * @return array<string, array{list<string>, string, bool}>
+     */
+    public static function viewPermissions(): array
+    {
+        return [
+            'own view' => [['daily_is.view'], 'daily_is.view', true],
+            "every CRA's comes with view" => [['daily_is.view_all'], 'daily_is.view', true],
+            'manage comes with view' => [['mni.manage'], 'mni.view', true],
+            'edit comes with view' => [['customers.high_value.edit'], 'customers.high_value.view', true],
+            "view doesn't come with every CRA's" => [['daily_is.view'], 'daily_is.view_all', false],
+            "another module's every CRA's doesn't count" => [['cvr_tracker.view_all'], 'daily_is.view', false],
+            "a module named like another's doesn't count" => [['daily_is_products.manage'], 'daily_is.view', false],
+        ];
+    }
+
+    #[DataProvider('viewPermissions')]
+    public function test_a_modules_wider_permissions_come_with_viewing_it(array $granted, string $asked, bool $allowed): void
+    {
+        $role = Role::create(['name' => 'Visitor', 'slug' => 'visitor-test', 'permissions' => $granted]);
+
+        $this->assertSame($allowed, $role->allows($asked));
     }
 
     public function test_only_super_admins_manage_roles(): void

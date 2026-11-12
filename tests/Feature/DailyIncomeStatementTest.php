@@ -391,6 +391,16 @@ class DailyIncomeStatementTest extends TestCase
             ->assertSeeInOrder(['data-is-shot-file="Daily IS - Customer Retention Department - 2026-10-01.png"', 'data-is-shot-file="Daily IS - Regina - 2026-10-01.png"'], false);
     }
 
+    public function test_a_role_with_only_every_cras_daily_is_sees_it_in_the_menu_and_opens_it(): void
+    {
+        $visitor = User::create(['email' => 'visitor@example.com', 'display_name' => 'Visitor', 'is_active' => true,
+            'role_id' => Role::create(['name' => 'Visitor', 'slug' => 'visitor-test', 'permissions' => ['daily_is.view_all']])->id]);
+
+        $this->actingAs($visitor)->get(route('daily-is.index', ['date' => self::DAY]))->assertOk();
+        // The menu, on another page.
+        $this->actingAs($visitor)->get(route('dashboard'))->assertOk()->assertSee('href="'.route('daily-is.index').'"', false);
+    }
+
     public function test_cra_without_daily_is_permission_is_refused(): void
     {
         $this->actingAs($this->user('Regina', Role::CRA, 'CRD Rej Vergara'))->get(route('daily-is.index'))->assertForbidden();

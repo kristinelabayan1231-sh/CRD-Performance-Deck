@@ -51,6 +51,8 @@ class PancakeReservationController extends Controller
     public function store(Request $request, PancakeReservationLookup $lookup): RedirectResponse
     {
         $user = $request->user();
+        // A CRA's own, or one a manager adds for a CRA: a role that may only look (e.g. Visitor) can't add any.
+        abort_unless($user->can('segmentation.manage') || LeadGenerator::cras()->contains('id', $user->id), 403, 'Only CRAs and managers can add reservations.');
         $data = $request->validate([
             'customer_name' => ['nullable', 'string', 'max:255'],
             'phone_number' => ['required', 'string', 'max:30', function (string $attribute, string $value, Closure $fail) {

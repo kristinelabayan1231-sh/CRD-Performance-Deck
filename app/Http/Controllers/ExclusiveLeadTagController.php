@@ -23,7 +23,7 @@ class ExclusiveLeadTagController extends Controller
     {
         $user = $request->user();
         abort_unless(
-            $user->can('exclusive_leads.view_all') || $lead->assigned_to === $user->id || ExclusiveReservedLead::where('lead_id', $lead->id)->where('user_id', $user->id)->exists(),
+            $user->can('exclusive_leads.manage') || $lead->assigned_to === $user->id || ExclusiveReservedLead::where('lead_id', $lead->id)->where('user_id', $user->id)->exists(),
             403,
             'You can only tag your own leads.',
         );
