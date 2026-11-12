@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\CustomerAccount;
 use App\Models\CustomerLink;
 use App\Models\Lead;
 use Illuminate\Support\Facades\Cache;
@@ -23,11 +24,14 @@ class LeadConflicts
     public function __construct(private CustomerOwners $owners, private HighValueCustomers $highValue) {}
 
     /**
+     * The last worked-out list (leads:refresh-conflicts, every 10 minutes), empty until the first run.
+     *
      * @return list<array{phone_key: string, customer_name: string, phone_number: string, lead_id: int, listed_on: string, product_name: ?string, holder_id: ?int, claim_id: ?int, high_value_id: ?int, high_value_label: ?string, orders_id: ?int, orders_count: int, rules_id: ?int}>
      */
     public function all(): array
     {
-        return Cache::get(self::CACHE_KEY) ?? $this->refresh();
+        // Never worked out inside a page view: until leads:refresh-conflicts has run there's nothing to show.
+        return Cache::get(self::CACHE_KEY) ?? [];
     }
 
     /**
@@ -48,13 +52,35 @@ class LeadConflicts
      */
     private function build(): array
     {
-        // Each customer's latest open lead.
+        // Every conflict has a High AOV / VIP CRA, so only those customers are checked.
+        $highValueOf = CustomerAccount::whereNotNull('assigned_cra_id')->pluck('assigned_cra_id', 'phone_key')
+            ->mapWithKeys(fn ($craId, $key) => [(string) $key => (int) $craId])->all();
+        if ($highValueOf === []) {
+            return [];
+        }
+
+        $primaryOf = [];
+        foreach (array_keys($highValueOf) as $key) {
+            $primaryOf[(string) $key] = (string) $key;
+        }
+        foreach (array_chunk(array_keys($highValueOf), 1000) as $chunk) {
+            CustomerLink::whereIn('primary_phone_key', $chunk)->get(['phone_key', 'primary_phone_key'])
+                ->each(function (CustomerLink $link) use (&$primaryOf) {
+                    $primaryOf[(string) $link->phone_key] = (string) $link->primary_phone_key;
+                });
+        }
+
+        // Each of their latest open lead, by main number.
         $leads = [];
-        foreach (Lead::unprocessed()->notConverted()->withoutPosSales()->orderBy('listed_on')->orderBy('id')
-            ->get(['id', 'customer_name', 'phone_number', 'product_name', 'assigned_to', 'listed_on']) as $lead) {
-            $key = LeadGenerator::normalizePhone((string) $lead->phone_number);
-            if ($key !== '') {
-                $leads[$key] = $lead;
+        foreach (array_chunk(array_keys($primaryOf), 500) as $chunk) {
+            $variants = collect($chunk)->flatMap(fn ($key) => [$key, '0'.$key, '63'.$key, '+63'.$key])->all();
+            foreach (Lead::unprocessed()->notConverted()->withoutPosSales()->whereIn('phone_number', $variants)
+                ->orderBy('listed_on')->orderBy('id')
+                ->get(['id', 'customer_name', 'phone_number', 'product_name', 'assigned_to', 'listed_on']) as $lead) {
+                $customer = $primaryOf[LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null;
+                if ($customer !== null && (! isset($leads[$customer]) || ! $lead->listed_on->lessThan($leads[$customer]->listed_on))) {
+                    $leads[$customer] = $lead;
+                }
             }
         }
 
@@ -63,17 +89,15 @@ class LeadConflicts
         }
 
         $keys = array_map('strval', array_keys($leads));
-        $primaryOf = CustomerLink::whereIn('phone_key', $keys)->pluck('primary_phone_key', 'phone_key')->map(fn ($key) => (string) $key)->all();
         $rows = [];
 
         foreach (array_chunk($keys, 2000) as $chunk) {
             $claims = $this->owners->claimed($chunk);
-            $highValue = $this->highValue->crasFor($chunk);
             $byOrders = $this->owners->byOrders($chunk);
 
             foreach ($chunk as $key) {
                 $claim = $claims[$key] ?? null;
-                $high = $highValue[$key] ?? null;
+                $high = $highValueOf[$key] ?? null;
                 $most = $byOrders[$key] ?? null;
                 $isConflict = ($high !== null && $most !== null && $high !== $most) || ($claim !== null && $high !== null && $claim !== $high);
 
@@ -82,9 +106,8 @@ class LeadConflicts
                 }
 
                 $lead = $leads[$key];
-                $customer = $primaryOf[$key] ?? $key;
-                $rows[$customer] = [
-                    'phone_key' => $customer,
+                $rows[$key] = [
+                    'phone_key' => $key,
                     'customer_name' => $lead->customer_name ?: 'Unknown',
                     'phone_number' => (string) $lead->phone_number,
                     'lead_id' => $lead->id,
