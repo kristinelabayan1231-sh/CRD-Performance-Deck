@@ -111,6 +111,19 @@ class SegmentationTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard'))->assertSee('1 FSD lead with no quantity in Pancake')->assertSee('Customer f2');
     }
 
+    public function test_the_no_quantity_banner_counts_every_lead_but_lists_only_50(): void
+    {
+        foreach (range(1, 52) as $n) {
+            Lead::create(['order_id' => "Q{$n}", 'customer_name' => "No Qty {$n}", 'phone_number' => '0917'.str_pad((string) $n, 7, '0', STR_PAD_LEFT),
+                'product_name' => 'Sinuxyl', 'qty' => 1, 'qty_unknown' => true, 'delivered_date' => '2026-08-01', 'consumption_days' => 15,
+                'est_out_of_stock_date' => '2026-08-15', 'lead_type' => Lead::TYPE_FSD]);
+        }
+
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()
+            ->assertSee('52 FSD leads with no quantity in Pancake')
+            ->assertSee('…and 2 more.');
+    }
+
     public function test_a_successful_sync_keeps_a_copy_of_every_delivered_order(): void
     {
         $this->fakeApi([

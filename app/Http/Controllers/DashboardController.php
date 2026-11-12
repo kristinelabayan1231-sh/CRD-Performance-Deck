@@ -99,13 +99,15 @@ class DashboardController extends Controller
         }
 
         // Managers/supervisors: FSD leads whose quantity Pancake didn't have (qty 1 assumed).
-        $qtyUnknown = $user->can('segmentation.view_all')
-            ? Lead::where('qty_unknown', true)->whereDate('est_out_of_stock_date', '<=', Lead::today())
-                ->with('assignee')->orderByDesc('est_out_of_stock_date')->orderBy('customer_name')->get()
+        // Counted in the database, and only the 50 the banner lists are loaded: there can be tens of thousands.
+        $qtyUnknownLeads = Lead::where('qty_unknown', true)->whereDate('est_out_of_stock_date', '<=', Lead::today());
+        $qtyUnknownCount = $user->can('segmentation.view_all') ? (clone $qtyUnknownLeads)->count() : 0;
+        $qtyUnknown = $qtyUnknownCount > 0
+            ? $qtyUnknownLeads->with('assignee')->orderByDesc('est_out_of_stock_date')->orderBy('customer_name')->limit(50)->get()
             : collect();
 
         return view('dashboard', [
-            'qtyUnknown' => $qtyUnknown, 'segmentation' => $segmentation, 'results' => $results, 'churn' => $churnRate, 'customers' => $customers,
+            'qtyUnknown' => $qtyUnknown, 'qtyUnknownCount' => $qtyUnknownCount, 'segmentation' => $segmentation, 'results' => $results, 'churn' => $churnRate, 'customers' => $customers,
             'logistics' => $user->can('segmentation.view'), 'logisticsPeriod' => $logisticsPeriod, 'logisticsFetchedAt' => $logisticsFetchedAt,
             'range' => $range, 'filters' => $filters, 'leadFrom' => $leadFrom, 'leadTo' => $leadTo, 'realToday' => $realToday,
             'version' => DashboardVersion::current(), 'pancakeSyncedAt' => PancakeSync::lastSync($realToday),
