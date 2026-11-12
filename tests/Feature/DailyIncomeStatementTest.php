@@ -208,6 +208,8 @@ class DailyIncomeStatementTest extends TestCase
         $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
 
         $this->assertEqualsWithDelta(70 + 50, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+        // The retention API's figures (costAndReach) come out the same.
+        $this->assertEqualsWithDelta(70 + 50, app(DailyIncomeStatement::class)->costAndReach(collect([$regina]), CarbonImmutable::parse(self::DAY))[$regina->id]['product_cost'], 0.001);
     }
 
     public function test_product_cost_leaves_out_a_tsd_add_on_named_after_the_cards_product_but_keeps_it_alone(): void

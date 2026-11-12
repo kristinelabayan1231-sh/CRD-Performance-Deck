@@ -25,6 +25,9 @@ use Illuminate\Support\Collection;
  *   marked processed).
  * - repeatCustomerOrders: orders (not canceled) of customers with a delivered order before that day in the Customer
  *   Database, merged numbers counted together.
+ * - productCost: the Daily I.S. Product Cost of the day's orders (Shecom's cost once synced; a day set from the CRD Sales
+ *   Report sheet takes the sheet's). inquiries / engagements: the CRAs' PC Report Total Inquiries and Total Engagement,
+ *   typed per page per day (the CRD sheet's "Leads" and "Engagement"; not the tracker's leads above).
  * - reactivatedCustomers: not tracked yet, always null.
  */
 class RetentionDaily
@@ -32,7 +35,7 @@ class RetentionDaily
     /** Longest range one request may ask for, in days. */
     public const MAX_DAYS = 92;
 
-    public function __construct(private CvrTracker $cvrTracker) {}
+    public function __construct(private CvrTracker $cvrTracker, private DailyIncomeStatement $statement) {}
 
     /**
      * One entry per day $from–$to, days without orders or leads included.
@@ -54,18 +57,33 @@ class RetentionDaily
             $counted = $dayOrders->where('status', '!==', PancakeOrder::CANCELED);
             $boughtBefore = $this->cvrTracker->deliveredBefore($counted->pluck('phone_key')->filter()->unique()->values()->all(), $day);
 
+            // From the Daily I.S. of the day: each CRA's Product Cost, and their PC Report Total Inquiries / Total Engagement.
+            $statement = $this->statement->costAndReach($cras, $day);
+            $fromStatement = fn (array $figures) => [
+                'productCost' => round((float) ($figures['product_cost'] ?? 0), 2),
+                'inquiries' => (int) ($figures['leads'] ?? 0),
+                'engagements' => (int) ($figures['engagements'] ?? 0),
+            ];
+            $department = [
+                'product_cost' => array_sum(array_column($statement, 'product_cost')),
+                'leads' => array_sum(array_column($statement, 'leads')),
+                'engagements' => array_sum(array_column($statement, 'engagements')),
+            ];
+
             $agentIds = $dayOrders->pluck('cra')->merge($dayLeads->keys())->unique()
                 ->sortBy(fn (int $id) => $names->keys()->search($id) === false ? PHP_INT_MAX : $names->keys()->search($id), SORT_NUMERIC);
 
             $days[] = [
                 'date' => $date,
                 ...$this->figures($dayOrders, $dayLeads->sum('leads'), $dayLeads->sum('contacted')),
+                ...$fromStatement($department),
                 'repeatCustomerOrders' => $counted->filter(fn (array $order) => ($boughtBefore[$order['phone_key']] ?? 0) > 0)->count(),
                 'reactivatedCustomers' => null,
                 'agents' => $agentIds->map(fn (int $id) => [
                     'id' => $id,
                     'name' => $names[$id] ?? User::find($id)?->displayName(),
                     ...$this->figures($dayOrders->where('cra', $id), $dayLeads[$id]['leads'] ?? 0, $dayLeads[$id]['contacted'] ?? 0),
+                    ...$fromStatement($statement[$id] ?? []),
                 ])->values()->all(),
             ];
         }

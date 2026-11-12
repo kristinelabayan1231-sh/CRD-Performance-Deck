@@ -445,6 +445,46 @@ class DailyIncomeStatement
     }
 
     /**
+     * Each CRA's Product Cost, inquiries and engagements on $day, every product added up, as day() works them out
+     * (a day set from the CRD Sales Report sheet takes the sheet's cost), without the rest of the statement: for the
+     * retention API, which may ask for many days.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{product_cost: float, leads: int, engagements: int}> cra id => figures
+     */
+    public function costAndReach(Collection $cras, CarbonImmutable $day): array
+    {
+        $groups = self::inProductOrder(ProductGroups::on($day));
+        $groupOf = collect($groups)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
+        $groupNames = collect($groups)->pluck('name', 'slug');
+        $figures = $cras->mapWithKeys(fn (User $cra) => [$cra->id => ['product_cost' => 0.0, 'leads' => 0, 'engagements' => 0]])->all();
+
+        foreach ($this->entries($cras, $groupOf->keys()->all(), $day, $day) as $entry) {
+            $figures[$entry->user_id]['leads'] += (int) $entry->inquiries;
+            $figures[$entry->user_id]['engagements'] += (int) $entry->engagements;
+        }
+
+        $sheet = self::productCostOverrides()[$day->toDateString()] ?? null;
+        if ($sheet !== null) {
+            foreach ($cras as $cra) {
+                foreach ($groups as $group) {
+                    $figures[$cra->id]['product_cost'] += (float) ($sheet[(string) $cra->display_name][self::productKey($group['name']) ?? $group['slug']] ?? 0);
+                }
+            }
+
+            return $figures;
+        }
+
+        $orders = $this->pageOrders->forDay($cras, $groupOf->keys()->all(), $day)['orders'];
+        $costs = $orders->isEmpty() ? [] : $this->productCosts($orders->mapWithKeys(fn (array $order) => [$order['id'] => $groupNames[$groupOf[$order['page']]]])->all(), $day);
+        foreach ($orders as $order) {
+            $figures[$order['cra']]['product_cost'] += $costs[$order['id']] ?? 0;
+        }
+
+        return $figures;
+    }
+
+    /**
      * Each CRA's total leads/inquiries and engagements over $from–$to, every product added up (Report Summary).
      *
      * @param  Collection<int, User>  $cras

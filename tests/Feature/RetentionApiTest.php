@@ -7,6 +7,8 @@ use App\Models\CvrOrderEntry;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
+use App\Models\PcReportEntry;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\WorkingDate;
@@ -135,6 +137,24 @@ class RetentionApiTest extends TestCase
             ->assertJsonPath('data.0.agents.1.name', 'Lhea')
             ->assertJsonPath('data.0.agents.1.orders', 1)
             ->assertJsonPath('data.0.agents.1.grossSales', 400);
+    }
+
+    public function test_a_day_has_the_daily_is_product_cost_and_the_pc_reports_inquiries_and_engagements(): void
+    {
+        Product::create(['name' => 'Sinuxyl']);
+        // Shecom's product cost of the order, once synced.
+        $this->order('REGINA CRUZ', 1000, 3, ['page_name' => 'Sinuxyl Nasal Spray', 'items' => [['qty' => 1, 'pieces' => 2, 'name' => 'Sinuxyl']]])
+            ->forceFill(['shecom_product_cost' => 70])->save();
+        PcReportEntry::create(['user_id' => $this->regina->id, 'page' => 'Sinuxyl Nasal Spray', 'category' => '', 'date' => self::DAY, 'inquiries' => 1200, 'engagements' => 300]);
+
+        $this->fetch()->assertOk()
+            ->assertJsonPath('data.0.productCost', 70)
+            ->assertJsonPath('data.0.inquiries', 1200)
+            ->assertJsonPath('data.0.engagements', 300)
+            ->assertJsonPath('data.0.agents.0.name', 'Regina')
+            ->assertJsonPath('data.0.agents.0.productCost', 70)
+            ->assertJsonPath('data.0.agents.0.inquiries', 1200)
+            ->assertJsonPath('data.0.agents.0.engagements', 300);
     }
 
     public function test_repeat_customer_orders_are_from_customers_delivered_before_that_day(): void
