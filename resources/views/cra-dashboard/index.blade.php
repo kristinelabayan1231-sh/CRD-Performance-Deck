@@ -27,6 +27,46 @@
             @endif
         </header>
 
+        {{-- Supervisors: customers whose CRAs disagree (LeadConflicts) --}}
+        @if ($conflicts !== [])
+            <x-panel title="Check who gets these leads" icon="users" accent="coral" bodyClass="p-0">
+                <x-slot:actions>
+                    <span class="font-semibold text-coral-700">{{ number_format(count($conflicts)) }} {{ str('customer')->plural(count($conflicts)) }}</span>
+                </x-slot:actions>
+                <p class="p-4 text-sm text-muted">These customers have an open lead, but their CRAs disagree: their High AOV / VIP CRA isn't the CRA with the most orders, or someone else claimed them. The rules go claim first, then High AOV / VIP CRA, then most orders; check the lead is with the right CRA. Updates every 10 minutes.</p>
+                <div class="max-h-[28rem] overflow-auto border-t border-line">
+                    <table class="w-full text-left text-sm">
+                        <thead class="sticky top-0 bg-[#fff7f7] text-xs whitespace-nowrap text-muted">
+                            <tr>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Customer</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Contact #</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Lead day</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Lead is with</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Claimed by</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">High AOV / VIP CRA</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Most orders</th>
+                                <th scope="col" class="px-4 py-2.5 font-semibold">Rules give it to</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-line bg-white">
+                            @foreach ($conflicts as $row)
+                                <tr>
+                                    <td class="px-4 py-2.5 font-medium text-ink">{{ $row['customer_name'] }}</td>
+                                    <td class="px-4 py-2.5 tabular-nums">{{ $row['phone_number'] }}</td>
+                                    <td class="px-4 py-2.5 whitespace-nowrap tabular-nums">{{ \Carbon\CarbonImmutable::parse($row['listed_on'])->format('M j, Y') }}</td>
+                                    <td @class(['px-4 py-2.5', 'font-semibold text-coral-700' => $row['holder_id'] !== $row['rules_id']])>{{ $craNames[$row['holder_id']] ?? 'Pool' }}</td>
+                                    <td class="px-4 py-2.5">{{ $craNames[$row['claim_id']] ?? '—' }}</td>
+                                    <td class="px-4 py-2.5">{{ isset($row['high_value_id']) ? ($craNames[$row['high_value_id']] ?? 'Former CRA').' · '.$row['high_value_label'] : '—' }}</td>
+                                    <td class="px-4 py-2.5">{{ isset($row['orders_id']) ? ($craNames[$row['orders_id']] ?? 'Former CRA').' · '.$row['orders_count'].' '.str('order')->plural($row['orders_count']) : '—' }}</td>
+                                    <td class="px-4 py-2.5 font-semibold text-ink">{{ $craNames[$row['rules_id']] ?? '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </x-panel>
+        @endif
+
         {{-- Today --}}
         <section aria-label="Today" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <a href="{{ $pending['url'] }}" class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">

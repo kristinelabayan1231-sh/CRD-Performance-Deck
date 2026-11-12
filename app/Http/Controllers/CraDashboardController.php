@@ -10,6 +10,7 @@ use App\Services\CustomerReassignment;
 use App\Services\DailyIncomeStatement;
 use App\Services\ExclusiveLeads;
 use App\Services\HighValueCustomers;
+use App\Services\LeadConflicts;
 use App\Services\LeadGenerator;
 use App\Services\SalesGoalProgress;
 use App\Support\DashboardRange;
@@ -24,13 +25,14 @@ use RuntimeException;
 /**
  * CRA Dashboard, a CRA's home page: today's pending leads (linking to their tracker), running sales against the daily
  * goal, net income, their High AOV and VIP customers, and the customers up for reassignment they can claim
- * (CustomerReassignment). A supervisor can open any CRA's, without claiming.
+ * (CustomerReassignment). A supervisor can open any CRA's, without claiming, and sees the customers whose CRA
+ * assignments disagree (LeadConflicts).
  */
 class CraDashboardController extends Controller
 {
     private const PER_PAGE = 25;
 
-    public function index(Request $request, CustomerReassignment $reassignment, SalesGoalProgress $goals, DailyIncomeStatement $statement, HighValueCustomers $highValue, ExclusiveLeads $exclusive): View
+    public function index(Request $request, CustomerReassignment $reassignment, SalesGoalProgress $goals, DailyIncomeStatement $statement, HighValueCustomers $highValue, ExclusiveLeads $exclusive, LeadConflicts $conflicts): View
     {
         $user = $request->user();
         $filters = $request->validate([
@@ -93,6 +95,8 @@ class CraDashboardController extends Controller
         ]);
 
         return view('cra-dashboard.index', [
+            // Supervisors only: customers whose CRAs disagree, so who gets their lead needs a look.
+            'conflicts' => $canViewAll && ! $isCra ? $conflicts->all() : [],
             'cra' => $cra,
             'cras' => $canViewAll ? $cras : collect(),
             'canClaim' => $cra->id === $user->id && $isCra,

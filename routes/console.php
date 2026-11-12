@@ -127,6 +127,14 @@ Schedule::command('customers:refresh-reassignment')
     ->withoutOverlapping(20)
     ->runInBackground();
 
+// CRA Dashboard → Check who gets these (supervisors): customers with an open lead whose claim, High AOV / VIP CRA and
+// most-orders CRA disagree, worked out ahead in its own process.
+Schedule::command('leads:refresh-conflicts')
+    ->everyTenMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(20)
+    ->runInBackground();
+
 // Daily I.S. Product Cost: Shecom's cost of each Pancake item, every hour at :10 (a change counts from its effective day).
 Schedule::command('shecom:product-costs')
     ->hourlyAt(10)
