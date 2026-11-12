@@ -34,12 +34,22 @@ class CustomerOwners
      */
     public function for(array $phoneKeys): array
     {
-        $owners = $this->pick($phoneKeys, true, fn (array $byCra) => collect($byCra)
+        return $this->claimed(array_values(array_unique(array_filter($phoneKeys)))) + $this->byOrders($phoneKeys);
+    }
+
+    /**
+     * The CRA who has handled the most of each of these numbers' customers' orders (the last of them when level), claims
+     * left out: what for() gives when nobody has claimed the customer.
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, int> phone key => CRA id
+     */
+    public function byOrders(array $phoneKeys): array
+    {
+        return $this->pick($phoneKeys, true, fn (array $byCra) => collect($byCra)
             ->map(fn (array $counted, int $craId) => [...$counted, 'cra' => $craId])
             ->sortBy([['count', 'desc'], ['latest', 'desc'], ['cra', 'asc']])
             ->first()['cra']);
-
-        return $this->claimed(array_values(array_unique(array_filter($phoneKeys)))) + $owners;
     }
 
     /**
