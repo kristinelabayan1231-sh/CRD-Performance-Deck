@@ -11,6 +11,7 @@ use App\Http\Controllers\CancelledOrderController;
 use App\Http\Controllers\ConnectionCheckController;
 use App\Http\Controllers\ConversionBreakdownController;
 use App\Http\Controllers\CraDashboardController;
+use App\Http\Controllers\CraGrossSalesController;
 use App\Http\Controllers\CraScheduleController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
@@ -215,6 +216,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [ActualIncomeController::class, 'index'])->name('index');
         Route::put('/', [ActualIncomeController::class, 'update'])->middleware('can:actual_income.manage')->name('update');
     });
+
+    Route::get('/cra-gross-sales', [CraGrossSalesController::class, 'index'])->middleware('can:cra_gross_sales.view')->name('cra-gross-sales.index');
 
     Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
         Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
