@@ -208,6 +208,8 @@ class DailyIncomeStatementTest extends TestCase
         $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))->viewData('data');
 
         $this->assertEqualsWithDelta(70 + 50, $data['cras'][$regina->id]['products']['sinuxyl']['product_cost'], 0.001);
+        // The retention API's figures (costAndReach) come out the same.
+        $this->assertEqualsWithDelta(70 + 50, app(DailyIncomeStatement::class)->costAndReach(collect([$regina]), CarbonImmutable::parse(self::DAY))[$regina->id]['product_cost'], 0.001);
     }
 
     public function test_product_cost_leaves_out_a_tsd_add_on_named_after_the_cards_product_but_keeps_it_alone(): void
@@ -389,6 +391,16 @@ class DailyIncomeStatementTest extends TestCase
         $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('daily-is.index', ['date' => self::DAY]))
             ->assertOk()
             ->assertSeeInOrder(['data-is-shot-file="Daily IS - Customer Retention Department - 2026-10-01.png"', 'data-is-shot-file="Daily IS - Regina - 2026-10-01.png"'], false);
+    }
+
+    public function test_a_role_with_only_every_cras_daily_is_sees_it_in_the_menu_and_opens_it(): void
+    {
+        $visitor = User::create(['email' => 'visitor@example.com', 'display_name' => 'Visitor', 'is_active' => true,
+            'role_id' => Role::create(['name' => 'Visitor', 'slug' => 'visitor-test', 'permissions' => ['daily_is.view_all']])->id]);
+
+        $this->actingAs($visitor)->get(route('daily-is.index', ['date' => self::DAY]))->assertOk();
+        // The menu, on another page.
+        $this->actingAs($visitor)->get(route('dashboard'))->assertOk()->assertSee('href="'.route('daily-is.index').'"', false);
     }
 
     public function test_cra_without_daily_is_permission_is_refused(): void

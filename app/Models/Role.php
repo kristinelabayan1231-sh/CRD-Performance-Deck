@@ -62,8 +62,25 @@ class Role extends Model
         return array_values(array_intersect($this->permissions ?? [], array_keys(config('access.permissions'))));
     }
 
+    /**
+     * Whether the role has $permission. A module's view permission comes with its wider ones: a role that may see every
+     * CRA's (".view_all"), manage (".manage") or edit (".edit") a module may also open it, so giving e.g. a Visitor only
+     * "every CRA's Daily I.S." shows Daily I.S. in the menu and opens the page.
+     */
     public function allows(string $permission): bool
     {
-        return in_array($permission, $this->grantedPermissions(), true);
+        $granted = $this->grantedPermissions();
+
+        if (in_array($permission, $granted, true)) {
+            return true;
+        }
+
+        if (! str_ends_with($permission, '.view')) {
+            return false;
+        }
+
+        $module = substr($permission, 0, -strlen('.view'));
+
+        return array_intersect(["{$module}.view_all", "{$module}.manage", "{$module}.edit"], $granted) !== [];
     }
 }

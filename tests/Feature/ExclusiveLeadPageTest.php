@@ -364,6 +364,16 @@ class ExclusiveLeadPageTest extends TestCase
         return [$joanna, $lead];
     }
 
+    public function test_a_role_that_may_only_look_at_every_cras_list_cannot_tag_pos_orders(): void
+    {
+        [, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]]]);
+        $visitor = User::create(['email' => 'visitor@example.com', 'display_name' => 'Visitor', 'is_active' => true,
+            'role_id' => Role::create(['name' => 'Visitor', 'slug' => 'visitor-test', 'permissions' => ['exclusive_leads.view_all']])->id]);
+
+        $this->actingAs($visitor)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => '749'])->assertForbidden();
+        Http::assertNotSent(fn (ClientRequest $request) => $request->method() === 'PUT');
+    }
+
     public function test_the_dropdown_adds_the_tag_to_the_leads_order_keeping_its_other_tags(): void
     {
         [$joanna, $lead] = $this->leadWithPancakeOrder([['tags' => [398, 4]], ['tags' => [398, 4, 749]]]);
