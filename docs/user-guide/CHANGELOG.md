@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-13 · Customer Database, High AOV & VIP, Churn · A view that isn't ready yet (a period, tab, sort or search nobody opened in the last few minutes) shows "Preparing this view…" and reloads itself until it's ready, instead of timing out; it's worked out in the background as the same user. The default views stay ready as before · shots: none
+
 - 2026-11-13 · Exclusive Lead Tracker · 1,000 leads are kept held for the exclusive CRA's days ahead on their own; supervisors see how many are held (up to what's left of the month's target) and a "Load 500 more" button. Her daily list comes from those held leads, her own backlog and the day's new leads · shots: exclusive-leads
 
 - 2026-11-13 · CRA Dashboard · "Check who gets these leads" now has an Assign to column for supervisors (Transfer backlog permission): pick the CRA (the rules' CRA is chosen already; "(has it)" marks who holds the lead) and press Assign. The lead moves from today like a backlog transfer, or stays put when the CRA who has it is chosen, and the customer leaves the list either way · shots: cra-dashboard
