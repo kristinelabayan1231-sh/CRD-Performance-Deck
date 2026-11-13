@@ -720,9 +720,10 @@ function initRowMenu() {
     };
 
     document.addEventListener('contextmenu', (event) => {
-        const target = event.target.closest('tr[data-lead-row]');
-        // Rows the user can't edit (no data-lead-row) keep the browser's own menu.
+        // A view-only row (data-copy-row) gets Copy mobile number only; other rows the user can't edit keep the browser's menu.
+        const target = event.target.closest('tr[data-lead-row], tr[data-copy-row]');
         if (!target) return close();
+        const copyOnly = target.matches('[data-copy-row]');
         // Highlighted text or a field: keep the browser's menu so Copy / Paste work as usual.
         const selection = window.getSelection();
         if ((selection && !selection.isCollapsed && target.contains(selection.anchorNode))
@@ -730,10 +731,16 @@ function initRowMenu() {
         event.preventDefault();
         row = target;
         copyPhone.hidden = !row.dataset.phone;
-        const toProcessed = row.dataset.mark === 'processed';
-        item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
-        item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
-        loadHandover(row);
+        copyName.hidden = divider.hidden = item.hidden = copyOnly;
+        if (copyOnly) {
+            if (copyPhone.hidden) return close();
+            handover.hidden = true;
+        } else {
+            const toProcessed = row.dataset.mark === 'processed';
+            item.innerHTML = `<span aria-hidden="true" class="size-2.5 rounded-full ${toProcessed ? 'bg-teal' : 'bg-coral'}"></span>`;
+            item.append(toProcessed ? 'Mark as catered' : 'Unmark catered');
+            loadHandover(row);
+        }
         menu.hidden = false;
         // At the pointer; from the keyboard (menu key), under the row's first shown cell (columns can be hidden).
         const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : (() => {
@@ -742,7 +749,7 @@ function initRowMenu() {
         })();
         menu.style.left = `${Math.min(at.x, window.innerWidth - menu.offsetWidth - 8)}px`;
         menu.style.top = `${Math.min(at.y, window.innerHeight - menu.offsetHeight - 8)}px`;
-        copyName.focus();
+        (copyOnly ? copyPhone : copyName).focus();
     });
 
     copyName.addEventListener('click', () => {

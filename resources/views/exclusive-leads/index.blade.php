@@ -1,7 +1,7 @@
 <x-layouts.app title="Exclusive Lead Tracker">
     <div class="flex flex-col">
         <div class="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3">
-            <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· Pick a day on the calendar, then update the leads below.</span></h1>
+            <h1 class="text-xl font-semibold">Exclusive Lead Tracker <span class="text-sm font-normal text-muted">· {{ $readOnly ? 'Pick a day on the calendar to see its leads.' : 'Pick a day on the calendar, then update the leads below.' }}</span></h1>
 
             <div class="flex flex-wrap items-center gap-3 text-sm">
                 @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
@@ -24,6 +24,12 @@
         @if ($cra)
             {{-- Same search and filters as the Segmentation Tracker --}}
             <div class="mb-3 shrink-0">@include('segmentation._filters', ['filtersRoute' => 'exclusive-leads.index', 'oneCraAtATime' => true, 'rangeHint' => "Leads on the lists of every day in this range."])</div>
+        @endif
+
+        @if ($readOnly)
+            <p class="mb-3 shrink-0 rounded-lg border border-line bg-white px-4 py-2 text-sm">
+                <strong>View only.</strong> This is {{ $cra->displayName() }}'s list: you can look through it and copy contact numbers (right-click a row, or the copy button for the whole month), but not change anything.
+            </p>
         @endif
 
         @if ($errors->hasAny(['effective_from', 'daily_leads', 'month_target', 'orders_per_day']))

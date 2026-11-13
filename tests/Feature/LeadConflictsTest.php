@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ExclusiveLeads;
 use App\Services\PancakeClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -153,6 +154,26 @@ class LeadConflictsTest extends TestCase
 
         $this->actingAs($this->supervisor())->post(route('cra-dashboard.assign', $lead), ['to' => $this->regina->id])
             ->assertSessionHas('status', "Split Customer's lead stays with Regina.");
+    }
+
+    public function test_the_exclusive_cra_can_be_chosen_and_the_lead_goes_on_her_days_list(): void
+    {
+        $joanna = $this->cra('Joanna', 'CRD ANNA PACLIBARE 2');
+        $joanna->forceFill(['exclusive_from' => '2026-10-01'])->save();
+        $lead = $this->taggedLead();
+        CustomerAccount::where('phone_key', '9171111111')->update(['assigned_cra_id' => $joanna->id]);
+        $this->mock(PancakeClient::class)->shouldNotReceive('removeOrderTag');
+        $supervisor = $this->supervisor();
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
+
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertOk()->assertSee('<option value="'.$joanna->id.'"', false);
+
+        $this->actingAs($supervisor)->post(route('cra-dashboard.assign', $lead), ['to' => $joanna->id])
+            ->assertSessionHas('status', "Split Customer's lead is now Joanna's.");
+
+        $this->assertSame($joanna->id, $lead->refresh()->assigned_to);
+        $this->assertDatabaseHas('exclusive_list_leads', ['user_id' => $joanna->id, 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HIGH_VALUE]);
+        $this->assertSame(1, app(ExclusiveLeads::class)->leadsFor($joanna, Lead::today())->whereKey($lead->id)->count());
     }
 
     public function test_choosing_the_cra_who_has_the_lead_keeps_it_there_and_takes_it_off_the_list(): void

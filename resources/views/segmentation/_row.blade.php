@@ -1,15 +1,19 @@
 {{-- One lead row. Expects $lead plus the parent's $canManage, $cras, $visibleOptional, $canTransfer; pass backlogRow => true for carried-over leads. --}}
-@php($canEdit = $canManage || $lead->assigned_to === auth()->id())
+@php($readOnly = $readOnly ?? false)
+@php($canEdit = ! $readOnly && ($canManage || $lead->assigned_to === auth()->id()))
 @php($transferable = ($backlogRow ?? false) && $canTransfer && $lead->carriesOver() && $lead->assigned_to)
 {{-- Right-click opens Copy name / Copy mobile number, Mark as catered / Unmark catered and, on a Pending row, Transfer to the CRA
      of the customer's latest order (segmentation.js) for leads this user can edit.
      Clicking the row opens the customer's Pancake chat and the Spiels panel (spiels.js). --}}
+{{-- View only (a CRA on another CRA's Exclusive Lead Tracker): no chat on click, and right-click offers Copy mobile number only. --}}
 {{-- A High AOV / VIP customer's row looks like theirs in Customer Database: VIP gold, High AOV purple, with its pill --}}
 @php($isVip = (bool) ($highValue['vip'] ?? false))
 @php($isHighAov = ! $isVip && ($highValue['high_aov'] ?? false))
-<tr @class(['cursor-pointer align-middle', 'bg-[#fbf3e0] hover:bg-[#f7ebcd]' => $isVip, 'bg-brand-50/60 hover:bg-brand-50' => $isHighAov, 'hover:bg-canvas/30' => ! $isVip && ! $isHighAov]) data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
-    data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
-    data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}"
+<tr @class(['align-middle', 'cursor-pointer' => ! $readOnly, 'bg-[#fbf3e0] hover:bg-[#f7ebcd]' => $isVip, 'bg-brand-50/60 hover:bg-brand-50' => $isHighAov, 'hover:bg-canvas/30' => ! $isVip && ! $isHighAov])
+    @if ($readOnly) data-copy-row data-phone="{{ $lead->phone_number }}"
+    @else data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
+        data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
+        data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}" @endif
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}"
         @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
@@ -152,8 +156,10 @@
         <td data-col="order_tag" class="px-4 py-3">
             @isset($taggedCustomers[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)])
                 <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700">{{ config('exclusive_leads.order_tag.name') }}</span>
+            @elseif ($readOnly)
+                <span class="text-xs text-muted">—</span>
             @else
-                {{-- Everyone who can see this page's rows can tag them: a CRA sees only their own, supervisors every exclusive CRA's --}}
+                {{-- The CRA whose list it is and supervisors can tag; other CRAs only view it --}}
                 <form method="POST" action="{{ route('exclusive-leads.order-tag', $lead) }}" data-autosave>
                     @csrf
                     <select name="order_tag" aria-label="Add a POS tag to the order of {{ $lead->customer_name }}"
