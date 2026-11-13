@@ -49,8 +49,9 @@ return [
         // GM Logistics dashboard's external API: product costs for the Daily I.S.
         'external_url' => env('SHECOM_EXTERNAL_API_URL', 'https://gm-logisticsdashboard.up.railway.app/api/external/v1'),
         'product_cost_key' => env('SHECOM_PRODUCT_COST_API_KEY'),
-        // Memory for reading the retention report (about 150 MB decoded).
-        'memory_limit' => env('SHECOM_MEMORY_LIMIT', '512M'),
+        // Memory for reading the retention report (about 150 MB decoded; 171 MB at its peak on Nov 13, 2026). Kept well
+        // under the server's 512 MB, which the website and the other scheduled jobs share.
+        'memory_limit' => env('SHECOM_MEMORY_LIMIT', '256M'),
     ],
 
     'pancake' => [
