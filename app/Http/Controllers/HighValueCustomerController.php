@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CustomerAccount;
 use App\Models\CustomerLink;
+use App\Services\CustomerDatabase;
 use App\Services\HighValueCustomers;
 use App\Services\LeadGenerator;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,9 @@ class HighValueCustomerController extends Controller
      */
     public function index(Request $request, HighValueCustomers $highValue): View
     {
+        // Too heavy to work out inside the page: a view not cached yet is prepared in the background.
+        CustomerDatabase::$inBackground = true;
+
         $filters = $request->validate([
             'list' => ['nullable', Rule::in(array_keys(HighValueCustomers::LISTS))],
             'view' => ['nullable', Rule::in(array_keys(HighValueCustomers::VIEWS))],

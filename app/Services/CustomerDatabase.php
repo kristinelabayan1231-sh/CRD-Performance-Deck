@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ViewPreparing;
 use App\Models\CustomerAccount;
 use App\Models\CustomerHistory;
 use App\Models\CustomerLink;
@@ -11,6 +12,7 @@ use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\BackgroundArtisan;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -89,11 +91,45 @@ class CustomerDatabase
     public static bool $refreshing = false;
 
     /**
+     * While true (the Customer Database, High AOV & VIP and Churn pages), a result not cached yet is never worked out in
+     * the request: it is prepared in the background (customers:prepare-view) and the page says so (ViewPreparing).
+     * Working one out takes about a minute on the live database, past the server's page time limit.
+     */
+    public static bool $inBackground = false;
+
+    /** While true (customers:prepare-view), the page is being worked out for the cache: nothing is passed on again. */
+    public static bool $preparing = false;
+
+    /**
+     * For a page in $inBackground: when $key isn't cached, start preparing the page in the background (once every few
+     * minutes per page) and stop the request with ViewPreparing.
+     *
+     * @throws ViewPreparing
+     */
+    public static function requireCached(string $key): void
+    {
+        if (! self::$inBackground || self::$preparing || self::$refreshing || ! config('customers.prepare_in_background')
+            || ! auth()->check() || Cache::has($key)) {
+            return;
+        }
+
+        $path = '/'.ltrim(request()->getRequestUri(), '/');
+        BackgroundArtisan::start('customers:prepare-view', [$path, (string) auth()->id()], 'customers.prepare.'.md5($path), self::PREPARE_SECONDS);
+
+        throw new ViewPreparing;
+    }
+
+    /** How long a page waits before starting the same view's preparing again (it may have failed). */
+    private const PREPARE_SECONDS = 180;
+
+    /**
      * A cached Customer Database result: read it, or work it out and keep it for CACHE_MINUTES;
      * while refreshing, always work it out and keep it for WARM_MINUTES.
      */
     public static function remember(string $key, Closure $compute): mixed
     {
+        self::requireCached($key);
+
         if (self::$refreshing) {
             $value = $compute();
             Cache::put($key, $value, now()->addMinutes(self::WARM_MINUTES));

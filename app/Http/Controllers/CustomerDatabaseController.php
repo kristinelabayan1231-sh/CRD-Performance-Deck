@@ -24,6 +24,9 @@ class CustomerDatabaseController extends Controller
 
     public function index(Request $request, CustomerDatabase $customers, HighValueCustomers $highValue): View
     {
+        // Too heavy to work out inside the page: a view not cached yet is prepared in the background.
+        CustomerDatabase::$inBackground = true;
+
         $filters = $request->validate([
             'period' => ['nullable', Rule::in(array_keys(self::PERIODS))],
             'segment' => ['nullable', Rule::in(array_keys(CustomerDatabase::SEGMENTS))],

@@ -148,6 +148,16 @@
                             Planned {{ number_format($metrics['planned']['leads']) }}, {{ number_format($metrics['planned']['short_of_target']) }} short of the target.
                         @endif
                     </div>
+                    @if ($holding ?? null)
+                        {{-- Supervisors: hold more pool leads for her days ahead, HOLD_STEP at a time --}}
+                        <form method="POST" action="{{ route('exclusive-leads.hold', $cra) }}" class="flex flex-wrap items-center justify-between gap-2 border-t border-line p-4 text-sm">
+                            @csrf
+                            <p><strong class="tabular-nums">{{ number_format($holding['held']) }}</strong> leads held for {{ $cra->displayName() }}'s days ahead, up to {{ number_format($holding['most']) }} this month. {{ number_format(\App\Services\ExclusiveLeads::autoHold()) }} are kept held on their own.</p>
+                            @if ($holding['held'] < $holding['most'])
+                                <button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white hover:bg-brand-700">Load {{ number_format(min(\App\Services\ExclusiveLeads::holdStep(), $holding['most'] - $holding['held'])) }} more</button>
+                            @endif
+                        </form>
+                    @endif
                 </x-panel>
             </div>
 

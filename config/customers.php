@@ -15,6 +15,10 @@ return [
     |
     */
 
+    // The Customer Database, High AOV & VIP and Churn pages: a view not cached yet is prepared in the background
+    // (customers:prepare-view) rather than worked out in the page, which takes longer than the server allows.
+    'prepare_in_background' => env('CUSTOMERS_PREPARE_IN_BACKGROUND', true),
+
     'delivered_from' => '2026-01-01',
 
     'logistics_from' => '2026-04-05',

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ChurnCustomerList;
+use App\Services\CustomerDatabase;
 use App\Services\HighValueCustomers;
 use App\Support\DashboardRange;
 use App\Support\WorkingDate;
@@ -17,6 +18,9 @@ class CustomerChurnController extends Controller
      */
     public function index(Request $request, ChurnCustomerList $churn): View
     {
+        // Too heavy to work out inside the page: a view not cached yet is prepared in the background.
+        CustomerDatabase::$inBackground = true;
+
         $today = WorkingDate::realToday();
         $filters = $request->validate([
             'month' => ['nullable', 'date_format:Y-m', 'before_or_equal:'.$today->format('Y-m')],

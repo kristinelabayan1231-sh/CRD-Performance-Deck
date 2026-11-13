@@ -78,6 +78,10 @@ class LeadGenerator
             ->filter(fn (?array $lead) => $lead && $lead['est_out_of_stock_date'] === $date->toDateString())
             ->values();
 
+        // The retention report is ~150 MB once read; let it go before the exclusive lists and backlog fill below.
+        unset($sources, $rows, $ordersPerPhone);
+        gc_collect_cycles();
+
         $created = 0;
 
         // One query for the leads that already exist; only changed ones are written back.

@@ -96,6 +96,7 @@ class ChurnCustomerList
             return $this->loaded[$key] = $rows;
         }
 
+        CustomerDatabase::requireCached($key);
         $rows = $this->churn->customers($range->from, $range->to, $list);
         Cache::put($key, base64_encode(gzcompress(serialize($rows), 6)), now()->addMinutes(CustomerDatabase::CACHE_MINUTES));
 

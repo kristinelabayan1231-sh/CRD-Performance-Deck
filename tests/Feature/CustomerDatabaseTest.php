@@ -8,6 +8,7 @@ use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\CustomerDatabase;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
 use Carbon\CarbonImmutable;
@@ -15,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Process;
 use Tests\TestCase;
 
 class CustomerDatabaseTest extends TestCase
@@ -63,6 +65,27 @@ class CustomerDatabaseTest extends TestCase
         if ($pos) {
             PancakeOrder::create(['pancake_order_id' => $id, 'ordered_on' => CarbonImmutable::parse($date)->subDays(3), 'phone_key' => $key,
                 'total_price' => $pos[0], 'status' => $pos[1], 'seller_name' => $pos[2], 'items' => $pos[3]]);
+        }
+    }
+
+    public function test_a_view_not_ready_is_prepared_in_the_background_and_then_opens(): void
+    {
+        config(['customers.prepare_in_background' => true]);
+        Process::fake();
+
+        try {
+            $this->actingAs($this->owner)->get('/customers?period=month')->assertOk()->assertSee('Preparing this view');
+            Process::assertRan(fn ($process) => str_contains($process->command, 'customers:prepare-view')
+                && str_contains($process->command, "'/customers?period=month'") && str_contains($process->command, "'{$this->owner->id}'"));
+
+            // The background run opens the page as the same user, which fills the cache.
+            $this->artisan('customers:prepare-view', ['path' => '/customers?period=month', 'user' => $this->owner->id])->assertSuccessful();
+
+            CustomerDatabase::$preparing = false;
+            $this->actingAs($this->owner)->get('/customers?period=month')->assertOk()->assertDontSee('Preparing this view')->assertSee('Customer Database');
+        } finally {
+            CustomerDatabase::$inBackground = false;
+            CustomerDatabase::$preparing = false;
         }
     }
 

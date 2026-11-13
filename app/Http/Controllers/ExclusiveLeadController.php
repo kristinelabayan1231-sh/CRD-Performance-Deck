@@ -17,6 +17,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -157,6 +158,8 @@ class ExclusiveLeadController extends Controller
             'exportUrl' => route('exclusive-leads.export', $wholeList = array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
             'allPhonesUrl' => route('exclusive-leads.phones', $wholeList),
             'canManage' => $user->can('segmentation.manage'),
+            // Supervisors, this month: the leads held for her days ahead, and Load more.
+            'holding' => $canManageSettings && $month->isSameMonth($today) ? $exclusive->holding($cra, Lead::today()) : null,
             'canTransfer' => false,
             'statuses' => config('segmentation.statuses'),
             'optionalColumns' => config('segmentation.optional_columns'),
@@ -191,6 +194,22 @@ class ExclusiveLeadController extends Controller
      * The month's whole list as an Excel file: every lead on the CRA's lists so far, each once, Pending and Catered
      * together, in the order of the Whole month view. It keeps the Type and Product picked.
      */
+    /**
+     * Load more: hold the next ExclusiveLeads::holdStep() pool leads for the exclusive CRA's days ahead.
+     */
+    public function hold(User $cra, ExclusiveLeads $exclusive): RedirectResponse
+    {
+        abort_unless($this->exclusiveCras()->contains('id', $cra->id), 404);
+
+        $held = $exclusive->holdMore($cra, Lead::today(), ExclusiveLeads::holdStep());
+
+        return back()->with('status', match (true) {
+            $held === null => "{$cra->displayName()}'s list is being built right now. Try again in a minute.",
+            $held === 0 => "No more leads to hold for {$cra->displayName()}: the month's target is reached or none qualify.",
+            default => number_format($held)." more leads held for {$cra->displayName()}'s days ahead.",
+        });
+    }
+
     public function export(Request $request, ExclusiveLeads $exclusive): BinaryFileResponse
     {
         ['cra' => $cra, 'month' => $month, 'leads' => $list] = $this->monthList($request, $exclusive);

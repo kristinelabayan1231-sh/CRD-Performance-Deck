@@ -32,6 +32,15 @@ class BacklogFill
 {
     private const LOCK_SECONDS = 300;
 
+    /** Pool leads read per out-of-stock month at the least (waiting()). */
+    private const POOL_PER_MONTH_MIN = 200;
+
+    /** A CRA's untouched backlog read per out-of-stock month for each of their open slots (waiting()). */
+    private const BACKLOG_PER_SLOT = 2;
+
+    /** A CRA's untouched backlog read per out-of-stock month at the least (waiting()). */
+    private const BACKLOG_PER_MONTH_MIN = 100;
+
     /**
      * Fill the CRAs logged in today (Segmentation Tracker), together so the pool splits evenly.
      *
@@ -84,10 +93,7 @@ class BacklogFill
         // Every lead waiting before $day: untouched backlog (any CRA's) and the unassigned pool, the longest-waiting first
         // (an untouched lead moved yesterday goes to the back). Only leads nobody touched (no status, date, note or any
         // other field) move: worked ones stay on their day.
-        $waiting = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
-            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))
-            ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->untouched()))
-            ->orderBy('listed_on')->orderBy('id')->get(['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date']);
+        $waiting = $this->waiting($day, $room);
         $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
         // An exclusive CRA's leads stay theirs.
         $exclusive = User::exclusiveOn($day)->pluck('id')->flip();
@@ -175,6 +181,53 @@ class BacklogFill
         $markFilled();
 
         return $moved;
+    }
+
+    /**
+     * Every lead waiting before $day, the longest-waiting first, read a month at a time and only as many as a day can take:
+     * of each out-of-stock month, each CRA's oldest untouched backlog (BACKLOG_PER_SLOT for each of their open $room
+     * slots, at least BACKLOG_PER_MONTH_MIN; another CRA's backlog, which only moves to the customer's own CRA, the
+     * minimum) and the pool's oldest leads (one for each of the day's slots, at least POOL_PER_MONTH_MIN). A day takes at
+     * most its slots from a month, so the picks come out as from everything, and memory stays small however much is
+     * waiting (tens of thousands of leads did run out of it). An exclusive CRA's backlog waits for their list.
+     *
+     * @param  array<int, int>  $room  CRA id => open slots
+     * @return Collection<int, Lead>
+     */
+    private function waiting(CarbonImmutable $day, array $room): Collection
+    {
+        $columns = ['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date'];
+        $waitingBefore = fn () => Lead::whereDate('listed_on', '<', $day)->withoutPosSales()->whereNotIn('id', ExclusiveReservedLead::select('lead_id'));
+        $untouched = fn () => $waitingBefore()->whereNotNull('assigned_to')->untouched();
+        $pool = fn () => $waitingBefore()->whereNull('assigned_to')->unprocessed();
+
+        $exclusive = User::exclusiveOn($day)->pluck('id')->all();
+        $backlogCras = LeadGenerator::cras()->pluck('id')->diff($exclusive)->values();
+        $range = Lead::whereDate('listed_on', '<', $day)->withoutPosSales()
+            ->where(fn ($q) => $q->where(fn ($q) => $q->whereNull('assigned_to')->unprocessed())->orWhere(fn ($q) => $q->whereIn('assigned_to', $backlogCras)->untouched()))
+            ->toBase()->selectRaw('min(est_out_of_stock_date) as first_day, max(est_out_of_stock_date) as last_day')->first();
+
+        if ($range?->first_day === null) {
+            return collect();
+        }
+
+        $poolPerMonth = max(self::POOL_PER_MONTH_MIN, array_sum($room));
+        $leads = collect();
+        $last = CarbonImmutable::parse($range->last_day);
+
+        for ($month = CarbonImmutable::parse($range->first_day)->startOfMonth(); ! $month->greaterThan($last); $month = $month->addMonth()) {
+            $inMonth = fn ($query) => $query->whereBetween('est_out_of_stock_date', [$month->toDateString(), $month->endOfMonth()->toDateString()])
+                ->orderBy('listed_on')->orderBy('id');
+
+            foreach ($backlogCras as $craId) {
+                $perMonth = max(self::BACKLOG_PER_MONTH_MIN, self::BACKLOG_PER_SLOT * ($room[$craId] ?? 0));
+                $leads = $leads->concat($inMonth($untouched()->where('assigned_to', $craId))->limit($perMonth)->get($columns));
+            }
+
+            $leads = $leads->concat($inMonth($pool())->limit($poolPerMonth)->get($columns));
+        }
+
+        return $leads->sortBy(fn (Lead $lead) => [$lead->listed_on->toDateString(), $lead->id])->values();
     }
 
     /**
