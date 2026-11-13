@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerAccount;
+use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
+use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CustomerReassignment;
@@ -12,6 +15,7 @@ use App\Services\ExclusiveLeads;
 use App\Services\HighValueCustomers;
 use App\Services\LeadConflicts;
 use App\Services\LeadGenerator;
+use App\Services\PancakeClient;
 use App\Services\SalesGoalProgress;
 use App\Support\DashboardRange;
 use App\Support\WorkingDate;
@@ -20,6 +24,8 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use RuntimeException;
@@ -122,7 +128,7 @@ class CraDashboardController extends Controller
      * Check who gets these leads → Assign: a supervisor gives the customer's open lead to a CRA (the rules' CRA by
      * default), or keeps it with the CRA who has it. Either way the lead leaves the list.
      */
-    public function assign(Request $request, Lead $lead, LeadConflicts $conflicts): RedirectResponse
+    public function assign(Request $request, Lead $lead, LeadConflicts $conflicts, PancakeClient $pancake): RedirectResponse
     {
         $user = $request->user();
         abort_if($user->role?->slug === Role::CRA, 403, 'Only supervisors can assign these leads.');
@@ -142,6 +148,15 @@ class CraDashboardController extends Controller
         $to = $cras->firstWhere('id', (int) $data['to']);
         $isKept = $lead->assigned_to === $to->id;
 
+        $isUntagged = false;
+        if (! $isKept && ! $to->isExclusiveOn(Lead::today()) && $this->hasExclusiveTag($lead)) {
+            try {
+                $isUntagged = $this->removeExclusiveTag($lead, $user, $pancake);
+            } catch (RuntimeException $e) {
+                return back()->withErrors(['assign' => "{$lead->customer_name}'s lead stays where it is: the exclusive tag couldn't come off its order. {$e->getMessage()}"]);
+            }
+        }
+
         DB::transaction(function () use ($lead, $to, $user, $isKept) {
             if (! $isKept) {
                 // From today on, like a backlog transfer; a lead not due yet keeps its day.
@@ -154,7 +169,55 @@ class CraDashboardController extends Controller
 
         $name = $lead->customer_name ?: 'The customer';
 
-        return back()->with('status', $isKept ? "{$name}'s lead stays with {$to->displayName()}." : "{$name}'s lead is now {$to->displayName()}'s.");
+        return back()->with('status', $isKept ? "{$name}'s lead stays with {$to->displayName()}." : "{$name}'s lead is now {$to->displayName()}'s."
+            .($isUntagged ? ' The '.config('exclusive_leads.order_tag.name').' tag was taken off its order.' : ''));
+    }
+
+    /**
+     * Whether the lead's own order may carry the exclusive POS tag: it does in the synced orders, or the lead is on the
+     * Exclusive Lead Tracker (a tag added in Pancake shows up here only after the next sync).
+     */
+    private function hasExclusiveTag(Lead $lead): bool
+    {
+        return PancakeOrder::where('pancake_order_id', $this->orderNumber($lead))->whereJsonContains('tags', (int) config('exclusive_leads.order_tag.id'))->exists()
+            || $lead->assignee?->exclusive_from !== null
+            || ExclusiveListLead::where('lead_id', $lead->id)->exists()
+            || ExclusiveReservedLead::where('lead_id', $lead->id)->exists();
+    }
+
+    /**
+     * Take the exclusive POS tag off the lead's own order in Pancake (nothing is written when it hasn't got it).
+     * True when the tag came off.
+     *
+     * @throws RuntimeException when Pancake can't be reached or the change doesn't save cleanly
+     */
+    private function removeExclusiveTag(Lead $lead, User $user, PancakeClient $pancake): bool
+    {
+        $orderNumber = $this->orderNumber($lead);
+
+        try {
+            $tags = $pancake->removeOrderTag($orderNumber, (int) config('exclusive_leads.order_tag.id'));
+        } catch (RuntimeException $e) {
+            Log::warning('Exclusive tag not removed', ['lead_id' => $lead->id, 'order' => $orderNumber, 'user_id' => $user->id, 'message' => $e->getMessage()]);
+
+            throw $e;
+        }
+
+        if ($tags['before'] !== $tags['after']) {
+            Log::info('Exclusive tag removed', ['lead_id' => $lead->id, 'order' => $orderNumber, 'user_id' => $user->id, 'tags_before' => $tags['before'], 'tags_after' => $tags['after']]);
+        }
+
+        PancakeOrder::where('pancake_order_id', $orderNumber)->first()?->update([
+            'tags' => $tags['after'],
+            'conversion_type' => PancakeOrder::conversionTypeFor($tags['after']),
+        ]);
+
+        return $tags['before'] !== $tags['after'];
+    }
+
+    private function orderNumber(Lead $lead): string
+    {
+        return Str::after($lead->order_id, Lead::POS_PREFIX);
     }
 
     /**

@@ -69,7 +69,7 @@ class ExclusiveLeadDashboardController extends Controller
 
         $today = WorkingDate::realToday();
         $craLeads = Lead::query()->where('assigned_to', $cra->id);
-        $periodFrom = $this->periodFrom($period, $today, $cra->exclusive_from->addDays(WorkingDate::lagDays()));
+        $periodFrom = $this->periodFrom($period, $today, WorkingDate::realDayFor($cra->exclusive_from));
 
         return view('exclusive-leads.dashboard', $list + [
             'cra' => $cra,

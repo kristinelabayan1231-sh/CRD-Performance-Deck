@@ -103,15 +103,14 @@ class ExclusiveLeadController extends Controller
             $range = $rangeFrom->equalTo($rangeTo) ? null : [$rangeFrom, $rangeTo];
         }
         $month = $date ?? (isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : $today);
-        $lag = WorkingDate::lagDays();
-        $first = $cra->exclusive_from->addDays($lag)->startOfDay();
+        $first = WorkingDate::realDayFor($cra->exclusive_from)->startOfDay();
         $month = $month->startOfMonth()->max($first->startOfMonth());
         $metrics = $exclusive->month($cra, $month);
 
         $lastDay = $month->endOfMonth()->startOfDay()->min($today);
         $day = ($date ?? ($month->isSameMonth($today) ? $today : $lastDay))->startOfDay()->min($lastDay);
         $day = $day->max($month->max($first));
-        $leadDay = $day->subDays($lag);
+        $leadDay = WorkingDate::leadDayFor($day);
 
         // A search looks through all of the CRA's days; a range or the whole month through those days' lists; otherwise the day picked.
         $wholeMonth = $wholeMonth && $range === null;
@@ -164,7 +163,7 @@ class ExclusiveLeadController extends Controller
             'statuses' => config('segmentation.statuses'),
             'optionalColumns' => config('segmentation.optional_columns'),
             'day' => $day,
-            'leadDay' => $lag > 0 ? $leadDay : null,
+            'leadDay' => WorkingDate::lagDays() > 0 ? $leadDay : null,
             'show' => $show,
         ];
 
@@ -288,7 +287,7 @@ class ExclusiveLeadController extends Controller
         abort_unless($cra, 404);
 
         $requestedMonth = isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : WorkingDate::realToday();
-        $month = $requestedMonth->startOfMonth()->max($cra->exclusive_from->addDays(WorkingDate::lagDays())->startOfMonth());
+        $month = $requestedMonth->startOfMonth()->max(WorkingDate::realDayFor($cra->exclusive_from)->startOfMonth());
 
         return [
             'cra' => $cra,

@@ -104,7 +104,7 @@ class ExclusiveFsdFill
      */
     public function add(User $cra, CarbonImmutable $day, Collection $leads): int
     {
-        $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
+        $month = WorkingDate::realDayFor($day)->startOfMonth()->toDateString();
         $now = now();
         $added = 0;
 

@@ -632,12 +632,11 @@ class PresentationBoard
 
         $leadFrom = WorkingDate::leadDayFor($from);
         $leadTo = WorkingDate::leadDayFor($to);
-        $lag = WorkingDate::lagDays();
         $metricOf = [Lead::TYPE_FSD => 'retained_base', Lead::TYPE_CRD => 'repeat_base'];
         $ids = $cras->pluck('id');
-        $add = function (string $leadDay, string $type, int $count) use (&$days, $lag, $metricOf, $from, $to) {
+        $add = function (string $leadDay, string $type, int $count) use (&$days, $metricOf, $from, $to) {
             // On the real day paired with the lead day; a month's first and last days keep to the month.
-            $real = CarbonImmutable::parse($leadDay)->addDays($lag)->max($from)->min($to)->toDateString();
+            $real = WorkingDate::realDayFor(CarbonImmutable::parse($leadDay), $from, $to)->max($from)->min($to)->toDateString();
             if (isset($metricOf[$type], $days[$real])) {
                 $days[$real][$metricOf[$type]] += $count;
             }
