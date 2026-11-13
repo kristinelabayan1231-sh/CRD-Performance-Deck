@@ -41,18 +41,38 @@ class WorkingDate
     }
 
     /**
+     * Each change of the gap: real date it applies from => days behind. Earlier real days keep the gap they had, so a
+     * change never moves which lead day a past day was paired with.
+     */
+    public const HISTORY = 'working_date.history';
+
+    /**
      * Start the working date at $start tomorrow (today shows the day before),
      * then follow the real date day by day. Null = follow the real date again.
      */
     public static function startTomorrow(?CarbonImmutable $start, ?User $by = null): void
     {
+        $today = self::realToday();
+        $history = self::history();
+        $before = self::lagDays();
+
         Setting::put(self::KEY, $start?->subDay()->toDateString(), $by);
-        Setting::put(self::ANCHOR, $start ? self::realToday()->toDateString() : null, $by);
+        Setting::put(self::ANCHOR, $start ? $today->toDateString() : null, $by);
+        Once::flush();
+
+        // The first gap ever set covers every earlier day too, as it always has; a later change starts from today.
+        if ($history === [] && $before === 0) {
+            return;
+        }
+        $history = $history ?: ['1970-01-01' => $before];
+        $history[$today->toDateString()] = self::lagDays();
+        ksort($history);
+        Setting::put(self::HISTORY, json_encode($history), $by);
         Once::flush();
     }
 
     /**
-     * How many days the working date is behind the real date (0 when not set).
+     * How many days the working date is behind the real date today (0 when not set).
      * Results (sales, conversion) happen on real days; the leads worked that day
      * are from the lead day this many days earlier.
      */
@@ -64,11 +84,62 @@ class WorkingDate
     }
 
     /**
+     * How many days behind the working date was on real day $day: today's gap, or the gap in force that day.
+     */
+    public static function lagOn(CarbonImmutable $day): int
+    {
+        $history = self::history();
+        if ($history === []) {
+            return self::lagDays();
+        }
+
+        $date = $day->toDateString();
+        $lag = reset($history);
+        foreach ($history as $from => $days) {
+            if ($from > $date) {
+                break;
+            }
+            $lag = $days;
+        }
+
+        return $lag;
+    }
+
+    /**
      * The lead day whose leads the CRAs work on real day $day.
      */
     public static function leadDayFor(CarbonImmutable $day): CarbonImmutable
     {
-        return $day->subDays(self::lagDays());
+        return $day->subDays(self::lagOn($day));
+    }
+
+    /**
+     * The real day the CRAs work lead day $leadDay. When the gap grew and two real days share the lead day, the
+     * earliest one, or the earliest within $from–$to when given (so a one-day report still finds its leads).
+     */
+    public static function realDayFor(CarbonImmutable $leadDay, ?CarbonImmutable $from = null, ?CarbonImmutable $to = null): CarbonImmutable
+    {
+        $candidates = collect([...array_values(self::history()), self::lagDays()])->unique()
+            ->map(fn (int $lag) => $leadDay->addDays($lag))
+            ->filter(fn (CarbonImmutable $day) => self::leadDayFor($day)->isSameDay($leadDay))
+            ->sortBy(fn (CarbonImmutable $day) => $day->getTimestamp())->values();
+
+        $inRange = $candidates->filter(fn (CarbonImmutable $day) => ($from === null || $day->greaterThanOrEqualTo($from->startOfDay()))
+            && ($to === null || $day->lessThanOrEqualTo($to->endOfDay())));
+
+        return $inRange->first() ?? $candidates->first() ?? $leadDay->addDays(self::lagDays());
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function history(): array
+    {
+        return once(function () {
+            $history = json_decode((string) Setting::value(self::HISTORY), true);
+
+            return is_array($history) ? array_map('intval', $history) : [];
+        });
     }
 
     /**

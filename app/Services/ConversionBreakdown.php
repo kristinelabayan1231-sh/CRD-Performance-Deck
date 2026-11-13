@@ -42,18 +42,20 @@ class ConversionBreakdown
         $accounts = self::accounts($cras);
 
         // Leads worked on a real day are from its paired lead day (Settings → Working Date).
-        $lag = WorkingDate::lagDays();
+        [$leadFrom, $leadTo] = [WorkingDate::leadDayFor($from), WorkingDate::leadDayFor($to)];
+        $toReal = fn (string $leadDay) => WorkingDate::realDayFor(CarbonImmutable::parse($leadDay), $from, $to)->toDateString();
         $leads = [];
         Lead::whereIn('assigned_to', $ids)
-            ->whereDate('listed_on', '>=', $from->subDays($lag))->whereDate('listed_on', '<=', $to->subDays($lag))
+            ->whereDate('listed_on', '>=', $leadFrom)->whereDate('listed_on', '<=', $leadTo)
             ->selectRaw('assigned_to as cra, date(listed_on) as day, count(*) as n')->groupBy('cra', 'day')->get()
-            ->each(function ($row) use (&$leads, $lag) {
-                $leads[(int) $row->cra][CarbonImmutable::parse($row->day)->addDays($lag)->toDateString()] = (int) $row->n;
+            ->each(function ($row) use (&$leads, $toReal) {
+                $real = $toReal($row->day);
+                $leads[(int) $row->cra][$real] = ($leads[(int) $row->cra][$real] ?? 0) + (int) $row->n;
             });
         // Plus leads the backlog fill moved off those lead days.
-        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($from->subDays($lag), $to->subDays($lag), $ids)) as $cra => $perDay) {
+        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($leadFrom, $leadTo, $ids)) as $cra => $perDay) {
             foreach ($perDay as $day => $n) {
-                $real = CarbonImmutable::parse($day)->addDays($lag)->toDateString();
+                $real = $toReal($day);
                 $leads[$cra][$real] = ($leads[$cra][$real] ?? 0) + $n;
             }
         }

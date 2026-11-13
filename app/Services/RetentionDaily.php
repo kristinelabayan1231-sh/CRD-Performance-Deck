@@ -183,8 +183,6 @@ class RetentionDaily
      */
     private function leads(CarbonImmutable $from, CarbonImmutable $to): Collection
     {
-        $lag = WorkingDate::lagDays();
-
         return Lead::whereNotNull('assigned_to')->withoutPosSales()
             ->where('listed_on', '>=', WorkingDate::leadDayFor($from)->toDateString())
             ->where('listed_on', '<', WorkingDate::leadDayFor($to)->addDay()->toDateString())
@@ -193,7 +191,7 @@ class RetentionDaily
             ->selectRaw('sum(case when status is not null or contact_date is not null or processed_at is not null then 1 else 0 end) as contacted')
             ->groupByRaw('date(listed_on), assigned_to')
             ->get()
-            ->groupBy(fn (object $row) => CarbonImmutable::parse($row->lead_day)->addDays($lag)->toDateString())
+            ->groupBy(fn (object $row) => WorkingDate::realDayFor(CarbonImmutable::parse($row->lead_day), $from, $to)->toDateString())
             ->map(fn (Collection $rows) => $rows->mapWithKeys(fn (object $row) => [
                 (int) $row->assigned_to => ['leads' => (int) $row->leads, 'contacted' => (int) $row->contacted],
             ]));

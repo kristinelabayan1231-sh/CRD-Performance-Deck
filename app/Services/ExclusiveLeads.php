@@ -177,7 +177,7 @@ class ExclusiveLeads
             ->whereIn('lead_id', Lead::where('assigned_to', $cra->id)->select('id'))
             ->distinct()->count('lead_id');
 
-        return ExclusiveLimits::on($day->addDays(WorkingDate::lagDays()))['month_target'] - $different;
+        return ExclusiveLimits::on(WorkingDate::realDayFor($day))['month_target'] - $different;
     }
 
     /**
@@ -198,10 +198,9 @@ class ExclusiveLeads
      */
     private function leadDaysOfMonth(CarbonImmutable $leadDay): array
     {
-        $lag = WorkingDate::lagDays();
-        $real = $leadDay->addDays($lag);
+        $real = WorkingDate::realDayFor($leadDay);
 
-        return [$real->startOfMonth()->startOfDay()->subDays($lag), $real->endOfMonth()->startOfDay()->subDays($lag)];
+        return [WorkingDate::leadDayFor($real->startOfMonth()->startOfDay()), WorkingDate::leadDayFor($real->endOfMonth()->startOfDay())];
     }
 
     /**
@@ -213,7 +212,7 @@ class ExclusiveLeads
      */
     private function reserve(User $cra, CarbonImmutable $day, Collection $upcoming, array $looked): void
     {
-        $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
+        $month = WorkingDate::realDayFor($day)->startOfMonth()->toDateString();
         $now = now();
         $held = $upcoming->pluck('lead.id')->flip();
 
@@ -320,7 +319,7 @@ class ExclusiveLeads
             }
         }
 
-        $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
+        $month = WorkingDate::realDayFor($day)->startOfMonth()->toDateString();
         $now = now();
         foreach (array_chunk($found, 500, true) as $chunk) {
             ExclusiveReservedLead::insertOrIgnore(array_map(fn (int $leadId, string $source) => [
@@ -667,7 +666,7 @@ class ExclusiveLeads
     public static function quotaFor(CarbonImmutable $leadDay): int
     {
         return (int) (config('exclusive_leads.quota_overrides')[$leadDay->toDateString()]
-            ?? ExclusiveLimits::on($leadDay->addDays(WorkingDate::lagDays()))['daily_leads']);
+            ?? ExclusiveLimits::on(WorkingDate::realDayFor($leadDay))['daily_leads']);
     }
 
     public static function flatMonthFrom(): CarbonImmutable
@@ -752,7 +751,6 @@ class ExclusiveLeads
      */
     public function listDetailsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $lag = WorkingDate::lagDays();
         $details = ['sources' => [], 'days' => []];
 
         $stillTheirs = Lead::where('assigned_to', $cra->id)->select('id');
@@ -760,7 +758,7 @@ class ExclusiveLeads
         foreach ($this->entriesBetween($cra, $from, $to)->whereIn('lead_id', $stillTheirs)->orderBy('list_date')->get(['lead_id', 'list_date', 'source']) as $entry) {
             $details['sources'][$entry->lead_id] = $entry->source;
             $details['days'][$entry->lead_id] = [
-                'last' => $entry->list_date->addDays($lag)->toDateString(),
+                'last' => WorkingDate::realDayFor($entry->list_date, $from, $to)->toDateString(),
                 'count' => ($details['days'][$entry->lead_id]['count'] ?? 0) + 1,
             ];
         }
@@ -823,11 +821,9 @@ class ExclusiveLeads
 
     private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to, bool $withPos = false): Builder
     {
-        $lag = WorkingDate::lagDays();
-
         return ExclusiveListLead::where('user_id', $cra->id)->when(! $withPos, fn (Builder $q) => $q->where('source', '!=', self::POS))
-            ->whereDate('list_date', '>=', $from->subDays($lag))
-            ->whereDate('list_date', '<=', $to->subDays($lag));
+            ->whereDate('list_date', '>=', WorkingDate::leadDayFor($from))
+            ->whereDate('list_date', '<=', WorkingDate::leadDayFor($to));
     }
 
     /**
@@ -897,11 +893,10 @@ class ExclusiveLeads
     {
         $start = $month->startOfMonth()->startOfDay();
         $end = $month->endOfMonth()->startOfDay();
-        $lag = WorkingDate::lagDays();
-        $firstDay = $cra->exclusive_from !== null ? $start->max($cra->exclusive_from->addDays($lag)) : $start;
+        $firstDay = $cra->exclusive_from !== null ? $start->max(WorkingDate::realDayFor($cra->exclusive_from)) : $start;
 
         $entries = ExclusiveListLead::where('user_id', $cra->id)
-            ->whereDate('list_date', '>=', $start->subDays($lag))->whereDate('list_date', '<=', $end->subDays($lag))
+            ->whereDate('list_date', '>=', WorkingDate::leadDayFor($start))->whereDate('list_date', '<=', WorkingDate::leadDayFor($end))
             ->with('lead:id,assigned_to,listed_on,status,contact_date,processed_at')
             ->get();
         $byDay = $entries->groupBy(fn (ExclusiveListLead $entry) => $entry->list_date->toDateString());
@@ -927,8 +922,9 @@ class ExclusiveLeads
 
         for ($day = $start; $day->lessThanOrEqualTo($end); $day = $day->addDay()) {
             $date = $day->toDateString();
-            $leadDay = $day->subDays($lag);
-            $rows = collect($byDay[$leadDay->toDateString()] ?? []);
+            $leadDay = WorkingDate::leadDayFor($day);
+            // A lead day two real days share (the gap grew) counts on the first of them.
+            $rows = WorkingDate::realDayFor($leadDay, $start, $end)->isSameDay($day) ? collect($byDay[$leadDay->toDateString()] ?? []) : collect();
             $quota = $day->lessThan($firstDay) ? 0 : self::quotaFor($leadDay);
             $counted = $rows->where('source', '!=', self::POS);
             $new = $counted->where('source', '!=', self::LEFTOVER);

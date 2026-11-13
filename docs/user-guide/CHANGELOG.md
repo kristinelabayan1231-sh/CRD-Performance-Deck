@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-13 · Settings → Working Date · Changing the working date now only changes days from today on: earlier days keep the lead days they were paired with on every page (Segmentation Tracker, CRA Dashboard, CVR Tracker, Segmentation Productivity, Exclusive Lead Tracker, Presentation Board, Retention API). When the gap grows by a day, the lead day both days share counts once, on the first of them · shots: none
+
+- 2026-11-13 · CRA Dashboard · Assigning a lead from "Check who gets these leads" to a CRA other than the exclusive CRA takes the CRD - ANNA (EXCLUSIVE LEADS) tag off its POS order first; if Pancake can't take it off, the lead stays where it is and the reason shows · shots: none
+
 - 2026-11-13 · Actual Income · March 2026 now shows the CRD Sales Report sheet's figures (CRD card plus Joanna Rose, Regina and July Ann), so every month from January to August is filled in · shots: none
 
 - 2026-11-13 · Customer Database, High AOV & VIP, Churn · A view that isn't ready yet (a period, tab, sort or search nobody opened in the last few minutes) shows "Preparing this view…" and reloads itself until it's ready, instead of timing out; it's worked out in the background as the same user. The default views stay ready as before · shots: none

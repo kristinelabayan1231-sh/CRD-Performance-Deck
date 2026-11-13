@@ -41,17 +41,18 @@ class SegmentationProductivity
         }
 
         // Leads worked on a real day are from its paired lead day (Settings → Working Date).
-        $lag = WorkingDate::lagDays();
+        [$leadFrom, $leadTo] = [WorkingDate::leadDayFor($from), WorkingDate::leadDayFor($to)];
+        $toReal = fn (string $leadDay) => WorkingDate::realDayFor(CarbonImmutable::parse($leadDay), $from, $to)->toDateString();
         $assigned = $this->grouped(
             Lead::whereIn('assigned_to', $ids)->withoutPosSales()
-                ->whereDate('listed_on', '>=', $from->subDays($lag))->whereDate('listed_on', '<=', $to->subDays($lag))
+                ->whereDate('listed_on', '>=', $leadFrom)->whereDate('listed_on', '<=', $leadTo)
                 ->selectRaw('assigned_to as cra, date(listed_on) as day, count(*) as n')->groupBy('cra', 'day')->get(),
-            $lag,
+            $toReal,
         );
         // Plus leads the backlog fill moved off those lead days.
-        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($from->subDays($lag), $to->subDays($lag), $ids)) as $cra => $perDay) {
+        foreach (LeadMove::countsByCraAndDay(LeadMove::departed($leadFrom, $leadTo, $ids)) as $cra => $perDay) {
             foreach ($perDay as $day => $n) {
-                $real = CarbonImmutable::parse($day)->addDays($lag)->toDateString();
+                $real = $toReal($day);
                 $assigned[$cra][$real] = ($assigned[$cra][$real] ?? 0) + $n;
             }
         }
@@ -145,12 +146,11 @@ class SegmentationProductivity
      */
     public function backlog(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $lag = WorkingDate::lagDays();
         $handouts = BacklogHandout::query()
             ->join('leads', 'leads.id', '=', 'backlog_handouts.lead_id')
             ->whereIn('backlog_handouts.user_id', $cras->pluck('id'))
-            ->whereDate('backlog_handouts.handed_on', '>=', $from->subDays($lag))
-            ->whereDate('backlog_handouts.handed_on', '<=', $to->subDays($lag))
+            ->whereDate('backlog_handouts.handed_on', '>=', WorkingDate::leadDayFor($from))
+            ->whereDate('backlog_handouts.handed_on', '<=', WorkingDate::leadDayFor($to))
             ->orderBy('backlog_handouts.handed_on')
             ->toBase()
             ->get(['backlog_handouts.user_id', 'backlog_handouts.lead_id', 'backlog_handouts.handed_on', 'backlog_handouts.created_at',
@@ -285,11 +285,12 @@ class SegmentationProductivity
     /**
      * @return array<int, array<string, int>>
      */
-    private function grouped(Collection $rows, int $shiftDays = 0): array
+    private function grouped(Collection $rows, ?callable $toDay = null): array
     {
         $out = [];
         foreach ($rows as $row) {
-            $out[(int) $row->cra][CarbonImmutable::parse($row->day)->addDays($shiftDays)->toDateString()] = (int) $row->n;
+            $day = $toDay ? $toDay($row->day) : CarbonImmutable::parse($row->day)->toDateString();
+            $out[(int) $row->cra][$day] = ($out[(int) $row->cra][$day] ?? 0) + (int) $row->n;
         }
 
         return $out;

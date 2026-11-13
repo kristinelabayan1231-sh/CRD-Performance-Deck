@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -73,6 +74,27 @@ class WorkingDateTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-10-09 09:00', 'Asia/Manila'));
 
         $this->assertTrue(Lead::today()->isSameDay('2026-09-09'));
+    }
+
+    public function test_changing_the_gap_keeps_earlier_days_paired_as_they_were(): void
+    {
+        // 30 days behind from Oct 7 (Nov 12 = Oct 13), then on Nov 13 moved back a day: Nov 13 = Oct 13 again.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-08'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-13 09:00', 'Asia/Manila'));
+        Once::flush();
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-14'));
+
+        $this->assertSame('2026-10-13', Lead::today()->toDateString());
+        $this->assertSame('2026-10-12', WorkingDate::leadDayFor(CarbonImmutable::parse('2026-11-11'))->toDateString());
+        $this->assertSame('2026-10-13', WorkingDate::leadDayFor(CarbonImmutable::parse('2026-11-12'))->toDateString());
+        $this->assertSame('2026-10-14', WorkingDate::leadDayFor(CarbonImmutable::parse('2026-11-14'))->toDateString());
+
+        // The lead day both share goes on the first of them, or on the one inside the range asked for.
+        $this->assertSame('2026-11-12', WorkingDate::realDayFor(CarbonImmutable::parse('2026-10-13'))->toDateString());
+        $today = CarbonImmutable::parse('2026-11-13');
+        $this->assertSame('2026-11-13', WorkingDate::realDayFor(CarbonImmutable::parse('2026-10-13'), $today, $today)->toDateString());
+        $this->assertSame('2026-11-11', WorkingDate::realDayFor(CarbonImmutable::parse('2026-10-12'))->toDateString());
+        $this->assertSame('2026-11-14', WorkingDate::realDayFor(CarbonImmutable::parse('2026-10-14'))->toDateString());
     }
 
     public function test_the_start_cannot_be_after_tomorrow(): void
