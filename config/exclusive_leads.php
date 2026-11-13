@@ -36,6 +36,11 @@ return [
     // The goal is constant; the days of a month may plan fewer (November 2026 plans 6,900).
     'month_target' => 7000,
 
+    // Leads held for the CRA's days ahead: auto_hold kept held on their own, a supervisor's "Load more" holds hold_step
+    // more, never past what's left of the month's target. The pool is read a batch at a time, never all at once.
+    'auto_hold' => 1000,
+    'hold_step' => 500,
+
     'repeat_goal_percent' => 20,
 
     // A daily target: the month's is this × her working days (days off have none).

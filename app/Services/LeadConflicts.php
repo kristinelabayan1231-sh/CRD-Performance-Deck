@@ -35,6 +35,19 @@ class LeadConflicts
     }
 
     /**
+     * Take a lead a supervisor just assigned off the kept list now, without waiting for the next refresh.
+     */
+    public function forget(int $leadId): void
+    {
+        $rows = Cache::get(self::CACHE_KEY);
+        if ($rows === null) {
+            return;
+        }
+
+        Cache::put(self::CACHE_KEY, array_values(array_filter($rows, fn (array $row) => $row['lead_id'] !== $leadId)), now()->addMinutes(self::CACHE_MINUTES));
+    }
+
+    /**
      * Work the list out again and keep it for CACHE_MINUTES.
      *
      * @return list<array<string, mixed>>
@@ -76,7 +89,7 @@ class LeadConflicts
             $variants = collect($chunk)->flatMap(fn ($key) => [$key, '0'.$key, '63'.$key, '+63'.$key])->all();
             foreach (Lead::unprocessed()->notConverted()->withoutPosSales()->whereIn('phone_number', $variants)
                 ->orderBy('listed_on')->orderBy('id')
-                ->get(['id', 'customer_name', 'phone_number', 'product_name', 'assigned_to', 'listed_on']) as $lead) {
+                ->get(['id', 'customer_name', 'phone_number', 'product_name', 'assigned_to', 'listed_on', 'assignment_checked_at']) as $lead) {
                 $customer = $primaryOf[LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null;
                 if ($customer !== null && (! isset($leads[$customer]) || ! $lead->listed_on->lessThan($leads[$customer]->listed_on))) {
                     $leads[$customer] = $lead;
@@ -101,11 +114,13 @@ class LeadConflicts
                 $most = $byOrders[$key] ?? null;
                 $isConflict = ($high !== null && $most !== null && $high !== $most) || ($claim !== null && $high !== null && $claim !== $high);
 
-                if (! $isConflict) {
+                $lead = $leads[$key];
+
+                // A supervisor already chose this lead's CRA from the list.
+                if (! $isConflict || $lead->assignment_checked_at !== null) {
                     continue;
                 }
 
-                $lead = $leads[$key];
                 $rows[$key] = [
                     'phone_key' => $key,
                     'customer_name' => $lead->customer_name ?: 'Unknown',

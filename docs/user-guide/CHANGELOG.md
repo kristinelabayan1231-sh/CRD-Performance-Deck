@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-13 · Exclusive Lead Tracker · 1,000 leads are kept held for the exclusive CRA's days ahead on their own; supervisors see how many are held (up to what's left of the month's target) and a "Load 500 more" button. Her daily list comes from those held leads, her own backlog and the day's new leads · shots: exclusive-leads
+
+- 2026-11-13 · CRA Dashboard · "Check who gets these leads" now has an Assign to column for supervisors (Transfer backlog permission): pick the CRA (the rules' CRA is chosen already; "(has it)" marks who holds the lead) and press Assign. The lead moves from today like a backlog transfer, or stays put when the CRA who has it is chosen, and the customer leaves the list either way · shots: cra-dashboard
+
 - 2026-11-12 · Retention API (Settings → API Keys) · Each day and each CRA now also has productCost (the Daily I.S. Product Cost), inquiries and engagements (the PC Report's Total Inquiries and Total Engagement, the CRD sheet's "Leads" and "Engagement") · shots: none
 
 - 2026-11-12 · User Access (every module) · A module's "view" permission now comes with its wider ones: a role given a module's "every CRA's" (view all), "manage" or "edit" permission sees it in the menu and can open it (e.g. a Visitor with only "every CRA's Daily I.S."). A role that may only look can't tag Exclusive Leads POS orders (the lead's CRA or Exclusive Leads manage only) or add Pancake reservations (CRAs and managers only) · shots: none

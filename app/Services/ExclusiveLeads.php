@@ -62,6 +62,9 @@ class ExclusiveLeads
 
     public const CRD_OLDER = 'crd_older';
 
+    /** Pool leads hold() reads at a time. */
+    private const HOLD_BATCH = 2000;
+
     /** Priority order of a day's list. */
     public const PRIORITY = [self::LEFTOVER, self::HIGH_VALUE, self::HANDLED, self::RANDOM];
 
@@ -126,11 +129,18 @@ class ExclusiveLeads
 
         $this->releaseLeftovers($cra, $day);
 
-        ['picks' => $picks, 'upcoming' => $upcoming] = $this->pick($cra, $day, $room, $isFlat);
+        // The day's new leads come from those held for her: hold up to autoHold() first.
+        if ($isFlat) {
+            $this->hold($cra, $day, self::autoHold() - ExclusiveReservedLead::where('user_id', $cra->id)->count());
+        }
+
+        ['picks' => $picks, 'upcoming' => $upcoming, 'looked' => $looked] = $this->pick($cra, $day, $room, $isFlat);
         $this->hand($cra, $day, $picks);
 
         if ($isFlat) {
-            $this->reserve($cra, $day, $upcoming);
+            $this->reserve($cra, $day, $upcoming, $looked);
+            // Keep autoHold() leads held for the days ahead; a supervisor holds more with hold() (Load 500 more).
+            $this->hold($cra, $day, self::autoHold() - ExclusiveReservedLead::where('user_id', $cra->id)->count());
         }
 
         return $added + $picks->count();
@@ -195,18 +205,20 @@ class ExclusiveLeads
     }
 
     /**
-     * Hold these leads for the days ahead, in place of what was held. Older months' holds and leads no longer qualifying go free.
+     * Hold these leads for the days ahead, in place of what was held among $looked (the held leads pick() read): those
+     * picked for the day or no longer qualifying go free; held leads it didn't read stay held.
      *
      * @param  Collection<int, array{lead: Lead, source: string}>  $upcoming
+     * @param  list<int>  $looked  lead ids
      */
-    private function reserve(User $cra, CarbonImmutable $day, Collection $upcoming): void
+    private function reserve(User $cra, CarbonImmutable $day, Collection $upcoming, array $looked): void
     {
         $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
         $now = now();
         $held = $upcoming->pluck('lead.id')->flip();
 
-        DB::transaction(function () use ($cra, $month, $now, $held, $upcoming) {
-            $gone = ExclusiveReservedLead::where('user_id', $cra->id)->get(['id', 'lead_id'])
+        DB::transaction(function () use ($cra, $month, $now, $held, $upcoming, $looked) {
+            $gone = ExclusiveReservedLead::where('user_id', $cra->id)->whereIn('lead_id', $looked)->get(['id', 'lead_id'])
                 ->reject(fn (ExclusiveReservedLead $reserved) => isset($held[$reserved->lead_id]))->pluck('id');
             foreach ($gone->chunk(500) as $ids) {
                 ExclusiveReservedLead::whereIn('id', $ids->all())->delete();
@@ -221,6 +233,102 @@ class ExclusiveLeads
 
             ExclusiveReservedLead::where('user_id', $cra->id)->update(['month' => $month]);
         });
+    }
+
+    /** Leads kept held for an exclusive CRA's days ahead without anyone asking (config exclusive_leads.auto_hold). */
+    public static function autoHold(): int
+    {
+        return (int) config('exclusive_leads.auto_hold');
+    }
+
+    /** Leads one "Load more" holds (config exclusive_leads.hold_step). */
+    public static function holdStep(): int
+    {
+        return (int) config('exclusive_leads.hold_step');
+    }
+
+    /**
+     * A supervisor's "Load more": hold up to $count more pool leads for the CRA's days ahead (hold()), one run at a time.
+     *
+     * @return int|null leads held, null when the CRA's list is being built right now
+     */
+    public function holdMore(User $cra, CarbonImmutable $day, int $count): ?int
+    {
+        $held = Cache::lock("exclusive-leads-{$cra->id}", 300)->get(fn () => $this->hold($cra, $day->startOfDay(), $count));
+
+        return $held === false ? null : (int) $held;
+    }
+
+    /**
+     * How many leads are held for the CRA's days ahead, and the most there can be: what's left of the month's target.
+     *
+     * @return array{held: int, most: int}
+     */
+    public function holding(User $cra, CarbonImmutable $day): array
+    {
+        $held = ExclusiveReservedLead::where('user_id', $cra->id)->count();
+
+        return ['held' => $held, 'most' => max($held, $this->monthRemaining($cra, $day->startOfDay()))];
+    }
+
+    /**
+     * Hold up to $count more unassigned pool leads for the CRA's days ahead, never past what's left of the month's target.
+     * The pool is read HOLD_BATCH leads at a time, oldest delivery first, until enough qualify, so it never has to fit in
+     * memory at once. As pick() takes them: the CRA's own customers, else FSD leads of her niche's products whose customer
+     * no CRA owns; never one held for another CRA, already on her lists this month, or whose customer bought again.
+     *
+     * @return int leads held
+     */
+    private function hold(User $cra, CarbonImmutable $day, int $count): int
+    {
+        if ($day->lessThan(self::flatMonthFrom())) {
+            return 0;
+        }
+
+        $count = min($count, $this->monthRemaining($cra, $day) - ExclusiveReservedLead::where('user_id', $cra->id)->count());
+        if ($count <= 0) {
+            return 0;
+        }
+
+        $columns = ['id', 'assigned_to', 'phone_number', 'product_name', 'delivered_date', 'listed_on', 'est_out_of_stock_date', 'lead_type', 'customer_tag'];
+        $phoneOf = fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number);
+        [$monthStart] = $this->leadDaysOfMonth($day);
+        $listedThisMonth = ExclusiveListLead::where('user_id', $cra->id)
+            ->whereDate('list_date', '>=', $monthStart)->whereDate('list_date', '<=', $day)->pluck('lead_id')->flip();
+        $niches = NicheRules::current();
+        $pool = Lead::withoutPosSales()->whereNull('assigned_to')->unprocessed()->whereDate('listed_on', '<=', $day)
+            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))->orderBy('delivered_date')->orderBy('id');
+        $found = [];
+
+        for ($offset = 0; count($found) < $count; $offset += self::HOLD_BATCH) {
+            $batch = (clone $pool)->offset($offset)->limit(self::HOLD_BATCH)->get($columns);
+            $leads = app(BacklogFill::class)->withoutReordered($batch, $phoneOf);
+            $classify = $this->classifier($cra, $day, $leads);
+
+            foreach ($leads as $lead) {
+                ['owner' => $owner, 'source' => $source] = $classify($lead);
+                $skip = isset($listedThisMonth[$lead->id]) || ($owner !== null && $owner !== $cra->id)
+                    || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
+
+                if (! $skip && count($found) < $count) {
+                    $found[$lead->id] = $source;
+                }
+            }
+
+            if ($batch->count() < self::HOLD_BATCH) {
+                break;
+            }
+        }
+
+        $month = $day->addDays(WorkingDate::lagDays())->startOfMonth()->toDateString();
+        $now = now();
+        foreach (array_chunk($found, 500, true) as $chunk) {
+            ExclusiveReservedLead::insertOrIgnore(array_map(fn (int $leadId, string $source) => [
+                'user_id' => $cra->id, 'month' => $month, 'lead_id' => $leadId, 'source' => $source, 'created_at' => $now, 'updated_at' => $now,
+            ], array_keys($chunk), $chunk));
+        }
+
+        return count($found);
     }
 
     /**
@@ -260,7 +368,7 @@ class ExclusiveLeads
      * The day's leads in priority order: $room in all, or on a flat month every leftover plus $room new ones, and the
      * qualifying leads after those, up to what's left of the month's target, for the days ahead.
      *
-     * @return array{picks: Collection<int, array{lead: Lead, source: string}>, upcoming: Collection<int, array{lead: Lead, source: string}>}
+     * @return array{picks: Collection<int, array{lead: Lead, source: string}>, upcoming: Collection<int, array{lead: Lead, source: string}>, looked: list<int>}
      */
     private function pick(User $cra, CarbonImmutable $day, int $room, bool $isFlat): array
     {
@@ -278,11 +386,15 @@ class ExclusiveLeads
         $leftovers = $backlog->withoutReordered($this->leftovers($cra, $day)->whereNotIn('id', $onToday)->orderBy('listed_on')->orderBy('id')->get($columns), $phoneOf);
         $leftoverIds = $leftovers->pluck('id')->flip();
 
-        // Waiting: the unassigned pool and the day's unassigned leads not held for another exclusive CRA, and the CRA's own
-        // untouched backlog of earlier days. A lead another CRA holds is never taken.
+        // Waiting: the unassigned leads held for the CRA (hold()) and the day's own unassigned leads not held for another
+        // exclusive CRA, and the CRA's own untouched backlog of earlier days. The rest of the pool is read only by hold(),
+        // a batch at a time: it holds tens of thousands of leads, too many for one run. A lead another CRA holds is never taken.
+        // Only the first autoHold() of them (the oldest held): the day takes far fewer, and a month can hold thousands.
+        $held = ExclusiveReservedLead::where('user_id', $cra->id)->orderBy('id')->limit(max(self::autoHold(), 2 * $room))->pluck('lead_id')->all();
         $waiting = Lead::withoutPosSales()->whereDate('listed_on', '<=', $day)
             ->whereNotIn('id', ExclusiveReservedLead::where('user_id', '!=', $cra->id)->select('lead_id'))
-            ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->whereNull('assigned_to')->unprocessed())
+            ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->whereNull('assigned_to')->unprocessed()
+                ->where(fn (Builder $q) => $q->whereIn('id', $held)->orWhereDate('listed_on', $day)))
                 ->orWhere(fn (Builder $q) => $q->whereDate('listed_on', '<', $day)->where('assigned_to', $cra->id)->untouched()))
             ->orderBy('listed_on')->orderBy('id')->get($columns);
         $waiting = $backlog->withoutReordered($waiting, $phoneOf);
@@ -316,12 +428,14 @@ class ExclusiveLeads
             ->values();
 
         if (! $isFlat) {
-            return ['picks' => $carried->concat($new)->take($room)->values(), 'upcoming' => collect()];
+            return ['picks' => $carried->concat($new)->take($room)->values(), 'upcoming' => collect(), 'looked' => $held];
         }
 
         return [
             'picks' => $carried->concat($new->take($room))->values(),
             'upcoming' => $new->slice($room)->take(max(0, $this->monthRemaining($cra, $day) - min($room, $new->count())))->values(),
+            // Held leads read, and the day's own pool leads: reserve() frees only among these.
+            'looked' => [...$held, ...$waiting->pluck('id')->all()],
         ];
     }
 

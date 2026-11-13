@@ -80,6 +80,7 @@ class Lead extends Model
             'contact_date' => 'immutable_date',
             'callback_date' => 'immutable_date',
             'notes_updated_at' => 'datetime',
+            'assignment_checked_at' => 'datetime',
         ];
     }
 

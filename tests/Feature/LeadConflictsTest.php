@@ -73,6 +73,78 @@ class LeadConflictsTest extends TestCase
         $this->actingAs($this->july)->get(route('cra-dashboard'))->assertOk()->assertDontSee('Check who gets these leads');
     }
 
+    private function supervisor(): User
+    {
+        return User::create(['email' => 'lead@example.com', 'display_name' => 'Lead', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+    }
+
+    public function test_supervisor_assigns_a_listed_lead_to_another_cra_and_it_leaves_the_list(): void
+    {
+        $this->customer('Split Customer', '9171111111', $this->regina, $this->july, 2, $this->regina);
+        $supervisor = $this->supervisor();
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
+        $lead = Lead::firstWhere('customer_name', 'Split Customer');
+
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertOk()
+            ->assertSee(route('cra-dashboard.assign', $lead))->assertSee('Regina (has it)');
+
+        $this->actingAs($supervisor)->from(route('cra-dashboard'))
+            ->post(route('cra-dashboard.assign', $lead), ['to' => $this->july->id])
+            ->assertRedirect(route('cra-dashboard'))->assertSessionHas('status', "Split Customer's lead is now July Ann's.");
+
+        $lead->refresh();
+        $this->assertSame($this->july->id, $lead->assigned_to);
+        $this->assertSame($supervisor->id, $lead->assignment_checked_by);
+        $this->assertDatabaseHas('lead_transfers', ['lead_id' => $lead->id, 'from_user_id' => $this->regina->id, 'to_user_id' => $this->july->id, 'transferred_by' => $supervisor->id]);
+
+        // Gone at once, and stays gone after the next refresh.
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertDontSee('Check who gets these leads');
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertDontSee('Check who gets these leads');
+    }
+
+    public function test_choosing_the_cra_who_has_the_lead_keeps_it_there_and_takes_it_off_the_list(): void
+    {
+        $this->customer('Split Customer', '9171111111', $this->regina, $this->july, 2, $this->regina);
+        $supervisor = $this->supervisor();
+        $lead = Lead::firstWhere('customer_name', 'Split Customer');
+
+        $this->actingAs($supervisor)->post(route('cra-dashboard.assign', $lead), ['to' => $this->regina->id])
+            ->assertSessionHas('status', "Split Customer's lead stays with Regina.");
+
+        $this->assertSame($this->regina->id, $lead->refresh()->assigned_to);
+        $this->assertNotNull($lead->assignment_checked_at);
+        $this->assertDatabaseCount('lead_transfers', 0);
+        $this->artisan('leads:refresh-conflicts')->assertSuccessful();
+        $this->actingAs($supervisor)->get(route('cra-dashboard'))->assertDontSee('Check who gets these leads');
+    }
+
+    public function test_a_worked_lead_is_not_moved(): void
+    {
+        $this->customer('Split Customer', '9171111111', $this->regina, $this->july, 2, $this->regina);
+        $lead = Lead::firstWhere('customer_name', 'Split Customer');
+        $lead->forceFill(['processed_at' => now()])->save();
+
+        $this->actingAs($this->supervisor())->post(route('cra-dashboard.assign', $lead), ['to' => $this->july->id])
+            ->assertSessionHasErrors('assign');
+
+        $this->assertSame($this->regina->id, $lead->refresh()->assigned_to);
+        $this->assertNull($lead->assignment_checked_at);
+    }
+
+    public function test_only_supervisors_assign_and_only_to_an_active_cra(): void
+    {
+        $this->customer('Split Customer', '9171111111', $this->regina, $this->july, 2, $this->regina);
+        $lead = Lead::firstWhere('customer_name', 'Split Customer');
+        $former = $this->cra('Former', 'CRD FORMER');
+        $former->update(['is_active' => false]);
+
+        $this->actingAs($this->july)->post(route('cra-dashboard.assign', $lead), ['to' => $this->july->id])->assertForbidden();
+        $this->actingAs($this->supervisor())->post(route('cra-dashboard.assign', $lead), ['to' => $former->id])->assertSessionHasErrors('to');
+
+        $this->assertSame($this->regina->id, $lead->refresh()->assigned_to);
+    }
+
     public function test_no_panel_when_every_customers_cras_agree(): void
     {
         $this->customer('Agreed Customer', '9172222222', $this->july, $this->july, 2, $this->july);

@@ -349,6 +349,44 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertNull($leads[3]->fresh()->assigned_to);
     }
 
+    public function test_a_few_leads_are_held_on_their_own_and_a_supervisor_loads_more_up_to_the_target(): void
+    {
+        config(['exclusive_leads.daily_quota' => 1, 'exclusive_leads.month_target' => 8, 'exclusive_leads.auto_hold' => 3, 'exclusive_leads.hold_step' => 2]);
+        collect(range(1, 12))->each(fn () => $this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+
+        $this->sync('2026-11-06');
+
+        // One handed out, three held for the days ahead.
+        $this->assertCount(1, $this->listOn('2026-11-06'));
+        $this->assertSame(3, ExclusiveReservedLead::where('user_id', $this->joanna->id)->count());
+
+        $this->actingAs($this->supervisor)->post(route('exclusive-leads.hold', $this->joanna))
+            ->assertSessionHas('status', "2 more leads held for Joanna Rose's days ahead.");
+        $this->assertSame(5, ExclusiveReservedLead::where('user_id', $this->joanna->id)->count());
+
+        // Never past the month's target: 8, one already listed.
+        $this->actingAs($this->supervisor)->post(route('exclusive-leads.hold', $this->joanna));
+        $this->actingAs($this->supervisor)->post(route('exclusive-leads.hold', $this->joanna));
+        $this->assertSame(7, ExclusiveReservedLead::where('user_id', $this->joanna->id)->count());
+        $this->actingAs($this->supervisor)->post(route('exclusive-leads.hold', $this->joanna))
+            ->assertSessionHas('status', "No more leads to hold for Joanna Rose: the month's target is reached or none qualify.");
+
+        $this->actingAs($this->joanna)->post(route('exclusive-leads.hold', $this->joanna))->assertForbidden();
+    }
+
+    public function test_her_day_reads_only_the_first_held_leads_and_the_rest_stay_held(): void
+    {
+        config(['exclusive_leads.daily_quota' => 1, 'exclusive_leads.month_target' => 10, 'exclusive_leads.auto_hold' => 2]);
+        $leads = collect(range(1, 5))->map(fn () => $this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+        $leads->each(fn (Lead $lead) => ExclusiveReservedLead::create(['user_id' => $this->joanna->id, 'month' => '2026-11-01', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::RANDOM]));
+
+        $this->sync('2026-11-06');
+
+        // The first held one is handed out; the other four, read or not, stay held.
+        $this->assertSame([$leads[0]->id => 'random'], $this->listOn('2026-11-06'));
+        $this->assertSame($leads->slice(1)->pluck('id')->values()->all(), ExclusiveReservedLead::orderBy('lead_id')->pluck('lead_id')->all());
+    }
+
     public function test_a_lead_held_for_her_is_not_given_to_other_cras(): void
     {
         config(['exclusive_leads.daily_quota' => 1]);

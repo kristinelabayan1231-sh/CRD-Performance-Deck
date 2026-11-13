@@ -33,7 +33,10 @@
                 <x-slot:actions>
                     <span class="font-semibold text-coral-700">{{ number_format(count($conflicts)) }} {{ str('customer')->plural(count($conflicts)) }}</span>
                 </x-slot:actions>
-                <p class="p-4 text-sm text-muted">These customers have an open lead, but their CRAs disagree: their High AOV / VIP CRA isn't the CRA with the most orders, or someone else claimed them. The rules go claim first, then High AOV / VIP CRA, then most orders; check the lead is with the right CRA. Updates every 10 minutes.</p>
+                <p class="p-4 text-sm text-muted">These customers have an open lead, but their CRAs disagree: their High AOV / VIP CRA isn't the CRA with the most orders, or someone else claimed them. The rules go claim first, then High AOV / VIP CRA, then most orders; check the lead is with the right CRA.@if ($canAssign) Pick the CRA and press Assign (choose the CRA who has it to keep it there); the customer then leaves the list.@endif Updates every 10 minutes.</p>
+                @error('assign')
+                    <div role="alert" class="mx-4 mb-4 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $message }}</div>
+                @enderror
                 <div class="max-h-[28rem] overflow-auto border-t border-line">
                     <table class="w-full text-left text-sm">
                         <thead class="sticky top-0 bg-[#fff7f7] text-xs whitespace-nowrap text-muted">
@@ -46,6 +49,9 @@
                                 <th scope="col" class="px-4 py-2.5 font-semibold">High AOV / VIP CRA</th>
                                 <th scope="col" class="px-4 py-2.5 font-semibold">Most orders</th>
                                 <th scope="col" class="px-4 py-2.5 font-semibold">Rules give it to</th>
+                                @if ($canAssign)
+                                    <th scope="col" class="px-4 py-2.5 font-semibold">Assign to</th>
+                                @endif
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-line bg-white">
@@ -59,6 +65,21 @@
                                     <td class="px-4 py-2.5">{{ isset($row['high_value_id']) ? ($craNames[$row['high_value_id']] ?? 'Former CRA').' · '.$row['high_value_label'] : '—' }}</td>
                                     <td class="px-4 py-2.5">{{ isset($row['orders_id']) ? ($craNames[$row['orders_id']] ?? 'Former CRA').' · '.$row['orders_count'].' '.str('order')->plural($row['orders_count']) : '—' }}</td>
                                     <td class="px-4 py-2.5 font-semibold text-ink">{{ $craNames[$row['rules_id']] ?? '—' }}</td>
+                                    @if ($canAssign)
+                                        <td class="px-4 py-2">
+                                            <form method="POST" action="{{ route('cra-dashboard.assign', $row['lead_id']) }}" class="flex items-center gap-2">
+                                                @csrf
+                                                <label for="assign-{{ $row['lead_id'] }}" class="sr-only">Assign {{ $row['customer_name'] }}'s lead to</label>
+                                                <select id="assign-{{ $row['lead_id'] }}" name="to" required class="h-8 rounded-lg border border-line bg-white px-2 text-xs text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                                                    <option value="" disabled @selected(! $assignCras->contains('id', $row['rules_id']))>Choose CRA</option>
+                                                    @foreach ($assignCras as $option)
+                                                        <option value="{{ $option->id }}" @selected($option->id === $row['rules_id'])>{{ $option->displayName() }}{{ $option->id === $row['holder_id'] ? ' (has it)' : '' }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <button type="submit" class="h-8 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Assign</button>
+                                            </form>
+                                        </td>
+                                    @endif
                                 </tr>
                             @endforeach
                         </tbody>

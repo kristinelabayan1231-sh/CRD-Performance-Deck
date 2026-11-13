@@ -83,6 +83,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::get('/', fn () => redirect()->route(auth()->user()->role?->slug === Role::CRA ? 'cra-dashboard' : 'dashboard'))->name('home');
     Route::get('/my-dashboard', [CraDashboardController::class, 'index'])->name('cra-dashboard');
     Route::post('/my-dashboard/claims', [CraDashboardController::class, 'claim'])->middleware('throttle:30,1')->name('cra-dashboard.claim');
+    Route::post('/my-dashboard/leads/{lead}/assign', [CraDashboardController::class, 'assign'])->middleware('can:segmentation.transfer')->name('cra-dashboard.assign');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::get('/dashboard/live', DashboardLiveController::class)->name('dashboard.live');
     Route::get('/dashboard/board', DashboardBoardController::class)->middleware('can:daily_is.view_all')->name('dashboard.board');
@@ -139,6 +140,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::get('/exclusive-leads', [ExclusiveLeadController::class, 'index'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.index');
     Route::get('/exclusive-leads/dashboard', [ExclusiveLeadDashboardController::class, 'index'])->middleware('can:exclusive_leads.view_all')->name('exclusive-leads.dashboard');
     Route::get('/exclusive-leads/dashboard/phones', [ExclusiveLeadDashboardController::class, 'phones'])->middleware('can:exclusive_leads.view_all')->name('exclusive-leads.dashboard.phones');
+    Route::post('/exclusive-leads/{cra}/hold', [ExclusiveLeadController::class, 'hold'])->middleware(['can:exclusive_leads.manage', 'throttle:20,1'])->name('exclusive-leads.hold');
     Route::get('/exclusive-leads/export', [ExclusiveLeadController::class, 'export'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.export');
     Route::get('/exclusive-leads/phones', [ExclusiveLeadController::class, 'phones'])->middleware('can:exclusive_leads.view')->name('exclusive-leads.phones');
     Route::post('/exclusive-leads/leads/{lead}/order-tag', ExclusiveLeadTagController::class)->middleware(['can:exclusive_leads.view', 'throttle:30,1'])->name('exclusive-leads.order-tag');
