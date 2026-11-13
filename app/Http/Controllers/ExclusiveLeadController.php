@@ -52,8 +52,9 @@ class ExclusiveLeadController extends Controller
         $canManageSettings = $user->can('exclusive_leads.manage');
         $canSetLimits = $user->can('exclusive_leads.limits');
 
+        // Every exclusive CRA's list opens for everyone; a CRA only views another CRA's (isViewOnly).
         $exclusiveCras = $this->exclusiveCras();
-        $visibleCras = $canViewAll ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
+        $visibleCras = $exclusiveCras;
 
         $filters = $request->validate([
             'cra' => ['nullable', 'integer'],
@@ -73,10 +74,11 @@ class ExclusiveLeadController extends Controller
         $search = trim((string) ($filters['q'] ?? '')) ?: null;
         $wholeMonth = ! $search && ($filters['view'] ?? 'day') === 'month';
 
-        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
+        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->firstWhere('id', $user->id) ?? $visibleCras->first();
 
         $data = [
             'cra' => $cra,
+            'readOnly' => $cra !== null && $this->isViewOnly($user, $cra),
             'cras' => $visibleCras,
             'canViewAll' => $canViewAll,
             'canManageSettings' => $canManageSettings,
@@ -154,8 +156,8 @@ class ExclusiveLeadController extends Controller
             'taggedCustomers' => $exclusive->taggedCustomers(),
             'upcomingCount' => count($upcoming),
             'sources' => isset($listDetails) ? $listDetails['sources'] + $upcoming : ($search ? $exclusive->latestSources($cra) : $exclusive->sourcesFor($cra, $leadDay)),
-            'exportUrl' => route('exclusive-leads.export', $wholeList = array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
-            'allPhonesUrl' => route('exclusive-leads.phones', $wholeList),
+            'allPhonesUrl' => route('exclusive-leads.phones', $wholeList = array_filter(['cra' => $cra->id, 'month' => $month->format('Y-m'), 'type' => $filters['type'] ?? null, 'product' => $filters['product'] ?? null])),
+            'exportUrl' => $data['readOnly'] ? null : route('exclusive-leads.export', $wholeList),
             'canManage' => $user->can('segmentation.manage'),
             // Supervisors, this month: the leads held for her days ahead, and Load more.
             'holding' => $canManageSettings && $month->isSameMonth($today) ? $exclusive->holding($cra, Lead::today()) : null,
@@ -212,6 +214,7 @@ class ExclusiveLeadController extends Controller
     public function export(Request $request, ExclusiveLeads $exclusive): BinaryFileResponse
     {
         ['cra' => $cra, 'month' => $month, 'leads' => $list] = $this->monthList($request, $exclusive);
+        abort_if($this->isViewOnly($request->user(), $cra), 403, 'You can only view this list.');
         $details = $exclusive->listDetailsBetween($cra, $month->startOfMonth(), $month->endOfMonth()->startOfDay());
         $upcoming = $exclusive->upcomingSources($cra, $month);
         $taggedCustomers = $exclusive->taggedCustomers();
@@ -281,9 +284,8 @@ class ExclusiveLeadController extends Controller
             'product' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $exclusiveCras = $this->exclusiveCras();
-        $visibleCras = $user->can('exclusive_leads.view_all') ? $exclusiveCras : $exclusiveCras->where('id', $user->id)->values();
-        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->first();
+        $visibleCras = $this->exclusiveCras();
+        $cra = $visibleCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $visibleCras->firstWhere('id', $user->id) ?? $visibleCras->first();
         abort_unless($cra, 404);
 
         $requestedMonth = isset($filters['month']) ? CarbonImmutable::parse($filters['month'].'-01') : WorkingDate::realToday();
@@ -298,6 +300,14 @@ class ExclusiveLeadController extends Controller
                 ->orderByDesc('listed_on')
                 ->orderBy('id'),
         ];
+    }
+
+    /**
+     * A CRA looking at another CRA's list: they see it and can copy its contact numbers, nothing else.
+     */
+    private function isViewOnly(User $user, User $cra): bool
+    {
+        return $cra->id !== $user->id && ! $user->can('exclusive_leads.view_all');
     }
 
     /**

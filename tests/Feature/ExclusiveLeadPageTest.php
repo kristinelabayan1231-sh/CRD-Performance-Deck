@@ -254,8 +254,9 @@ class ExclusiveLeadPageTest extends TestCase
                 ->assertOk()->assertSee('Maria Santos')->assertDontSee('Maria Cruz');
         }
 
+        // Another CRA's list opens view only.
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $regina->id, 'view' => 'month']))
-            ->assertOk()->assertDontSee('Maria Cruz');
+            ->assertOk()->assertSee('Maria Cruz')->assertDontSee('Maria Santos')->assertSee('View only.');
     }
 
     /**
@@ -514,6 +515,28 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertSee('data-spiel-row data-chat-url="'.route('segmentation.chat', $lead).'"', false);
     }
 
+    public function test_a_cra_viewing_the_exclusive_list_can_only_copy_its_numbers(): void
+    {
+        $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
+        $regina = $this->user(Role::CRA, 'Regina');
+        $lead = $this->lead($joanna, 'Maria Santos', '9171234567', '2026-11-05');
+        ExclusiveListLead::create(['user_id' => $joanna->id, 'list_date' => '2026-11-05', 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
+
+        $this->actingAs($regina)->get(route('exclusive-leads.index', ['date' => '2026-11-05']))
+            ->assertOk()
+            ->assertSee('Maria Santos')
+            ->assertSee('View only.')
+            ->assertSee('data-copy-row data-phone="9171234567"', false)
+            ->assertSee('data-copy-all-phones', false)
+            ->assertDontSee('data-lead-row', false)
+            ->assertDontSee('data-spiel-row', false)
+            ->assertDontSee(route('exclusive-leads.order-tag', $lead))
+            ->assertDontSee(route('exclusive-leads.export', ['cra' => $joanna->id, 'month' => '2026-11']));
+
+        $this->actingAs($regina)->patchJson(route('segmentation.update', $lead), ['status' => 'answered'])->assertForbidden();
+        $this->actingAs($regina)->postJson(route('exclusive-leads.order-tag', $lead), ['order_tag' => (string) config('exclusive_leads.order_tag.id')])->assertForbidden();
+    }
+
     public function test_the_segmentation_tracker_has_no_tag_column(): void
     {
         $regina = $this->user(Role::CRA, 'Regina');
@@ -536,7 +559,9 @@ class ExclusiveLeadPageTest extends TestCase
         }
         $names = fn (TestResponse $response) => array_column(array_slice($this->downloadedRows($response), 1), 0);
 
-        $this->assertSame(['Maria Santos', 'Pedro Reyes'], $names($this->actingAs($joanna)->get(route('exclusive-leads.export', ['cra' => $regina->id]))));
+        $this->assertSame(['Maria Santos', 'Pedro Reyes'], $names($this->actingAs($joanna)->get(route('exclusive-leads.export'))));
+        // Another CRA's list is view only: no Excel file.
+        $this->actingAs($joanna)->get(route('exclusive-leads.export', ['cra' => $regina->id]))->assertForbidden();
         $this->assertSame(['Pedro Reyes'], $names($this->actingAs($joanna)->get(route('exclusive-leads.export', ['type' => Lead::TYPE_FSD]))));
         $this->assertSame(['Maria Cruz'], $names($this->actingAs($this->user(Role::CRA_SUPERVISOR, 'Lead'))->get(route('exclusive-leads.export', ['cra' => $regina->id]))));
     }
@@ -586,11 +611,14 @@ class ExclusiveLeadPageTest extends TestCase
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['date' => '2026-11-03']))
             ->assertOk()->assertSee(route('exclusive-leads.phones', ['cra' => $joanna->id, 'month' => '2026-11']));
 
-        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['month' => '2026-11', 'cra' => $regina->id]))
+        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['month' => '2026-11']))
             ->assertOk()->assertExactJson(['phones' => $expected]);
+        // Copying the numbers is the one thing a CRA viewing another CRA's list can do.
+        $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['month' => '2026-11', 'cra' => $regina->id]))
+            ->assertOk()->assertExactJson(['phones' => ['09170004444']]);
     }
 
-    public function test_copy_all_keeps_the_filters_and_is_not_open_to_a_cra_off_the_page(): void
+    public function test_copy_all_keeps_the_filters_and_a_cra_off_the_page_copies_the_exclusive_cras_numbers(): void
     {
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
         $crd = $this->lead($joanna, 'Maria Santos', '09170000001', '2026-11-05');
@@ -603,7 +631,8 @@ class ExclusiveLeadPageTest extends TestCase
         $this->actingAs($joanna)->getJson(route('exclusive-leads.phones', ['type' => Lead::TYPE_FSD]))
             ->assertOk()->assertExactJson(['phones' => ['09170000002']]);
 
-        $this->actingAs($this->user(Role::CRA, 'Regina'))->getJson(route('exclusive-leads.phones'))->assertNotFound();
+        $this->actingAs($this->user(Role::CRA, 'Regina'))->getJson(route('exclusive-leads.phones'))
+            ->assertOk()->assertExactJson(['phones' => ['09170000001', '09170000002']]);
     }
 
     public function test_the_whole_list_has_the_upcoming_leads_and_leaves_out_those_moved_away(): void
@@ -733,7 +762,7 @@ class ExclusiveLeadPageTest extends TestCase
             ->assertOk()->assertDontSee('Reserved - Pancake');
     }
 
-    public function test_the_filters_offer_only_one_cra_at_a_time_and_a_cra_cannot_pick_another(): void
+    public function test_the_filters_offer_only_one_cra_at_a_time_and_a_cra_views_another_cras_list(): void
     {
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
         $other = $this->user(Role::CRA, 'Lhea', '2026-10-02');
@@ -741,16 +770,16 @@ class ExclusiveLeadPageTest extends TestCase
         ExclusiveListLead::create(['user_id' => $other->id, 'list_date' => '2026-11-05', 'lead_id' => $otherLead->id, 'source' => ExclusiveLeads::HANDLED]);
 
         $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $other->id, 'date' => '2026-11-05']))
-            ->assertOk()->assertDontSee('Maria Santos')->assertDontSee('<option value="all"', false);
+            ->assertOk()->assertSee('Maria Santos')->assertSee('View only.')->assertDontSee('<option value="all"', false);
     }
 
-    public function test_a_search_with_no_match_says_so_and_a_cra_cannot_search_another_cras_list(): void
+    public function test_a_search_with_no_match_says_so(): void
     {
         $joanna = $this->user(Role::CRA, 'Joanna', '2026-10-02');
         $regina = $this->user(Role::CRA, 'Regina', '2026-10-02');
         $this->lead($regina, 'Maria Cruz', '09170001111', '2026-10-03');
 
-        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['cra' => $regina->id, 'q' => 'maria']))
+        $this->actingAs($joanna)->get(route('exclusive-leads.index', ['q' => 'maria']))
             ->assertOk()
             ->assertDontSee('Maria Cruz')
             ->assertSee('No pending leads match this search.');

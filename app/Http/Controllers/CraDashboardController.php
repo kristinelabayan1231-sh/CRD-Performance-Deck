@@ -106,7 +106,7 @@ class CraDashboardController extends Controller
             // Supervisors only: customers whose CRAs disagree, so who gets their lead needs a look.
             'conflicts' => $canViewAll && ! $isCra ? $conflicts->all() : [],
             'canAssign' => ! $isCra && $user->can('segmentation.transfer'),
-            'assignCras' => ! $isCra && $user->can('segmentation.transfer') ? LeadGenerator::segmentationCras() : collect(),
+            'assignCras' => ! $isCra && $user->can('segmentation.transfer') ? $cras : collect(),
             'cra' => $cra,
             'cras' => $canViewAll ? $cras : collect(),
             'canClaim' => $cra->id === $user->id && $isCra,
@@ -128,14 +128,14 @@ class CraDashboardController extends Controller
      * Check who gets these leads → Assign: a supervisor gives the customer's open lead to a CRA (the rules' CRA by
      * default), or keeps it with the CRA who has it. Either way the lead leaves the list.
      */
-    public function assign(Request $request, Lead $lead, LeadConflicts $conflicts, PancakeClient $pancake): RedirectResponse
+    public function assign(Request $request, Lead $lead, LeadConflicts $conflicts, PancakeClient $pancake, HighValueCustomers $highValue): RedirectResponse
     {
         $user = $request->user();
         abort_if($user->role?->slug === Role::CRA, 403, 'Only supervisors can assign these leads.');
-        $cras = LeadGenerator::segmentationCras();
+        $cras = LeadGenerator::cras();
         $data = $request->validate(['to' => ['required', 'integer', Rule::in($cras->pluck('id'))]], [
             'to.required' => 'Choose a CRA to assign the lead to.',
-            'to.in' => 'Leads can only be assigned to an active Segmentation Tracker CRA.',
+            'to.in' => 'Leads can only be assigned to an active CRA.',
         ]);
 
         $isOpen = Lead::whereKey($lead->id)->unprocessed()->notConverted()->withoutPosSales()->exists();
@@ -157,11 +157,25 @@ class CraDashboardController extends Controller
             }
         }
 
-        DB::transaction(function () use ($lead, $to, $user, $isKept) {
+        DB::transaction(function () use ($lead, $to, $user, $isKept, $highValue) {
             if (! $isKept) {
                 // From today on, like a backlog transfer; a lead not due yet keeps its day.
                 $today = Lead::today();
-                $lead->transferTo($to, $user, $lead->listed_on->greaterThan($today) ? $lead->listed_on : $today);
+                $day = $lead->listed_on->greaterThan($today) ? $lead->listed_on : $today;
+                $lead->transferTo($to, $user, $day);
+
+                // An exclusive CRA's tracker shows only the leads on her day's list.
+                if ($to->isExclusiveOn($day)) {
+                    $phone = LeadGenerator::normalizePhone((string) $lead->phone_number);
+                    ExclusiveListLead::insertOrIgnore([
+                        'user_id' => $to->id,
+                        'list_date' => $day->toDateString(),
+                        'lead_id' => $lead->id,
+                        'source' => ($highValue->crasFor([$phone])[$phone] ?? null) === $to->id ? ExclusiveLeads::HIGH_VALUE : ExclusiveLeads::HANDLED,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
             }
             $lead->forceFill(['assignment_checked_at' => now(), 'assignment_checked_by' => $user->id])->save();
         });
