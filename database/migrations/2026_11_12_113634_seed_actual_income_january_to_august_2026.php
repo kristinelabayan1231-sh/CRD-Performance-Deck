@@ -10,7 +10,7 @@ return new class extends Migration
 
     /**
      * Actual Income for January, February and April to August 2026, every line as in the CRD Sales Report sheet (March
-     * isn't available yet; the September and October files were monthly targets). 'CRD' is the overall CRD card.
+     * is seeded on its own in 2026_11_13_110933; the September and October files were monthly targets). 'CRD' is the overall CRD card.
      * Sharie Galano, no longer a CRA, is added as an inactive CRA for her June and July cards. A month that already has
      * sheet figures is left as it is; a database without the CRAs gets nothing.
      *

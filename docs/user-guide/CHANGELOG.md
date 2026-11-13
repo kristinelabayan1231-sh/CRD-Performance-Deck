@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-13 · Actual Income · March 2026 now shows the CRD Sales Report sheet's figures (CRD card plus Joanna Rose, Regina and July Ann), so every month from January to August is filled in · shots: none
+
 - 2026-11-13 · Customer Database, High AOV & VIP, Churn · A view that isn't ready yet (a period, tab, sort or search nobody opened in the last few minutes) shows "Preparing this view…" and reloads itself until it's ready, instead of timing out; it's worked out in the background as the same user. The default views stay ready as before · shots: none
 
 - 2026-11-13 · Exclusive Lead Tracker · 1,000 leads are kept held for the exclusive CRA's days ahead on their own; supervisors see how many are held (up to what's left of the month's target) and a "Load 500 more" button. Her daily list comes from those held leads, her own backlog and the day's new leads · shots: exclusive-leads
