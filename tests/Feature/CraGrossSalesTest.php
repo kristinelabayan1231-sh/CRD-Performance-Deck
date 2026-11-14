@@ -105,7 +105,7 @@ class CraGrossSalesTest extends TestCase
         $this->sale('2026-08-01', $joanna, 700000, -67607.86);
 
         $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))
-            ->assertSee('Running ACB')
+            ->assertSee('ACB</th>', false)
             ->viewData('data');
 
         $this->assertSame(round((200000 - 50000 + 300000 - 67607.86) * 0.014, 2), $data['acb'][$joanna->id]);

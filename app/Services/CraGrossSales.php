@@ -13,7 +13,7 @@ use Illuminate\Support\Collection;
  * empty (null) until something is typed for it; TOTAL adds up the CRAs shown. Each month's top seller is the CRA with
  * the most Gross Sales.
  *
- * Running ACB = (the year's positive + negative Net Income so far) × 1.4% (segmentation.acb). Before June 2026 a month
+ * ACB = (the year's positive + negative Net Income so far) × 1.4% (segmentation.acb). Before June 2026 a month
  * only counts when its Net Income is below ₱250,000; from June 2026 every month counts.
  */
 class CraGrossSales
@@ -70,7 +70,7 @@ class CraGrossSales
     }
 
     /**
-     * A CRA's Running ACB for the year: the Net Income of the months that count × the rate; null without any.
+     * A CRA's ACB for the year: the Net Income of the months that count × the rate; null without any.
      *
      * @param  array<int, array{gross: float, net: float}|null>  $row
      * @param  list<CarbonImmutable>  $months

@@ -13,7 +13,7 @@
                         <th colspan="2" class="border-b border-l border-line px-3 pt-2.5 pb-1 text-center font-bold text-ink">{{ $month->format('M') }}</th>
                     @endforeach
                     <th colspan="2" class="border-b border-l-2 border-line border-l-brand-200 bg-brand-50 px-3 pt-2.5 pb-1 text-center font-bold text-brand-700">{{ $year }}</th>
-                    <th rowspan="2" class="border-b border-l-2 border-line border-l-brand-200 px-3 py-2.5 text-right font-bold whitespace-nowrap text-ink" title="(positive + negative Net Income so far) × 1.4%; January–May 2026 only months below ₱250,000">Running ACB</th>
+                    <th rowspan="2" class="border-b border-l-2 border-line border-l-brand-200 px-3 py-2.5 text-right font-bold whitespace-nowrap text-ink" title="(positive + negative Net Income so far) × 1.4%; January–May 2026 only months below ₱250,000">ACB</th>
                 </tr>
                 <tr class="text-[0.625rem]">
                     @foreach ($data['months'] as $month)

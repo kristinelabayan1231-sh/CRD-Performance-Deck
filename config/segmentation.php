@@ -53,7 +53,7 @@ return [
         'repeat_rate' => 30,
     ],
 
-    // CRA Gross Sales & IBSC's Running ACB: (the year's positive + negative Net Income) × rate. A month before
+    // CRA Gross Sales & IBSC's ACB: (the year's positive + negative Net Income) × rate. A month before
     // capped_until only counts when its Net Income is below cap; from capped_until on every month counts.
     'acb' => [
         'rate' => 0.014,
