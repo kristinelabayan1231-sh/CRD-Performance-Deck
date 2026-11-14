@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ActualIncomeInput;
 use App\Models\ActualIncomeStatement;
 use App\Models\CraGrossSale;
+use App\Models\PancakeOrder;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActualIncome;
@@ -114,6 +115,41 @@ class CraGrossSalesTest extends TestCase
         $this->assertSame($data['acb'][$joanna->id], $data['acbTotal']);
     }
 
+    private function order(string $id, string $seller, string $day, float $price, array $extra = []): void
+    {
+        PancakeOrder::forceCreate(['pancake_order_id' => $id, 'seller_name' => $seller, 'ordered_on' => $day, 'total_price' => $price, ...$extra]);
+    }
+
+    public function test_orders_and_aov_come_from_the_cras_pos_orders(): void
+    {
+        $july = $this->user('July Ann', Role::CRA);
+        $july->update(['pancake_name' => 'CRD JULY ANN']);
+        $lhea = $this->user('Lhea', Role::CRA);
+        $lhea->update(['pancake_name' => 'CRD LHEI']);
+        // Her own account and her other account (CRD JULY DE LOS SANTOS); a canceled order counts, Shecom's amount first.
+        $this->order('1', 'CRD JULY ANN', '2026-03-02', 1000);
+        $this->order('2', 'CRD July de los Santos', '2026-03-20', 900, ['total_discount' => 100]);
+        $this->order('3', 'CRD JULY ANN', '2026-03-21', 999, ['status' => 6, 'shecom_sales' => 800]);
+        // Left out: deleted, no CRD product, another year.
+        $this->order('4', 'CRD JULY ANN', '2026-03-22', 5000, ['status' => 7]);
+        $this->order('5', 'CRD JULY ANN', '2026-03-23', 5000, ['non_crd' => true]);
+        $this->order('6', 'CRD JULY ANN', '2025-03-23', 5000);
+        // Lhea's FSD account counts only from her CRD start (2026-07-29).
+        $this->order('7', 'LHEA GATDULA', '2026-07-28', 700);
+        $this->order('8', 'LHEA GATDULA', '2026-07-29', 1000);
+        $this->order('9', 'CRD LHEI', '2026-08-05', 900);
+
+        $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026, 'show' => 'orders']));
+        $data = $response->viewData('data');
+
+        $this->assertSame(['orders' => 3, 'sales' => 2800.0], $data['pos'][$july->id]['months'][2]);
+        $this->assertSame(['orders' => 1, 'sales' => 1000.0], $data['pos'][$lhea->id]['months'][6]);
+        $this->assertSame(['orders' => 2, 'sales' => 1900.0], $data['pos'][$lhea->id]['year']);
+        $this->assertSame(['orders' => 5, 'sales' => 4700.0], $data['posYear']);
+        $this->assertNull($data['pos'][$july->id]['months'][3]);
+        $response->assertSee('Running AOV')->assertSee('933.33');
+    }
+
     public function test_the_figures_are_copied_once_from_actual_income_and_no_longer_follow_it(): void
     {
         $joanna = $this->user('Joanna Rose', Role::CRA);
@@ -145,6 +181,9 @@ class CraGrossSalesTest extends TestCase
             ->assertViewHas('canEdit', false)->assertSee('>Edit</a>', false)->assertDontSee('data-cra-gross-sales-input', false);
         $this->get(route('cra-gross-sales.index', ['year' => 2026, 'edit' => 1]))
             ->assertViewHas('canEdit', true)->assertSee('data-cra-gross-sales-input', false);
+        // Only Gross & NI has boxes; Orders and AOV come from POS.
+        $this->get(route('cra-gross-sales.index', ['year' => 2026, 'edit' => 1, 'show' => 'orders']))
+            ->assertDontSee('data-cra-gross-sales-input', false);
 
         $put = fn (string $field, $value) => $this->actingAs($supervisor)
             ->putJson(route('cra-gross-sales.update'), ['month' => '2026-03', 'cra' => $joanna->id, 'field' => $field, 'value' => $value]);

@@ -14,15 +14,22 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * CRA Gross Sales & IBSC: each CRA's Gross Sales and Net Income per month of a year. The page opens read-only; anyone
+ * CRA Gross Sales & IBSC: the year so far per CRA (Gross, Net Income, running orders and AOV, ACB) and the months, one
+ * figure at a time (?show: Gross above Net Income, POS orders or AOV). The page opens read-only; anyone
  * with cra_gross_sales.manage (CRA Supervisor, Team Lead) clicks Edit (?edit=1) to type the figures, which save as they
  * change.
  */
 class CraGrossSalesController extends Controller
 {
+    /** What the months show: key => tab label. */
+    public const SHOWS = ['sales' => 'Gross & NI', 'orders' => 'Orders', 'aov' => 'AOV'];
+
     public function index(Request $request, CraGrossSales $sales): View
     {
-        $filters = $request->validate(['year' => ['nullable', 'integer', 'min:2020', 'max:2100']]);
+        $filters = $request->validate([
+            'year' => ['nullable', 'integer', 'min:2020', 'max:2100'],
+            'show' => ['nullable', Rule::in(array_keys(self::SHOWS))],
+        ]);
         $year = (int) ($filters['year'] ?? WorkingDate::realToday()->year);
         $data = $sales->year(LeadGenerator::cras(), $year);
         $canManage = $request->user()->can('cra_gross_sales.manage');
@@ -36,6 +43,9 @@ class CraGrossSalesController extends Controller
             'data' => $data,
             'canManage' => $canManage,
             'canEdit' => $canManage && $request->boolean('edit'),
+            // The months show Gross above Net Income, the POS orders or the AOV.
+            'show' => $filters['show'] ?? 'sales',
+            'shows' => self::SHOWS,
             // Each CRA's monthly Net Income goal: a month under it shows red.
             'goal' => SalesGoals::craNetIncomeMonthly(),
         ]);

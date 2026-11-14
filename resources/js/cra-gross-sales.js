@@ -12,10 +12,11 @@ export function initCraGrossSales() {
         const selector = focused
             ? `[data-cra-gross-sales-input][data-cra="${focused.dataset.cra}"][data-month="${focused.dataset.month}"][data-field="${focused.dataset.field}"]`
             : null;
-        const scroller = () => host.querySelector('.overflow-x-auto');
-        const scrolled = scroller()?.scrollLeft ?? 0;
+        const scrolled = [...host.querySelectorAll('.overflow-x-auto')].map((box) => box.scrollLeft);
         host.innerHTML = await response.text();
-        if (scroller()) scroller().scrollLeft = scrolled;
+        host.querySelectorAll('.overflow-x-auto').forEach((box, index) => {
+            box.scrollLeft = scrolled[index] ?? 0;
+        });
         if (selector) host.querySelector(selector)?.focus({ preventScroll: true });
     };
 
