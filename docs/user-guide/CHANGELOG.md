@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-14 · CRA Gross Sales & IBSC · Redesigned: a "2026 so far" table on top (Gross, Net Income, Running # of Orders, Running AOV, ACB per CRA and TOTAL) and a "By month" table with tabs Gross & NI (Gross above Net Income, GROSS / NI labels after the CRA name), Orders and AOV. Orders and AOV come from Pancake POS by themselves up to today (the CRA's own and other accounts, from their CRD start, canceled included, deleted left out; AOV = sales before discount ÷ orders, as on Order Database → CRA's Performance); Gross and Net Income stay typed, boxes on the Gross & NI tab in edit mode · shots: cra-gross-sales
+
 - 2026-11-14 · CRA Gross Sales & IBSC · ACB column per CRA (and TOTAL): (positive + negative Net Income so far this year) × 1.4%; January–May 2026 count only months with Net Income below ₱250,000, June 2026 on count every month; red below zero · shots: cra-gross-sales
 
 - 2026-11-14 · CRA Gross Sales & IBSC · No longer taken from Actual Income: each CRA's Gross and Net per month are typed in on the page (the figures it showed were kept). Opens read-only with an Edit button for CRA Supervisors and Team Leads (new permission "Type in CRA Gross Sales & IBSC"); Edit shows a Gross and a Net box per CRA per month, each saving when you leave it; empty both to clear a month; Done goes back · shots: cra-gross-sales
