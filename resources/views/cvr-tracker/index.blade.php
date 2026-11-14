@@ -174,7 +174,7 @@
                                     <td class="px-3 py-2 whitespace-nowrap text-muted">{{ $order['phone'] ?? '—' }}</td>
                                     <td class="max-w-56 truncate px-3 py-2" title="{{ $order['page'] }}">{{ $order['page'] ?? '—' }}</td>
                                     <td class="px-3 py-2 font-semibold whitespace-nowrap">{{ $order['customer'] ?? '—' }}</td>
-                                    <td class="px-3 py-2 text-right">{{ $peso($order['amount']) }}</td>
+                                    <td class="px-3 py-2 text-right whitespace-nowrap">{{ $peso($order['amount']) }}@include('order-database._discount', ['discount' => $order['discount']])</td>
                                     <td class="px-3 py-2">
                                         {{-- Both rendered; the Type of Order pick switches them on screen --}}
                                         <span data-cvr-source="assigned" @class(['rounded-full bg-[#dbe7ff] px-2.5 py-1 text-xs font-semibold text-[#1d4396]', 'hidden' => ! $order['assigned']]) title="Type of Order is Segmentation, or the number matches an assigned lead in the Segmentation Tracker">Assigned</span>
