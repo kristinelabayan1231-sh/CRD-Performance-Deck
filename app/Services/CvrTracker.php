@@ -65,6 +65,8 @@ class CvrTracker
                 'page' => $order->page_name,
                 'customer' => $order->customer_name,
                 'amount' => $order->sales(),
+                // Pancake's discount on the order (the Amount is after it).
+                'discount' => (float) ($order->total_discount ?? 0),
                 'assigned' => self::isAssignedLead($order, $entry, $assigned),
                 'matched' => $matched,
                 'seller' => $order->seller_name,
@@ -131,7 +133,7 @@ class CvrTracker
     private function orders(User $cra, CarbonImmutable $day): Collection
     {
         return $this->ordersQuery($cra, $day)
-            ->get(['id', 'pancake_order_id', 'ordered_at', 'seller_name', 'customer_name', 'phone_number', 'phone_key', 'page_name', 'conversion_type', 'total_price', 'shecom_sales']);
+            ->get(['id', 'pancake_order_id', 'ordered_at', 'seller_name', 'customer_name', 'phone_number', 'phone_key', 'page_name', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales']);
     }
 
     /**

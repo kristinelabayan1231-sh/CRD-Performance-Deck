@@ -77,7 +77,7 @@ class CvrTrackerTest extends TestCase
         // Assigned: the number is an assigned lead, even on another CRA's list.
         $this->lead($this->julyAnn, ['est_out_of_stock_date' => '2026-10-01'], '09170000001');
         $assigned = $this->order($this->regina, PancakeOrder::SEGMENTATION, 999, '9170000001');
-        $pancake = $this->order($this->regina, PancakeOrder::BROADCAST, 500, '9170000002');
+        $pancake = $this->order($this->regina, PancakeOrder::BROADCAST, 500, '9170000002', ['total_discount' => 249]);
         // A lead added from a POS sale doesn't make its order Assigned.
         $this->lead($this->regina, ['order_id' => Lead::POS_PREFIX.'1', 'est_out_of_stock_date' => '2026-10-02'], '09170000002');
         // Not listed: canceled (but in gross sales, as on the dashboard), untagged, another CRA's.
@@ -103,6 +103,9 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([$assigned->pancake_order_id, $pancake->pancake_order_id], array_column($data['orders'], 'id'));
         $this->assertSame([true, false], array_column($data['orders'], 'assigned'));
         $this->assertSame([3, 1], array_column($data['orders'], 'total_orders'));
+        // Pancake's discount shows under the amount, which is after it.
+        $this->assertSame([0.0, 249.0], array_column($data['orders'], 'discount'));
+        $response->assertSee('Discounted: ₱249');
         $this->assertSame([
             'gross' => 2199.0, 'bc_orders' => 1, 'bc_amount' => 500.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
             'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1099.5,
