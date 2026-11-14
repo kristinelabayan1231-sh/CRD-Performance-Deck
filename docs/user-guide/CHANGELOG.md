@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-14 · Actual Income · Month picker between the ‹ › arrows: pick any month to jump to it (keeps edit mode) · shots: actual-income
+
+- 2026-11-14 · Actual Income · Every month now opens read-only with an Edit button (CRA Supervisors and Team Leads only); Edit switches to edit mode and Done back. The sheet months (January–August) can be edited too: type over any line except AOV, Unfulfilled Sales and the totals, and that card's Unfulfilled Sales, Gross Profit, Total Selling / Operating Costs, NET INCOME, Conversion Rate and AOV change by the same amount · shots: actual-income
+
 - 2026-11-13 · Settings → Working Date · Changing the working date now only changes days from today on: earlier days keep the lead days they were paired with on every page (Segmentation Tracker, CRA Dashboard, CVR Tracker, Segmentation Productivity, Exclusive Lead Tracker, Presentation Board, Retention API). When the gap grows by a day, the lead day both days share counts once, on the first of them · shots: none
 
 - 2026-11-13 · CRA Dashboard · "Check who gets these leads" → Assign now lists the exclusive CRA (Joanna) too; a lead assigned to her goes on her Exclusive Lead Tracker list for the day · shots: none

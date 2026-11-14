@@ -25,7 +25,7 @@ use Illuminate\Support\Collection;
  * Total Operating Costs = Salaries to HMO Expense. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
  *
  * A month taken from the CRD Sales Report sheet (actual_income_statements: January to August 2026) shows the sheet's cards
- * as they are, every line, nothing worked out, and can't be typed in. Its cards are the CRAs on the sheet, inactive
+ * as they are, every line, nothing worked out. A supervisor can type over its lines in edit mode (editSheetLine). Its cards are the CRAs on the sheet, inactive
  * ones included; lines only the sheet had (SHEET_ONLY_LINES) show when a card has an amount on them.
  */
 class ActualIncome
@@ -117,6 +117,67 @@ class ActualIncome
         $column = $department ? 3 : 4;
 
         return collect(self::LINES)->filter(fn (array $line) => $line[$column] === 'input')->mapWithKeys(fn (array $line) => [$line[1] => $line[0]])->all();
+    }
+
+    /**
+     * The lines a supervisor can type over on a card of a month taken from the sheet: every count and money line but
+     * the worked-out ones (AOV, Unfulfilled Sales), sheet-only lines included.
+     *
+     * @return list<string>
+     */
+    public static function sheetInputs(): array
+    {
+        $keys = collect(self::LINES)
+            ->filter(fn (array $line) => in_array($line[2], ['count', 'money'], true) && ! in_array($line[1], ['aov', 'unfulfilled'], true))
+            ->pluck(1);
+
+        return [...$keys, ...array_column(self::SHEET_ONLY_LINES, 1)];
+    }
+
+    /**
+     * A sheet card with one line typed over: the lines worked out from it (Unfulfilled Sales, Gross Profit, the totals,
+     * NET INCOME, Conversion Rate, AOV) move with it, so the rest of the sheet's figures stay as they were.
+     *
+     * @param  array<string, float|int|null>  $figures
+     * @return array<string, float|int|null>
+     */
+    public static function editSheetLine(array $figures, string $key, float $value): array
+    {
+        $change = $value - (float) ($figures[$key] ?? 0);
+        $figures[$key] = $value;
+        $move = function (string $total, float $by) use (&$figures): void {
+            $figures[$total] = (float) ($figures[$total] ?? 0) + $by;
+        };
+
+        $unfulfilled = match ($key) {
+            'gross' => $change,
+            'cancelled', 'fulfilled', 'returns', 'delivered' => -$change,
+            default => 0.0,
+        };
+        $grossProfit = match ($key) {
+            'delivered' => $change,
+            'tax', 'product_cost' => -$change,
+            default => 0.0,
+        };
+        $selling = in_array($key, [...self::SELLING, 'ai_expense', 'vat_on_cod', 'product_samples'], true) ? $change : 0.0;
+        $operating = in_array($key, [...self::operatingKeys(), 'training_allowance', 'other_car_expenses'], true) ? $change : 0.0;
+
+        $move('unfulfilled', $unfulfilled);
+        $move('gross_profit', $grossProfit);
+        $move('selling', $selling);
+        $move('operating', $operating);
+        $move('net_income', $grossProfit - $selling - $operating);
+
+        $orders = (float) ($figures['orders'] ?? 0);
+        $leads = (float) ($figures['target_leads'] ?? 0);
+        if (in_array($key, ['orders', 'target_leads'], true)) {
+            $figures['conversion'] = $leads > 0 ? $orders / $leads : null;
+        }
+        if (in_array($key, ['orders', 'gross'], true)) {
+            $figures['aov'] = $orders > 0 ? (float) ($figures['gross'] ?? 0) / $orders : null;
+        }
+
+        return $figures;
     }
 
     /**
