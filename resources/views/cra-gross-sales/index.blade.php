@@ -33,7 +33,7 @@
                 .
             @endif
             A month shows — until something is typed. TOTAL adds up the CRAs; the {{ $year }} columns add up the months.
-            Running ACB = (positive + negative Net Income so far this year) × 1.4%; January–May 2026 count only months with Net Income below ₱250,000, June 2026 on count every month.
+            ACB = (positive + negative Net Income so far this year) × 1.4%; January–May 2026 count only months with Net Income below ₱250,000, June 2026 on count every month.
         </div>
 
         <ul class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted" aria-label="Colour key">
