@@ -7,6 +7,7 @@ import { initDutySchedule } from './duty-schedule';
 import { initLive } from './live';
 import { initMni } from './mni';
 import { initActualIncome } from './actual-income';
+import { initCraGrossSales } from './cra-gross-sales';
 import { initMonthlyCost } from './monthly-cost';
 import { initPageLoader } from './page-loader';
 import { initPcReport, initProductGroups } from './pc-report';
@@ -44,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initCvrTracker();
     initMni();
     initActualIncome();
+    initCraGrossSales();
     initProductGroups();
     initProductPerformance();
     initProductTargetMarket();

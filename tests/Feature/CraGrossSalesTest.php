@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ActualIncomeInput;
 use App\Models\ActualIncomeStatement;
+use App\Models\CraGrossSale;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ActualIncome;
@@ -30,58 +31,42 @@ class CraGrossSalesTest extends TestCase
         ]);
     }
 
-    /**
-     * @param  array<string, float>  $amounts
-     */
-    private function type(string $month, ?User $cra, array $amounts): void
+    private function sale(string $month, User $cra, ?float $gross, ?float $net): void
     {
-        foreach ($amounts as $field => $amount) {
-            ActualIncomeInput::create(['month' => $month, 'user_id' => $cra?->id, 'field' => $field, 'amount' => $amount]);
-        }
+        CraGrossSale::create(['month' => $month, 'user_id' => $cra->id, 'gross' => $gross, 'net' => $net]);
     }
 
-    public function test_each_month_takes_the_cras_actual_income_card(): void
+    public function test_each_month_shows_the_figures_typed_for_the_cra(): void
     {
         $joanna = $this->user('Joanna Rose', Role::CRA);
         $regina = $this->user('Regina', Role::CRA);
-        // January: both CRAs.
-        $this->type('2026-01-01', null, ['tax' => 100000]);
-        $this->type('2026-01-01', $joanna, ['gross' => 733282, 'delivered' => 500000, 'product_cost' => 50000]);
-        $this->type('2026-01-01', $regina, ['gross' => 689904, 'delivered' => 400000]);
-        // July: Joanna only.
-        $this->type('2026-07-01', $joanna, ['gross' => 606647, 'delivered' => 300000]);
+        $this->sale('2026-01-01', $joanna, 733282, 292860.75);
+        $this->sale('2026-01-01', $regina, 689904, 100000);
+        $this->sale('2026-07-01', $joanna, 606647, -5000);
         // Another year is left out.
-        $this->type('2025-01-01', $joanna, ['gross' => 999999]);
+        $this->sale('2025-01-01', $joanna, 999999, 1);
 
         $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))
             ->assertSee('CRA Gross Sales &amp; IBSC', false)
             ->viewData('data');
 
-        // Each month's NET INCOME is the CRA's Actual Income card's for that month.
-        $cras = collect([$joanna, $regina]);
-        $january = app(ActualIncome::class)->month($cras, CarbonImmutable::parse('2026-01-01'))['cras'];
-        $july = app(ActualIncome::class)->month($cras, CarbonImmutable::parse('2026-07-01'))['cras'];
         $joannaMonths = $data['cras'][$joanna->id]['months'];
-        $this->assertSame(['gross' => 733282.0, 'net' => $january[$joanna->id]['net_income']], $joannaMonths[0]);
-        $this->assertSame(['gross' => 606647.0, 'net' => $july[$joanna->id]['net_income']], $joannaMonths[6]);
-        // A month with nothing typed on the CRA's card is empty.
+        $this->assertSame(['gross' => 733282.0, 'net' => 292860.75], $joannaMonths[0]);
+        $this->assertSame(['gross' => 606647.0, 'net' => -5000.0], $joannaMonths[6]);
         $this->assertNull($joannaMonths[1]);
         $this->assertNull($data['cras'][$regina->id]['months'][6]);
         $this->assertNull($data['totals'][11]);
-        // The year adds up the months; TOTAL adds up the CRAs.
-        $this->assertSame(1339929.0, $data['cras'][$joanna->id]['year']['gross']);
-        $this->assertEqualsWithDelta($january[$joanna->id]['net_income'] + $july[$joanna->id]['net_income'], $data['cras'][$joanna->id]['year']['net'], 0.001);
-        $this->assertSame(1423186.0, $data['totals'][0]['gross']);
-        $this->assertEqualsWithDelta($january[$joanna->id]['net_income'] + $january[$regina->id]['net_income'], $data['totals'][0]['net'], 0.001);
+        $this->assertSame(['gross' => 1339929.0, 'net' => 287860.75], $data['cras'][$joanna->id]['year']);
+        $this->assertSame(['gross' => 1423186.0, 'net' => 392860.75], $data['totals'][0]);
         $this->assertSame(2029833.0, $data['year']['gross']);
     }
 
-    public function test_a_cra_who_left_shows_for_the_sheet_months_they_have_a_card(): void
+    public function test_a_cra_who_left_shows_for_the_months_they_have_figures(): void
     {
         $this->user('Joanna Rose', Role::CRA);
         $sharie = $this->user('Sharie', Role::CRA);
         $sharie->update(['is_active' => false]);
-        ActualIncomeStatement::create(['month' => '2026-06-01', 'user_id' => $sharie->id, 'figures' => ['gross' => 116783, 'net_income' => -85261.84]]);
+        $this->sale('2026-06-01', $sharie, 116783, -85261.84);
 
         $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))
             ->assertSee('Sharie')
@@ -96,8 +81,8 @@ class CraGrossSalesTest extends TestCase
         $joanna = $this->user('Joanna Rose', Role::CRA);
         $regina = $this->user('Regina', Role::CRA);
         // Regina sells more in February though Joanna keeps more Net Income.
-        $this->type('2026-02-01', $joanna, ['gross' => 601167, 'delivered' => 600000]);
-        $this->type('2026-02-01', $regina, ['gross' => 677181, 'delivered' => 300000]);
+        $this->sale('2026-02-01', $joanna, 601167, 300000);
+        $this->sale('2026-02-01', $regina, 677181, 100000);
 
         $response = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]));
 
@@ -106,8 +91,86 @@ class CraGrossSalesTest extends TestCase
         $this->assertSame(250000.0, $response->viewData('goal'));
     }
 
-    public function test_a_cra_cannot_see_it(): void
+    public function test_running_acb_is_the_counted_net_income_times_1_4_percent(): void
     {
-        $this->actingAs($this->user('Joanna Rose', Role::CRA))->get(route('cra-gross-sales.index'))->assertForbidden();
+        $joanna = $this->user('Joanna Rose', Role::CRA);
+        $regina = $this->user('Regina', Role::CRA);
+        // January–May: only Net Income below 250k counts (February's 292,860.75 and May's 250,000 don't).
+        $this->sale('2026-01-01', $joanna, 700000, 200000);
+        $this->sale('2026-02-01', $joanna, 700000, 292860.75);
+        $this->sale('2026-03-01', $joanna, 700000, -50000);
+        $this->sale('2026-05-01', $joanna, 700000, 250000);
+        // June on: every month counts, 250k and up too.
+        $this->sale('2026-06-01', $joanna, 700000, 300000);
+        $this->sale('2026-08-01', $joanna, 700000, -67607.86);
+
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))
+            ->assertSee('Running ACB')
+            ->viewData('data');
+
+        $this->assertSame(round((200000 - 50000 + 300000 - 67607.86) * 0.014, 2), $data['acb'][$joanna->id]);
+        // A CRA with nothing typed has none; TOTAL adds up the CRAs.
+        $this->assertNull($data['acb'][$regina->id]);
+        $this->assertSame($data['acb'][$joanna->id], $data['acbTotal']);
+    }
+
+    public function test_the_figures_are_copied_once_from_actual_income_and_no_longer_follow_it(): void
+    {
+        $joanna = $this->user('Joanna Rose', Role::CRA);
+        $sharie = $this->user('Sharie', Role::CRA);
+        $sharie->update(['is_active' => false]);
+        ActualIncomeInput::create(['month' => '2026-10-01', 'user_id' => $joanna->id, 'field' => 'gross', 'amount' => 500000]);
+        ActualIncomeInput::create(['month' => '2026-10-01', 'user_id' => $joanna->id, 'field' => 'delivered', 'amount' => 400000]);
+        ActualIncomeStatement::create(['month' => '2026-06-01', 'user_id' => $sharie->id, 'figures' => ['gross' => 116783, 'net_income' => -85261.84]]);
+
+        (require database_path('migrations/2026_11_14_045125_copy_cra_gross_sales_from_actual_income.php'))->up();
+
+        $october = app(ActualIncome::class)->month(collect([$joanna]), CarbonImmutable::parse('2026-10-01'))['cras'][$joanna->id];
+        $this->assertDatabaseCount('cra_gross_sales', 2);
+        $this->assertEqualsWithDelta($october['net_income'], CraGrossSale::where('user_id', $joanna->id)->value('net'), 0.01);
+        $this->assertSame(-85261.84, CraGrossSale::where('user_id', $sharie->id)->value('net'));
+
+        // A later Actual Income change leaves the page alone.
+        ActualIncomeInput::where('field', 'gross')->update(['amount' => 1]);
+        $data = $this->actingAs($this->user('Sup', Role::CRA_SUPERVISOR))->get(route('cra-gross-sales.index', ['year' => 2026]))->viewData('data');
+        $this->assertSame(500000.0, $data['cras'][$joanna->id]['months'][9]['gross']);
+    }
+
+    public function test_a_supervisor_edits_the_figures_in_edit_mode(): void
+    {
+        $joanna = $this->user('Joanna Rose', Role::CRA);
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+
+        $this->actingAs($supervisor)->get(route('cra-gross-sales.index', ['year' => 2026]))
+            ->assertViewHas('canEdit', false)->assertSee('>Edit</a>', false)->assertDontSee('data-cra-gross-sales-input', false);
+        $this->get(route('cra-gross-sales.index', ['year' => 2026, 'edit' => 1]))
+            ->assertViewHas('canEdit', true)->assertSee('data-cra-gross-sales-input', false);
+
+        $put = fn (string $field, $value) => $this->actingAs($supervisor)
+            ->putJson(route('cra-gross-sales.update'), ['month' => '2026-03', 'cra' => $joanna->id, 'field' => $field, 'value' => $value]);
+        $put('gross', 700000)->assertOk();
+        $put('net', -1200.5)->assertOk();
+        $put('gross', 710000)->assertOk();
+
+        $this->assertDatabaseCount('cra_gross_sales', 1);
+        $sale = CraGrossSale::first();
+        $this->assertSame([710000.0, -1200.5, $supervisor->id], [$sale->gross, $sale->net, $sale->updated_by]);
+
+        // Emptying both clears the month.
+        $put('gross', null)->assertOk();
+        $put('net', null)->assertOk();
+        $this->assertDatabaseCount('cra_gross_sales', 0);
+
+        $put('orders', 1)->assertUnprocessable();
+    }
+
+    public function test_a_cra_cannot_see_or_edit_it(): void
+    {
+        $joanna = $this->user('Joanna Rose', Role::CRA);
+
+        $this->actingAs($joanna)->get(route('cra-gross-sales.index'))->assertForbidden();
+        $this->actingAs($joanna)->putJson(route('cra-gross-sales.update'), ['month' => '2026-03', 'cra' => $joanna->id, 'field' => 'gross', 'value' => 1])
+            ->assertForbidden();
+        $this->assertDatabaseCount('cra_gross_sales', 0);
     }
 }

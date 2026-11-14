@@ -220,6 +220,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     });
 
     Route::get('/cra-gross-sales', [CraGrossSalesController::class, 'index'])->middleware('can:cra_gross_sales.view')->name('cra-gross-sales.index');
+    Route::put('/cra-gross-sales', [CraGrossSalesController::class, 'update'])->middleware(['can:cra_gross_sales.view', 'can:cra_gross_sales.manage'])->name('cra-gross-sales.update');
 
     Route::prefix('cvr-tracker')->name('cvr-tracker.')->middleware('can:cvr_tracker.view')->group(function () {
         Route::get('/', [CvrTrackerController::class, 'index'])->name('index');
