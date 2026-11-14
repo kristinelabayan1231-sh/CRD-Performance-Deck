@@ -53,6 +53,14 @@ return [
         'repeat_rate' => 30,
     ],
 
+    // CRA Gross Sales & IBSC's Running ACB: (the year's positive + negative Net Income) × rate. A month before
+    // capped_until only counts when its Net Income is below cap; from capped_until on every month counts.
+    'acb' => [
+        'rate' => 0.014,
+        'cap' => 250000,
+        'capped_until' => '2026-06-01',
+    ],
+
     // Lead type normally comes from Shecom (CRD- or FSD-delivered order). Only
     // when Shecom is down: a customer with this many delivered orders is a CRD Lead.
     'crd_lead_min_orders' => 2,

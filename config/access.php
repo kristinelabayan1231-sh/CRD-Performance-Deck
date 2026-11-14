@@ -107,7 +107,8 @@ $modules = [
         'actual_income.manage' => 'Type in the Actual Income amounts (each CRA\'s orders and sales, the CRD\'s Tax Allocation, Advertising Cost and operating costs)',
     ],
     'CRA Gross Sales & IBSC' => [
-        'cra_gross_sales.view' => 'View CRA Gross Sales & IBSC (each CRA\'s Gross Sales and Net Income per month of a year, from the Actual Income)',
+        'cra_gross_sales.view' => 'View CRA Gross Sales & IBSC (each CRA\'s Gross Sales and Net Income per month of a year)',
+        'cra_gross_sales.manage' => 'Type in CRA Gross Sales & IBSC (each CRA\'s Gross Sales and Net Income per month)',
     ],
     'Monthly MNI' => [
         'mni.view' => 'View the Monthly MNI (each CRA\'s monthly targets and target income statement)',

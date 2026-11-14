@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-14 · CRA Gross Sales & IBSC · Running ACB column per CRA (and TOTAL): (positive + negative Net Income so far this year) × 1.4%; January–May 2026 count only months with Net Income below ₱250,000, June 2026 on count every month; red below zero · shots: cra-gross-sales
+
+- 2026-11-14 · CRA Gross Sales & IBSC · No longer taken from Actual Income: each CRA's Gross and Net per month are typed in on the page (the figures it showed were kept). Opens read-only with an Edit button for CRA Supervisors and Team Leads (new permission "Type in CRA Gross Sales & IBSC"); Edit shows a Gross and a Net box per CRA per month, each saving when you leave it; empty both to clear a month; Done goes back · shots: cra-gross-sales
+
 - 2026-11-14 · Actual Income · Month picker between the ‹ › arrows: pick any month to jump to it (keeps edit mode) · shots: actual-income
 
 - 2026-11-14 · Actual Income · Every month now opens read-only with an Edit button (CRA Supervisors and Team Leads only); Edit switches to edit mode and Done back. The sheet months (January–August) can be edited too: type over any line except AOV, Unfulfilled Sales and the totals, and that card's Unfulfilled Sales, Gross Profit, Total Selling / Operating Costs, NET INCOME, Conversion Rate and AOV change by the same amount · shots: actual-income
