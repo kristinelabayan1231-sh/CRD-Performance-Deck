@@ -44,6 +44,9 @@
                                 default => number_format($value, 2),
                             };
                             $isKpi = in_array($key, ['target_leads', 'orders', 'conversion', 'aov'], true);
+                            // A sheet month's lines are typed over as they are; a typed month's boxes hold what was typed.
+                            $typable = $canEdit && ($data['fromSheet'] ? in_array($key, $sheetInputs, true) : $source === 'input');
+                            $boxValue = $data['fromSheet'] ? ($value ? number_format($value, 2) : '') : (isset($card['typed'][$key]) ? number_format($card['typed'][$key], 2) : '');
                         @endphp
                         <tr @class([
                             'font-semibold text-ink' => $isKpi || $key === 'gross',
@@ -53,10 +56,10 @@
                             'text-coral-700' => $kind === 'net' && $value < 0,
                         ])>
                             <td class="truncate py-0.5 pr-1.5 pl-3" title="{{ $label }}">{{ $label }}</td>
-                            @if ($source === 'input' && $canEdit)
+                            @if ($typable)
                                 <td class="py-0.5 pr-1.5">
                                     <input type="text" inputmode="decimal" data-actual-income-input data-cra="{{ $card['cra'] }}" data-field="{{ $key }}"
-                                           value="{{ isset($card['typed'][$key]) ? number_format($card['typed'][$key], 2) : '' }}" placeholder="0.00"
+                                           value="{{ $boxValue }}" placeholder="0.00"
                                            aria-label="{{ $label }} for {{ $card['title'] }}" class="{{ $box }}">
                                 </td>
                             @else
