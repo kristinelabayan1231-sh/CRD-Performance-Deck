@@ -18,7 +18,12 @@ class PresentationBoardController extends Controller
             'from' => ['nullable', 'date_format:Y-m'],
             'to' => ['nullable', 'date_format:Y-m', 'after_or_equal:from'],
             'period' => ['nullable', Rule::in(array_keys(PresentationBoard::PERIODS))],
-        ], ['to.after_or_equal' => 'The "to" month must be on or after the "from" month.']);
+            'products_from' => ['nullable', 'date_format:Y-m-d'],
+            'products_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:products_from'],
+        ], [
+            'to.after_or_equal' => 'The "to" month must be on or after the "from" month.',
+            'products_to.after_or_equal' => 'Top products: the "to" date must be on or after the "from" date.',
+        ]);
 
         $snapshot = $board->snapshot();
         $period = $filters['period'] ?? 'weekly';
@@ -33,10 +38,20 @@ class PresentationBoardController extends Controller
 
         $figures = $board->range($snapshot, $from, $to, $period);
         $craSnapshot = $cras->snapshot();
+        // Top products has its own dates (any days of the snapshot's year), the months above until picked.
+        $firstDay = $months[0].'-01';
+        $lastDay = $snapshot['today'];
+        $productsFrom = min(max($filters['products_from'] ?? $from.'-01', $firstDay), $lastDay);
+        $productsTo = max(min($filters['products_to'] ?? CarbonImmutable::parse($to.'-01')->endOfMonth()->toDateString(), $lastDay), $productsFrom);
+        $topProducts = $board->products($snapshot, $productsFrom, $productsTo);
 
         return view('presentation-board.index', [
             ...$figures,
+            'products' => $topProducts['products'],
+            'others' => $topProducts['others'],
+            'topProducts' => [...$topProducts, 'first_day' => $firstDay, 'last_day' => $lastDay, 'picked' => isset($filters['products_from']) || isset($filters['products_to'])],
             'craPerformance' => $craSnapshot ? $cras->range($craSnapshot, $from, $to) : null,
+            // The month range's products, as the other figures.
             'insights' => $board->insights($figures['months'], $figures['totals'], $figures['products']),
             'snapshot' => $snapshot,
             'monthOptions' => collect($months)->mapWithKeys(fn (string $month) => [$month => CarbonImmutable::parse($month.'-01')->format('M Y')])->all(),

@@ -208,7 +208,7 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="px-4 py-3 text-xs text-muted">Darker cells = more of that CRA's {{ $show === 'qty' ? 'pieces' : 'sales' }}. An order with several products is split by qty × SRP. Items not in Settings → Product Consumption are under Others.</p>
+                <p class="px-4 py-3 text-xs text-muted">Darker cells = more of that CRA's {{ $show === 'qty' ? 'pieces' : 'sales' }}. An order with several products is split by each item's Pancake price × qty (SRP when an item has none). Items not in Settings → Product Consumption are under Others.</p>
             @endif
         </x-panel>
     </div>
