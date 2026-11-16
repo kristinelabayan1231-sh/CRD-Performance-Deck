@@ -24,7 +24,7 @@ use Illuminate\Support\Collection;
  * Leads = Segmentation Tracker leads assigned to the CRA for the lead day worked that day (base 70; actual
  * count shown), leads added from their POS sales included as in the Segmentation Tracker. With a working date set,
  * that's the lead day the gap points to (Oct 7 → Sept 7).
- * Gross uses Shecom's sales per order, which leaves out the child (TSD) row; Pancake's total until it is synced.
+ * Gross uses Shecom's sales per order, which leaves out the child (TSD) row; Pancake's total plus its discount until it is synced.
  * BC conv % = Orders BC ÷ Engagements. SC conv % = Orders SC ÷ Leads.
  * Total conv % = (Orders BC + Orders SC) ÷ (Engagements + Leads). Gross sales = Gross BC + Gross SC.
  */

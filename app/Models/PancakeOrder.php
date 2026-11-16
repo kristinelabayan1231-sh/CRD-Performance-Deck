@@ -52,18 +52,11 @@ class PancakeOrder extends Model
     }
 
     /**
-     * The CRA's sale: Shecom's amount (without the child TSD row) once synced, else Pancake's total.
+     * The CRA's sale, as Shecom counts it: Shecom's amount (without the child TSD row) once synced, else Pancake's total
+     * plus its discount (a GCash payment or prepayment is entered in Pancake as a discount; Shecom counts the full price).
+     * Load total_discount with total_price and shecom_sales.
      */
     public function sales(): float
-    {
-        return (float) ($this->shecom_sales ?? $this->total_price);
-    }
-
-    /**
-     * The order's value before Pancake's discount (e.g. a GCash payment entered as a discount): Shecom's amount
-     * once synced, else Pancake's total plus its discount. Order Database → CRA's Performance counts this.
-     */
-    public function salesBeforeDiscount(): float
     {
         return (float) ($this->shecom_sales ?? $this->total_price + ($this->total_discount ?? 0));
     }

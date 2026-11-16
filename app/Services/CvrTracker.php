@@ -46,7 +46,7 @@ class CvrTracker
 
         // Canceled: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged). Deleted: left out.
         $notCounted = $this->ordersQuery($cra, $day, counted: false)->where('status', PancakeOrder::CANCELED)
-            ->get(['pancake_order_id', 'conversion_type', 'total_price', 'shecom_sales']);
+            ->get(['pancake_order_id', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales']);
         $types = CvrOrderEntry::whereIn('pancake_order_id', $notCounted->pluck('pancake_order_id'))->whereNotNull('order_type')->pluck('order_type', 'pancake_order_id');
         $canceled = $notCounted->map(fn (PancakeOrder $order) => [
             'type' => $types[$order->pancake_order_id] ?? $order->conversion_type,
@@ -114,7 +114,7 @@ class CvrTracker
 
         foreach ($cras as $cra) {
             $totals[$cra->id] = [];
-            foreach ($this->ordersQuery($cra, $day)->get(['page_id', 'page_name', 'total_price', 'shecom_sales']) as $order) {
+            foreach ($this->ordersQuery($cra, $day)->get(['page_id', 'page_name', 'total_price', 'total_discount', 'shecom_sales']) as $order) {
                 $missingPage = $missingPage || ($order->page_id === null && $order->page_name === null);
                 $page = $pageOf($order);
                 if ($page !== null) {

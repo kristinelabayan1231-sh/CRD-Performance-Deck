@@ -103,12 +103,13 @@ class CvrTrackerTest extends TestCase
         $this->assertSame([$assigned->pancake_order_id, $pancake->pancake_order_id], array_column($data['orders'], 'id'));
         $this->assertSame([true, false], array_column($data['orders'], 'assigned'));
         $this->assertSame([3, 1], array_column($data['orders'], 'total_orders'));
-        // Pancake's discount shows under the amount, which is after it.
+        // Pancake's discount (a GCash payment or prepayment) counts in the amount, as in Shecom, and shows as a pill.
         $this->assertSame([0.0, 249.0], array_column($data['orders'], 'discount'));
+        $this->assertSame([999.0, 749.0], array_column($data['orders'], 'amount'));
         $response->assertSee('Discounted: ₱249');
         $this->assertSame([
-            'gross' => 2199.0, 'bc_orders' => 1, 'bc_amount' => 500.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
-            'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1099.5,
+            'gross' => 2448.0, 'bc_orders' => 1, 'bc_amount' => 749.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
+            'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1224.0,
             'engagements' => 0, 'cvr' => null, 'contacted' => 1, 'unconfirmed' => 2, 'engaged' => 1, 'reserved' => 1, 'not_answering' => 1,
             'status_total' => 5, 'pancake_leads' => 1, 'assigned_leads' => 1,
         ], $data['summary']);

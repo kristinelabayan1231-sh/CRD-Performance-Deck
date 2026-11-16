@@ -226,7 +226,7 @@ class ProductReport
     /**
      * Each product's share of the order's sale. With Pancake's item prices (as its own Product Performance): each
      * product's items at their price. Orders saved before those were kept: the value before Pancake's discount
-     * (PancakeOrder::salesBeforeDiscount()), where Shecom's sales cover only the listed products, so with both kinds
+     * (PancakeOrder::sales()), where Shecom's sales cover only the listed products, so with both kinds
      * in the order the listed ones share Shecom's sales and the others the rest of the price (a ₱1,999 Pterygium +
      * Lumicare with ₱999 Shecom sales: ₱999 and ₱1,000).
      *

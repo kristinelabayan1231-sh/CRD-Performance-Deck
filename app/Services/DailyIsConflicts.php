@@ -63,7 +63,7 @@ class DailyIsConflicts
         $missing = $inBreakdown->diffKeys($inStatement);
         $untagged = collect($inStatement)->diffKeys($inBreakdown);
         $orders = PancakeOrder::whereIn('id', $missing->keys()->concat($untagged->keys()))
-            ->get(['id', 'pancake_order_id', 'ordered_on', 'customer_name', 'page_id', 'page_name', 'conversion_type', 'total_price', 'shecom_sales'])
+            ->get(['id', 'pancake_order_id', 'ordered_on', 'customer_name', 'page_id', 'page_name', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales'])
             ->keyBy('id');
         $startsLater = $this->startsLater();
 

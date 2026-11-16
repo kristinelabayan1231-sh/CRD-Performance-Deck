@@ -35,7 +35,7 @@ class CraProductSales
         PancakeOrder::crdSales()->whereIn('seller_name', $accounts->keys())
             ->whereIn('conversion_type', [PancakeOrder::BROADCAST, PancakeOrder::SEGMENTATION])
             ->where('ordered_on', '>=', $from->toDateString())->where('ordered_on', '<', $to->addDay()->toDateString())
-            ->get(['seller_name', 'items', 'total_price', 'shecom_sales', 'ordered_on'])
+            ->get(['seller_name', 'items', 'total_price', 'total_discount', 'shecom_sales', 'ordered_on'])
             ->each(function (PancakeOrder $order) use ($accounts, &$totals) {
                 $craId = $accounts[$order->seller_name];
 
