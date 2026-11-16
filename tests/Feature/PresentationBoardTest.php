@@ -328,6 +328,65 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(1, $this->month($snapshot, '2026-02')['added']);
     }
 
+    public function test_an_order_is_split_by_its_pancake_item_prices_and_by_srp_for_an_item_without_one(): void
+    {
+        PancakeOrder::create([
+            'pancake_order_id' => 'PRICED', 'ordered_on' => '2026-08-03', 'seller_name' => self::CRD_SELLER, 'phone_key' => '0978', 'status' => 3,
+            'total_price' => 1299, 'conversion_type' => PancakeOrder::SEGMENTATION,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1, 'price' => 500], ['name' => 'Lumicare Oil', 'qty' => 1, 'price' => 799]],
+        ]);
+        PancakeOrder::create([
+            'pancake_order_id' => 'NOPRICE', 'ordered_on' => '2026-08-04', 'seller_name' => self::CRD_SELLER, 'phone_key' => '0979', 'status' => 3,
+            'total_price' => 1000, 'conversion_type' => PancakeOrder::SEGMENTATION,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1], ['name' => 'Garlic Oil', 'qty' => 1, 'price' => 500]],
+        ]);
+
+        $products = $this->products('2026-08');
+        $others = array_column(app(PresentationBoard::class)->range($this->snapshot(), '2026-08', '2026-08', 'monthly')['others'], 'sales', 'name');
+
+        // Sinuxyl without a price counts its ₱500 SRP: 500 + 500 of the second order.
+        $this->assertEquals(1000, $products['Sinuxyl']['sales']);
+        $this->assertEquals(['Lumicare Oil' => 799, 'Garlic Oil' => 500], $others);
+    }
+
+    public function test_shecoms_sale_goes_to_the_crd_product_and_an_upsold_add_on_is_valued_at_its_pancake_price(): void
+    {
+        Product::create(['name' => 'Haplunas', 'keywords' => 'Haplunas', 'consumption_days' => 30, 'srp' => 500, 'is_tsd' => true]);
+        $this->order('0985', '2026-07-10', ['Sinuxyl' => 1]);
+        // Shecom has 1,000: it leaves out the Haplunas child row.
+        PancakeOrder::create([
+            'pancake_order_id' => 'SYNCED', 'ordered_on' => '2026-08-03', 'seller_name' => self::CRD_SELLER, 'phone_key' => '0985', 'status' => 3,
+            'total_price' => 1800, 'conversion_type' => PancakeOrder::SEGMENTATION,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1, 'price' => 1000], ['name' => 'Haplunas', 'qty' => 1, 'price' => 800]],
+        ])->forceFill(['shecom_sales' => 1000])->save();
+        // Saved before item prices were kept: the add-on is worth what Shecom left out (1,500 − 900).
+        $this->order('0985', '2026-08-04', ['Sinuxyl' => 1, 'Garlic Oil' => 1], total: 1500)->forceFill(['shecom_sales' => 900])->save();
+
+        $products = $this->products('2026-08');
+
+        $this->assertEquals(1900, $products['Sinuxyl']['sales']);
+        $this->assertEquals(0, $products['Haplunas']['sales']);
+        $this->assertEquals(800, $products['Haplunas']['upsell_value']);
+        $this->assertEquals(['Haplunas' => 800, 'Garlic Oil' => 600], array_column($products['Sinuxyl']['upsold'], 'value', 'name'));
+        $this->assertEquals(1400, $products['Sinuxyl']['upsold_value']);
+    }
+
+    public function test_top_products_shows_its_own_dates_and_rejects_a_backwards_range(): void
+    {
+        $this->sale('2026-08-03', 1000);
+        $this->sale('2026-08-20', 400);
+        app(PresentationBoard::class)->refresh();
+
+        $top = app(PresentationBoard::class)->products(app(PresentationBoard::class)->snapshot(), '2026-08-15', '2026-08-21');
+
+        $this->assertEquals(400, $top['products'][0]['sales']);
+        $this->assertEquals(400, $top['gross']);
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08', 'products_from' => '2026-08-15', 'products_to' => '2026-08-21']))
+            ->assertOk()->assertSee('Aug 15 – Aug 21, 2026')->assertSee('Same as the months')->assertSee('gross ₱400');
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['products_from' => '2026-08-21', 'products_to' => '2026-08-15']))
+            ->assertSessionHasErrors('products_to');
+    }
+
     public function test_others_opens_into_the_unlisted_items_it_holds(): void
     {
         PancakeOrder::create([
@@ -353,9 +412,9 @@ class PresentationBoardTest extends TestCase
      *
      * @param  array<string, int>  $items
      */
-    private function order(string $phone, string $day, array $items, float $total = 1000, string $seller = self::CRD_SELLER, int $status = 3): void
+    private function order(string $phone, string $day, array $items, float $total = 1000, string $seller = self::CRD_SELLER, int $status = 3): PancakeOrder
     {
-        PancakeOrder::create([
+        return PancakeOrder::create([
             'pancake_order_id' => 'O'.++$this->seq, 'ordered_on' => $day, 'seller_name' => $seller, 'phone_key' => $phone, 'status' => $status,
             'total_price' => $total, 'conversion_type' => $seller === self::CRD_SELLER ? PancakeOrder::SEGMENTATION : null,
             'items' => collect($items)->map(fn (int $qty, string $name) => ['name' => $name, 'qty' => $qty])->values()->all(),
@@ -381,13 +440,13 @@ class PresentationBoardTest extends TestCase
         $range = app(PresentationBoard::class)->range($this->snapshot(), '2026-08', '2026-08', 'monthly');
 
         // 1,500 split by qty × SRP: Sinuxyl 1,000, Lumicare 500.
-        $this->assertEquals(0, $products['Sinuxyl']['upsell_sales']);
-        $this->assertEquals(500, $products['Sinuxyl']['upsold_sales']);
-        $this->assertEquals([['sales' => 500, 'orders' => 1, 'qty' => 2, 'name' => 'Lumicare']], $products['Sinuxyl']['upsold']);
-        $this->assertEquals(500, $products['Lumicare']['upsell_sales']);
+        $this->assertEquals(0, $products['Sinuxyl']['upsell_value']);
+        $this->assertEquals(500, $products['Sinuxyl']['upsold_value']);
+        $this->assertEquals([['sales' => 500, 'value' => 500, 'orders' => 1, 'qty' => 2, 'name' => 'Lumicare']], $products['Sinuxyl']['upsold']);
+        $this->assertEquals(500, $products['Lumicare']['upsell_value']);
         $this->assertSame(1, $products['Lumicare']['upsell_orders']);
         $this->assertSame(2, $products['Lumicare']['upsell_qty']);
-        $this->assertEquals(500, $range['totals']['upsell_sales']);
+        $this->assertEquals(500, $range['totals']['upsell_value']);
         $this->assertSame(1, $range['totals']['upsell_orders']);
     }
 
@@ -402,7 +461,7 @@ class PresentationBoardTest extends TestCase
 
         $products = $this->products('2026-08');
 
-        $this->assertEquals(0, $products['Lumicare']['upsell_sales']);
+        $this->assertEquals(0, $products['Lumicare']['upsell_value']);
         $this->assertSame([], $products['Sinuxyl']['upsold']);
     }
 
@@ -412,7 +471,7 @@ class PresentationBoardTest extends TestCase
         $this->order('0931', '2026-07-10', ['Sinuxyl' => 1], status: PancakeOrder::CANCELED);
         $this->order('0931', '2026-08-03', ['Sinuxyl' => 1, 'Lumicare' => 1]);
 
-        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_sales']);
+        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_value']);
     }
 
     public function test_a_product_bought_before_it_was_on_product_consumption_is_not_an_upsell(): void
@@ -422,7 +481,20 @@ class PresentationBoardTest extends TestCase
         $this->order('0941', '2026-07-10', ['Sinuxyl' => 1, 'Lumicare Oil' => 1]);
         $this->order('0941', '2026-08-03', ['Sinuxyl' => 1, 'Lumicare Oil' => 1]);
 
-        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_sales']);
+        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_value']);
+    }
+
+    public function test_an_item_sold_as_a_product_bought_before_is_not_an_upsell_though_it_is_a_tsd_product_later(): void
+    {
+        Product::create(['name' => 'Sinuxyl Inhaler', 'keywords' => 'Sinuxyl Nasal Inhaler', 'consumption_days' => 30, 'srp' => 500, 'is_tsd' => true, 'counts_from' => '2026-09-01']);
+        // Before September the inhaler is sold as Sinuxyl, which the customer bought in July.
+        $this->order('0945', '2026-07-10', ['Sinuxyl' => 1]);
+        $this->order('0945', '2026-08-03', ['Sinuxyl Nasal Inhaler' => 1]);
+
+        $products = $this->products('2026-08');
+
+        $this->assertEquals(0, $products['Sinuxyl']['upsell_value']);
+        $this->assertSame([], $products['Sinuxyl']['upsold']);
     }
 
     public function test_an_upsell_is_filed_once_under_the_biggest_product_bought_before(): void
@@ -436,7 +508,7 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(['Garlic Oil'], array_column($products['Clear Sight']['upsold'], 'name'));
         $this->assertSame([], $products['Sinuxyl']['upsold']);
         // Unlisted, so it's Others' upsell and its own item's.
-        $this->assertEquals(1, $products[PresentationBoard::OTHERS]['upsell_sales']);
+        $this->assertEquals(1, $products[PresentationBoard::OTHERS]['upsell_value']);
     }
 
     public function test_the_page_shows_what_was_upsold_on_a_products_orders(): void
@@ -450,7 +522,7 @@ class PresentationBoardTest extends TestCase
             ->assertOk()
             ->assertSee('+₱500 upsold')
             ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '50.0%'])
-            ->assertSee("% of sales = the upsell's value ÷ Sinuxyl sales (₱1,000)", false);
+            ->assertSee("Value = the upsell's Pancake price. % of sales = value ÷ Sinuxyl sales (₱1,000).", false);
     }
 
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void

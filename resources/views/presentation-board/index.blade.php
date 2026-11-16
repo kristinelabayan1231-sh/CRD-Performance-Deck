@@ -277,28 +277,43 @@
                         $productColumns = 'display: grid; grid-template-columns: minmax(150px, 1.6fr) 1fr 54px 64px 54px 64px; gap: 10px; min-width: 540px; text-align: right';
                         $upsell = '#3fd1b9';
                         // A product's Upsell % is what was upsold on its orders; for Others and its items, the share of their own sales that came as an upsell.
-                        $upsellRate = fn (array $row, bool $own) => $row['sales'] ? ($own ? $row['upsell_sales'] : $row['upsold_sales']) / $row['sales'] : 0.0;
+                        $upsellRate = fn (array $row, bool $own) => $own ? ($row['value'] ? $row['upsell_value'] / $row['value'] : 0.0) : ($row['sales'] ? $row['upsold_value'] / $row['sales'] : 0.0);
                         $upsellPill = fn (float $rate) => $rate > 0
                             ? '<span style="justify-self: end; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgb(63 209 185 / .16); color: '.$upsell.'">'.($rate < .001 ? '<0.1%' : number_format($rate * 100, 1).'%').'</span>'
                             : '<span style="justify-self: end; font-size: 12px; '.$muted.'">0%</span>';
                         $splitBar = fn (array $row, float $scale) => '<span aria-hidden="true" style="display: flex; height: 6px; border-radius: 999px; background: rgb(255 255 255 / .1); overflow: hidden">'
-                            .'<span style="height: 6px; width: '.round(($row['sales'] - $row['upsell_sales']) / $scale * 100, 2).'%; background: '.$crd.'"></span>'
-                            .'<span style="height: 6px; width: '.round($row['upsell_sales'] / $scale * 100, 2).'%; background: '.$upsell.'"></span></span>';
+                            .'<span style="height: 6px; width: '.min(100, round(max(0, max($row['sales'], $row['value']) - $row['upsell_value']) / $scale * 100, 2)).'%; background: '.$crd.'"></span>'
+                            .'<span style="height: 6px; width: '.min(100, round($row['upsell_value'] / $scale * 100, 2)).'%; background: '.$upsell.'"></span></span>';
+                        // Shecom leaves a TSD add-on next to a CRD product out of gross; what it sold for shows beside it.
+                        $soldFor = fn (array $row) => $row['value'] - $row['sales'] >= 1
+                            ? '<span style="display: block; font-size: 12px; font-weight: 500; '.$muted.'">Sold for '.e($peso($row['value'])).' · '.e($peso($row['value'] - $row['sales'])).' left out of gross by Shecom</span>'
+                            : '';
                         $drawer = 'display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px 14px; padding: 10px 12px; border-radius: 8px; background: rgb(33 31 45 / .55)';
                         $breakdownColumns = 'display: grid; grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(56px, 1fr)); gap: 8px; text-align: right; font-size: 13px';
                         $chevron = '<span aria-hidden="true" class="transition-transform group-open:rotate-90" style="display: inline-block; width: 14px; font-size: 11px; '.$muted.'">▸</span>';
-                        $upsellOf = fn (array $row) => $row['sales'] ? number_format($row['upsell_sales'] / $row['sales'] * 100, 1).'%' : '—';
                     @endphp
                     <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                         <h2 id="products-title" style="{{ $h2 }}">Top products</h2>
+                        <form method="GET" action="{{ route('presentation-board.index') }}#products-title" class="flex flex-wrap items-center gap-1.5" style="font-size: 12px">
+                            <input type="hidden" name="from" value="{{ $from }}"><input type="hidden" name="to" value="{{ $to }}"><input type="hidden" name="period" value="{{ $period }}">
+                            @foreach (['products_from' => ['From', $topProducts['from']], 'products_to' => ['To', $topProducts['to']]] as $field => [$label, $value])
+                                <label class="flex items-center gap-1" style="{{ $muted }}">{{ $label }}
+                                    <input type="date" id="{{ $field }}" name="{{ $field }}" value="{{ $value }}" min="{{ $topProducts['first_day'] }}" max="{{ $topProducts['last_day'] }}" style="height: 32px; border: 1px solid rgb(255 255 255 / .18); border-radius: 8px; background: #2d2a3e; padding: 0 6px; font-size: 13px; color: #f1eef8; color-scheme: dark">
+                                </label>
+                            @endforeach
+                            <button type="submit" class="cursor-pointer" style="height: 32px; border-radius: 8px; background: #c39bff; color: #211f2d; padding: 0 10px; font-weight: 700">Apply</button>
+                            @if ($topProducts['picked'])
+                                <a href="{{ route('presentation-board.index', ['from' => $from, 'to' => $to, 'period' => $period]) }}#products-title" style="font-weight: 600; {{ $link }}">Same as the months</a>
+                            @endif
+                        </form>
                         <div role="group" aria-label="Sort products" class="inline-flex" style="padding: 2px; border: 1px solid rgb(255 255 255 / .14); border-radius: 999px; font-size: 12px">
                             <button type="button" data-product-sort="sales" aria-pressed="true" class="cursor-pointer" style="padding: 3px 10px; border-radius: 999px; background: rgb(195 155 255 / .25); font-weight: 600">By sales</button>
                             <button type="button" data-product-sort="upsell" aria-pressed="false" class="cursor-pointer" style="padding: 3px 10px; border-radius: 999px; {{ $muted }}">By upsell %</button>
                         </div>
                     </header>
                     <div class="flex flex-wrap items-center gap-x-5 gap-y-1" style="padding: 12px 16px 0; font-size: 13px; {{ $muted }}">
-                        <span class="flex items-center gap-1.5"><span style="{{ $swatch }}; background: {{ $crd }}"></span>Main / reorder <strong style="color: #f1eef8">{{ $peso($totals['gross'] - $totals['upsell_sales']) }}</strong></span>
-                        <span class="flex items-center gap-1.5"><span style="{{ $swatch }}; background: {{ $upsell }}"></span>Upsell <strong style="color: #f1eef8">{{ $peso($totals['upsell_sales']) }}</strong> · {{ $totals['gross'] ? number_format($totals['upsell_sales'] / $totals['gross'] * 100, 1).'%' : '—' }} of sales · {{ $number($totals['upsell_orders']) }} {{ Str::plural('order', $totals['upsell_orders']) }}</span>
+                        <span><strong style="color: #f1eef8">{{ \Carbon\CarbonImmutable::parse($topProducts['from'])->format('M j') }} – {{ \Carbon\CarbonImmutable::parse($topProducts['to'])->format('M j, Y') }}</strong> · gross {{ $peso($topProducts['gross']) }}</span>
+                        <span class="flex items-center gap-1.5"><span style="{{ $swatch }}; background: {{ $upsell }}"></span>Upsell <strong style="color: #f1eef8">{{ $peso($topProducts['upsell_value']) }}</strong> · {{ $number($topProducts['upsell_orders']) }} {{ Str::plural('order', $topProducts['upsell_orders']) }} · {{ $topProducts['gross'] ? number_format($topProducts['upsell_value'] / $topProducts['gross'] * 100, 1).'%' : '—' }} of gross</span>
                     </div>
                     <div class="overflow-x-auto" style="padding: 10px 16px 14px; font-size: 14px">
                         <div style="{{ $productColumns }}; padding-bottom: 6px; border-bottom: 1px solid rgb(255 255 255 / .14); font-size: 13px; font-weight: 600; {{ $muted }}">
@@ -309,41 +324,42 @@
                                 @php
                                     $isOthers = $product['name'] === $othersName;
                                     $rate = $upsellRate($product, $isOthers);
-                                    $hasDrawer = $product['upsell_sales'] > 0 || $product['upsold'] || ($isOthers && $others);
+                                    $hasDrawer = $product['upsell_value'] > 0 || $product['upsold'] || ($isOthers && $others);
                                     $figures = '<span>'.e($peso($product['sales'])).'</span><span style="'.$muted.'">'.number_format($product['share'] * 100).'%</span><span>'.e($number($product['orders'])).'</span><span>'.e($number($product['qty'])).'</span>'.$upsellPill($rate);
                                 @endphp
                                 <details @if ($isOthers) data-others @else data-product data-sales="{{ round($product['sales'], 2) }}" data-upsell="{{ round($rate, 6) }}" @endif class="group" style="{{ $rowLine }}" @if (! $hasDrawer) data-empty @endif>
                                     <summary class="{{ $hasDrawer ? 'cursor-pointer' : '' }}" style="{{ $productColumns }}; align-items: center; padding: 7px 0; list-style: none">
                                         <span class="flex flex-col gap-1 text-left">
                                             <span style="font-weight: 600">{!! $hasDrawer ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}@if ($isOthers)Others <span style="font-size: 12px; font-weight: 500; {{ $muted }}">· {{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption, click to see</span>@else<span data-rank>{{ $rank + 1 }}</span>. {{ $product['name'] }}@endif
-                                                @if ($product['upsold_sales'] > 0)
-                                                    <span style="font-size: 12px; font-weight: 500; color: {{ $upsell }}">+{{ $peso($product['upsold_sales']) }} upsold</span>
+                                                @if ($product['upsold_value'] > 0)
+                                                    <span style="font-size: 12px; font-weight: 500; color: {{ $upsell }}">+{{ $peso($product['upsold_value']) }} upsold</span>
                                                 @endif
                                             </span>
+                                            {!! $soldFor($product) !!}
                                             {!! $splitBar($product, $productPeak) !!}
                                         </span>
                                         {!! $figures !!}
                                     </summary>
                                     @if ($hasDrawer)
-                                        @if ($product['upsell_sales'] > 0 || $product['upsold'])
+                                        @if ($product['upsell_value'] > 0 || $product['upsold'])
                                             <div style="{{ $drawer }}">
-                                                @if ($product['upsell_sales'] > 0)
-                                                    <div style="{{ $breakdownColumns }}; font-size: 12px; font-weight: 600; {{ $muted }}"><span class="text-left">Sold as</span><span>Orders</span><span>Value</span><span>Qty</span><span>% of sales</span></div>
+                                                @if ($product['upsell_value'] > 0)
+                                                    <div style="{{ $breakdownColumns }}; font-size: 12px; font-weight: 600; {{ $muted }}"><span class="text-left">Sold as</span><span>Orders</span><span>Value</span><span>Qty</span><span>% of value</span></div>
                                                     @foreach ([['Main / reorder', $crd, ''], ['Upsell', $upsell, 'upsell_']] as [$label, $color, $prefix])
                                                         @php
-                                                            $part = $prefix === '' ? ['sales' => $product['sales'] - $product['upsell_sales'], 'orders' => $product['orders'] - $product['upsell_orders'], 'qty' => $product['qty'] - $product['upsell_qty']] : ['sales' => $product['upsell_sales'], 'orders' => $product['upsell_orders'], 'qty' => $product['upsell_qty']];
+                                                            $part = $prefix === '' ? ['value' => $product['value'] - $product['upsell_value'], 'orders' => $product['orders'] - $product['upsell_orders'], 'qty' => $product['qty'] - $product['upsell_qty']] : ['value' => $product['upsell_value'], 'orders' => $product['upsell_orders'], 'qty' => $product['upsell_qty']];
                                                         @endphp
-                                                        <div style="{{ $breakdownColumns }}"><span class="flex items-center gap-1.5 text-left"><span style="{{ $swatch }}; background: {{ $color }}"></span>{{ $label }}</span><span>{{ $number($part['orders']) }}</span><span>{{ $peso($part['sales']) }}</span><span>{{ $number($part['qty']) }}</span><span>{{ $product['sales'] ? number_format($part['sales'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
+                                                        <div style="{{ $breakdownColumns }}"><span class="flex items-center gap-1.5 text-left"><span style="{{ $swatch }}; background: {{ $color }}"></span>{{ $label }}</span><span>{{ $number($part['orders']) }}</span><span>{{ $peso($part['value']) }}</span><span>{{ $number($part['qty']) }}</span><span>{{ $product['value'] ? number_format($part['value'] / $product['value'] * 100, 1).'%' : '—' }}</span></div>
                                                     @endforeach
                                                 @endif
                                                 @if ($product['upsold'])
-                                                    <p style="margin: {{ $product['upsell_sales'] > 0 ? '6px' : '0' }} 0 2px; font-size: 12px; font-weight: 600; color: {{ $upsell }}">Upsold on {{ $product['name'] }} orders</p>
+                                                    <p style="margin: {{ $product['upsell_value'] > 0 ? '6px' : '0' }} 0 2px; font-size: 12px; font-weight: 600; color: {{ $upsell }}">Upsold on {{ $product['name'] }} orders</p>
                                                     <div style="{{ $breakdownColumns }}; font-size: 12px; font-weight: 600; {{ $muted }}"><span class="text-left">Product</span><span>Orders</span><span>Qty</span><span>Value</span><span>% of sales</span></div>
                                                     @foreach ($product['upsold'] as $item)
-                                                        <div style="{{ $breakdownColumns }}"><span class="text-left" style="overflow-wrap: anywhere">{{ $item['name'] }}</span><span>{{ $number($item['orders']) }}</span><span>{{ $number($item['qty']) }}</span><span>{{ $peso($item['sales']) }}</span><span>{{ $product['sales'] ? number_format($item['sales'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
+                                                        <div style="{{ $breakdownColumns }}"><span class="text-left" style="overflow-wrap: anywhere">{{ $item['name'] }}</span><span>{{ $number($item['orders']) }}</span><span>{{ $number($item['qty']) }}</span><span>{{ $peso($item['value']) }}</span><span>{{ $product['sales'] ? number_format($item['value'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
                                                     @endforeach
-                                                    <div style="{{ $breakdownColumns }}; padding-top: 4px; border-top: 1px solid rgb(255 255 255 / .08); font-weight: 600"><span class="text-left">Total upsold</span><span>{{ $number(array_sum(array_column($product['upsold'], 'orders'))) }}</span><span>{{ $number(array_sum(array_column($product['upsold'], 'qty'))) }}</span><span>{{ $peso($product['upsold_sales']) }}</span><span>{{ $product['sales'] ? number_format($product['upsold_sales'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
-                                                    <p style="margin: 2px 0 0; font-size: 12px; {{ $muted }}">% of sales = the upsell's value ÷ {{ $product['name'] }} sales ({{ $peso($product['sales']) }}).</p>
+                                                    <div style="{{ $breakdownColumns }}; padding-top: 4px; border-top: 1px solid rgb(255 255 255 / .08); font-weight: 600"><span class="text-left">Total upsold</span><span>{{ $number(array_sum(array_column($product['upsold'], 'orders'))) }}</span><span>{{ $number(array_sum(array_column($product['upsold'], 'qty'))) }}</span><span>{{ $peso($product['upsold_value']) }}</span><span>{{ $product['sales'] ? number_format($product['upsold_value'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
+                                                    <p style="margin: 2px 0 0; font-size: 12px; {{ $muted }}">Value = the upsell's Pancake price. % of sales = value ÷ {{ $product['name'] }} sales ({{ $peso($product['sales']) }}).</p>
                                                 @endif
                                             </div>
                                         @endif
@@ -352,7 +368,7 @@
                                             <div style="margin: 0 0 8px; border-radius: 8px; background: rgb(33 31 45 / .55)">
                                                 @foreach ($others as $other)
                                                     <div style="{{ $productColumns }}; min-width: 0; align-items: center; padding: 5px 8px; font-size: 13px; {{ $rowLine }}">
-                                                        <span class="flex flex-col gap-1 text-left"><span style="overflow-wrap: anywhere">{{ $other['name'] }}</span>{!! $splitBar($other, max(1, $other['sales'])) !!}</span>
+                                                        <span class="flex flex-col gap-1 text-left"><span style="overflow-wrap: anywhere">{{ $other['name'] }}</span>{!! $soldFor($other) !!}{!! $splitBar($other, max(1, $other['sales'], $other['value'])) !!}</span>
                                                         <span>{{ $peso($other['sales']) }}</span><span style="{{ $muted }}">{{ $other['share'] >= .005 ? number_format($other['share'] * 100).'%' : '<1%' }}</span><span>{{ $number($other['orders']) }}</span><span>{{ $number($other['qty']) }}</span>{!! $upsellPill($upsellRate($other, true)) !!}
                                                     </div>
                                                 @endforeach
@@ -362,7 +378,7 @@
                                 </details>
                             @endforeach
                         </div>
-                        <p style="margin: 10px 0 0; font-size: 12px; line-height: 1.5; {{ $muted }}">Upsell = a product new to the customer, added to an order with a product they've bought before. For a product, Upsell % = what was upsold on its orders ÷ its sales; under Others, the share of the item's own sales that came as an upsell. Click a product for its breakdown.</p>
+                        <p style="margin: 10px 0 0; font-size: 12px; line-height: 1.5; {{ $muted }}">Upsell = a product new to the customer, added to an order with a product they've bought before, valued at its Pancake price (Shecom leaves TSD add-ons out of gross, so much of it is on top of gross). For a product, Upsell % = what was upsold on its orders ÷ its sales; under Others, the share of the item's own value that came as an upsell. Click a product for its breakdown.</p>
                     </div>
                 </section>
             </div>
@@ -625,8 +641,8 @@
                         'Retain, repeat, conversion' => "Same as each month's Dashboard tiles. Conversion from October only.",
                         'Conversion by lead type' => 'FSD leads = FSD leads who bought ÷ FSD leads given; CRD leads the same for CRD (together the Segmentation rate). Overall also counts broadcast buyers over engagements, as the Dashboard.',
                         'Sales' => "Every CRA's gross, as Conversion Breakdown. Shecom's amount per order, Pancake's until synced.",
-                        'Top products' => 'The same orders split by qty × SRP. Unlisted items go under Others.',
-                        'Upsell' => "A product the customer hasn't bought before (in any earlier Pancake order, canceled left out) on an order with one they have. It's filed under that product as upsold on its orders; Upsell % = upsold ÷ the product's sales.",
+                        'Top products' => "The same orders split by each item's Pancake price × qty (SRP when an item has none). Unlisted items go under Others.",
+                        'Upsell' => "A product the customer hasn't bought before (in any earlier Pancake order, canceled left out, named as on the new order's day) on an order with one they have. It's filed under the biggest of those as upsold on its orders, at its Pancake price (Shecom's sales leave TSD add-ons out, so its value can be on top of gross); Upsell % = upsold ÷ the product's sales. Top products has its own dates; they follow the months until you pick some.",
                     ] as $name => $how)
                         <dt style="font-weight: 700">{{ $name }}</dt>
                         <dd style="margin: 0; {{ $muted }}">{{ $how }}</dd>

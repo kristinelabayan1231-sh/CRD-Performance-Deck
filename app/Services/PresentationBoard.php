@@ -28,7 +28,8 @@ use Illuminate\Support\Facades\DB;
  * Retained, Repeat and Conversion are the Dashboard's, month by month; churned and for reactivation are Customer
  * Churn's, by the end of each customer's reorder window; Sales are Conversion Breakdown's gross sales of every CRA.
  * Top products splits each product's sales into main / reorder and upsell: a product the customer hasn't bought before
- * (in any earlier Pancake order) on an order with one they have, filed under that product as upsold on its orders.
+ * (in any earlier Pancake order, its items named as on the new order's day) on an order with one they have, filed
+ * under that product as upsold on its orders.
  */
 class PresentationBoard
 {
@@ -64,7 +65,7 @@ class PresentationBoard
     private const SUMMED = [
         'fsd_leads', 'crd_leads', 'fsd_waiting', 'crd_waiting', 'added', 'added_waiting',
         'fsd_due', 'fsd_lost', 'fsd_reactivation', 'crd_due', 'crd_lost', 'crd_reactivation', 'all_due', 'all_lost', 'all_reactivation',
-        'retained', 'retained_base', 'repeat', 'repeat_base', 'gross', 'shecom_gross', 'orders', 'upsell_sales', 'upsell_orders',
+        'retained', 'retained_base', 'repeat', 'repeat_base', 'gross', 'shecom_gross', 'orders', 'upsell_value', 'upsell_orders',
     ];
 
     public function __construct(
@@ -114,7 +115,7 @@ class PresentationBoard
         }
         $months = [];
         for ($month = $yearStart; $month->lessThanOrEqualTo($today); $month = $month->addMonth()) {
-            $months[$month->format('Y-m')] = ['products' => [], 'others' => [], 'upsold' => [], 'conversion' => null, 'source' => null];
+            $months[$month->format('Y-m')] = ['conversion' => null, 'source' => null];
         }
 
         $this->addLeads($days, $yearStart, $today);
@@ -130,9 +131,10 @@ class PresentationBoard
             $this->addChurn($days, $from, $to);
         }
 
-        $this->addSales($days, $months, $cras, $yearStart, $today);
+        $productDays = [];
+        $this->addSales($days, $productDays, $cras, $yearStart, $today);
 
-        return ['built_at' => now()->toIso8601String(), 'today' => $today->toDateString(), 'days' => $days, 'months' => $months];
+        return ['built_at' => now()->toIso8601String(), 'today' => $today->toDateString(), 'days' => $days, 'months' => $months, 'product_days' => $productDays];
     }
 
     /**
@@ -210,8 +212,7 @@ class PresentationBoard
 
     /**
      * The figures for months $from–$to (Y-m) of a snapshot: a row per month and per $period, and the totals. Totals
-     * add the months up, so a customer counts once per month. Each product carries its upsell_ figures (sold as an
-     * upsell) and upsold (the upsells on its orders, biggest first) with their upsold_sales.
+     * add the months up, so a customer counts once per month. Products and others are products() for those months.
      *
      * @param  array<string, mixed>  $snapshot
      * @return array{months: list<array<string, mixed>>, totals: array<string, mixed>, periods: list<array<string, mixed>>, products: list<array<string, mixed>>, others: list<array<string, mixed>>}
@@ -237,31 +238,7 @@ class PresentationBoard
         })->values();
 
         $withConversion = $months->filter(fn (array $month) => $month['conversion'] !== null);
-        $products = [];
-        $others = [];
-        $upsold = [];
-        foreach ($months as $month) {
-            foreach (['products' => &$products, 'others' => &$others] as $list => &$into) {
-                foreach ($snapshot['months'][$month['key']][$list] ?? [] as $name => $figures) {
-                    foreach ($figures as $key => $value) {
-                        $into[$name][$key] = ($into[$name][$key] ?? 0) + $value;
-                    }
-                }
-            }
-            unset($into);
-            foreach ($snapshot['months'][$month['key']]['upsold'] ?? [] as $host => $items) {
-                foreach ($items as $name => $figures) {
-                    foreach ($figures as $key => $value) {
-                        $upsold[$host][$name][$key] = ($upsold[$host][$name][$key] ?? 0) + $value;
-                    }
-                }
-            }
-        }
-        $gross = (float) $months->sum('gross');
-        $row = fn (array $figures, string $name) => [
-            'upsell_sales' => 0.0, 'upsell_orders' => 0, 'upsell_qty' => 0, ...$figures,
-            'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0,
-        ];
+        $top = $this->products($snapshot, $from.'-01', CarbonImmutable::parse($to.'-01')->endOfMonth()->toDateString());
 
         return [
             'months' => $months->all(),
@@ -287,20 +264,80 @@ class PresentationBoard
                 ],
             ],
             'periods' => $this->periods($byMonth, $period),
+            'products' => $top['products'],
+            'others' => $top['others'],
+        ];
+    }
+
+    /**
+     * Top products for days $from–$to (Y-m-d) of a snapshot: each product's share of gross (sales, share), value, orders
+     * and qty, its upsell_ figures (value, orders and qty sold as an upsell) and upsold (the upsells on its orders,
+     * biggest first) with their upsold_value; others = what Others holds; and the dates' gross and upsell totals.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array{from: string, to: string, products: list<array<string, mixed>>, others: list<array<string, mixed>>, gross: float, upsell_value: float, upsell_orders: int}
+     */
+    public function products(array $snapshot, string $from, string $to): array
+    {
+        // A snapshot from before products were kept per day has them per month.
+        $lists = isset($snapshot['product_days'])
+            ? collect($snapshot['product_days'])->filter(fn (array $day, string $date) => $date >= $from && $date <= $to)
+            : collect($snapshot['months'])->filter(fn (array $month, string $key) => $key >= substr($from, 0, 7) && $key <= substr($to, 0, 7));
+        $products = [];
+        $others = [];
+        $upsold = [];
+        foreach ($lists as $list) {
+            foreach ($list['products'] ?? [] as $name => $figures) {
+                self::addUp($products[$name], $figures);
+            }
+            foreach ($list['others'] ?? [] as $name => $figures) {
+                self::addUp($others[$name], $figures);
+            }
+            foreach ($list['upsold'] ?? [] as $host => $items) {
+                foreach ($items as $name => $figures) {
+                    self::addUp($upsold[$host][$name], $figures);
+                }
+            }
+        }
+
+        $days = collect($snapshot['days'])->filter(fn (array $day, string $date) => $date >= $from && $date <= $to);
+        $gross = (float) $days->sum('gross');
+        $row = fn (array $figures, string $name) => [
+            'value' => $figures['sales'], 'upsell_value' => 0.0, 'upsell_orders' => 0, 'upsell_qty' => 0, ...$figures,
+            'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0,
+        ];
+
+        return [
+            'from' => $from,
+            'to' => $to,
             'products' => collect($products)
                 ->map(function (array $figures, string $name) use ($row, $upsold) {
                     $product = $row($figures, $name);
                     $product['upsold'] = collect($upsold[$name] ?? [])
                         ->map(fn (array $item, string $itemName) => [...$item, 'name' => $itemName])
-                        ->sortByDesc('sales')->values()->all();
-                    $product['upsold_sales'] = (float) array_sum(array_column($product['upsold'], 'sales'));
+                        ->sortByDesc('value')->values()->all();
+                    $product['upsold_value'] = (float) array_sum(array_column($product['upsold'], 'value'));
 
                     return $product;
                 })
                 ->sort(fn (array $a, array $b) => [$a['name'] === self::OTHERS, $b['sales']] <=> [$b['name'] === self::OTHERS, $a['sales']])
                 ->values()->all(),
-            'others' => collect($others)->map($row)->sortByDesc('sales')->values()->all(),
+            'others' => collect($others)->map($row)->sortByDesc('value')->values()->all(),
+            'gross' => $gross,
+            'upsell_value' => (float) $days->sum('upsell_value'),
+            'upsell_orders' => (int) $days->sum('upsell_orders'),
         ];
+    }
+
+    /**
+     * @param  array<string, int|float>|null  $row
+     * @param  array<string, int|float>  $figures
+     */
+    private static function addUp(?array &$row, array $figures): void
+    {
+        foreach ($figures as $key => $value) {
+            $row[$key] = ($row[$key] ?? 0) + $value;
+        }
     }
 
     /**
@@ -715,13 +752,14 @@ class PresentationBoard
     }
 
     /**
-     * Every CRA's gross sales and confirmed orders, and the same orders per product.
+     * Every CRA's gross sales and confirmed orders, and the same orders per product per day ($productDays: Y-m-d =>
+     * products, others and upsold), so Top products can show any dates.
      *
      * @param  array<string, array<string, int|float>>  $days
-     * @param  array<string, array<string, mixed>>  $months
+     * @param  array<string, array<string, mixed>>  $productDays
      * @param  Collection<int, User>  $cras
      */
-    private function addSales(array &$days, array &$months, Collection $cras, CarbonImmutable $from, CarbonImmutable $to): void
+    private function addSales(array &$days, array &$productDays, Collection $cras, CarbonImmutable $from, CarbonImmutable $to): void
     {
         $accounts = ConversionBreakdown::accounts($cras);
 
@@ -738,7 +776,6 @@ class PresentationBoard
 
             foreach (ConversionBreakdown::taggedOrders($accounts, $start, $end)->cursor() as $order) {
                 $day = $order->ordered_on->toDateString();
-                $month = substr($day, 0, 7);
                 $counted = $order->isCounted();
                 $days[$day]['gross'] += $order->sales();
                 $days[$day]['shecom_gross'] += (float) ($order->shecom_sales ?? 0);
@@ -747,9 +784,15 @@ class PresentationBoard
                 // Upsell: a product the customer hasn't bought before, on an order with one they have (the host: the
                 // biggest of those, so an upsell is filed once). Without one bought before, every item is main.
                 $items = $this->productSales->split($order);
-                $bought = $firstBought[$order->phone_key] ?? [];
-                $boughtBefore = fn (array $item) => isset($bought[$item['key']]) && $bought[$item['key']] < $day;
-                $host = $items->filter($boughtBefore)->sortByDesc('sales')->first();
+                // Earlier items under the names they'd have on this order's day, so both sides name products alike.
+                $bought = [];
+                foreach ($firstBought[$order->phone_key] ?? [] as $raw => $first) {
+                    if ($first < $day) {
+                        $bought[$this->productSales->nameOn((string) $raw, $day)] = true;
+                    }
+                }
+                $boughtBefore = fn (array $item) => isset($bought[$item['name']]);
+                $host = $items->filter($boughtBefore)->sortByDesc('value')->first();
                 $upsold = false;
 
                 $seen = [];
@@ -757,16 +800,16 @@ class PresentationBoard
                     $upsell = $host !== null && ! $boughtBefore($item);
                     $upsold = $upsold || $upsell;
                     $name = $item['listed'] ? $item['name'] : self::OTHERS;
-                    self::addItem($months[$month]['products'][$name], $name, $item, $counted, $upsell, $seen);
+                    self::addItem($productDays[$day]['products'][$name], $name, $item, $counted, $upsell, $seen);
 
                     // What Others holds, by the item's own name in the order.
                     if (! $item['listed']) {
-                        self::addItem($months[$month]['others'][$item['name']], 'others:'.$item['name'], $item, $counted, $upsell, $seen);
+                        self::addItem($productDays[$day]['others'][$item['name']], 'others:'.$item['name'], $item, $counted, $upsell, $seen);
                     }
 
                     if ($upsell) {
-                        self::addItem($months[$month]['upsold'][$host['name']][$item['name']], 'upsold:'.$item['name'], $item, $counted, false, $seen);
-                        $days[$day]['upsell_sales'] += $item['sales'];
+                        self::addItem($productDays[$day]['upsold'][$host['name']][$item['name']], 'upsold:'.$item['name'], $item, $counted, false, $seen);
+                        $days[$day]['upsell_value'] += $item['value'];
                     }
                 }
                 $days[$day]['upsell_orders'] += $counted && $upsold ? 1 : 0;
@@ -775,19 +818,21 @@ class PresentationBoard
     }
 
     /**
-     * Add an item to a product's figures: sales, qty and orders (an order once per row, by $seenKey), and the same again
-     * under upsell_ when it was an upsell. Qty and orders count confirmed orders only, as the sales card does.
+     * Add an item to a product's figures: its share of gross (sales), what it sold for (value), qty and orders (an order
+     * once per row, by $seenKey), and its value, qty and orders again under upsell_ when it was an upsell. Qty and orders
+     * count confirmed orders only, as the sales card does.
      *
      * @param  array<string, int|float>|null  $row
-     * @param  array{name: string, key: string, listed: bool, qty: int, sales: float}  $item
+     * @param  array{name: string, listed: bool, qty: int, sales: float, value: float}  $item
      * @param  array<string, true>  $seen
      */
     private static function addItem(?array &$row, string $seenKey, array $item, bool $counted, bool $upsell, array &$seen): void
     {
-        $row ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
+        $row ??= ['sales' => 0.0, 'value' => 0.0, 'orders' => 0, 'qty' => 0];
+        $row['sales'] += $item['sales'];
 
         foreach ($upsell ? ['', 'upsell_'] : [''] as $prefix) {
-            $row[$prefix.'sales'] = ($row[$prefix.'sales'] ?? 0.0) + $item['sales'];
+            $row[$prefix.'value'] = ($row[$prefix.'value'] ?? 0.0) + $item['value'];
             $row[$prefix.'qty'] = ($row[$prefix.'qty'] ?? 0) + ($counted ? $item['qty'] : 0);
             $row[$prefix.'orders'] = ($row[$prefix.'orders'] ?? 0) + ($counted && ! isset($seen[$prefix.$seenKey]) ? 1 : 0);
             if ($counted) {
@@ -797,11 +842,11 @@ class PresentationBoard
     }
 
     /**
-     * The first day each customer bought each product, from every Pancake order up to $to (any seller, not canceled or
-     * deleted), by the products split() files their items under whatever the day.
+     * The first day each customer bought each item, by its name in Pancake, from every Pancake order up to $to (any
+     * seller, not canceled or deleted).
      *
      * @param  Collection<int, string>  $phones
-     * @return array<string, array<string, string>> phone key => product => Y-m-d
+     * @return array<string, array<string, string>> phone key => item name => Y-m-d
      */
     private function firstBought(Collection $phones, CarbonImmutable $to): array
     {
@@ -814,9 +859,9 @@ class PresentationBoard
 
             foreach ($orders as $order) {
                 $day = $order->ordered_on->toDateString();
-                foreach ($this->productSales->productNames($order) as $product) {
-                    if (! isset($first[$order->phone_key][$product]) || $day < $first[$order->phone_key][$product]) {
-                        $first[$order->phone_key][$product] = $day;
+                foreach ($this->productSales->rawNames($order) as $raw) {
+                    if (! isset($first[$order->phone_key][$raw]) || $day < $first[$order->phone_key][$raw]) {
+                        $first[$order->phone_key][$raw] = $day;
                     }
                 }
             }
