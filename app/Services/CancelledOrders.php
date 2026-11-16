@@ -15,7 +15,7 @@ use Illuminate\Support\Collection;
  * tagged CRD - BROADCAST / SEGMENTATION, a listed product, with the CVR Tracker's corrections) whose status is
  * Canceled (6) or Waiting for goods (11), by the day the order was created. The rate is out of those same orders,
  * deleted ones left out (confirmed + canceled), so it lines up with Total confirmed orders. Amounts are the sale
- * (Shecom's, else Pancake's total).
+ * (Shecom's, else Pancake's total plus its discount).
  */
 class CancelledOrders
 {

@@ -77,7 +77,7 @@ class CraIssues
                 ->orWhere(fn ($q) => $q->where('conversion_type', PancakeOrder::SEGMENTATION)
                     ->whereJsonContains('tags', $both[0])->whereJsonContains('tags', $both[1])))
             ->orderByDesc('ordered_on')->orderBy('seller_name')->orderBy('id')
-            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'customer_name', 'conversion_type', 'total_price', 'shecom_sales']);
+            ->get(['pancake_order_id', 'ordered_on', 'seller_name', 'customer_name', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales']);
 
         return $issues->concat($orders->map(fn (PancakeOrder $order) => [
             'type' => $order->conversion_type === null ? self::UNTAGGED : self::BOTH_TAGS,

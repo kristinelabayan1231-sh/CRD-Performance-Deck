@@ -45,7 +45,7 @@ class PageOrders
                 ->where(fn ($q) => $q->whereNull('cvr.user_id')->whereIn('pancake_orders.seller_name', $accounts->keys()))
                 ->orWhereIn('cvr.user_id', $cras->pluck('id')))
             ->get(['pancake_orders.id', 'pancake_orders.seller_name', 'pancake_orders.page_id', 'pancake_orders.page_name', 'pancake_orders.status',
-                'pancake_orders.total_price', 'pancake_orders.shecom_sales', 'cvr.user_id as counted_for']);
+                'pancake_orders.total_price', 'pancake_orders.total_discount', 'pancake_orders.shecom_sales', 'cvr.user_id as counted_for']);
 
         return [
             'orders' => $orders

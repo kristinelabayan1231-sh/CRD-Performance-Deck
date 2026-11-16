@@ -57,7 +57,7 @@ class CraPerformance
                     'seller' => $seller,
                     'status' => $order->status === null ? -1 : (int) $order->status,
                     'product' => $this->mainProduct(json_decode((string) $order->items, true) ?? [], substr((string) $order->ordered_on, 0, 10)),
-                    // The order's value before Pancake's discount (PancakeOrder::salesBeforeDiscount()).
+                    // The order's value before Pancake's discount (PancakeOrder::sales()).
                     'sales' => (float) ($order->shecom_sales ?? $order->total_price + ($order->total_discount ?? 0)),
                     'discount' => (float) ($order->total_discount ?? 0),
                 ];

@@ -18,7 +18,7 @@ use Illuminate\Support\Collection;
  *   CVR Tracker counts for a CRA, by the day the order was created. Only orders with a CRD product or only a TSD upsell
  *   product. Deleted orders (status 7) are left out entirely.
  * - orders: not canceled. grossSales: every order, canceled ones too (the canceled value is also cancelledSales, so a
- *   report can subtract it). Sales are Shecom's amount once synced, else Pancake's total. Status is the order's status now.
+ *   report can subtract it). Sales are Shecom's amount once synced, else Pancake's total plus its discount. Status is the order's status now.
  * - deliveredSales: Delivered / Payment collected. returnedSales: Returning / Returned / Partially returned.
  * - leads: the leads on that day's Segmentation Tracker list assigned to a CRA (the paired lead day when a Working Date
  *   is set), leads added from POS sales left out. leadsContacted: those a CRA worked (a status, a date of contact or
@@ -161,14 +161,14 @@ class RetentionDaily
                 ->orWhereIn('cvr.user_id', $cras->pluck('id')))
             ->toBase()
             ->select(['pancake_orders.id', 'pancake_orders.ordered_on', 'pancake_orders.seller_name', 'pancake_orders.status',
-                'pancake_orders.phone_key', 'pancake_orders.total_price', 'pancake_orders.shecom_sales', 'cvr.user_id as counted_for'])
+                'pancake_orders.phone_key', 'pancake_orders.total_price', 'pancake_orders.total_discount', 'pancake_orders.shecom_sales', 'cvr.user_id as counted_for'])
             ->lazyById(2000, 'pancake_orders.id', 'id')
             ->each(function (object $order) use (&$orders, $accounts) {
                 $orders[substr((string) $order->ordered_on, 0, 10)][] = [
                     'cra' => $order->counted_for !== null ? (int) $order->counted_for : $accounts[$order->seller_name],
                     'status' => $order->status === null ? null : (int) $order->status,
-                    // PancakeOrder::sales(): Shecom's amount once synced, else Pancake's total.
-                    'sales' => (float) ($order->shecom_sales ?? $order->total_price),
+                    // PancakeOrder::sales(): Shecom's amount once synced, else Pancake's total plus its discount.
+                    'sales' => (float) ($order->shecom_sales ?? $order->total_price + ($order->total_discount ?? 0)),
                     'phone_key' => $order->phone_key,
                 ];
             });
