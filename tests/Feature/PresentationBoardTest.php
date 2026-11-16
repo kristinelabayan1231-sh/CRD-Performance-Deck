@@ -245,6 +245,30 @@ class PresentationBoardTest extends TestCase
         $this->assertNotNull($october['conversion']);
     }
 
+    public function test_conversion_splits_into_fsd_and_crd_leads_that_add_up_to_segmentation(): void
+    {
+        foreach ([['0981', Lead::TYPE_FSD, '2026-10-05', '2026-10-05'], ['0982', Lead::TYPE_CRD, '2026-10-06', '2026-10-20'], ['0983', Lead::TYPE_CRD, '2026-10-07', null]] as $i => [$phone, $type, $listed, $bought]) {
+            Lead::create([
+                'order_id' => "C{$i}", 'customer_name' => 'Buyer', 'phone_number' => $phone, 'product_name' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 30,
+                'est_out_of_stock_date' => $listed, 'listed_on' => $listed, 'lead_type' => $type, 'assigned_to' => $this->cra->id,
+                'repeat_purchase' => $bought ? 'yes' : null, 'repeat_purchase_on' => $bought,
+            ]);
+        }
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+
+        $range = $board->range($board->snapshot(), '2026-01', '2026-10', 'monthly');
+        $leads = $range['totals']['conversion_leads'];
+        $segmentation = $range['months'][9]['conversion']['sc'];
+
+        $this->assertSame(['customers' => 1, 'base' => 1, 'rate' => 1.0], $leads['fsd']);
+        $this->assertSame(['customers' => 1, 'base' => 2, 'rate' => 0.5], $leads['crd']);
+        $this->assertSame($segmentation['customers'], $leads['fsd']['customers'] + $leads['crd']['customers']);
+        $this->assertSame($segmentation['base'], $leads['fsd']['base'] + $leads['crd']['base']);
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-01', 'to' => '2026-10']))
+            ->assertOk()->assertSeeInOrder(['Conversion', 'overall', 'FSD leads', '100.0%', '1 of 1', 'CRD leads', '50.0%', '1 of 2']);
+    }
+
     public function test_churn_matches_customer_churn_and_adds_up_from_its_days(): void
     {
         $this->delivery('1001', '2026-05-01', LogisticsOrder::TEAM_CRD);
@@ -322,6 +346,111 @@ class PresentationBoardTest extends TestCase
         $this->assertSame([1, 1], array_column($others, 'orders'));
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
             ->assertOk()->assertSee('2 items not in Product Consumption')->assertSee('Mystery Tea')->assertSee('Garlic Oil');
+    }
+
+    /**
+     * A Pancake order of $items (name => qty) for $phone; a CRA's tagged order unless another seller is given.
+     *
+     * @param  array<string, int>  $items
+     */
+    private function order(string $phone, string $day, array $items, float $total = 1000, string $seller = self::CRD_SELLER, int $status = 3): void
+    {
+        PancakeOrder::create([
+            'pancake_order_id' => 'O'.++$this->seq, 'ordered_on' => $day, 'seller_name' => $seller, 'phone_key' => $phone, 'status' => $status,
+            'total_price' => $total, 'conversion_type' => $seller === self::CRD_SELLER ? PancakeOrder::SEGMENTATION : null,
+            'items' => collect($items)->map(fn (int $qty, string $name) => ['name' => $name, 'qty' => $qty])->values()->all(),
+        ]);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>> product name => its Top products row
+     */
+    private function products(string $month): array
+    {
+        return array_column(app(PresentationBoard::class)->range($this->snapshot(), $month, $month, 'monthly')['products'], null, 'name');
+    }
+
+    public function test_a_product_new_to_the_customer_on_an_order_with_one_they_bought_before_is_upsold_on_that_product(): void
+    {
+        Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250]);
+        // Bought from FSD before: any seller counts.
+        $this->order('0911', '2026-07-10', ['Sinuxyl' => 1], seller: self::FSD_SELLER);
+        $this->order('0911', '2026-08-03', ['Sinuxyl' => 2, 'Lumicare' => 2], total: 1500);
+
+        $products = $this->products('2026-08');
+        $range = app(PresentationBoard::class)->range($this->snapshot(), '2026-08', '2026-08', 'monthly');
+
+        // 1,500 split by qty × SRP: Sinuxyl 1,000, Lumicare 500.
+        $this->assertEquals(0, $products['Sinuxyl']['upsell_sales']);
+        $this->assertEquals(500, $products['Sinuxyl']['upsold_sales']);
+        $this->assertEquals([['sales' => 500, 'orders' => 1, 'qty' => 2, 'name' => 'Lumicare']], $products['Sinuxyl']['upsold']);
+        $this->assertEquals(500, $products['Lumicare']['upsell_sales']);
+        $this->assertSame(1, $products['Lumicare']['upsell_orders']);
+        $this->assertSame(2, $products['Lumicare']['upsell_qty']);
+        $this->assertEquals(500, $range['totals']['upsell_sales']);
+        $this->assertSame(1, $range['totals']['upsell_orders']);
+    }
+
+    public function test_an_order_without_a_product_bought_before_is_all_main(): void
+    {
+        Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250]);
+        // First order, a same-day order, and a switch to only a new product.
+        $this->order('0921', '2026-08-03', ['Sinuxyl' => 1, 'Lumicare' => 1]);
+        $this->order('0921', '2026-08-03', ['Lumicare' => 1]);
+        $this->order('0922', '2026-07-10', ['Sinuxyl' => 1]);
+        $this->order('0922', '2026-08-04', ['Lumicare' => 1]);
+
+        $products = $this->products('2026-08');
+
+        $this->assertEquals(0, $products['Lumicare']['upsell_sales']);
+        $this->assertSame([], $products['Sinuxyl']['upsold']);
+    }
+
+    public function test_a_canceled_order_is_not_a_product_bought_before(): void
+    {
+        Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250]);
+        $this->order('0931', '2026-07-10', ['Sinuxyl' => 1], status: PancakeOrder::CANCELED);
+        $this->order('0931', '2026-08-03', ['Sinuxyl' => 1, 'Lumicare' => 1]);
+
+        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_sales']);
+    }
+
+    public function test_a_product_bought_before_it_was_on_product_consumption_is_not_an_upsell(): void
+    {
+        Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250, 'counts_from' => '2026-08-01']);
+        // In July Lumicare wasn't listed yet, so that order filed it under its own name.
+        $this->order('0941', '2026-07-10', ['Sinuxyl' => 1, 'Lumicare Oil' => 1]);
+        $this->order('0941', '2026-08-03', ['Sinuxyl' => 1, 'Lumicare Oil' => 1]);
+
+        $this->assertEquals(0, $this->products('2026-08')['Lumicare']['upsell_sales']);
+    }
+
+    public function test_an_upsell_is_filed_once_under_the_biggest_product_bought_before(): void
+    {
+        Product::create(['name' => 'Clear Sight', 'keywords' => 'Clear Sight', 'consumption_days' => 30, 'srp' => 1000]);
+        $this->order('0951', '2026-07-10', ['Sinuxyl' => 1, 'Clear Sight' => 1]);
+        $this->order('0951', '2026-08-03', ['Sinuxyl' => 1, 'Clear Sight' => 1, 'Garlic Oil' => 1], total: 1501);
+
+        $products = $this->products('2026-08');
+
+        $this->assertSame(['Garlic Oil'], array_column($products['Clear Sight']['upsold'], 'name'));
+        $this->assertSame([], $products['Sinuxyl']['upsold']);
+        // Unlisted, so it's Others' upsell and its own item's.
+        $this->assertEquals(1, $products[PresentationBoard::OTHERS]['upsell_sales']);
+    }
+
+    public function test_the_page_shows_what_was_upsold_on_a_products_orders(): void
+    {
+        Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250]);
+        $this->order('0961', '2026-07-10', ['Sinuxyl' => 1]);
+        $this->order('0961', '2026-08-03', ['Sinuxyl' => 2, 'Lumicare' => 2], total: 1500);
+        app(PresentationBoard::class)->refresh();
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
+            ->assertOk()
+            ->assertSee('+₱500 upsold')
+            ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '50.0%'])
+            ->assertSee("% of sales = the upsell's value ÷ Sinuxyl sales (₱1,000)", false);
     }
 
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void

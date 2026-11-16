@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-16 · Presentation Board · Conversion tile shows the overall rate (as before, broadcast included) with FSD leads and CRD leads conversion under it (leads who bought ÷ leads given, with "x of y"; together the Segmentation rate). The Conversion card under "Conversion, retain and repeat by month" lists them too · shots: presentation-board
+
+- 2026-11-16 · Presentation Board · Top products shows a sales breakdown: Main / reorder and Upsell totals under the heading (value, % of sales, orders), a new Upsell column, a two-colour bar (purple main, teal upsell), a "+₱… upsold" note, and a By sales / By upsell % switch. Clicking a product opens "Upsold on <product> orders" (each upsell product's orders, qty, value and % of the product's sales, with a total); a product sold as an upsell itself also shows Main / reorder vs Upsell. Upsell = a product the customer hasn't bought before (any earlier Pancake order, canceled left out) on an order with one they have, filed under the biggest of those. Others' items show their own Upsell % · shots: presentation-board
+
 - 2026-11-14 · Sales everywhere (Daily I.S., CVR Tracker, Running Sales, Presentation Board, Conversion Breakdown, PC Report, Retention) · An order Shecom hasn't synced yet now counts Pancake's total plus its discount, as Shecom does (a GCash payment or prepayment is entered in Pancake as a discount), so prepaid orders no longer show lower until Shecom syncs · shots: none
 
 - 2026-11-14 · CVR Tracker · An order with a Pancake discount shows a "Discounted: ₱…" pill after its Amount (as on Order Database → CRA's Performance); the Amount counts the discount, as Shecom does · shots: cvr-tracker

@@ -16,6 +16,9 @@ use Illuminate\Support\Collection;
  */
 class CraProductSales
 {
+    /** @var array<string, string> item name => its product whatever the day */
+    private array $keys = [];
+
     public function __construct(private ProductCatalog $catalog) {}
 
     /**
@@ -49,32 +52,60 @@ class CraProductSales
 
     /**
      * The order's sales split over its items: each item under the Product Consumption product it matches (listed) or
-     * its own name, by qty × SRP (by qty when a product has no SRP). An order without items is one Unknown item.
+     * its own name, by qty × SRP (by qty when a product has no SRP). An order without items is one Unknown item. key is
+     * the item's product whatever the order's day (productNames()), for telling a product bought before from a new one.
      *
-     * @return Collection<int, array{name: string, listed: bool, qty: int, sales: float}>
+     * @return Collection<int, array{name: string, key: string, listed: bool, qty: int, sales: float}>
      */
     public function split(PancakeOrder $order): Collection
     {
-        $items = collect($order->items ?? [])->map(function (array $item) use ($order) {
+        $items = $this->items($order);
+        $items = $items->isEmpty() ? collect([['name' => 'Unknown', 'key' => 'Unknown', 'listed' => false, 'qty' => 1, 'weight' => 1]]) : $items;
+        $weight = $items->sum('weight');
+
+        return $items->map(fn (array $item) => [
+            'name' => $item['name'],
+            'key' => $item['key'],
+            'listed' => $item['listed'],
+            'qty' => $item['qty'],
+            'sales' => $order->sales() * $item['weight'] / $weight,
+        ])->values();
+    }
+
+    /**
+     * The products on the order whatever its day (split()'s key): a product added later to Product Consumption is the
+     * same product in an order from before it counted, so a customer who bought it then has bought it before.
+     *
+     * @return list<string>
+     */
+    public function productNames(PancakeOrder $order): array
+    {
+        return collect($order->items ?? [])->map(fn (array $item) => $this->key(trim((string) ($item['name'] ?? ''))))
+            ->unique()->values()->all();
+    }
+
+    private function key(string $raw): string
+    {
+        return $this->keys[$raw] ??= ($raw === '' ? null : $this->catalog->matchSold($raw)?->name) ?? ($raw ?: 'Unknown');
+    }
+
+    /**
+     * @return Collection<int, array{name: string, key: string, listed: bool, qty: int, weight: int|float}>
+     */
+    private function items(PancakeOrder $order): Collection
+    {
+        return collect($order->items ?? [])->map(function (array $item) use ($order) {
             $raw = trim((string) ($item['name'] ?? ''));
             $product = $raw === '' ? null : $this->catalog->matchSold($raw, $order->ordered_on?->toDateString());
             $qty = max(1, (int) ($item['qty'] ?? 1));
 
             return [
                 'name' => $product?->name ?? ($raw ?: 'Unknown'),
+                'key' => $this->key($raw),
                 'listed' => $product !== null,
                 'qty' => $qty,
                 'weight' => $qty * ((float) $product?->srp ?: 1),
             ];
         });
-        $items = $items->isEmpty() ? collect([['name' => 'Unknown', 'listed' => false, 'qty' => 1, 'weight' => 1]]) : $items;
-        $weight = $items->sum('weight');
-
-        return $items->map(fn (array $item) => [
-            'name' => $item['name'],
-            'listed' => $item['listed'],
-            'qty' => $item['qty'],
-            'sales' => $order->sales() * $item['weight'] / $weight,
-        ])->values();
     }
 }

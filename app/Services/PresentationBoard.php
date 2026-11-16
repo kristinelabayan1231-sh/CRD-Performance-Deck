@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  * as waiting until PancakePageBackfill finishes their month. Acquired leads (added) = a customer's first delivery ever, from FSD.
  * Retained, Repeat and Conversion are the Dashboard's, month by month; churned and for reactivation are Customer
  * Churn's, by the end of each customer's reorder window; Sales are Conversion Breakdown's gross sales of every CRA.
+ * Top products splits each product's sales into main / reorder and upsell: a product the customer hasn't bought before
+ * (in any earlier Pancake order) on an order with one they have, filed under that product as upsold on its orders.
  */
 class PresentationBoard
 {
@@ -62,7 +64,7 @@ class PresentationBoard
     private const SUMMED = [
         'fsd_leads', 'crd_leads', 'fsd_waiting', 'crd_waiting', 'added', 'added_waiting',
         'fsd_due', 'fsd_lost', 'fsd_reactivation', 'crd_due', 'crd_lost', 'crd_reactivation', 'all_due', 'all_lost', 'all_reactivation',
-        'retained', 'retained_base', 'repeat', 'repeat_base', 'gross', 'shecom_gross', 'orders',
+        'retained', 'retained_base', 'repeat', 'repeat_base', 'gross', 'shecom_gross', 'orders', 'upsell_sales', 'upsell_orders',
     ];
 
     public function __construct(
@@ -112,7 +114,7 @@ class PresentationBoard
         }
         $months = [];
         for ($month = $yearStart; $month->lessThanOrEqualTo($today); $month = $month->addMonth()) {
-            $months[$month->format('Y-m')] = ['products' => [], 'others' => [], 'conversion' => null, 'source' => null];
+            $months[$month->format('Y-m')] = ['products' => [], 'others' => [], 'upsold' => [], 'conversion' => null, 'source' => null];
         }
 
         $this->addLeads($days, $yearStart, $today);
@@ -208,7 +210,8 @@ class PresentationBoard
 
     /**
      * The figures for months $from–$to (Y-m) of a snapshot: a row per month and per $period, and the totals. Totals
-     * add the months up, so a customer counts once per month.
+     * add the months up, so a customer counts once per month. Each product carries its upsell_ figures (sold as an
+     * upsell) and upsold (the upsells on its orders, biggest first) with their upsold_sales.
      *
      * @param  array<string, mixed>  $snapshot
      * @return array{months: list<array<string, mixed>>, totals: array<string, mixed>, periods: list<array<string, mixed>>, products: list<array<string, mixed>>, others: list<array<string, mixed>>}
@@ -236,6 +239,7 @@ class PresentationBoard
         $withConversion = $months->filter(fn (array $month) => $month['conversion'] !== null);
         $products = [];
         $others = [];
+        $upsold = [];
         foreach ($months as $month) {
             foreach (['products' => &$products, 'others' => &$others] as $list => &$into) {
                 foreach ($snapshot['months'][$month['key']][$list] ?? [] as $name => $figures) {
@@ -245,8 +249,19 @@ class PresentationBoard
                 }
             }
             unset($into);
+            foreach ($snapshot['months'][$month['key']]['upsold'] ?? [] as $host => $items) {
+                foreach ($items as $name => $figures) {
+                    foreach ($figures as $key => $value) {
+                        $upsold[$host][$name][$key] = ($upsold[$host][$name][$key] ?? 0) + $value;
+                    }
+                }
+            }
         }
         $gross = (float) $months->sum('gross');
+        $row = fn (array $figures, string $name) => [
+            'upsell_sales' => 0.0, 'upsell_orders' => 0, 'upsell_qty' => 0, ...$figures,
+            'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0,
+        ];
 
         return [
             'months' => $months->all(),
@@ -264,15 +279,27 @@ class PresentationBoard
                     $withConversion->sum(fn (array $month) => $month['conversion'][$tab]['customers']),
                     $withConversion->sum(fn (array $month) => $month['conversion'][$tab]['base']),
                 )])->all(),
+                // Segmentation conversion by lead type, over the same months: in those (tracker) months Retained is
+                // FSD leads that bought ÷ FSD leads given and Repeat the same for CRD, together the Segmentation rate.
+                'conversion_leads' => [
+                    'fsd' => ['customers' => $withConversion->sum('retained'), 'base' => $withConversion->sum('retained_base'), 'rate' => self::rate($withConversion->sum('retained'), $withConversion->sum('retained_base'))],
+                    'crd' => ['customers' => $withConversion->sum('repeat'), 'base' => $withConversion->sum('repeat_base'), 'rate' => self::rate($withConversion->sum('repeat'), $withConversion->sum('repeat_base'))],
+                ],
             ],
             'periods' => $this->periods($byMonth, $period),
             'products' => collect($products)
-                ->map(fn (array $figures, string $name) => [...$figures, 'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0])
+                ->map(function (array $figures, string $name) use ($row, $upsold) {
+                    $product = $row($figures, $name);
+                    $product['upsold'] = collect($upsold[$name] ?? [])
+                        ->map(fn (array $item, string $itemName) => [...$item, 'name' => $itemName])
+                        ->sortByDesc('sales')->values()->all();
+                    $product['upsold_sales'] = (float) array_sum(array_column($product['upsold'], 'sales'));
+
+                    return $product;
+                })
                 ->sort(fn (array $a, array $b) => [$a['name'] === self::OTHERS, $b['sales']] <=> [$b['name'] === self::OTHERS, $a['sales']])
                 ->values()->all(),
-            'others' => collect($others)
-                ->map(fn (array $figures, string $name) => [...$figures, 'name' => $name, 'share' => $gross ? $figures['sales'] / $gross : 0.0])
-                ->sortByDesc('sales')->values()->all(),
+            'others' => collect($others)->map($row)->sortByDesc('sales')->values()->all(),
         ];
     }
 
@@ -704,7 +731,12 @@ class PresentationBoard
 
         // A month at a time: the database driver holds a whole result in memory.
         for ($start = $from; $start->lessThanOrEqualTo($to); $start = $start->addMonth()) {
-            foreach (ConversionBreakdown::taggedOrders($accounts, $start, $start->endOfMonth()->startOfDay()->min($to))->cursor() as $order) {
+            $end = $start->endOfMonth()->startOfDay()->min($to);
+            $phones = ConversionBreakdown::taggedOrders($accounts, $start, $end)
+                ->select('pancake_orders.phone_key')->distinct()->whereNotNull('pancake_orders.phone_key')->pluck('phone_key');
+            $firstBought = $this->firstBought($phones, $end);
+
+            foreach (ConversionBreakdown::taggedOrders($accounts, $start, $end)->cursor() as $order) {
                 $day = $order->ordered_on->toDateString();
                 $month = substr($day, 0, 7);
                 $counted = $order->isCounted();
@@ -712,31 +744,84 @@ class PresentationBoard
                 $days[$day]['shecom_gross'] += (float) ($order->shecom_sales ?? 0);
                 $days[$day]['orders'] += $counted ? 1 : 0;
 
-                $names = [];
-                foreach ($this->productSales->split($order) as $item) {
+                // Upsell: a product the customer hasn't bought before, on an order with one they have (the host: the
+                // biggest of those, so an upsell is filed once). Without one bought before, every item is main.
+                $items = $this->productSales->split($order);
+                $bought = $firstBought[$order->phone_key] ?? [];
+                $boughtBefore = fn (array $item) => isset($bought[$item['key']]) && $bought[$item['key']] < $day;
+                $host = $items->filter($boughtBefore)->sortByDesc('sales')->first();
+                $upsold = false;
+
+                $seen = [];
+                foreach ($items as $item) {
+                    $upsell = $host !== null && ! $boughtBefore($item);
+                    $upsold = $upsold || $upsell;
                     $name = $item['listed'] ? $item['name'] : self::OTHERS;
-                    $months[$month]['products'][$name] ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
-                    $months[$month]['products'][$name]['sales'] += $item['sales'];
-                    $months[$month]['products'][$name]['qty'] += $counted ? $item['qty'] : 0;
-                    if ($counted && ! isset($names[$name])) {
-                        $names[$name] = true;
-                        $months[$month]['products'][$name]['orders']++;
-                    }
+                    self::addItem($months[$month]['products'][$name], $name, $item, $counted, $upsell, $seen);
 
                     // What Others holds, by the item's own name in the order.
                     if (! $item['listed']) {
-                        $others = &$months[$month]['others'][$item['name']];
-                        $others ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
-                        $others['sales'] += $item['sales'];
-                        $others['qty'] += $counted ? $item['qty'] : 0;
-                        if ($counted && ! isset($names['others:'.$item['name']])) {
-                            $names['others:'.$item['name']] = true;
-                            $others['orders']++;
-                        }
-                        unset($others);
+                        self::addItem($months[$month]['others'][$item['name']], 'others:'.$item['name'], $item, $counted, $upsell, $seen);
+                    }
+
+                    if ($upsell) {
+                        self::addItem($months[$month]['upsold'][$host['name']][$item['name']], 'upsold:'.$item['name'], $item, $counted, false, $seen);
+                        $days[$day]['upsell_sales'] += $item['sales'];
+                    }
+                }
+                $days[$day]['upsell_orders'] += $counted && $upsold ? 1 : 0;
+            }
+        }
+    }
+
+    /**
+     * Add an item to a product's figures: sales, qty and orders (an order once per row, by $seenKey), and the same again
+     * under upsell_ when it was an upsell. Qty and orders count confirmed orders only, as the sales card does.
+     *
+     * @param  array<string, int|float>|null  $row
+     * @param  array{name: string, key: string, listed: bool, qty: int, sales: float}  $item
+     * @param  array<string, true>  $seen
+     */
+    private static function addItem(?array &$row, string $seenKey, array $item, bool $counted, bool $upsell, array &$seen): void
+    {
+        $row ??= ['sales' => 0.0, 'orders' => 0, 'qty' => 0];
+
+        foreach ($upsell ? ['', 'upsell_'] : [''] as $prefix) {
+            $row[$prefix.'sales'] = ($row[$prefix.'sales'] ?? 0.0) + $item['sales'];
+            $row[$prefix.'qty'] = ($row[$prefix.'qty'] ?? 0) + ($counted ? $item['qty'] : 0);
+            $row[$prefix.'orders'] = ($row[$prefix.'orders'] ?? 0) + ($counted && ! isset($seen[$prefix.$seenKey]) ? 1 : 0);
+            if ($counted) {
+                $seen[$prefix.$seenKey] = true;
+            }
+        }
+    }
+
+    /**
+     * The first day each customer bought each product, from every Pancake order up to $to (any seller, not canceled or
+     * deleted), by the products split() files their items under whatever the day.
+     *
+     * @param  Collection<int, string>  $phones
+     * @return array<string, array<string, string>> phone key => product => Y-m-d
+     */
+    private function firstBought(Collection $phones, CarbonImmutable $to): array
+    {
+        $first = [];
+
+        foreach ($phones->chunk(1000) as $chunk) {
+            $orders = PancakeOrder::counted()->whereIn('phone_key', $chunk->all())
+                ->where('ordered_on', '<', $to->addDay()->toDateString())
+                ->get(['phone_key', 'ordered_on', 'items']);
+
+            foreach ($orders as $order) {
+                $day = $order->ordered_on->toDateString();
+                foreach ($this->productSales->productNames($order) as $product) {
+                    if (! isset($first[$order->phone_key][$product]) || $day < $first[$order->phone_key][$product]) {
+                        $first[$order->phone_key][$product] = $day;
                     }
                 }
             }
         }
+
+        return $first;
     }
 }
