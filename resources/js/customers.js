@@ -40,5 +40,50 @@ export function initCustomers() {
     dialog.querySelector('[data-customer-close]').addEventListener('click', () => dialog.close());
     // Click on the backdrop closes it.
     dialog.addEventListener('click', (event) => event.target === dialog && dialog.close());
-    dialog.addEventListener('close', () => (current = null));
+
+    // Full view: the pop-up fills the screen (for presenting); kept for the next customer opened.
+    const setFull = (full) => {
+        dialog.toggleAttribute('data-full', full);
+        try {
+            localStorage.setItem('customerDialogFull', full ? '1' : '');
+        } catch {}
+    };
+    try {
+        setFull(localStorage.getItem('customerDialogFull') === '1');
+    } catch {}
+    dialog.querySelector('[data-customer-full]').addEventListener('click', () => setFull(!dialog.hasAttribute('data-full')));
+    // Esc leaves full view first, then closes.
+    dialog.addEventListener('cancel', (event) => {
+        if (dialog.hasAttribute('data-full')) {
+            event.preventDefault();
+            setFull(false);
+        }
+    });
+
+    // Eye button: hide or show names and numbers without closing; the list behind follows once the pop-up closes.
+    const privacy = dialog.querySelector('[data-customer-privacy]');
+    let reloadOnClose = false;
+    privacy?.addEventListener('click', async () => {
+        privacy.disabled = true;
+        try {
+            const response = await fetch(privacy.dataset.customerPrivacy, {
+                method: 'POST',
+                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]')?.content || '' },
+            });
+            if (!response.ok) throw new Error(response.status);
+            const { hidden } = await response.json();
+            privacy.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+            reloadOnClose = true;
+            if (current) open(current);
+        } catch {
+            body.insertAdjacentHTML('afterbegin', '<p role="alert" class="mb-3 text-sm text-coral-700">Couldn\'t change it. Try again.</p>');
+        } finally {
+            privacy.disabled = false;
+        }
+    });
+
+    dialog.addEventListener('close', () => {
+        current = null;
+        if (reloadOnClose) window.location.reload();
+    });
 }

@@ -12,7 +12,15 @@
     @endforeach
 
     {{-- Eye button: hide customers' names and numbers (VIP 1, High AOV 1, Kr**** L***) for screen sharing --}}
-    @php($hidden = app(\App\Support\CustomerPrivacy::class)->isHidden())
+    @php($privacy = app(\App\Support\CustomerPrivacy::class))
+    @php($hidden = $privacy->isHidden())
+    @if (! $privacy->canReveal())
+    <span class="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold ml-auto shrink-0 self-center bg-canvas text-muted"
+          title="Hidden for every role. A Super Admin or CRA Supervisor can show them in Settings → Customer Database.">
+        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path stroke-linecap="round" d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        Details hidden
+    </span>
+    @else
     <form method="POST" action="{{ route('customers.privacy') }}" class="ml-auto shrink-0 self-center pl-2">
         @csrf
         <button type="submit" aria-pressed="{{ $hidden ? 'true' : 'false' }}"
@@ -31,4 +39,5 @@
             @endif
         </button>
     </form>
+    @endif
 </nav>

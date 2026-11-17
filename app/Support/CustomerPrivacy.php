@@ -3,15 +3,24 @@
 namespace App\Support;
 
 use App\Models\CustomerLink;
+use App\Models\Setting;
 use App\Services\HighValueCustomers;
 
 /**
- * Customer Database "hide personal details" (the eye button): while on for the user's session, customers show as
- * VIP 1, High AOV 1… (numbered by total spent, highest first) or a masked name (Kr**** L***), and numbers are masked.
+ * Customer Database "hide personal details": customers show as VIP 1, High AOV 1… (numbered by total spent, highest
+ * first) or a masked name (Kr**** L***), and numbers are masked. Hidden for everyone until a Super Admin or CRA
+ * Supervisor (customers.details.manage) shows them to all in Settings → Customer Database; those managers can also
+ * see them for themselves with the eye button, and anyone can hide them for their session (e.g. to present).
  */
 class CustomerPrivacy
 {
+    /** The user's own eye-button choice for their session (true = hidden). */
     public const SESSION_KEY = 'customers.hide_details';
+
+    /** Settings → Customer Database: '1' shows names and numbers to every role. */
+    public const SHOWN_TO_ALL_KEY = 'customers.details_shown_to_all';
+
+    private ?bool $shownToAll = null;
 
     /** @var array<string, string>|null any number of a VIP / High AOV customer => their alias */
     private ?array $aliases = null;
@@ -20,7 +29,31 @@ class CustomerPrivacy
 
     public function isHidden(): bool
     {
-        return (bool) session(self::SESSION_KEY, false);
+        $choice = session(self::SESSION_KEY);
+
+        if (! $this->canReveal()) {
+            return true;
+        }
+
+        return $choice === null ? ! $this->shownToAll() : (bool) $choice;
+    }
+
+    /**
+     * Whether the eye button can show details to this user: always for a manager, else only once shown to all.
+     */
+    public function canReveal(): bool
+    {
+        return $this->canManage() || $this->shownToAll();
+    }
+
+    public function canManage(): bool
+    {
+        return (bool) auth()->user()?->can('customers.details.manage');
+    }
+
+    public function shownToAll(): bool
+    {
+        return $this->shownToAll ??= Setting::value(self::SHOWN_TO_ALL_KEY) === '1';
     }
 
     /**

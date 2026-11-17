@@ -30,7 +30,7 @@
     {{-- Who --}}
     <div class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-canvas/40 p-4">
         <div class="min-w-0">
-            <h2 class="text-lg font-bold">
+            <h2 class="text-lg font-bold group-data-[full]/dialog:text-3xl">
                 {{ $shownName }}
                 @if ($customer['segment'])
                     <span @class([
@@ -42,7 +42,18 @@
                     <span class="ml-1 rounded-full bg-white px-2 py-0.5 align-middle text-xs font-semibold text-muted">FSD only</span>
                 @endif
             </h2>
-            <p class="text-sm text-muted tabular-nums">{{ $privacy->phone($customer['phone']) }}</p>
+            <p class="text-sm text-muted tabular-nums group-data-[full]/dialog:text-base">{{ $privacy->phone($customer['phone']) }}</p>
+            {{-- Their first CRA-handled delivered order, before the covered days too --}}
+            <p class="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-semibold text-brand-700 group-data-[full]/dialog:text-sm">
+                <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M3 10h18M8 3v4M16 3v4"/></svg>
+                @if (! $customer['crd_since'])
+                    Not a CRD customer yet
+                @elseif ($customer['crd_since']['before'])
+                    CRD customer since before {{ $customer['crd_since']['date']->format('M j, Y') }}
+                @else
+                    CRD customer since {{ $customer['crd_since']['date']->format('M j, Y') }}
+                @endif
+            </p>
             <p class="mt-1 text-xs text-muted">
                 @if ($customer['prior_cra_orders'] === null)
                     Orders before {{ $since }} not checked in Pancake yet.
@@ -58,11 +69,11 @@
             <dl class="flex gap-5 text-right">
                 <div>
                     <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Purchase Frequency</dt>
-                    <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['purchases']) }}</dd>
+                    <dd class="text-xl font-bold tabular-nums group-data-[full]/dialog:text-3xl">{{ number_format($customer['purchases']) }}</dd>
                 </div>
                 <div>
                     <dt class="text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">By a CRA</dt>
-                    <dd class="text-xl font-bold tabular-nums">{{ number_format($customer['cra_orders']) }}</dd>
+                    <dd class="text-xl font-bold tabular-nums group-data-[full]/dialog:text-3xl">{{ number_format($customer['cra_orders']) }}</dd>
                 </div>
             </dl>
         </div>
@@ -131,12 +142,14 @@
         </section>
     @endif
 
+    {{-- The CLTVs, then how far from High AOV / VIP: one row of four in full view --}}
+    <div class="space-y-6 group-data-[full]/dialog:flex group-data-[full]/dialog:gap-3 group-data-[full]/dialog:space-y-0 group-data-[full]/dialog:[&>*]:min-w-0 group-data-[full]/dialog:[&>*]:flex-1">
     {{-- The two CLTVs, highlighted --}}
     <section aria-label="Customer lifetime value" class="grid gap-3 sm:grid-cols-2">
         <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm">
             <span aria-hidden="true" class="absolute -top-8 -right-8 size-24 rounded-full bg-white/15"></span>
             <p class="relative text-xs font-semibold tracking-wide uppercase">Customer CLTV · Total spent</p>
-            <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($customer['total_spent']) }}</p>
+            <p class="relative mt-1 text-3xl font-bold tabular-nums group-data-[full]/dialog:text-4xl">{{ $money($customer['total_spent']) }}</p>
             <p class="relative text-xs text-white/90">Total spent on {{ number_format($customer['cra_orders']) }} CRA-handled delivered {{ Str::plural('order', $customer['cra_orders']) }} (Pancake POS)</p>
         </div>
         <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#0e8f7c] to-[#0b6b5d] p-4 text-white shadow-sm">
@@ -146,7 +159,7 @@
                 <p class="relative mt-1 text-3xl font-bold">—</p>
                 <p class="relative text-xs text-white/90">No Product Consumption products with an SRP</p>
             @else
-                <p class="relative mt-1 text-3xl font-bold tabular-nums">{{ $money($productSpent) }} <span class="text-sm font-semibold text-white/90">of {{ $money($productCltv) }}</span></p>
+                <p class="relative mt-1 text-3xl font-bold tabular-nums group-data-[full]/dialog:text-4xl">{{ $money($productSpent) }} <span class="text-sm font-semibold text-white/90">of {{ $money($productCltv) }}</span></p>
                 <div class="relative mt-1.5 h-2 overflow-hidden rounded-full bg-white/25" role="progressbar" aria-label="Product CLTV reached" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round(min(1, $productSpent / max(1, $productCltv)) * 100) }}">
                     <div class="h-full rounded-full bg-white" style="width: {{ round(min(1, $productSpent / max(1, $productCltv)) * 100, 1) }}%"></div>
                 </div>
@@ -164,7 +177,7 @@
                         <span aria-hidden="true" @class(['size-2 rounded-full', 'bg-brand-600' => $nextOrderForAov === null, 'bg-brand-300' => $nextOrderForAov !== null])></span>
                         {{ $nextOrderForAov === null ? 'High AOV' : 'Potential High AOV' }}
                     </p>
-                    <p class="mt-1 text-xl font-bold tabular-nums">AOV {{ $money($aov) }} <span class="text-sm font-semibold text-muted">of {{ $money($minAov) }}</span></p>
+                    <p class="mt-1 text-xl font-bold tabular-nums group-data-[full]/dialog:text-2xl">AOV {{ $money($aov) }} <span class="text-sm font-semibold text-muted">of {{ $money($minAov) }}</span></p>
                     @if ($nextOrderForAov === null)
                         <p class="text-xs text-muted">Total spent {{ $money($customer['total_spent']) }} ÷ {{ $pricedOrders }} CRA-handled {{ Str::plural('order', $pricedOrders) }}</p>
                     @else
@@ -185,6 +198,8 @@
         </section>
     @endif
 
+    </div>
+
     {{-- Status breakdown --}}
     <section>
         <h3 class="{{ $heading }}">{!! $bar !!}Orders by status</h3>
@@ -202,8 +217,10 @@
         </div>
     </section>
 
+    {{-- Product CLTV and orders: side by side in full view --}}
+    <div class="space-y-6 group-data-[full]/dialog:grid group-data-[full]/dialog:grid-cols-[5fr_7fr] group-data-[full]/dialog:items-start group-data-[full]/dialog:gap-6 group-data-[full]/dialog:space-y-0">
     {{-- Product CLTV --}}
-    <section>
+    <section class="min-w-0">
         <h3 class="{{ $heading }} !mb-0.5">{!! $bar !!}Product CLTV per product</h3>
         <p class="mb-2 text-xs text-muted">What they spent on each Product Consumption product in CRA-handled orders (order amounts; a mixed order split by qty), against the product's CLTV (SRP × {{ config('customers.cltv_units') }}).</p>
         @if (empty($customer['products']))
@@ -250,7 +267,7 @@
     </section>
 
     {{-- Orders --}}
-    <section>
+    <section class="min-w-0">
         <h3 class="{{ $heading }}">{!! $bar !!}Orders</h3>
         <div class="overflow-x-auto rounded-lg border border-line">
             <table class="w-full min-w-[40rem] text-left text-sm">
@@ -289,4 +306,5 @@
             </table>
         </div>
     </section>
+    </div>
 </div>

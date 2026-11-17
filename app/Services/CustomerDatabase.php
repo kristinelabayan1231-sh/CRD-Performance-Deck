@@ -445,6 +445,7 @@ class CustomerDatabase
             // CRA-handled orders before the database's first day; null until Pancake has been checked.
             'prior_cra_orders' => $prior,
             'prior_last_ordered_on' => $histories->max('prior_last_ordered_on'),
+            'crd_since' => $this->crdSince($deliveredOrders, $histories),
             // CRA-handled orders only, like the product CLTV and VIP below.
             'total_spent' => (float) $deliveredOrders->where('by_cra', true)->sum('amount'),
             // CRA-handled delivered orders with a Pancake amount: AOV = total spent ÷ these, as on High AOV CVR & VIP.
@@ -585,6 +586,35 @@ class CustomerDatabase
         }
 
         return $checked;
+    }
+
+    /**
+     * The day the customer first became a CRD customer: their first CRA-handled delivered order (ordered day, else
+     * delivered day), counting the ones before the covered days that the Pancake history check found. Null with no
+     * CRA-handled order; 'before' (the first covered day) when older orders exist but their dates weren't kept.
+     *
+     * @param  Collection<int, array{date: ?CarbonImmutable, delivered_on: ?CarbonImmutable, by_cra: bool}>  $deliveredOrders
+     * @param  Collection<int, CustomerHistory>  $histories
+     * @return array{date: CarbonImmutable, before: bool}|null
+     */
+    private function crdSince(Collection $deliveredOrders, Collection $histories): ?array
+    {
+        $earliestPrior = $histories->flatMap(fn (CustomerHistory $history) => $history->prior_cra_sales ?? [])
+            ->map(fn (array $sale) => CarbonImmutable::parse($sale['at'], 'UTC')->setTimezone(config('segmentation.timezone'))->startOfDay())
+            ->min();
+
+        if ($earliestPrior) {
+            return ['date' => $earliestPrior, 'before' => false];
+        }
+
+        // Older CRA orders counted, but saved before their dates were kept.
+        if ($histories->sum('prior_cra_orders') > 0) {
+            return ['date' => CarbonImmutable::parse(config('customers.delivered_from')), 'before' => true];
+        }
+
+        $first = $deliveredOrders->where('by_cra', true)->map(fn (array $order) => $order['date'] ?? $order['delivered_on'])->filter()->min();
+
+        return $first ? ['date' => CarbonImmutable::parse($first), 'before' => false] : null;
     }
 
     /**

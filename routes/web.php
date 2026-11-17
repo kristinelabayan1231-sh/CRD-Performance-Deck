@@ -15,6 +15,7 @@ use App\Http\Controllers\CraGrossSalesController;
 use App\Http\Controllers\CraScheduleController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
+use App\Http\Controllers\CustomerDetailsSettingController;
 use App\Http\Controllers\CustomerPrivacyController;
 use App\Http\Controllers\CvrTrackerController;
 use App\Http\Controllers\DailyIncomeStatementController;
@@ -327,6 +328,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::prefix('daily-is')->name('daily-is.')->middleware('can:daily_is_products.manage')->group(function () {
             Route::get('/', [DailyIsSettingController::class, 'index'])->name('index');
             Route::put('/', [DailyIsSettingController::class, 'update'])->name('update');
+        });
+
+        Route::prefix('customer-details')->name('customer-details.')->middleware('can:customers.details.manage')->group(function () {
+            Route::get('/', [CustomerDetailsSettingController::class, 'index'])->name('index');
+            Route::put('/', [CustomerDetailsSettingController::class, 'update'])->name('update');
         });
 
         Route::prefix('call-recordings')->name('call-recordings.')->middleware('can:call_recordings.manage')->group(function () {

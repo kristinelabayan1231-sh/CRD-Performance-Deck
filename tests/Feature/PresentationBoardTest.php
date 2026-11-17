@@ -22,6 +22,7 @@ use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
 use App\Services\PresentationBoardCras;
 use App\Services\SegmentationStats;
+use App\Support\CustomerPrivacy;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -48,6 +49,8 @@ class PresentationBoardTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Customer Database pages are checked by customers' names and numbers; hiding them is tested on its own.
+        Setting::put(CustomerPrivacy::SHOWN_TO_ALL_KEY, '1');
 
         $this->travelTo(CarbonImmutable::parse('2026-11-06 10:00', 'Asia/Manila'));
         $this->supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
