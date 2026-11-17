@@ -10,10 +10,12 @@ use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\CustomerDatabase;
 use App\Services\HighValueCustomers;
 use App\Services\LeadGenerator;
+use App\Support\CustomerPrivacy;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -33,6 +35,8 @@ class HighValueCustomersTest extends TestCase
         parent::setUp();
 
         $this->travelTo(CarbonImmutable::parse('2026-10-10 10:00', 'Asia/Manila'));
+        // These tests read customers' names and numbers; hiding them is tested on its own.
+        Setting::put(CustomerPrivacy::SHOWN_TO_ALL_KEY, '1');
         $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
         $this->lhea = $this->cra('lhea');
         $this->regina = $this->cra('regina');
@@ -122,8 +126,39 @@ class HighValueCustomersTest extends TestCase
         // A merged customer's other number opens as the same alias.
         $this->get(route('customers.show', '9176666666'))->assertOk()->assertSee('High AOV 2')->assertDontSee('Rose Ramirez');
 
-        $this->post(route('customers.privacy'));
+        // From the pop-up it answers in JSON, so the pop-up reloads in place.
+        $this->postJson(route('customers.privacy'))->assertOk()->assertExactJson(['hidden' => false]);
         $this->get(route('customers.index'))->assertSee('Dina Lim')->assertSee('9171111111')->assertDontSee('VIP 1');
+    }
+
+    public function test_details_are_hidden_for_every_role_until_a_super_admin_or_cra_supervisor_shows_them_in_settings(): void
+    {
+        Setting::where('key', CustomerPrivacy::SHOWN_TO_ALL_KEY)->delete();
+        $this->customers();
+        $supervisor = User::create(['email' => 'mia@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
+        $supervisor->role->update(['permissions' => [...$supervisor->role->permissions ?? [], 'customers.details.manage']]);
+
+        // A CRA sees them hidden and the eye button can't show them.
+        $this->actingAs($this->lhea)->get(route('customers.high-value'))->assertOk()->assertSee('VIP 1')->assertDontSee('Dina Lim')
+            ->assertSee('Hidden for every role');
+        $this->postJson(route('customers.privacy'))->assertExactJson(['hidden' => true]);
+        $this->get(route('customers.high-value'))->assertDontSee('Dina Lim');
+        $this->get(route('settings.customer-details.index'))->assertForbidden();
+
+        // A CRA Supervisor sees them hidden too, and can see them just for themselves.
+        $this->actingAs($supervisor)->get(route('customers.high-value'))->assertSee('VIP 1')->assertDontSee('Dina Lim');
+        $this->postJson(route('customers.privacy'))->assertExactJson(['hidden' => false]);
+        $this->get(route('customers.high-value'))->assertSee('Dina Lim');
+        $this->actingAs($this->lhea)->get(route('customers.high-value'))->assertDontSee('Dina Lim');
+
+        // Shown to every role from Settings; a CRA can then hide them for themselves.
+        $this->actingAs($supervisor)->get(route('settings.customer-details.index'))->assertOk();
+        $this->put(route('settings.customer-details.update'), ['shown_to_all' => '1'])->assertRedirect();
+        $this->actingAs($this->lhea)->get(route('customers.high-value'))->assertSee('Dina Lim');
+        $this->postJson(route('customers.privacy'))->assertExactJson(['hidden' => true]);
+
+        $this->actingAs($supervisor)->put(route('settings.customer-details.update'), ['shown_to_all' => '0']);
+        $this->actingAs($this->owner)->get(route('customers.high-value'))->assertDontSee('Dina Lim');
     }
 
     public function test_a_merged_number_gets_its_main_customers_high_aov_flag(): void

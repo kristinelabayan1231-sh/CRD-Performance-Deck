@@ -38,6 +38,7 @@ class SettingsTabs
             'settings.niches.index' => ['Niche', 'niches.manage'],
             'settings.daily-is.index' => ['Daily I.S.', 'daily_is_products.manage'],
             'settings.call-recordings.index' => ['Call Recordings', 'call_recordings.manage'],
+            'settings.customer-details.index' => ['Customer Database', 'customers.details.manage'],
         ],
         'System' => [
             'settings.connections.index' => ['Connections', 'connections.check'],

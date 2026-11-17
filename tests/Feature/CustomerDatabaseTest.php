@@ -7,10 +7,12 @@ use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\CustomerDatabase;
 use App\Services\LogisticsRetention;
 use App\Services\PancakeSync;
+use App\Support\CustomerPrivacy;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -30,6 +32,8 @@ class CustomerDatabaseTest extends TestCase
         parent::setUp();
 
         $this->travelTo(CarbonImmutable::parse('2026-10-09 18:00', 'Asia/Manila'));
+        // These tests read customers' names and numbers; hiding them is tested on its own.
+        Setting::put(CustomerPrivacy::SHOWN_TO_ALL_KEY, '1');
         $this->owner = User::create(['email' => 'kristinelabayan1231@gmail.com', 'role_id' => Role::superAdmin()->id, 'is_active' => true]);
         User::create(['email' => 'anna@gmail.com', 'role_id' => Role::where('slug', Role::CRA)->value('id'), 'is_active' => true, 'pancake_name' => 'Anna Cruz']);
         Product::create(['name' => 'Canpro', 'srp' => 499]);
@@ -380,7 +384,10 @@ class CustomerDatabaseTest extends TestCase
             ->assertViewHas('counts', ['all' => 5, 'crd' => 4, 'retained' => 2, 'repeat' => 2])
             ->assertDontSee('Checking CRD customers');
         $this->actingAs($this->owner)->get(route('customers.show', '9174444444'))
-            ->assertSeeInOrder(['Dan Lim', 'Repeat Customer', 'Before Jan 1, 2026:', '1 CRA-handled order', 'last Nov 24, 2025']);
+            ->assertSeeInOrder(['Dan Lim', 'Repeat Customer', 'CRD customer since Nov 24, 2025', 'Before Jan 1, 2026:', '1 CRA-handled order', 'last Nov 24, 2025']);
+        // Without earlier CRA orders it's their first CRA-handled delivery; an FSD-only customer isn't one yet.
+        $this->get(route('customers.show', '9172222222'))->assertSee('CRD customer since Sep 7, 2026');
+        $this->get(route('customers.show', '9173333333'))->assertSee('Not a CRD customer yet');
     }
 
     public function test_the_warm_up_saves_the_default_customers_tab_so_it_opens_from_the_cache(): void

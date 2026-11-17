@@ -7,8 +7,10 @@ use App\Models\LogisticsOrder;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\ConversionBreakdown;
+use App\Support\CustomerPrivacy;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
@@ -25,6 +27,8 @@ class UnlistedProductsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Customer Database pages are checked by customers' names and numbers; hiding them is tested on its own.
+        Setting::put(CustomerPrivacy::SHOWN_TO_ALL_KEY, '1');
 
         $this->travelTo(CarbonImmutable::parse('2026-10-10 10:00', 'Asia/Manila'));
         $this->withoutDefer();

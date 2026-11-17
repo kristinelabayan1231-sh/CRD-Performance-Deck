@@ -11,9 +11,11 @@ use App\Models\PancakeEngagement;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use App\Services\CustomerChurn;
 use App\Services\SalesGoalProgress;
+use App\Support\CustomerPrivacy;
 use App\Support\DashboardRange;
 use App\Support\SalesGoals;
 use Carbon\CarbonImmutable;
@@ -32,6 +34,8 @@ class SalesGoalsTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Customer Database pages are checked by customers' names and numbers; hiding them is tested on its own.
+        Setting::put(CustomerPrivacy::SHOWN_TO_ALL_KEY, '1');
 
         $this->travelTo(CarbonImmutable::parse('2026-10-10 18:00', 'Asia/Manila'));
         $this->withoutDefer();
