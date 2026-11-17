@@ -271,7 +271,10 @@ class CustomerDatabaseTest extends TestCase
         // A mixed order is split by qty: ₱28,140 for 2 Canpro + 2 Serum gives Canpro ₱14,070, reaching ₱14,970 in all.
         $this->delivered('B4', 'crd', 'Ben Reyes', '9172222222', '2026-10-09', pos: [28140, 3, null, [['name' => 'Canpro', 'qty' => 2], ['name' => 'Ginseng Serum', 'qty' => 2]]]);
         $this->actingAs($this->owner)->get(route('customers.show', '9172222222'))
-            ->assertSeeInOrder(['Ben Reyes', 'VIP', 'Canpro', 'Product CLTV per product', 'Canpro', '32', '₱14,970.00', '₱14,970.00', 'Reached CLTV']);
+            ->assertSeeInOrder(['Ben Reyes', 'VIP', 'Canpro', 'Product CLTV per product', 'Canpro', '32', '₱14,970.00', '₱14,970.00', 'Reached CLTV'])
+            // A ₱20,000+ order is highlighted and bold; the others aren't.
+            ->assertSeeInOrder(['bg-[#fff4d6] font-semibold', 'B4', 'font-bold text-[#6e5214]', '₱28,140.00'], false)
+            ->assertSeeInOrder(['B2', '<td class="py-2 pr-3 pl-3 text-right tabular-nums">₱900.00'], false);
 
         $this->actingAs($this->owner)->get(route('customers.show', '9171111111'))
             ->assertSeeInOrder(['Canpro', '2', '₱1,500.00', '₱14,970.00', '₱13,470.00 to go'])
