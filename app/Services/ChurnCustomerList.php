@@ -157,7 +157,7 @@ class ChurnCustomerList
      * handled it. counts = it would bring them back (a Pancake order not canceled with a listed product,
      * or a delivery with one).
      *
-     * @return array{name: string, phone: string, orders: list<array{order_id: string, ordered: ?string, delivered: ?string, team: ?string, seller: ?string, by_cra: bool, status_label: string, status_classes: string, amount: ?float, items: string, counts: bool}>}|null
+     * @return array{phone_key: string, name: string, phone: string, orders: list<array{order_id: string, ordered: ?string, delivered: ?string, team: ?string, seller: ?string, by_cra: bool, status_label: string, status_classes: string, amount: ?float, items: string, counts: bool}>}|null
      */
     public function history(string $phoneKey): ?array
     {
@@ -211,6 +211,7 @@ class ChurnCustomerList
         $numbers = $deliveries->pluck('phone_number', 'phone_key')->all();
 
         return [
+            'phone_key' => $members[0],
             'name' => $latest->customer_name ?: 'Unknown',
             'phone' => implode(' / ', array_map(fn (string $phone) => $numbers[$phone] ?? $phone, $members)),
             'orders' => $orders->sortByDesc(fn (array $o) => $o['ordered'] ?? $o['delivered'])->values()->all(),

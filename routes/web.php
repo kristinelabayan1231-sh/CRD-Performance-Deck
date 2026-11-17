@@ -15,6 +15,7 @@ use App\Http\Controllers\CraGrossSalesController;
 use App\Http\Controllers\CraScheduleController;
 use App\Http\Controllers\CustomerChurnController;
 use App\Http\Controllers\CustomerDatabaseController;
+use App\Http\Controllers\CustomerPrivacyController;
 use App\Http\Controllers\CvrTrackerController;
 use App\Http\Controllers\DailyIncomeStatementController;
 use App\Http\Controllers\DailyIsSettingController;
@@ -228,6 +229,9 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::put('/orders/{orderId}', [CvrTrackerController::class, 'updateOrder'])->name('orders.update');
         Route::put('/days', [CvrTrackerController::class, 'updateDay'])->name('days.update');
     });
+
+    // Customer Database eye button: hide or show customers' names and numbers (any customer list's viewer).
+    Route::post('/customers/hide-details', CustomerPrivacyController::class)->name('customers.privacy');
 
     // High AOV CVR & VIP: CRAs see it without the rest of the Customer Database.
     Route::get('/customers/high-value', [HighValueCustomerController::class, 'index'])->middleware('can:customers.high_value.view')->name('customers.high-value');
