@@ -7,6 +7,7 @@
     $back = collect($customer['orders'])->filter($inWindow)->sortBy(fn (array $o) => $o['ordered'] ?? $o['delivered'])->first();
     $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
     $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
+    $privacy = app(\App\Support\CustomerPrivacy::class);
     $teamPill = fn (string $team) => $team === 'crd' ? 'bg-brand-100 text-brand-700' : 'bg-sky/20 text-[#156c8c]';
 @endphp
 
@@ -15,8 +16,8 @@
     <div class="space-y-3 rounded-xl border border-line bg-canvas/40 p-4">
         <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
-                <h2 class="text-lg font-bold">{{ $customer['name'] }}</h2>
-                <p class="text-sm text-muted tabular-nums">{{ $customer['phone'] }}</p>
+                <h2 class="text-lg font-bold">{{ $privacy->name($customer['name'], $customer['phone_key']) }}</h2>
+                <p class="text-sm text-muted tabular-nums">{{ $privacy->phone($customer['phone']) }}</p>
             </div>
             <span class="flex flex-wrap gap-1">
                 @if ($back)

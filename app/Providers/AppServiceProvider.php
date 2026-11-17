@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\User;
 use App\Services\CraIssues;
 use App\Services\PancakeSync;
+use App\Support\CustomerPrivacy;
 use App\Support\SegmentationOptions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
@@ -17,7 +18,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One per request, so the VIP / High AOV numbering is worked out once per page.
+        $this->app->scoped(CustomerPrivacy::class);
     }
 
     /**

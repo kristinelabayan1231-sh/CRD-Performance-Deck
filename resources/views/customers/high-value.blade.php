@@ -14,6 +14,7 @@
     $contacts = config('customers.points_of_contact');
     $buyerTypes = config('customers.buyer_types');
     $money = fn (?float $value) => $value === null ? '—' : '₱'.number_format($value, 2);
+    $privacy = app(\App\Support\CustomerPrivacy::class);
 @endphp
 
 <x-layouts.app title="High AOV CVR & VIP">
@@ -129,8 +130,9 @@
                                 @php($craId = $account?->assigned_cra_id)
                                 @php($action = route('customers.high-value.update', $row['phone_key']))
                                 @php($cell = $cellFor($row['vip']))
+                                @php($shownName = $privacy->name($row['customer_name'], $row['phone_key']))
                                 {{-- The row opens the customer's details and order history; its fields don't --}}
-                                <tr tabindex="0" role="button" data-customer-url="{{ route('customers.high-value.show', $row['phone_key']) }}" aria-label="Open {{ $row['customer_name'] }}"
+                                <tr tabindex="0" role="button" data-customer-url="{{ route('customers.high-value.show', $row['phone_key']) }}" aria-label="Open {{ $shownName }}"
                                     @class(['cursor-pointer align-middle focus:outline-none', 'bg-[#fbf3e0] hover:bg-[#f7ebcd] focus:bg-[#f7ebcd]' => $row['vip'], 'hover:bg-brand-50/40 focus:bg-brand-50/60' => ! $row['vip']])>
                                     <td class="px-3 py-2.5 tabular-nums">
                                         {{ $row['order_id'] ?? '—' }}
@@ -143,7 +145,7 @@
                                         @if ($canEdit && ($canAssign || ($isCra && in_array($craId, [null, $user->id], true))))
                                             <form method="POST" action="{{ $action }}" data-autosave>
                                                 @csrf @method('PATCH')
-                                                <select name="assigned_cra_id" aria-label="Assigning seller for {{ $row['customer_name'] }}" class="{{ $cell }}">
+                                                <select name="assigned_cra_id" aria-label="Assigning seller for {{ $shownName }}" class="{{ $cell }}">
                                                     <option value="">— No CRA —</option>
                                                     @foreach ($canAssign ? $cras : $cras->where('id', $user->id) as $cra)
                                                         <option value="{{ $cra->id }}" @selected($craId === $cra->id)>{{ $cra->displayName() }}</option>
@@ -164,9 +166,9 @@
                                                 'grid size-8 shrink-0 place-items-center rounded-full text-[0.6875rem] font-bold',
                                                 'bg-[#1a1814] text-[#f3dca3] shadow-[0_0_0_2px_#fbf3e0,0_0_0_3.5px_#c9a24a]' => $row['vip'],
                                                 'bg-brand-100 text-brand-700' => ! $row['vip'],
-                                            ])>{{ $initials($row['customer_name']) }}</span>
+                                            ])>{{ $initials($shownName) }}</span>
                                             <div class="min-w-0 whitespace-nowrap">
-                                                <span class="font-semibold">{{ $row['customer_name'] }}</span>
+                                                <span class="font-semibold">{{ $shownName }}</span>
                                                 @if ($row['vip'])
                                                     <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-1.5 py-px align-middle text-[0.625rem] font-bold tracking-wide text-[#f3dca3]"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-2.5 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
                                                     <span class="mt-0.5 block text-[0.6875rem] text-[#6e5214]">VIP in {{ implode(', ', $row['vip_products']) }}</span>
@@ -174,14 +176,14 @@
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2.5 text-muted tabular-nums">{{ $row['phone_number'] }}</td>
+                                    <td class="px-3 py-2.5 text-muted tabular-nums">{{ $privacy->phone($row['phone_number']) }}</td>
                                     <td class="px-3 py-2.5 text-right tabular-nums">{{ number_format($row['purchases']) }}</td>
                                     <td @class(['px-3 py-2.5 text-right tabular-nums', 'font-bold text-[#1a1814]' => $row['vip'], 'font-semibold' => ! $row['vip']])>{{ $money($perOrder ? $row['amount'] : $row['total_spent']) }}</td>
                                     <td class="px-3 py-2.5">
                                         @if ($canEdit)
                                             <form method="POST" action="{{ $action }}" data-autosave>
                                                 @csrf @method('PATCH')
-                                                <select name="point_of_contact" aria-label="Point of contact for {{ $row['customer_name'] }}" class="{{ $cell }}">
+                                                <select name="point_of_contact" aria-label="Point of contact for {{ $shownName }}" class="{{ $cell }}">
                                                     <option value="">—</option>
                                                     @foreach ($contacts as $value => $label)
                                                         <option value="{{ $value }}" @selected($account?->point_of_contact === $value)>{{ $label }}</option>
@@ -197,7 +199,7 @@
                                         @if ($canEdit)
                                             <form method="POST" action="{{ $action }}" data-autosave>
                                                 @csrf @method('PATCH')
-                                                <select name="buyer_type" aria-label="PU/Reseller for {{ $row['customer_name'] }}" class="{{ $cell }}">
+                                                <select name="buyer_type" aria-label="PU/Reseller for {{ $shownName }}" class="{{ $cell }}">
                                                     <option value="">—</option>
                                                     @foreach ($buyerTypes as $value => $label)
                                                         <option value="{{ $value }}" @selected($account?->buyer_type === $value)>{{ $label }}</option>
@@ -216,7 +218,7 @@
                                                 <form method="POST" action="{{ $action }}" data-autosave>
                                                     @csrf @method('PATCH')
                                                     <input type="text" name="remarks" value="{{ $account?->remarks }}" maxlength="2000" placeholder="Add remarks…"
-                                                           aria-label="Remarks for {{ $row['customer_name'] }}" class="{{ $cell }} min-w-44">
+                                                           aria-label="Remarks for {{ $shownName }}" class="{{ $cell }} min-w-44">
                                                 </form>
                                             @else
                                                 <span class="text-xs">{{ $account?->remarks ?? '—' }}</span>

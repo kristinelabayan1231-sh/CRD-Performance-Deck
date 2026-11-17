@@ -6,6 +6,7 @@
     $deadlines = $range->custom
         ? ($range->from->equalTo($range->to) ? $range->from->format('M j, Y') : $range->from->format('M j').' – '.$range->to->format('M j, Y'))
         : $range->month->format('F Y').($range->month->isSameMonth($today) ? ' (to date)' : '');
+    $privacy = app(\App\Support\CustomerPrivacy::class);
     $extra = ['due' => 'Ran out → reorder by', 'back' => 'Came back with', 'reactivation' => 'Last ordered', 'lost' => 'Last ordered'][$status];
 @endphp
 
@@ -118,14 +119,15 @@
                         </thead>
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
-                                <tr tabindex="0" role="button" aria-label="Order history of {{ $customer['name'] }}"
+                                @php($shownName = $privacy->name($customer['name'], $customer['phone_key']))
+                                <tr tabindex="0" role="button" aria-label="Order history of {{ $shownName }}"
                                     data-customer-url="{{ route('customers.churn.history', ['phoneKey' => $customer['phone_key'], ...Arr::only($customer, ['order_id', 'team', 'delivered', 'ran_out', 'deadline']), 'churned' => $customer['churned'] ? 1 : null]) }}"
                                     @class(['cursor-pointer align-top hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none', 'bg-[#fbf1d6]' => $customer['high_value']['vip'] ?? false, 'bg-brand-50' => ! ($customer['high_value']['vip'] ?? false) && ($customer['high_value']['high_aov'] ?? false)])>
                                     <td class="px-4 py-3">
                                         <a href="{{ route('customers.index', ['search' => $customer['phone_key']]) }}" class="font-medium hover:text-brand-600 hover:underline"
-                                           title="Open in the Customer Database">{{ $customer['name'] }}</a>
+                                           title="Open in the Customer Database">{{ $shownName }}</a>
                                         @include('customers._value-pill', ['flags' => $customer['high_value']])
-                                        <span class="block text-xs text-muted tabular-nums">{{ $customer['phone'] }}</span>
+                                        <span class="block text-xs text-muted tabular-nums">{{ $privacy->phone($customer['phone']) }}</span>
                                         @if ($status === 'due' && $customer['back'])
                                             <span class="mt-1 inline-block rounded-full bg-teal/15 px-2 py-0.5 text-[0.6875rem] font-semibold text-teal-700">Came back</span>
                                         @elseif (! $customer['back'])

@@ -22,6 +22,8 @@
     $closestVip = $priced->where('reached', false)->sortBy(fn (array $p) => $p['cltv'] - $p['spent'])->first();
     $heading = 'mb-2 flex items-center gap-2 text-sm font-bold text-ink';
     $bar = '<span aria-hidden="true" class="h-4 w-1 rounded-full bg-brand-500"></span>';
+    $privacy = app(\App\Support\CustomerPrivacy::class);
+    $shownName = $privacy->name($customer['name'], $customer['phone_key']);
 @endphp
 
 <div class="space-y-6">
@@ -29,7 +31,7 @@
     <div class="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-canvas/40 p-4">
         <div class="min-w-0">
             <h2 class="text-lg font-bold">
-                {{ $customer['name'] }}
+                {{ $shownName }}
                 @if ($customer['segment'])
                     <span @class([
                         'ml-1 rounded-full px-2 py-0.5 align-middle text-xs font-semibold',
@@ -40,7 +42,7 @@
                     <span class="ml-1 rounded-full bg-white px-2 py-0.5 align-middle text-xs font-semibold text-muted">FSD only</span>
                 @endif
             </h2>
-            <p class="text-sm text-muted tabular-nums">{{ $customer['phone'] }}</p>
+            <p class="text-sm text-muted tabular-nums">{{ $privacy->phone($customer['phone']) }}</p>
             <p class="mt-1 text-xs text-muted">
                 @if ($customer['prior_cra_orders'] === null)
                     Orders before {{ $since }} not checked in Pancake yet.
@@ -84,7 +86,7 @@
                     <ul class="flex flex-wrap gap-2 text-sm">
                         @foreach ($customer['numbers'] as $number)
                             <li class="flex items-center gap-2 rounded-full bg-canvas px-3 py-1 tabular-nums">
-                                {{ $number['phone'] }}
+                                {{ $privacy->phone($number['phone']) }}
                                 @if ($number['main'])
                                     <span class="text-[0.6875rem] font-semibold text-muted">main</span>
                                 @elseif ($canMerge)
@@ -103,12 +105,12 @@
             @if ($customer['possible_matches'])
                 <div>
                     <h3 class="{{ $heading }}">{!! $bar !!}Possibly the same customer</h3>
-                    <p class="mb-2 text-xs text-muted">Other customers named {{ $customer['name'] }}. If one is this same person, merge them: they'll show as one row with both numbers and their orders combined.</p>
+                    <p class="mb-2 text-xs text-muted">Other customers named {{ $shownName }}. If one is this same person, merge them: they'll show as one row with both numbers and their orders combined.</p>
                     <ul class="divide-y divide-line overflow-hidden rounded-lg border border-line text-sm">
                         @foreach ($customer['possible_matches'] as $match)
                             <li class="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
                                 <span class="tabular-nums">
-                                    <span class="font-medium">{{ $match['phone'] }}</span>
+                                    <span class="font-medium">{{ $privacy->phone($match['phone']) }}</span>
                                     <span class="text-xs text-muted">· {{ $match['purchases'] }} {{ Str::plural('delivery', $match['purchases']) }}{{ $match['last_delivered'] ? ', last '.\Carbon\CarbonImmutable::parse($match['last_delivered'])->format('M j, Y') : '' }}</span>
                                 </span>
                                 @if ($canMerge)

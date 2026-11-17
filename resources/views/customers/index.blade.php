@@ -2,6 +2,7 @@
     $query = fn (array $extra) => route('customers.index', array_filter([...$filters, ...$extra], fn ($v) => $v !== null && $v !== ''));
     $control = 'h-9 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none';
     $segment = $filters['segment'] ?? null;
+    $privacy = app(\App\Support\CustomerPrivacy::class);
 @endphp
 
 <x-layouts.app title="Customer Database">
@@ -141,12 +142,13 @@
                         <tbody class="divide-y divide-line">
                             @foreach ($customers as $customer)
                                 @php($label = \App\Services\CustomerDatabase::segmentFor((int) $customer->cra_orders, (int) $customer->cra_in_period))
+                                @php($shownName = $privacy->name($customer->customer_name, (string) $customer->phone_key))
                                 <tr tabindex="0" role="button" data-customer-url="{{ route('customers.show', $customer->phone_key) }}"
-                                    aria-label="Open {{ $customer->customer_name ?: 'customer' }}"
+                                    aria-label="Open {{ $shownName }}"
                                     class="cursor-pointer hover:bg-brand-50/60 focus:bg-brand-50 focus:outline-none">
                                     <td class="px-4 py-3">
                                         @php($high = $highValue[(string) $customer->phone_key] ?? null)
-                                        <span class="font-medium">{{ $customer->customer_name ?: 'Unknown' }}</span>
+                                        <span class="font-medium">{{ $shownName }}</span>
                                         @if ($label)
                                             <span @class([
                                                 'ml-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap',
@@ -167,7 +169,7 @@
                                         @endif
                                     </td>
                                     {{-- Every number of the customer, main number first --}}
-                                    <td class="px-4 py-3 tabular-nums text-muted">{{ implode(' / ', $customer->phone_numbers ?? [$customer->phone_number]) }}</td>
+                                    <td class="px-4 py-3 tabular-nums text-muted">{{ $privacy->phone(implode(' / ', $customer->phone_numbers ?? [$customer->phone_number])) }}</td>
                                     <td class="px-4 py-3 text-right tabular-nums">{{ number_format($customer->purchases) }}</td>
                                     <td class="px-4 py-3 text-right font-semibold tabular-nums">₱{{ number_format($customer->total_spent, 2) }}</td>
                                 </tr>

@@ -106,6 +106,26 @@ class HighValueCustomersTest extends TestCase
             ->assertDontSee('Ana Cruz');
     }
 
+    public function test_the_eye_button_hides_names_and_numbers_as_vip_and_high_aov_aliases_by_total_spent(): void
+    {
+        $this->customers();
+
+        $this->actingAs($this->owner)->from(route('customers.index'))->post(route('customers.privacy'))->assertRedirect(route('customers.index'));
+
+        // VIP 1 = Dina; High AOV by total spent: Edgar ₱4,000, Rose ₱2,200 (both numbers), Ana ₱1,200; Ben isn't listed, so masked.
+        $this->get(route('customers.index', ['sort' => 'spent']))->assertOk()
+            ->assertSee('VIP 1')->assertSee('High AOV 1')->assertSee('High AOV 2')->assertSee('High AOV 3')->assertSee('Be**** R***')
+            ->assertSee('91******11')->assertSee('91******55 / 91******66')
+            ->assertDontSee('Dina Lim')->assertDontSee('Ben Reyes')->assertDontSeeText('9171111111');
+        $this->get(route('customers.high-value'))->assertOk()
+            ->assertSeeInOrder(['VIP 1', 'High AOV 1', 'High AOV 2', 'High AOV 3'])->assertDontSee('Edgar Recamara');
+        // A merged customer's other number opens as the same alias.
+        $this->get(route('customers.show', '9176666666'))->assertOk()->assertSee('High AOV 2')->assertDontSee('Rose Ramirez');
+
+        $this->post(route('customers.privacy'));
+        $this->get(route('customers.index'))->assertSee('Dina Lim')->assertSee('9171111111')->assertDontSee('VIP 1');
+    }
+
     public function test_a_merged_number_gets_its_main_customers_high_aov_flag(): void
     {
         $this->customers();
