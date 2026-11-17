@@ -80,6 +80,13 @@ return [
     'high_aov_min' => 999,
 
     /*
+    | Orders of at least this amount are highlighted and bold in a customer's
+    | order list (the customer pop-up and the Churn order history).
+    */
+
+    'big_order_min' => 20000,
+
+    /*
     |--------------------------------------------------------------------------
     | Up for reassignment
     |--------------------------------------------------------------------------

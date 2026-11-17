@@ -47,7 +47,7 @@
     {{-- Every order and delivery, newest first --}}
     <section>
         <h3 class="{{ $heading }} !mb-0.5">{!! $bar !!}Order history</h3>
-        <p class="mb-2 text-xs text-muted">Every Pancake order and delivery on their {{ Str::plural('number', substr_count($customer['phone'], ' / ') + 1) }}. Shaded = inside the reorder window; canceled orders and orders with no listed product don't bring a customer back.</p>
+        <p class="mb-2 text-xs text-muted">Every Pancake order and delivery on their {{ Str::plural('number', substr_count($customer['phone'], ' / ') + 1) }}. Shaded = inside the reorder window; gold and bold = ₱{{ number_format(config('customers.big_order_min')) }} and up; canceled orders and orders with no listed product don't bring a customer back.</p>
         @if (empty($customer['orders']))
             <p class="rounded-lg border border-dashed border-line px-3 py-4 text-center text-sm text-muted">No orders found.</p>
         @else
@@ -66,7 +66,9 @@
                     <tbody class="divide-y divide-line">
                         @foreach ($customer['orders'] as $order)
                             @php($judged = $order['order_id'] === $window['order_id'])
-                            <tr @class(['align-top', 'bg-teal/5' => $inWindow($order), 'bg-brand-50/70' => $judged])>
+                            {{-- ₱20,000+ orders: highlighted and bold (the judged delivery keeps its own tint) --}}
+                            @php($isBig = ($order['amount'] ?? 0) >= config('customers.big_order_min'))
+                            <tr @class(['align-top', 'bg-teal/5' => $inWindow($order) && ! $isBig && ! $judged, 'bg-[#fff4d6]' => $isBig && ! $judged, 'font-semibold' => $isBig, 'bg-brand-50/70' => $judged])>
                                 <td class="py-2 pr-3 pl-3 whitespace-nowrap tabular-nums">
                                     {{ $date($order['ordered']) }}
                                     @if ($order['delivered'])
@@ -87,7 +89,7 @@
                                         <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand-700">CRA</span>
                                     @endif
                                 </td>
-                                <td class="py-2 pr-3 pl-3 text-right tabular-nums">{{ $money($order['amount']) }}</td>
+                                <td @class(['py-2 pr-3 pl-3 text-right tabular-nums', 'font-bold text-[#6e5214]' => $isBig])>{{ $money($order['amount']) }}</td>
                             </tr>
                         @endforeach
                     </tbody>

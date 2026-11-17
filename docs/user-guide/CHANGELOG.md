@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-17 · Customer Database pop-up, Churn order history · Orders of ₱20,000 and up are highlighted gold and bold (customers.big_order_min) · shots: customer-database
 - 2026-11-17 · Customer Database pop-up · "CRD customer since <date>" under the customer's numbers: their first CRA-handled delivered order, earlier years too ("since before Jan 1, 2026" when only older counts are known; "Not a CRD customer yet" for FSD only) · shots: customer-database
 - 2026-11-17 · Settings → Customer Database (new) · Customers' names and numbers are hidden for every role by default; Super Admins and CRA Supervisors (new permission customers.details.manage) set Hidden / Shown for every role, and can see them for themselves with the eye button. Others see a locked "Details hidden" while hidden · shots: settings-customer-details (new), customer-database, high-value
 - 2026-11-17 · Customer Database pop-up · Full view button in the pop-up's header fills the screen for presenting (cards in one row, Product CLTV beside Orders, bigger figures); Exit full view or Esc goes back, and it stays on for the next customer opened. The pop-up also has the Hide details eye button, which masks the open customer in place · shots: customer-database
