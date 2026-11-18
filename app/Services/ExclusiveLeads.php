@@ -961,9 +961,27 @@ class ExclusiveLeads
     }
 
     /**
-     * The exclusive CRA's sales on real days $from–$to (one month), as the dashboard counts them (ConversionBreakdown:
-     * gross of every status but deleted, confirmed orders), split by where the customer came from: Exclusive when they
-     * are on her exclusive lists that month so far (customersBetween()), else Normal (Pancake leads).
+     * Her assigned leads' customers up to real day $to: the numbers of leads still hers on any of her exclusive lists so
+     * far. Only the assigned leads count: her own POS sales went on the lists too until pancake_leads_from, so they count
+     * only for days before it, when every sale of hers was exclusive work.
+     *
+     * @return array<string, int> phone key => any value, to look up with isset()
+     */
+    public function assignedCustomers(User $cra, CarbonImmutable $to): array
+    {
+        $entries = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', '<=', WorkingDate::leadDayFor($to))
+            ->when(! $to->lessThan(self::pancakeLeadsFrom()), fn (Builder $q) => $q->where('source', '!=', self::POS));
+
+        return Lead::where('assigned_to', $cra->id)->whereIn('id', $entries->select('lead_id'))
+            ->pluck('phone_number')
+            ->map(fn (?string $phone) => LeadGenerator::normalizePhone((string) $phone))
+            ->filter()->unique()->flip()->all();
+    }
+
+    /**
+     * The exclusive CRA's sales on real days $from–$to, as the dashboard counts them (ConversionBreakdown: gross of every
+     * status but deleted, confirmed orders), split by where the customer came from: Exclusive when they are one of her
+     * assigned leads (assignedCustomers()), else Normal (customers she caters on Pancake, not assigned).
      *
      * @return array{exclusive: array{orders: int, gross: float}, normal: array{orders: int, gross: float}, overall: array{orders: int, gross: float}}
      */
@@ -975,7 +993,7 @@ class ExclusiveLeads
             return $split;
         }
 
-        $customers = $this->customersBetween($cra, $from->startOfMonth(), $to);
+        $customers = $this->assignedCustomers($cra, $to);
         $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)->get()
             ->filter(fn (PancakeOrder $order) => ConversionBreakdown::craFor($order, $accounts) === $cra->id);
 

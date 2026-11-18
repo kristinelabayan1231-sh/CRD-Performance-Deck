@@ -73,8 +73,8 @@ class ExclusiveSalesSplitTest extends TestCase
     }
 
     /**
-     * Exclusive: a customer on her list earlier this month. Normal: one who isn't (and one whose list was last month),
-     * canceled in gross only.
+     * Exclusive: her assigned leads' customers, this month's and last month's. Normal: customers she catered on Pancake,
+     * one of them canceled (in gross only), and one assigned to her but since moved to another CRA.
      */
     private function joannasDay(): void
     {
@@ -84,6 +84,8 @@ class ExclusiveSalesSplitTest extends TestCase
         $this->order($this->joanna, PancakeOrder::SEGMENTATION, 500, '9170000002');
         $this->order($this->joanna, PancakeOrder::SEGMENTATION, 200, '9170000003', ['status' => PancakeOrder::CANCELED]);
         $this->order($this->joanna, PancakeOrder::BROADCAST, 300, '9170000004');
+        $this->exclusiveLead('9170000006', '2026-11-12')->update(['assigned_to' => $this->regina->id]);
+        $this->order($this->joanna, PancakeOrder::BROADCAST, 100, '9170000006');
     }
 
     public function test_her_cvr_tracker_labels_each_order_and_splits_exclusive_and_normal_sales(): void
@@ -94,10 +96,10 @@ class ExclusiveSalesSplitTest extends TestCase
             ->assertSee('Exclusive leads sales')->assertSee('Normal leads sales')->assertSee('Overall sales');
 
         $data = $response->viewData('data');
-        $this->assertSame(['9170000001' => true, '9170000002' => false, '9170000004' => false],
+        $this->assertSame(['9170000001' => true, '9170000002' => false, '9170000004' => true, '9170000006' => false],
             collect($data['orders'])->mapWithKeys(fn (array $row) => [substr($row['phone'], 1) => $row['exclusive']])->all());
-        $this->assertEquals(['exclusive' => ['orders' => 1, 'gross' => 1000.0], 'normal' => ['orders' => 2, 'gross' => 1000.0]], $data['summary']['split']);
-        $this->assertEquals(2000.0, $data['summary']['gross']);
+        $this->assertEquals(['exclusive' => ['orders' => 2, 'gross' => 1300.0], 'normal' => ['orders' => 2, 'gross' => 800.0]], $data['summary']['split']);
+        $this->assertEquals(2100.0, $data['summary']['gross']);
     }
 
     public function test_her_dashboard_shows_exclusive_normal_and_overall_sales_matching_her_running_sales(): void
@@ -107,9 +109,9 @@ class ExclusiveSalesSplitTest extends TestCase
         $response = $this->actingAs($this->joanna)->get(route('cra-dashboard'))->assertOk()->assertSee('Sales by lead source');
 
         $split = $response->viewData('salesSplit');
-        $this->assertEquals(['orders' => 1, 'gross' => 1000.0], $split['today']['exclusive']);
-        $this->assertEquals(['orders' => 2, 'gross' => 1000.0], $split['today']['normal']);
-        $this->assertEquals(['orders' => 3, 'gross' => 2000.0], $split['month']['overall']);
+        $this->assertEquals(['orders' => 2, 'gross' => 1300.0], $split['today']['exclusive']);
+        $this->assertEquals(['orders' => 2, 'gross' => 800.0], $split['today']['normal']);
+        $this->assertEquals(['orders' => 4, 'gross' => 2100.0], $split['month']['overall']);
         $this->assertEquals($response->viewData('sales')['today'], $split['today']['overall']['gross']);
     }
 
@@ -121,6 +123,17 @@ class ExclusiveSalesSplitTest extends TestCase
             ->assertDontSee('Exclusive / Normal')->assertViewHas('data', fn (array $data) => $data['summary']['split'] === null);
         $this->actingAs($this->regina)->get(route('cra-dashboard'))->assertOk()
             ->assertDontSee('Sales by lead source')->assertViewHas('salesSplit', null);
+    }
+
+    public function test_her_own_pos_sale_on_her_list_from_before_she_caters_pancake_leads_is_not_an_assigned_lead(): void
+    {
+        $sale = $this->posSale('2026-11-10');
+        ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-11-10', 'lead_id' => $sale->id, 'source' => ExclusiveLeads::POS]);
+        $key = substr($sale->phone_number, 1);
+
+        $exclusive = app(ExclusiveLeads::class);
+        $this->assertArrayHasKey($key, $exclusive->assignedCustomers($this->joanna, CarbonImmutable::parse('2026-11-17')));
+        $this->assertArrayNotHasKey($key, $exclusive->assignedCustomers($this->joanna, CarbonImmutable::parse(self::DAY)));
     }
 
     public function test_from_the_day_she_caters_pancake_leads_her_own_pos_sales_stay_off_her_exclusive_list(): void
