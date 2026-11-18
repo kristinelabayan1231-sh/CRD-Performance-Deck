@@ -240,9 +240,10 @@ class ExclusiveLeadTaggingTest extends TestCase
         $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
     }
 
-    public function test_a_tag_from_before_never_pulls_a_lead_and_the_undo_sends_back_those_it_did(): void
+    public function test_a_tag_from_before_never_pulls_a_lead_and_the_undo_sends_back_those_it_did_and_untags_them(): void
     {
-        $this->pancake()->shouldNotReceive('addOrderTag', 'removeOrderTag');
+        $pancake = $this->pancake();
+        $pancake->shouldNotReceive('addOrderTag');
         $old = $this->lead($this->regina, [self::TAG], ['listed_on' => '2026-11-02']);
         ExclusiveOldTag::create(['pancake_order_id' => $old->order_id]);
 
@@ -253,21 +254,32 @@ class ExclusiveLeadTaggingTest extends TestCase
         $fromRegina = $this->lead($this->regina, [self::TAG], ['listed_on' => '2026-11-02']);
         $fromPool = $this->lead(null, [self::TAG], ['listed_on' => '2026-11-03', 'est_out_of_stock_date' => '2026-11-03']);
         $workedSince = $this->lead(null, [self::TAG]);
-        app(ExclusiveLeads::class)->addTagged($this->joanna, CarbonImmutable::parse('2026-11-06'), collect([$fromRegina, $fromPool, $workedSince]));
+        // A Customer Tagging alone isn't contact: it goes back too.
+        $hot = $this->lead(null, [self::TAG], ['customer_tag' => 'hot']);
+        app(ExclusiveLeads::class)->addTagged($this->joanna, CarbonImmutable::parse('2026-11-06'), collect([$fromRegina, $fromPool, $workedSince, $hot]));
         $workedSince->fresh()->forceFill(['status' => 'active'])->save();
-        collect([$fromRegina, $fromPool, $workedSince])->each(fn (Lead $lead) => ExclusiveOldTag::create(['pancake_order_id' => $lead->order_id]));
+        collect([$fromRegina, $fromPool, $workedSince, $hot])->each(fn (Lead $lead) => ExclusiveOldTag::create(['pancake_order_id' => $lead->order_id]));
 
         $this->artisan('leads:undo-tagged-pulls')
-            ->expectsOutputToContain('Back to the CRA who had them: 1, back to the pool: 1, worked or moved since (stay): 1.')
+            ->expectsOutputToContain('Back to the CRA who had them: 1, back to the pool: 2, worked or moved since (stay): 1.')
             ->assertSuccessful();
         $this->assertSame($this->joanna->id, $fromRegina->fresh()->assigned_to);
 
-        $this->artisan('leads:undo-tagged-pulls', ['--apply' => true])->assertSuccessful();
+        // The tag comes off the orders of the leads sent back, and of the one that never came to her; not her worked lead's.
+        foreach ([$old, $fromRegina, $fromPool, $hot] as $lead) {
+            $pancake->shouldReceive('removeOrderTag')->once()->with($lead->order_id, self::TAG)->andReturn(['before' => [self::TAG], 'after' => []]);
+        }
+        $pancake->shouldNotReceive('removeOrderTag')->with($workedSince->order_id, Mockery::any());
+
+        $this->artisan('leads:undo-tagged-pulls', ['--apply' => true])->expectsOutputToContain('Tag taken off 4 orders in Pancake.')->assertSuccessful();
 
         $this->assertSame($this->regina->id, $fromRegina->fresh()->assigned_to);
         $this->assertSame('2026-11-02', $fromRegina->fresh()->listed_on->toDateString());
         $this->assertNull($fromPool->fresh()->assigned_to);
+        $this->assertNull($hot->fresh()->assigned_to);
         $this->assertSame('2026-11-03', $fromPool->fresh()->listed_on->toDateString());
+        $this->assertSame([], PancakeOrder::firstWhere('pancake_order_id', $fromRegina->order_id)->tags);
+        $this->assertFalse(ExclusiveOldTag::where('pancake_order_id', $fromRegina->order_id)->exists());
         $this->assertSame([$workedSince->id => ExclusiveLeads::TAGGED], $this->listToday());
         $this->assertFalse(ExclusiveLeadTag::whereIn('lead_id', [$fromRegina->id, $fromPool->id])->exists());
 

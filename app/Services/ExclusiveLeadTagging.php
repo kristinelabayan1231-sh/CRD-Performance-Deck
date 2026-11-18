@@ -292,6 +292,54 @@ class ExclusiveLeadTagging
     }
 
     /**
+     * Open leads (no status, date or time of contact) that aren't hers or held for her, whose order still carries the tag
+     * from before (ExclusiveOldTag): the leads sent back to their CRA or the pool by leads:undo-tagged-pulls.
+     *
+     * @return Collection<int, Lead>
+     */
+    public function sentBackStillTagged(User $cra): Collection
+    {
+        return Lead::whereIn('order_id', ExclusiveOldTag::select('pancake_order_id'))
+            ->whereIn('order_id', PancakeOrder::whereJsonContains('tags', self::tagId())->select('pancake_order_id'))
+            ->where(fn (Builder $q) => $q->whereNull('assigned_to')->orWhere('assigned_to', '!=', $cra->id))
+            ->whereNotIn('id', ExclusiveReservedLead::where('user_id', $cra->id)->select('lead_id'))
+            ->withoutPosSales()->unprocessed()->whereNull('contact_time')
+            ->orderBy('id')->get();
+    }
+
+    /**
+     * Take the tag off these leads' orders in Pancake, one at a time (each read back to confirm).
+     *
+     * @param  Collection<int, Lead>  $leads
+     * @return array{untagged: int, failed: list<string>}
+     */
+    public function untag(Collection $leads): array
+    {
+        $done = ['untagged' => 0, 'failed' => []];
+
+        foreach ($leads as $lead) {
+            $orderNumber = self::orderNumber($lead);
+
+            try {
+                $tags = $this->pancake->removeOrderTag($orderNumber, self::tagId());
+            } catch (RuntimeException $e) {
+                Log::warning('Exclusive tag not removed', ['lead_id' => $lead->id, 'order' => $orderNumber, 'message' => $e->getMessage()]);
+                $done['failed'][] = "#{$orderNumber}: {$e->getMessage()}";
+
+                continue;
+            }
+
+            Log::info('Exclusive tag removed: lead sent back', ['lead_id' => $lead->id, 'order' => $orderNumber, 'tags_before' => $tags['before'], 'tags_after' => $tags['after']]);
+            $this->saveTags($orderNumber, $tags['after']);
+            $this->forgetOldTags([$orderNumber]);
+            ExclusiveLeadTag::where('lead_id', $lead->id)->delete();
+            $done['untagged']++;
+        }
+
+        return $done;
+    }
+
+    /**
      * Note that the website looks after this lead's tag (the Tag column's Add tag, or tagNext()).
      *
      * @param  array<string, mixed>  $values
