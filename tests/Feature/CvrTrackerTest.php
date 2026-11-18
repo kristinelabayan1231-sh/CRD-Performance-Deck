@@ -111,7 +111,7 @@ class CvrTrackerTest extends TestCase
             'gross' => 2448.0, 'bc_orders' => 1, 'bc_amount' => 749.0, 'sc_orders' => 1, 'sc_amount' => 1699.0,
             'canceled' => ['orders' => 1, 'amount' => 700.0, 'bc_amount' => 0.0, 'sc_amount' => 700.0], 'orders' => 2, 'aov' => 1224.0,
             'engagements' => 0, 'cvr' => null, 'contacted' => 1, 'unconfirmed' => 2, 'engaged' => 1, 'reserved' => 1, 'not_answering' => 1,
-            'status_total' => 5, 'pancake_leads' => 1, 'assigned_leads' => 1,
+            'status_total' => 5, 'pancake_leads' => 1, 'assigned_leads' => 1, 'split' => null,
         ], $data['summary']);
         $response->assertSee('Unresolved tagging: 1 of Regina');
     }

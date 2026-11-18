@@ -129,6 +129,39 @@
             </article>
         </section>
 
+        @if ($salesSplit)
+            {{-- Exclusive CRA: sales from her exclusive leads and from her Pancake (normal) leads, then the overall --}}
+            <section aria-labelledby="sales-split-heading" class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
+                <h2 id="sales-split-heading" class="text-sm font-semibold text-ink">Sales by lead source</h2>
+                <p class="text-xs text-muted">Exclusive = customers on {{ $isOwn ? 'your' : $first.'\'s' }} exclusive lists this month · Normal = Pancake leads</p>
+                <div class="mt-3 overflow-x-auto">
+                    <table class="w-full text-left text-sm tabular-nums">
+                        <thead class="text-xs text-muted">
+                            <tr>
+                                <th scope="col" class="py-2 pr-4 font-semibold"><span class="sr-only">Period</span></th>
+                                <th scope="col" class="px-4 py-2 text-right font-semibold"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-brand-500"></span>Exclusive leads</th>
+                                <th scope="col" class="px-4 py-2 text-right font-semibold"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-[#3b3f46]"></span>Normal leads</th>
+                                <th scope="col" class="py-2 pl-4 text-right font-semibold">Overall</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-line">
+                            @foreach (['today' => 'Today', 'month' => 'This month'] as $period => $periodLabel)
+                                <tr>
+                                    <th scope="row" class="py-2.5 pr-4 font-medium text-muted">{{ $periodLabel }}</th>
+                                    @foreach (['exclusive', 'normal', 'overall'] as $group)
+                                        <td @class(['py-2.5 text-right', 'px-4' => $group !== 'overall', 'pl-4 font-bold text-ink' => $group === 'overall'])>
+                                            <span class="font-semibold text-ink">{{ $peso($salesSplit[$period][$group]['gross']) }}</span>
+                                            <span class="block text-xs text-muted">{{ number_format($salesSplit[$period][$group]['orders']) }} {{ str('order')->plural($salesSplit[$period][$group]['orders']) }}</span>
+                                        </td>
+                                    @endforeach
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        @endif
+
         <section aria-label="Your customers" class="grid gap-3 sm:grid-cols-3">
             <a href="{{ route('customers.high-value', ['list' => 'high_aov', 'cra' => $cra->id]) }}" class="relative flex items-center justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
                 <span class="text-[0.6875rem] font-semibold tracking-wide uppercase">High AOV customers</span>

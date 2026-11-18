@@ -29,6 +29,8 @@ use Illuminate\Support\Collection;
  * a working date is set): a Time of Contact and feedback other than PURCHASED / Repeat Purchase = Reserve /
  * status PJR/Inactive/CBR/Drop call. An exclusive CRA's are their Exclusive Lead Tracker leads, the same rows on that day's list.
  * # of engagements and CVR = the CRA's Daily I.S. card that day: its Total number of engagements and Overall conversion rate.
+ * An exclusive CRA's orders are also labelled Exclusive (the customer is on her exclusive lists that month so far,
+ * ExclusiveLeads::customersBetween()) or Normal (her Pancake leads), with each one's sales and the overall.
  */
 class CvrTracker
 {
@@ -43,17 +45,22 @@ class CvrTracker
         $orders = $orders->sortBy(fn (PancakeOrder $order) => [$entries->get($order->pancake_order_id)?->position ?? PHP_INT_MAX, $order->ordered_at?->getTimestamp() ?? 0, $order->id]);
         $assigned = self::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
+        $exclusiveCustomers = $cra->isExclusiveOn(WorkingDate::leadDayFor($day))
+            ? app(ExclusiveLeads::class)->customersBetween($cra, $day->startOfMonth(), $day)
+            : null;
+        $isExclusive = fn (?string $phoneKey) => $exclusiveCustomers === null ? null : isset($exclusiveCustomers[(string) $phoneKey]);
 
         // Canceled: not listed, but in gross sales as on the dashboard (by their Type of Order, corrected or tagged). Deleted: left out.
         $notCounted = $this->ordersQuery($cra, $day, counted: false)->where('status', PancakeOrder::CANCELED)
-            ->get(['pancake_order_id', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales']);
+            ->get(['pancake_order_id', 'phone_key', 'conversion_type', 'total_price', 'total_discount', 'shecom_sales']);
         $types = CvrOrderEntry::whereIn('pancake_order_id', $notCounted->pluck('pancake_order_id'))->whereNotNull('order_type')->pluck('order_type', 'pancake_order_id');
         $canceled = $notCounted->map(fn (PancakeOrder $order) => [
             'type' => $types[$order->pancake_order_id] ?? $order->conversion_type,
             'amount' => $order->sales(),
+            'exclusive' => $isExclusive($order->phone_key),
         ]);
 
-        $rows = $orders->map(function (PancakeOrder $order) use ($entries, $assigned, $earlier) {
+        $rows = $orders->map(function (PancakeOrder $order) use ($entries, $assigned, $earlier, $isExclusive) {
             $entry = $entries[$order->pancake_order_id] ?? null;
             $type = $entry?->order_type ?? $order->conversion_type;
             $matched = self::matchesAssignedLead($order, $entry, $assigned);
@@ -69,6 +76,8 @@ class CvrTracker
                 'discount' => (float) ($order->total_discount ?? 0),
                 'assigned' => self::isAssignedLead($order, $entry, $assigned),
                 'matched' => $matched,
+                // Exclusive CRA only: from her exclusive leads (true) or her Pancake leads (false); null for other CRAs.
+                'exclusive' => $isExclusive($order->phone_key),
                 'seller' => $order->seller_name,
                 'upsell' => $entry?->upsell,
                 'tagged_type' => $order->conversion_type,
@@ -229,7 +238,7 @@ class CvrTracker
      * @return array<string, int|float|null>
      */
     /**
-     * @param  Collection<int, array{type: ?string, amount: float}>  $canceled  canceled orders, in gross sales only
+     * @param  Collection<int, array{type: ?string, amount: float, exclusive: ?bool}>  $canceled  canceled orders, in gross sales only
      */
     private function summary(User $cra, CarbonImmutable $day, Collection $rows, Collection $canceled): array
     {
@@ -266,6 +275,13 @@ class CvrTracker
             'status_total' => (int) $unconfirmed + array_sum($status),
             'pancake_leads' => $rows->where('assigned', false)->count(),
             'assigned_leads' => $rows->where('assigned', true)->count(),
+            // Exclusive CRA only: her exclusive leads' and her Pancake (normal) leads' orders and gross, canceled in gross.
+            'split' => $cra->isExclusiveOn(WorkingDate::leadDayFor($day))
+                ? collect(['exclusive' => true, 'normal' => false])->map(fn (bool $isExclusive) => [
+                    'orders' => $rows->where('exclusive', $isExclusive)->count(),
+                    'gross' => (float) $rows->where('exclusive', $isExclusive)->sum('amount') + (float) $canceled->where('exclusive', $isExclusive)->sum('amount'),
+                ])->all()
+                : null,
         ];
     }
 }

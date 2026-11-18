@@ -355,6 +355,11 @@ class ExclusiveLeads
             ->concat(Lead::whereIn('id', LeadMove::where('assigned_to', $cra->id)->whereDate('listed_on', $day)->select('lead_id'))->whereNotIn('id', $onList)->get($columns))
             ->unique('id');
 
+        // Once she also caters Pancake leads, her own POS sales are normal sales and stay off her exclusive list.
+        if (! WorkingDate::realDayFor($day)->lessThan(self::pancakeLeadsFrom())) {
+            $leads = $leads->reject(fn (Lead $lead) => str_starts_with($lead->order_id, Lead::POS_PREFIX));
+        }
+
         // Another CRA's High AOV / VIP customers stay theirs: even the CRA's own sale to one doesn't go on the list.
         $highValueCras = rescue(fn () => $this->highValue->crasFor(
             $leads->map(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))->filter()->unique()->values()->all(),
@@ -793,6 +798,12 @@ class ExclusiveLeads
         return CarbonImmutable::parse(config('exclusive_leads.flat_month_from'));
     }
 
+    /** Real day the exclusive CRA started catering Pancake (normal) leads too (config exclusive_leads.pancake_leads_from). */
+    public static function pancakeLeadsFrom(): CarbonImmutable
+    {
+        return CarbonImmutable::parse(config('exclusive_leads.pancake_leads_from'));
+    }
+
     public static function buildFrom(): CarbonImmutable
     {
         return CarbonImmutable::parse(config('exclusive_leads.build_from'));
@@ -918,11 +929,7 @@ class ExclusiveLeads
      */
     public function ordersBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $listed = Lead::where('assigned_to', $cra->id)
-            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
-            ->pluck('phone_number')
-            ->map(fn (?string $phone) => LeadGenerator::normalizePhone((string) $phone))
-            ->filter()->unique()->values();
+        $listed = collect(array_keys($this->customersBetween($cra, $from, $to)))->map(fn ($key) => (string) $key);
         $accounts = ConversionBreakdown::accounts(collect([$cra]));
         if ($listed->isEmpty() || $accounts->isEmpty()) {
             return ['orders' => 0, 'gross' => 0.0];
@@ -936,6 +943,50 @@ class ExclusiveLeads
             ->unique('id');
 
         return ['orders' => $orders->count(), 'gross' => (float) $orders->sum(fn (PancakeOrder $order) => $order->sales())];
+    }
+
+    /**
+     * Her exclusive leads' customers for real days $from–$to: the numbers (last 10 digits) of leads still hers on those
+     * days' lists, POS sales on them too (only before pancake_leads_from do her own sales go on the lists).
+     *
+     * @return array<string, int> phone key => any value, to look up with isset()
+     */
+    public function customersBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        return Lead::where('assigned_to', $cra->id)
+            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
+            ->pluck('phone_number')
+            ->map(fn (?string $phone) => LeadGenerator::normalizePhone((string) $phone))
+            ->filter()->unique()->flip()->all();
+    }
+
+    /**
+     * The exclusive CRA's sales on real days $from–$to (one month), as the dashboard counts them (ConversionBreakdown:
+     * gross of every status but deleted, confirmed orders), split by where the customer came from: Exclusive when they
+     * are on her exclusive lists that month so far (customersBetween()), else Normal (Pancake leads).
+     *
+     * @return array{exclusive: array{orders: int, gross: float}, normal: array{orders: int, gross: float}, overall: array{orders: int, gross: float}}
+     */
+    public function salesSplit(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $split = ['exclusive' => ['orders' => 0, 'gross' => 0.0], 'normal' => ['orders' => 0, 'gross' => 0.0], 'overall' => ['orders' => 0, 'gross' => 0.0]];
+        $accounts = ConversionBreakdown::accounts(collect([$cra]));
+        if ($accounts->isEmpty()) {
+            return $split;
+        }
+
+        $customers = $this->customersBetween($cra, $from->startOfMonth(), $to);
+        $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)->get()
+            ->filter(fn (PancakeOrder $order) => ConversionBreakdown::craFor($order, $accounts) === $cra->id);
+
+        foreach ($orders as $order) {
+            foreach ([isset($customers[(string) $order->phone_key]) ? 'exclusive' : 'normal', 'overall'] as $group) {
+                $split[$group]['orders'] += $order->isCounted() ? 1 : 0;
+                $split[$group]['gross'] += $order->sales();
+            }
+        }
+
+        return $split;
     }
 
     private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to, bool $withPos = false): Builder

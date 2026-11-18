@@ -33,7 +33,7 @@ use RuntimeException;
 
 /**
  * CRA Dashboard, a CRA's home page: today's pending leads (linking to their tracker), running sales against the daily
- * goal, net income, their High AOV and VIP customers, and the customers up for reassignment they can claim
+ * goal (an exclusive CRA's split into exclusive and normal leads' sales), net income, their High AOV and VIP customers, and the customers up for reassignment they can claim
  * (CustomerReassignment). A supervisor can open any CRA's, without claiming, and sees the customers whose CRA
  * assignments disagree (LeadConflicts).
  */
@@ -84,6 +84,12 @@ class CraDashboardController extends Controller
             'month_progress' => $month['progress'],
         ];
 
+        // An exclusive CRA who also caters Pancake leads: her exclusive leads' sales and her normal ones, apart.
+        $salesSplit = $isExclusive ? [
+            'today' => $exclusive->salesSplit($cra, $realToday, $realToday),
+            'month' => $exclusive->salesSplit($cra, $realToday->startOfMonth(), $realToday),
+        ] : null;
+
         // A few minutes is fresh enough: the Daily I.S. builds every day of the month for it.
         $netIncome = Cache::remember("cra-dashboard.net-income.{$cra->id}.{$realToday->toDateString()}", now()->addMinutes(5), fn () => [
             'today' => (float) ($statement->netIncome(collect([$cra]), $realToday, $realToday)[$cra->id] ?? 0),
@@ -114,6 +120,7 @@ class CraDashboardController extends Controller
             'filters' => ['q' => $filters['q'] ?? null, 'show' => $show, 'cra' => $filters['cra'] ?? null],
             'pending' => $pending,
             'sales' => $sales,
+            'salesSplit' => $salesSplit,
             'netIncome' => $netIncome,
             'highValue' => $highValueCounts,
             'customers' => $customers,
