@@ -2,6 +2,7 @@
 @php($total = array_sum($mix))
 @php($parts = [
     'leftover' => ['Leftover', 'bg-[#e8b84a]'],
+    'tagged' => ['Tagged', 'bg-coral'],
     'high_value' => ['High AOV / VIP', 'bg-brand-500'],
     'handled' => ['Handled twice', 'bg-teal'],
     'random' => ['Random', 'bg-sky'],

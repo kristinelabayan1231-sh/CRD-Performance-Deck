@@ -15,7 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'exclusive_from', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'granted_by', 'last_login_at'])]
+#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'exclusive_from', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'deactivated_at', 'granted_by', 'last_login_at'])]
 #[Hidden(['password', 'remember_token', 'recording_token', 'call_webhook_url'])]
 class User extends Authenticatable
 {
@@ -37,9 +37,33 @@ class User extends Authenticatable
             'call_webhook_url' => 'encrypted',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'deactivated_at' => 'datetime',
             'show_product_qty' => 'boolean',
             'daily_sales_goal' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Keep when the user was disabled (cleared when enabled again), so earlier days still count them.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user) {
+            if ($user->isDirty('is_active')) {
+                $user->deactivated_at = $user->is_active ? null : ($user->deactivated_at ?? now());
+            }
+        });
+    }
+
+    /**
+     * Active on $day: enabled now, or disabled after that day. The day they're disabled on and the days after don't
+     * count them.
+     */
+    public function wasActiveOn(CarbonImmutable $day): bool
+    {
+        return $this->is_active
+            || ($this->deactivated_at !== null
+                && $this->deactivated_at->copy()->timezone(config('segmentation.timezone'))->toDateString() > $day->toDateString());
     }
 
     /**

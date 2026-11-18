@@ -107,6 +107,15 @@
                     <div class="{{ $tile }}"><span class="{{ $label }}"># of engagements</span><span class="text-xl font-bold">{{ number_format($s['engagements']) }}</span><span class="text-xs text-muted">Daily I.S. total engagements</span></div>
                 </div>
 
+                @if ($s['split'])
+                    {{-- Exclusive CRA: her exclusive leads' sales and her Pancake (normal) leads' sales, then the overall --}}
+                    <div class="grid grid-cols-1 gap-2.5 tabular-nums sm:grid-cols-3">
+                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-brand-500"></span>Exclusive leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['exclusive']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['exclusive']['orders'] }} {{ Str::plural('order', $s['split']['exclusive']['orders']) }} · customers on her exclusive lists this month</span></div>
+                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-[#3b3f46]"></span>Normal leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['normal']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['normal']['orders'] }} {{ Str::plural('order', $s['split']['normal']['orders']) }} · her Pancake leads</span></div>
+                        <div class="{{ $tile }} bg-canvas"><span class="{{ $label }}">Overall sales</span><span class="text-xl font-bold">{{ $peso($s['gross']) }}</span><span class="text-xs text-muted">{{ $s['orders'] }} {{ Str::plural('order', $s['orders']) }} · exclusive + normal</span></div>
+                    </div>
+                @endif
+
                 <div class="grid gap-2.5 tabular-nums lg:grid-cols-[1fr_2.4fr_1.3fr]">
                     <div class="{{ $tile }}"><span class="{{ $label }}">Contacted CX</span><span class="text-xl font-bold" data-cvr-sum="contacted">{{ $s['contacted'] }}</span><span class="text-xs text-muted">Orders with a point of contact</span></div>
                     <div class="{{ $tile }}">
@@ -149,6 +158,9 @@
                                 <th class="px-3 py-3 text-left font-semibold">Customer name</th>
                                 <th class="px-3 py-3 text-right font-semibold">Amount</th>
                                 <th class="px-3 py-3 text-left font-semibold">Assigned / Pancake</th>
+                                @if ($s['split'])
+                                    <th class="px-3 py-3 text-left font-semibold">Exclusive / Normal</th>
+                                @endif
                                 <th class="px-3 py-3 text-left font-semibold">Upsell</th>
                                 <th class="px-3 py-3 text-left font-semibold">Type of order</th>
                                 <th class="px-3 py-3 text-left font-semibold">Point of contact</th>
@@ -180,6 +192,15 @@
                                         <span data-cvr-source="assigned" @class(['rounded-full bg-[#dbe7ff] px-2.5 py-1 text-xs font-semibold text-[#1d4396]', 'hidden' => ! $order['assigned']]) title="Type of Order is Segmentation, or the number matches an assigned lead in the Segmentation Tracker">Assigned</span>
                                         <span data-cvr-source="pancake" @class(['rounded-full bg-[#3b3f46] px-2.5 py-1 text-xs font-semibold text-white', 'hidden' => $order['assigned']]) title="Not a Segmentation order and not in the Segmentation Tracker's assigned leads">Pancake</span>
                                     </td>
+                                    @if ($s['split'])
+                                        <td class="px-3 py-2">
+                                            @if ($order['exclusive'])
+                                                <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700" title="The customer is on her exclusive lists this month">Exclusive leads</span>
+                                            @else
+                                                <span class="rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-muted" title="Not on her exclusive lists: one of her Pancake leads">Normal leads</span>
+                                            @endif
+                                        </td>
+                                    @endif
                                     @foreach ([['upsell', CvrOrderEntry::UPSELLS, 'Pick upsell', 'Upsell'], ['type', CvrOrderEntry::ORDER_TYPES, null, 'Type of order'], ['point_of_contact', CvrOrderEntry::POINTS_OF_CONTACT, 'Pick', 'Point of contact']] as [$field, $options, $placeholder, $name])
                                         @php($value = $order[$field])
                                         <td class="px-3 py-2 whitespace-nowrap">
@@ -201,7 +222,7 @@
                                     <td class="px-3 py-2 whitespace-nowrap text-muted">{{ $order['time']?->format('g:i A') ?? '—' }}</td>
                                 </tr>
                             @empty
-                                <tr><td colspan="11" class="px-4 py-10 text-center text-muted">No tagged orders for {{ $cra->displayName() }} on {{ $day->format('M j') }}.</td></tr>
+                                <tr><td colspan="{{ $s['split'] ? 12 : 11 }}" class="px-4 py-10 text-center text-muted">No tagged orders for {{ $cra->displayName() }} on {{ $day->format('M j') }}.</td></tr>
                             @endforelse
                         </tbody>
                         @if ($data['orders'])
@@ -215,6 +236,9 @@
                                         @endif
                                     </td>
                                     <td class="px-3 py-2.5 whitespace-nowrap">{{ $s['pancake_leads'] }} Pancake · {{ $s['assigned_leads'] }} Assigned</td>
+                                    @if ($s['split'])
+                                        <td class="px-3 py-2.5 whitespace-nowrap">{{ $s['split']['exclusive']['orders'] }} Exclusive · {{ $s['split']['normal']['orders'] }} Normal</td>
+                                    @endif
                                     <td class="px-3 py-2.5"></td>
                                     <td class="px-3 py-2.5 whitespace-nowrap"><span data-cvr-sum="sc_orders">{{ $s['sc_orders'] }}</span> Seg · <span data-cvr-sum="bc_orders">{{ $s['bc_orders'] }}</span> BC</td>
                                     <td class="px-3 py-2.5 whitespace-nowrap"><span data-cvr-sum="contacted">{{ $s['contacted'] }}</span> contacted</td>

@@ -43,6 +43,11 @@ return [
 
     'repeat_goal_percent' => 20,
 
+    // Real day the exclusive CRA also started catering Pancake (normal) leads. From it her own POS sales stay off her
+    // exclusive lists, so only her exclusive leads' customers count as exclusive sales (CVR Tracker, CRA Dashboard);
+    // before it every sale of hers was exclusive work.
+    'pancake_leads_from' => '2026-11-18',
+
     // A daily target: the month's is this × her working days (days off have none).
     'confirmed_orders_per_day' => 54,
 

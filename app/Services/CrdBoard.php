@@ -6,7 +6,7 @@ use App\Models\User;
 use Carbon\CarbonImmutable;
 
 /**
- * CRD Board (dashboard): the department's figures from the Daily I.S., every active CRA. The day's Gross Sales and Net
+ * CRD Board (dashboard): the department's figures from the Daily I.S., every CRA active on each day. The day's Gross Sales and Net
  * Income (today: running so far), the same for the two days before, and the same day's top seller and top product: the
  * CRA and the product card with the highest Net Income among those with sales. The top product shows its photo from the
  * Drive "Product Photos" folder when it has one.
@@ -20,7 +20,8 @@ class CrdBoard
      */
     public function for(CarbonImmutable $today): array
     {
-        $cras = LeadGenerator::cras();
+        // Each day counts the CRAs active that day: a CRA disabled today still counts on the days before.
+        $cras = LeadGenerator::crasBetween($today->subDays(2), $today);
         $figures = fn (array $total) => ['gross' => (float) $total['gross'], 'net' => (float) $total['net_income']];
         $statements = collect([2, 1, 0])->mapWithKeys(fn (int $back) => [$back => $this->statement->day($cras, $today->subDays($back))]);
         $shown = $statements[0];

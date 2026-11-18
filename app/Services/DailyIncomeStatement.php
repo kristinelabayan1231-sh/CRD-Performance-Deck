@@ -132,6 +132,8 @@ class DailyIncomeStatement
      */
     public function day(Collection $cras, CarbonImmutable $day): array
     {
+        // A CRA disabled on or before $day doesn't count that day; earlier days keep them.
+        $cras = $cras->filter(fn (User $cra) => $cra->wasActiveOn($day))->values();
         // A deactivated product (Settings → Daily I.S.) shows only on a day it has sales.
         $groups = self::inProductOrder(ProductGroups::on($day));
         $deactivated = $this->deactivatedSales($groups, $day);
@@ -301,7 +303,7 @@ class DailyIncomeStatement
         }
 
         $groupOf = collect($off)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
-        $sold = $this->pageOrders->forDay(LeadGenerator::cras(), $groupOf->keys()->all(), $day)['orders']
+        $sold = $this->pageOrders->forDay(LeadGenerator::crasOn($day), $groupOf->keys()->all(), $day)['orders']
             ->filter(fn (array $order) => $order['sales'] > 0)
             ->map(fn (array $order) => $groupOf[$order['page']])->unique()->all();
 
@@ -359,15 +361,17 @@ class DailyIncomeStatement
 
     /**
      * Each CRA's Tax Allocation and operating costs for one product card: their 1M Monthly MNI figure for the day's month
-     * ÷ 24 working days ÷ $products. The MNI is worked out for every active CRA, as on its own page.
+     * ÷ 24 working days ÷ $products. The MNI is worked out for the CRAs active on $day, as on its own page.
      *
      * @param  Collection<int, User>  $cras
      * @return array<int, array<string, float>> cra id => key => amount
      */
     private function shares(Collection $cras, CarbonImmutable $day, int $products): array
     {
-        // Worked out once per month: the Report Summary adds up every day of a month.
-        $mni = $this->mniByMonth[$day->format('Y-m')] ??= $this->mni->for(LeadGenerator::cras(), $day->startOfMonth(), '1m')['cras'];
+        // The month's costs shared among the CRAs active that day (a disabled CRA's share goes to the others from the day
+        // they're disabled). Worked out once per set of CRAs: the Report Summary adds up every day of a month.
+        $dayCras = LeadGenerator::crasOn($day);
+        $mni = $this->mniByMonth[$day->format('Y-m').':'.$dayCras->pluck('id')->implode(',')] ??= $this->mni->for($dayCras, $day->startOfMonth(), '1m')['cras'];
 
         return $cras->mapWithKeys(fn (User $cra) => [$cra->id => collect(['tax', ...array_keys(self::OPERATING)])
             ->mapWithKeys(fn (string $key) => [$key => (float) ($mni[$cra->id][$key] ?? 0) / self::WORKING_DAYS / $products])

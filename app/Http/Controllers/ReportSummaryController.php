@@ -59,7 +59,8 @@ class ReportSummaryController extends Controller
             ];
         }
 
-        $cras = LeadGenerator::cras();
+        // Every CRA active on some day shown: a CRA disabled later still counts on the days before (each day leaves them out from then).
+        $cras = LeadGenerator::crasBetween($day->min($period['from']), $rangeEnd->max($period['to']));
 
         // Keep today's Pancake numbers fresh when today is on screen; it runs after the page has been sent.
         $showsToday = $rangeEnd->equalTo($today) || $today->betweenIncluded($period['from'], $period['to']);

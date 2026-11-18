@@ -32,7 +32,8 @@ class DailyIncomeStatementController extends Controller
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString());
 
         $canViewAll = $user->can('daily_is.view_all');
-        $allCras = LeadGenerator::cras();
+        // The CRAs active on that day: a CRA disabled later still shows on earlier days.
+        $allCras = LeadGenerator::crasOn($day);
         $picked = $canViewAll ? $allCras->firstWhere('id', (int) ($filters['cra'] ?? 0)) : null;
         $cras = match (true) {
             ! $canViewAll => $allCras->where('id', $user->id)->values(),
