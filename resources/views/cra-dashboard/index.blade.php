@@ -133,7 +133,7 @@
             {{-- Exclusive CRA: sales from her exclusive leads and from her Pancake (normal) leads, then the overall --}}
             <section aria-labelledby="sales-split-heading" class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
                 <h2 id="sales-split-heading" class="text-sm font-semibold text-ink">Sales by lead source</h2>
-                <p class="text-xs text-muted">Exclusive = {{ $isOwn ? 'your' : $first.'\'s' }} assigned leads · Normal = catered on Pancake, not assigned</p>
+                <p class="text-xs text-muted">Exclusive = {{ $isOwn ? 'your' : $first.'\'s' }} assigned leads or tagged CRD - ANNA (EXCLUSIVE LEADS) · Normal = catered on Pancake</p>
                 <div class="mt-3 overflow-x-auto">
                     <table class="w-full text-left text-sm tabular-nums">
                         <thead class="text-xs text-muted">

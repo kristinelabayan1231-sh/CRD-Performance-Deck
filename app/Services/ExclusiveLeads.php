@@ -979,9 +979,20 @@ class ExclusiveLeads
     }
 
     /**
+     * Her exclusive leads' customers up to real day $to: her assigned leads (assignedCustomers()) and every customer with an
+     * order carrying the exclusive POS tag (taggedCustomers()), as the Tag column shows them.
+     *
+     * @return array<string, int> phone key => any value, to look up with isset()
+     */
+    public function exclusiveCustomers(User $cra, CarbonImmutable $to): array
+    {
+        return $this->assignedCustomers($cra, $to) + $this->taggedCustomers();
+    }
+
+    /**
      * The exclusive CRA's sales on real days $from–$to, as the dashboard counts them (ConversionBreakdown: gross of every
      * status but deleted, confirmed orders), split by where the customer came from: Exclusive when they are one of her
-     * assigned leads (assignedCustomers()), else Normal (customers she caters on Pancake, not assigned).
+     * exclusive leads (exclusiveCustomers(): assigned, or tagged in POS), else Normal (customers she caters on Pancake).
      *
      * @return array{exclusive: array{orders: int, gross: float}, normal: array{orders: int, gross: float}, overall: array{orders: int, gross: float}}
      */
@@ -993,7 +1004,7 @@ class ExclusiveLeads
             return $split;
         }
 
-        $customers = $this->assignedCustomers($cra, $to);
+        $customers = $this->exclusiveCustomers($cra, $to);
         $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)->get()
             ->filter(fn (PancakeOrder $order) => ConversionBreakdown::craFor($order, $accounts) === $cra->id);
 
