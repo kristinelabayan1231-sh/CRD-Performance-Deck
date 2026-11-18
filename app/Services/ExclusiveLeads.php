@@ -150,6 +150,7 @@ class ExclusiveLeads
             $this->reserve($cra, $day, $upcoming, $looked);
             // Keep autoHold() leads held for the days ahead; a supervisor holds more with hold() (Load 500 more).
             $this->hold($cra, $day, self::autoHold() - ExclusiveReservedLead::where('user_id', $cra->id)->count());
+            $this->releaseExcessHeld($cra, $day);
         }
 
         return $added + $picks->count();
@@ -241,6 +242,38 @@ class ExclusiveLeads
 
             ExclusiveReservedLead::where('user_id', $cra->id)->update(['month' => $month]);
         });
+    }
+
+    /**
+     * The month's lists and the leads held for its days ahead never add up to more than its target: held leads past what's
+     * left of it are let go, the latest held first. Only FSD leads in the pool that nobody has catered and whose customer
+     * isn't hers (no High AOV / VIP or handled customer of hers): leads rightfully hers stay held, even past the target.
+     * A lead let go goes back to the pool, and its POS tag comes off (ExclusiveLeadTagging::untagLeft).
+     *
+     * @return int leads let go
+     */
+    private function releaseExcessHeld(User $cra, CarbonImmutable $day): int
+    {
+        $excess = ExclusiveReservedLead::where('user_id', $cra->id)->count() - max(0, $this->monthRemaining($cra, $day));
+        if ($excess <= 0) {
+            return 0;
+        }
+
+        $candidates = Lead::whereIn('id', ExclusiveReservedLead::where('user_id', $cra->id)->select('lead_id'))
+            ->whereNull('assigned_to')->where('lead_type', Lead::TYPE_FSD)->unprocessed()->whereNull('contact_time')
+            ->get(['id', 'assigned_to', 'phone_number', 'product_name', 'lead_type']);
+        $classify = $this->classifier($cra, $day, $candidates);
+        $notHers = $candidates->filter(fn (Lead $lead) => $classify($lead)['source'] === self::RANDOM)->pluck('id')->flip();
+
+        $ids = ExclusiveReservedLead::where('user_id', $cra->id)->orderByDesc('id')->get(['id', 'lead_id'])
+            ->filter(fn (ExclusiveReservedLead $held) => isset($notHers[$held->lead_id]))
+            ->take($excess)->pluck('id');
+
+        foreach ($ids->chunk(500) as $chunk) {
+            ExclusiveReservedLead::whereIn('id', $chunk->all())->delete();
+        }
+
+        return $ids->count();
     }
 
     /** Leads kept held for an exclusive CRA's days ahead without anyone asking (config exclusive_leads.auto_hold). */

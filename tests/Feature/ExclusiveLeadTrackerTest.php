@@ -374,6 +374,36 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->actingAs($this->joanna)->post(route('exclusive-leads.hold', $this->joanna))->assertForbidden();
     }
 
+    public function test_held_leads_past_the_target_are_let_go_only_when_they_are_uncatered_fsd_pool_leads_not_hers(): void
+    {
+        config(['exclusive_leads.daily_quota' => 1, 'exclusive_leads.month_target' => 3, 'exclusive_leads.auto_hold' => 1]);
+        $hold = function (Lead $lead, string $source = ExclusiveLeads::RANDOM): Lead {
+            ExclusiveReservedLead::create(['user_id' => $this->joanna->id, 'month' => '2026-11-01', 'lead_id' => $lead->id, 'source' => $source]);
+
+            return $lead;
+        };
+        $first = $hold($this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+        $oldestRandom = $hold($this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+        $herCustomer = $hold($this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]), ExclusiveLeads::HANDLED);
+        $this->handledTwiceBy($this->joanna, $this->phoneKey($herCustomer));
+        $crd = $hold($this->lead('2026-11-05', null), ExclusiveLeads::HANDLED);
+        $this->handledTwiceBy($this->joanna, $this->phoneKey($crd));
+        $assignedToHer = $hold($this->lead('2026-11-01', $this->joanna, ['lead_type' => Lead::TYPE_FSD, 'listed_on' => '2026-11-01']));
+        $newestRandom = $hold($this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+        $newerRandom = $hold($this->lead('2026-11-05', null, ['lead_type' => Lead::TYPE_FSD]));
+
+        $this->sync('2026-11-06');
+
+        // Past the target of 3: only her pool FSD leads nobody owns can go, the latest held first.
+        $stillHeld = ExclusiveReservedLead::where('user_id', $this->joanna->id)->pluck('lead_id');
+        $this->assertTrue($stillHeld->contains($herCustomer->id) || array_key_exists($herCustomer->id, $this->listOn('2026-11-06')));
+        $this->assertTrue($stillHeld->contains($crd->id) || array_key_exists($crd->id, $this->listOn('2026-11-06')));
+        $this->assertFalse($stillHeld->contains($newestRandom->id));
+        $this->assertFalse($stillHeld->contains($newerRandom->id));
+        $this->assertNull($newestRandom->fresh()->assigned_to);
+        $this->assertSame($this->joanna->id, $assignedToHer->fresh()->assigned_to);
+    }
+
     public function test_her_day_reads_only_the_first_held_leads_and_the_rest_stay_held(): void
     {
         config(['exclusive_leads.daily_quota' => 1, 'exclusive_leads.month_target' => 10, 'exclusive_leads.auto_hold' => 2]);
