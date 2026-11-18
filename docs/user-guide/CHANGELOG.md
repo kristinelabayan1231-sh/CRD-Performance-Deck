@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-17 · CRD Board, Daily I.S., Report Summary · A disabled CRA still counts on the days before they were disabled (sales, Net Income, cost shares); from the day they're disabled they're left out. User Access keeps when a user was disabled · shots: none
 - 2026-11-17 · Customer Database pop-up, Churn order history · Orders of ₱20,000 and up are highlighted gold and bold (customers.big_order_min) · shots: customer-database
 - 2026-11-17 · Customer Database pop-up · "CRD customer since <date>" under the customer's numbers: their first CRA-handled delivered order, earlier years too ("since before Jan 1, 2026" when only older counts are known; "Not a CRD customer yet" for FSD only) · shots: customer-database
 - 2026-11-17 · Settings → Customer Database (new) · Customers' names and numbers are hidden for every role by default; Super Admins and CRA Supervisors (new permission customers.details.manage) set Hidden / Shown for every role, and can see them for themselves with the eye button. Others see a locked "Details hidden" while hidden · shots: settings-customer-details (new), customer-database, high-value

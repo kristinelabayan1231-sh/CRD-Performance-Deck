@@ -557,6 +557,33 @@ class LeadGenerator
     }
 
     /**
+     * The CRAs who were active on $day: today's active CRAs plus those disabled after that day, in CRA order.
+     *
+     * @return Collection<int, User>
+     */
+    public static function crasOn(CarbonImmutable $day): Collection
+    {
+        return self::crasBetween($day, $day);
+    }
+
+    /**
+     * The CRAs who were active on at least one day of $from–$to (a disabled CRA up to the day before they were
+     * disabled). Per-day figures still leave a CRA out from the day they were disabled (User::wasActiveOn).
+     *
+     * @return Collection<int, User>
+     */
+    public static function crasBetween(CarbonImmutable $from, CarbonImmutable $to): Collection
+    {
+        // Disabled after $from's day (Manila), in UTC as stored.
+        $after = CarbonImmutable::parse($from->toDateString(), config('segmentation.timezone'))->addDay()->timezone(config('app.timezone'));
+
+        return User::whereHas('role', fn ($q) => $q->where('slug', Role::CRA))
+            ->where(fn ($q) => $q->where('is_active', true)->orWhere('deactivated_at', '>=', $after))
+            ->inCraOrder()
+            ->get();
+    }
+
+    /**
      * The CRAs of the Segmentation Tracker on $day (default today): active CRAs not moved to the Exclusive Lead Tracker by then.
      *
      * @return Collection<int, User>

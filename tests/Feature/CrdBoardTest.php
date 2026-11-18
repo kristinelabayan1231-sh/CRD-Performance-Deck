@@ -83,6 +83,32 @@ class CrdBoardTest extends TestCase
         $this->assertEqualsWithDelta($statement('2026-10-15')['net_income'], $days[1]['net'], 0.001);
     }
 
+    public function test_a_cra_disabled_today_still_counts_on_the_days_before_and_not_from_that_day(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $roseAn = $this->user('Rose-An', Role::CRA, 'CRD Rose-An Orbaneja');
+        $this->order($roseAn, '2026-10-14', 'Clear Sight Hub', 500);
+        $this->order($roseAn, '2026-10-15', 'Clear Sight Hub', 2000);
+        $this->order($regina, '2026-10-15', 'Sinuxyl Nasal Spray', 300);
+        $this->order($roseAn, '2026-10-16', 'Clear Sight Hub', 900);
+        $this->order($regina, '2026-10-16', 'Sinuxyl Nasal Spray', 700);
+
+        $roseAn->update(['is_active' => false]);
+        $this->assertNotNull($roseAn->fresh()->deactivated_at);
+
+        $sup = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $board = $this->actingAs($sup)->get(route('dashboard.board'))->assertOk();
+        // Oct 14 and 15 keep her sales; from today (the day she was disabled) only Regina counts.
+        $this->assertEqualsWithDelta(500, $board->viewData('days')[0]['gross'], 0.001);
+        $this->assertEqualsWithDelta(2300, $board->viewData('days')[1]['gross'], 0.001);
+        $this->assertEqualsWithDelta(700, $board->viewData('today')['gross'], 0.001);
+
+        // Enabled again: she counts from then on.
+        $roseAn->update(['is_active' => true]);
+        $this->assertNull($roseAn->fresh()->deactivated_at);
+        $this->assertEqualsWithDelta(1600, $this->get(route('dashboard.board'))->viewData('today')['gross'], 0.001);
+    }
+
     public function test_top_product_shows_its_photo_from_the_drive_folder_matched_by_file_name(): void
     {
         $this->driveFiles = ['Sinuxyl.jpg' => ['file-sinuxyl', 'sinuxyl-photo'], 'Notes.txt' => ['file-notes', 'text']];
