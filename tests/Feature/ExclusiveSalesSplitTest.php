@@ -86,6 +86,9 @@ class ExclusiveSalesSplitTest extends TestCase
         $this->order($this->joanna, PancakeOrder::BROADCAST, 300, '9170000004');
         $this->exclusiveLead('9170000006', '2026-11-12')->update(['assigned_to' => $this->regina->id]);
         $this->order($this->joanna, PancakeOrder::BROADCAST, 100, '9170000006');
+        // Not on her lists, but tagged CRD - ANNA (EXCLUSIVE LEADS) on an earlier order: an exclusive lead too.
+        $this->order($this->joanna, PancakeOrder::BROADCAST, 50, '9170000007', ['ordered_on' => '2026-06-01', 'status' => 3, 'tags' => [749]]);
+        $this->order($this->joanna, PancakeOrder::BROADCAST, 400, '9170000007');
     }
 
     public function test_her_cvr_tracker_labels_each_order_and_splits_exclusive_and_normal_sales(): void
@@ -96,10 +99,10 @@ class ExclusiveSalesSplitTest extends TestCase
             ->assertSee('Exclusive leads sales')->assertSee('Normal leads sales')->assertSee('Overall sales');
 
         $data = $response->viewData('data');
-        $this->assertSame(['9170000001' => true, '9170000002' => false, '9170000004' => true, '9170000006' => false],
+        $this->assertSame(['9170000001' => true, '9170000002' => false, '9170000004' => true, '9170000006' => false, '9170000007' => true],
             collect($data['orders'])->mapWithKeys(fn (array $row) => [substr($row['phone'], 1) => $row['exclusive']])->all());
-        $this->assertEquals(['exclusive' => ['orders' => 2, 'gross' => 1300.0], 'normal' => ['orders' => 2, 'gross' => 800.0]], $data['summary']['split']);
-        $this->assertEquals(2100.0, $data['summary']['gross']);
+        $this->assertEquals(['exclusive' => ['orders' => 3, 'gross' => 1700.0], 'normal' => ['orders' => 2, 'gross' => 800.0]], $data['summary']['split']);
+        $this->assertEquals(2500.0, $data['summary']['gross']);
     }
 
     public function test_her_dashboard_shows_exclusive_normal_and_overall_sales_matching_her_running_sales(): void
@@ -109,9 +112,9 @@ class ExclusiveSalesSplitTest extends TestCase
         $response = $this->actingAs($this->joanna)->get(route('cra-dashboard'))->assertOk()->assertSee('Sales by lead source');
 
         $split = $response->viewData('salesSplit');
-        $this->assertEquals(['orders' => 2, 'gross' => 1300.0], $split['today']['exclusive']);
+        $this->assertEquals(['orders' => 3, 'gross' => 1700.0], $split['today']['exclusive']);
         $this->assertEquals(['orders' => 2, 'gross' => 800.0], $split['today']['normal']);
-        $this->assertEquals(['orders' => 4, 'gross' => 2100.0], $split['month']['overall']);
+        $this->assertEquals(['orders' => 5, 'gross' => 2500.0], $split['month']['overall']);
         $this->assertEquals($response->viewData('sales')['today'], $split['today']['overall']['gross']);
     }
 

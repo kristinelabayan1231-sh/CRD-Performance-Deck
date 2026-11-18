@@ -29,8 +29,8 @@ use Illuminate\Support\Collection;
  * a working date is set): a Time of Contact and feedback other than PURCHASED / Repeat Purchase = Reserve /
  * status PJR/Inactive/CBR/Drop call. An exclusive CRA's are their Exclusive Lead Tracker leads, the same rows on that day's list.
  * # of engagements and CVR = the CRA's Daily I.S. card that day: its Total number of engagements and Overall conversion rate.
- * An exclusive CRA's orders are also labelled Exclusive (the customer is one of her assigned exclusive leads,
- * ExclusiveLeads::assignedCustomers()) or Normal (a customer she caters on Pancake, not assigned), with each one's sales and the overall.
+ * An exclusive CRA's orders are also labelled Exclusive (the customer is one of her assigned exclusive leads or has an order
+ * with the exclusive POS tag, ExclusiveLeads::exclusiveCustomers()) or Normal (a customer she caters on Pancake, not assigned), with each one's sales and the overall.
  */
 class CvrTracker
 {
@@ -46,7 +46,7 @@ class CvrTracker
         $assigned = self::assignedNumbers($orders->pluck('phone_key')->filter()->unique()->values()->all());
         $earlier = $this->deliveredBefore($orders->pluck('phone_key')->filter()->unique()->values()->all(), $day);
         $exclusiveCustomers = $cra->isExclusiveOn(WorkingDate::leadDayFor($day))
-            ? app(ExclusiveLeads::class)->assignedCustomers($cra, $day)
+            ? app(ExclusiveLeads::class)->exclusiveCustomers($cra, $day)
             : null;
         $isExclusive = fn (?string $phoneKey) => $exclusiveCustomers === null ? null : isset($exclusiveCustomers[(string) $phoneKey]);
 
