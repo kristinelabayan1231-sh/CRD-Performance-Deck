@@ -19,10 +19,10 @@ use Illuminate\Support\Facades\DB;
 class UndoTaggedPulls extends Command
 {
     protected $signature = 'leads:undo-tagged-pulls
-        {--apply : Move the leads back. Without it, only reports what would move.}
+        {--apply : Move the leads back and take the tag off their orders in Pancake. Without it, only reports.}
         {--list : Name every lead.}';
 
-    protected $description = 'Send back the leads the exclusive tag sync gave the exclusive CRA because of tags from before it (old tags): to the CRA who had them, or the pool';
+    protected $description = 'Send back the leads the exclusive tag sync gave the exclusive CRA because of tags from before it (old tags), to the CRA who had them or the pool, and take the tag off their orders';
 
     public function handle(ExclusiveLeadTagging $tagging): int
     {
@@ -37,7 +37,8 @@ class UndoTaggedPulls extends Command
             ->whereIn('lead_id', Lead::whereIn('order_id', ExclusiveOldTag::select('pancake_order_id'))->select('id'))
             ->get()->groupBy('lead_id');
         $leads = Lead::whereIn('id', $entries->keys()->all())->get()->keyBy('id');
-        $untouched = Lead::whereIn('id', $leads->keys()->all())->untouched()->whereNull('contact_time')->pluck('id')->flip();
+        // Not contacted: no status, date or time of contact. A tag or note alone isn't contact.
+        $untouched = Lead::whereIn('id', $leads->keys()->all())->unprocessed()->whereNull('contact_time')->pluck('id')->flip();
         $active = LeadGenerator::cras()->keyBy('id');
         $plan = ['back' => 0, 'pool' => 0, 'kept' => 0];
 
@@ -71,13 +72,32 @@ class UndoTaggedPulls extends Command
 
                 BacklogHandout::where('lead_id', $lead->id)->where('user_id', $cra->id)->where('created_at', '>=', $since)->delete();
                 ExclusiveListLead::whereIn('id', $entries[$lead->id]->pluck('id')->all())->delete();
-                // The old tag stays on the order, as before: no Pancake write.
                 ExclusiveLeadTag::where('lead_id', $lead->id)->delete();
             }));
         }
 
         $this->info("{$cra->displayName()}: {$leads->count()} leads given by old tags. Back to the CRA who had them: {$plan['back']}, back to the pool: {$plan['pool']}, worked or moved since (stay): {$plan['kept']}.");
-        $this->comment($this->option('apply') ? 'Done. No Pancake order was changed.' : 'Nothing was moved. Run again with --apply to move them.');
+
+        // Every lead sent back (now and by an earlier run) whose order still carries her tag.
+        $stillTagged = $tagging->sentBackStillTagged($cra);
+        if (! $this->option('apply')) {
+            $this->info("Leads sent back whose order still has the tag (comes off in Pancake): {$stillTagged->count()}.");
+            if ($this->option('list')) {
+                foreach ($stillTagged as $lead) {
+                    $this->line("  untag | {$lead->id} | {$lead->customer_name} | #".ExclusiveLeadTagging::orderNumber($lead));
+                }
+            }
+            $this->comment('Nothing was changed. Run again with --apply to move them and take the tags off.');
+
+            return self::SUCCESS;
+        }
+
+        $untag = $tagging->untag($stillTagged);
+        $this->info("Tag taken off {$untag['untagged']} orders in Pancake.");
+        foreach ($untag['failed'] as $failure) {
+            $this->warn("  Not untagged {$failure}");
+        }
+        $this->comment('Done.');
 
         return self::SUCCESS;
     }
