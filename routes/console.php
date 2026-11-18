@@ -27,6 +27,14 @@ Schedule::command('leads:build-exclusive')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(30);
 
+// Exclusive Lead Tracker: her leads and the CRD - ANNA (EXCLUSIVE LEADS) POS tag kept together. A lead a supervisor tags in
+// POS joins her list, one whose tag comes off leaves her (another takes its place), and her month's orders get the tag.
+Schedule::command('leads:sync-exclusive-tags')
+    ->everyFiveMinutes()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(15)
+    ->runInBackground();
+
 // Dashboard, Conversion Breakdown and Segmentation Productivity: today's Pancake
 // engagements, orders and tags every ten minutes, and yesterday's once more
 // after midnight so its totals are final.

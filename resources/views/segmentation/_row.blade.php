@@ -137,6 +137,7 @@
                     'bg-brand-100 text-brand-700' => $source === 'high_value',
                     'bg-teal/15 text-teal-700' => $source === 'handled',
                     'bg-[#fff4d6] text-[#7a5a00]' => $source === 'leftover',
+                    'bg-coral/15 text-coral-700' => $source === 'tagged',
                     'bg-canvas text-muted' => in_array($source, ['random', 'pos'], true),
                 ])>{{ \App\Http\Controllers\ExclusiveLeadController::SOURCE_LABELS[$source] ?? $source }}</span>
             @endif
@@ -155,7 +156,19 @@
         {{-- Exclusive Lead Tracker: the POS order tag when one of the customer's orders has it, else a dropdown that adds it to the lead's order in Pancake --}}
         <td data-col="order_tag" class="px-4 py-3">
             @isset($taggedCustomers[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)])
-                <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700">{{ config('exclusive_leads.order_tag.name') }}</span>
+                <span class="inline-flex items-center gap-1.5">
+                    <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700">{{ config('exclusive_leads.order_tag.name') }}</span>
+                    @can('exclusive_leads.manage')
+                        {{-- Supervisors: the tag comes off the order and the lead off her list; another lead takes its place --}}
+                        <form method="POST" action="{{ route('exclusive-leads.order-tag.destroy', $lead) }}"
+                              data-confirm="Take {{ $lead->customer_name ?: 'this customer' }} off the exclusive leads? The tag comes off the order in Pancake and another lead takes this one's place." onsubmit="return confirm(this.dataset.confirm)">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" aria-label="Remove the tag and take {{ $lead->customer_name }} off the exclusive leads"
+                                    class="rounded-full px-2 py-1 text-xs font-semibold text-coral-700 hover:bg-coral/10">Remove</button>
+                        </form>
+                    @endcan
+                </span>
             @elseif ($readOnly)
                 <span class="text-xs text-muted">—</span>
             @else

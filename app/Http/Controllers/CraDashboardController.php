@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CustomerAccount;
+use App\Models\ExclusiveLeadTag;
 use App\Models\ExclusiveListLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
@@ -225,6 +226,7 @@ class CraDashboardController extends Controller
             'tags' => $tags['after'],
             'conversion_type' => PancakeOrder::conversionTypeFor($tags['after']),
         ]);
+        ExclusiveLeadTag::where('lead_id', $lead->id)->delete();
 
         return $tags['before'] !== $tags['after'];
     }

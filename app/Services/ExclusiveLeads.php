@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\BacklogHandout;
+use App\Models\ExclusiveLeadTag;
 use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveRemovedLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
@@ -38,6 +40,10 @@ use Illuminate\Support\Facades\DB;
  * as the backlog fill's do, LeadMove). That is how every other module reads them: CVR Tracker, Segmentation Productivity,
  * Dashboard, Repeat Purchases and Segmentation Summary by assigned_to and listed_on; PC Report and Daily I.S. through the
  * CVR Tracker's orders. Only the Segmentation Tracker pages leave them out (Lead::scopeInSegmentationTracker).
+ *
+ * A supervisor steers the list with the POS order tag (ExclusiveLeadTagging): a lead whose order she tags joins the day's
+ * list on top of the quota (addTagged, TAGGED), and one she takes off leaves it for good and another lead takes its place
+ * the same day, so the month still reaches its target (takeOff, ExclusiveRemovedLead).
  */
 class ExclusiveLeads
 {
@@ -48,6 +54,9 @@ class ExclusiveLeads
     public const HANDLED = 'handled';
 
     public const RANDOM = 'random';
+
+    /** A lead a supervisor gave her by tagging its POS order (ExclusiveLeadTagging): hers whatever the rules say. */
+    public const TAGGED = 'tagged';
 
     /** A CRA's own POS sale (PosLeads): shown on the day, never part of the quota. */
     public const POS = 'pos';
@@ -66,7 +75,7 @@ class ExclusiveLeads
     private const HOLD_BATCH = 2000;
 
     /** Priority order of a day's list. */
-    public const PRIORITY = [self::LEFTOVER, self::HIGH_VALUE, self::HANDLED, self::RANDOM];
+    public const PRIORITY = [self::LEFTOVER, self::TAGGED, self::HIGH_VALUE, self::HANDLED, self::RANDOM];
 
     public function __construct(private HighValueCustomers $highValue) {}
 
@@ -296,7 +305,9 @@ class ExclusiveLeads
             ->whereDate('list_date', '>=', $monthStart)->whereDate('list_date', '<=', $day)->pluck('lead_id')->flip();
         $niches = NicheRules::current();
         $pool = Lead::withoutPosSales()->whereNull('assigned_to')->unprocessed()->whereDate('listed_on', '<=', $day)
-            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))->orderBy('delivered_date')->orderBy('id');
+            ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))
+            ->whereNotIn('id', ExclusiveRemovedLead::where('user_id', $cra->id)->select('lead_id'))
+            ->orderBy('delivered_date')->orderBy('id');
         $found = [];
 
         for ($offset = 0; count($found) < $count; $offset += self::HOLD_BATCH) {
@@ -392,6 +403,7 @@ class ExclusiveLeads
         $held = ExclusiveReservedLead::where('user_id', $cra->id)->orderBy('id')->limit(max(self::autoHold(), 2 * $room))->pluck('lead_id')->all();
         $waiting = Lead::withoutPosSales()->whereDate('listed_on', '<=', $day)
             ->whereNotIn('id', ExclusiveReservedLead::where('user_id', '!=', $cra->id)->select('lead_id'))
+            ->whereNotIn('id', ExclusiveRemovedLead::where('user_id', $cra->id)->select('lead_id'))
             ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->whereNull('assigned_to')->unprocessed()
                 ->where(fn (Builder $q) => $q->whereIn('id', $held)->orWhereDate('listed_on', $day)))
                 ->orWhere(fn (Builder $q) => $q->whereDate('listed_on', '<', $day)->where('assigned_to', $cra->id)->untouched()))
@@ -454,14 +466,25 @@ class ExclusiveLeads
 
     /**
      * Before leftovers carry over: an untouched one that isn't the CRA's by the rules leaves them (notHers). A lead someone
-     * wrote on or tagged stays with them, as the backlog fill leaves it too.
+     * wrote on or tagged stays with them, as the backlog fill leaves it too, and so does one a supervisor gave her (TAGGED).
      */
     private function releaseLeftovers(User $cra, CarbonImmutable $day): void
     {
-        $leads = $this->leftovers($cra, $day)->untouched()->get(['id', 'assigned_to', 'phone_number', 'product_name', 'listed_on', 'est_out_of_stock_date', 'lead_type']);
+        $leads = $this->leftovers($cra, $day)->untouched()->whereNotIn('id', $this->taggedIn($cra))
+            ->get(['id', 'assigned_to', 'phone_number', 'product_name', 'listed_on', 'est_out_of_stock_date', 'lead_type']);
         $classify = $this->classifier($cra, $day, $leads);
 
         DB::transaction(fn () => $this->release($cra, $day, $leads->map(fn (Lead $lead) => $this->notHers($classify($lead), $lead))->filter()));
+    }
+
+    /**
+     * The leads a supervisor gave the CRA by tagging their POS order: the rules never take these off her.
+     *
+     * @return Builder<ExclusiveListLead>
+     */
+    private function taggedIn(User $cra): Builder
+    {
+        return ExclusiveListLead::where('user_id', $cra->id)->where('source', self::TAGGED)->select('lead_id');
     }
 
     /**
@@ -518,6 +541,7 @@ class ExclusiveLeads
         $leads = Lead::where('assigned_to', $cra->id)->withoutPosSales()->notConverted()
             ->where(fn (Builder $q) => $q->whereNull('status')->orWhereIn('status', config('segmentation.carry_over_statuses')))
             ->where(fn (Builder $q) => $q->whereNull('repeat_purchase')->orWhereNotIn('repeat_purchase', Lead::reserveRepeatPurchases()))
+            ->whereNotIn('id', $this->taggedIn($cra))
             ->orderBy('listed_on')->orderBy('id')->get();
         $untouched = Lead::where('assigned_to', $cra->id)->untouched()->pluck('id')->flip();
         $onList = ExclusiveListLead::where('user_id', $cra->id)->whereDate('list_date', $day)->pluck('lead_id')->flip();
@@ -556,6 +580,101 @@ class ExclusiveLeads
         DB::transaction(fn () => $this->release($cra, $day, $moves));
 
         return $moves->count();
+    }
+
+    /**
+     * Leads a supervisor tagged for the CRA in POS: on $day's list from now, on top of its quota, whoever had them. A lead
+     * she took off before comes back. They count toward the month's target like any other lead.
+     *
+     * @param  Collection<int, Lead>  $leads  open leads due by $day, not hers and not held for her
+     * @return int leads added
+     */
+    public function addTagged(User $cra, CarbonImmutable $day, Collection $leads): int
+    {
+        $day = $day->startOfDay();
+        if ($leads->isEmpty()) {
+            return 0;
+        }
+
+        return Cache::lock("exclusive-leads-{$cra->id}", 300)->block(60, function () use ($cra, $day, $leads) {
+            $ids = $leads->pluck('id')->all();
+            $now = now();
+
+            DB::transaction(function () use ($cra, $day, $leads, $ids, $now) {
+                foreach ($leads->whereNotNull('assigned_to') as $lead) {
+                    $lead->transferTo($cra, null, $day);
+                }
+                $this->addToList($cra, $day, array_fill_keys($leads->whereNotNull('assigned_to')->pluck('id')->all(), self::TAGGED));
+
+                ExclusiveRemovedLead::where('user_id', $cra->id)->whereIn('lead_id', $ids)->delete();
+                ExclusiveLeadTag::insertOrIgnore(array_map(fn (int $id) => [
+                    'user_id' => $cra->id, 'lead_id' => $id, 'tagged_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+                ], $ids));
+            });
+
+            $this->hand($cra, $day, $leads->whereNull('assigned_to')->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::TAGGED])->values());
+
+            return count($ids);
+        });
+    }
+
+    /**
+     * Take these leads off the CRA for good: one on her lists goes to the CRA who owns the customer, else back to the pool,
+     * and one held for her days ahead is let go. Each is kept off her lists from then on (ExclusiveRemovedLead), and as
+     * many others take their places, on $day's list or held, so the month still reaches its target.
+     *
+     * @param  Collection<int, Lead>  $leads  open leads assigned to or held for her
+     * @param  string  $via  ExclusiveRemovedLead::VIA_*
+     * @return int leads that took their places
+     */
+    public function takeOff(User $cra, CarbonImmutable $day, Collection $leads, ?User $by, string $via): int
+    {
+        $day = $day->startOfDay();
+        if ($leads->isEmpty()) {
+            return 0;
+        }
+
+        return Cache::lock("exclusive-leads-{$cra->id}", 300)->block(60, function () use ($cra, $day, $leads, $by, $via) {
+            $listed = $leads->where('assigned_to', $cra->id)->values();
+            $ids = $leads->pluck('id')->all();
+            $classify = $this->classifier($cra, $day, $listed);
+            $now = now();
+
+            DB::transaction(function () use ($cra, $day, $listed, $ids, $classify, $by, $via, $now) {
+                $this->release($cra, $day, $listed->map(function (Lead $lead) use ($cra, $classify) {
+                    $owner = $classify($lead)['owner'];
+
+                    return ['lead' => $lead, 'to' => $owner !== $cra->id ? $owner : null];
+                }));
+
+                ExclusiveReservedLead::where('user_id', $cra->id)->whereIn('lead_id', $ids)->delete();
+                ExclusiveLeadTag::whereIn('lead_id', $ids)->delete();
+                ExclusiveRemovedLead::insertOrIgnore(array_map(fn (int $id) => [
+                    'user_id' => $cra->id, 'lead_id' => $id, 'removed_by' => $by?->id, 'via' => $via, 'created_at' => $now, 'updated_at' => $now,
+                ], $ids));
+            });
+
+            return $this->replaceOnList($cra, $day, $listed->count()) + $this->hold($cra, $day, $leads->count() - $listed->count());
+        });
+    }
+
+    /**
+     * Hand $count new leads to $day's list on top of what it already has, in the usual priority, from those held for her.
+     *
+     * @return int leads handed
+     */
+    private function replaceOnList(User $cra, CarbonImmutable $day, int $count): int
+    {
+        if ($count <= 0 || $day->lessThan(self::flatMonthFrom())) {
+            return 0;
+        }
+
+        $this->hold($cra, $day, $count);
+        $picks = $this->pick($cra, $day, $count, true)['picks']->where('source', '!=', self::LEFTOVER)->take($count)->values();
+        $this->hand($cra, $day, $picks);
+        ExclusiveReservedLead::where('user_id', $cra->id)->whereIn('lead_id', $picks->pluck('lead.id')->all())->delete();
+
+        return $picks->count();
     }
 
     /**

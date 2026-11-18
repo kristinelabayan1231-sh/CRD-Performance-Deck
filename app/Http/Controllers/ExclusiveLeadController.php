@@ -38,6 +38,7 @@ class ExclusiveLeadController extends Controller
     /** Why a lead is on the list, in the words the CRA uses. */
     public const SOURCE_LABELS = [
         ExclusiveLeads::LEFTOVER => 'Leftover',
+        ExclusiveLeads::TAGGED => 'Tagged',
         ExclusiveLeads::HIGH_VALUE => 'High AOV / VIP',
         ExclusiveLeads::HANDLED => 'Handled twice',
         ExclusiveLeads::RANDOM => 'Random',
