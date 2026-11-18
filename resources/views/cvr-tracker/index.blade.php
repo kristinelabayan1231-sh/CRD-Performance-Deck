@@ -110,8 +110,8 @@
                 @if ($s['split'])
                     {{-- Exclusive CRA: her exclusive leads' sales and her Pancake (normal) leads' sales, then the overall --}}
                     <div class="grid grid-cols-1 gap-2.5 tabular-nums sm:grid-cols-3">
-                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-brand-500"></span>Exclusive leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['exclusive']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['exclusive']['orders'] }} {{ Str::plural('order', $s['split']['exclusive']['orders']) }} · customers on her exclusive lists this month</span></div>
-                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-[#3b3f46]"></span>Normal leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['normal']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['normal']['orders'] }} {{ Str::plural('order', $s['split']['normal']['orders']) }} · her Pancake leads</span></div>
+                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-brand-500"></span>Exclusive leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['exclusive']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['exclusive']['orders'] }} {{ Str::plural('order', $s['split']['exclusive']['orders']) }} · her assigned leads</span></div>
+                        <div class="{{ $tile }}"><span class="{{ $label }}"><span aria-hidden="true" class="mr-1 inline-block size-2 rounded-full bg-[#3b3f46]"></span>Normal leads sales</span><span class="text-xl font-bold">{{ $peso($s['split']['normal']['gross']) }}</span><span class="text-xs text-muted">{{ $s['split']['normal']['orders'] }} {{ Str::plural('order', $s['split']['normal']['orders']) }} · catered on Pancake, not assigned</span></div>
                         <div class="{{ $tile }} bg-canvas"><span class="{{ $label }}">Overall sales</span><span class="text-xl font-bold">{{ $peso($s['gross']) }}</span><span class="text-xs text-muted">{{ $s['orders'] }} {{ Str::plural('order', $s['orders']) }} · exclusive + normal</span></div>
                     </div>
                 @endif
@@ -195,9 +195,9 @@
                                     @if ($s['split'])
                                         <td class="px-3 py-2">
                                             @if ($order['exclusive'])
-                                                <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700" title="The customer is on her exclusive lists this month">Exclusive leads</span>
+                                                <span class="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-brand-700" title="One of her assigned exclusive leads">Exclusive leads</span>
                                             @else
-                                                <span class="rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-muted" title="Not on her exclusive lists: one of her Pancake leads">Normal leads</span>
+                                                <span class="rounded-full bg-canvas px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-muted" title="Catered on Pancake, not one of her assigned leads">Normal leads</span>
                                             @endif
                                         </td>
                                     @endif
