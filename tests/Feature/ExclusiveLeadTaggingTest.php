@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\CustomerClaim;
 use App\Models\ExclusiveLeadTag;
 use App\Models\ExclusiveListLead;
+use App\Models\ExclusiveOldTag;
 use App\Models\ExclusiveRemovedLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
@@ -12,6 +14,7 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
+use App\Services\LeadGenerator;
 use App\Services\PancakeClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -107,8 +110,15 @@ class ExclusiveLeadTaggingTest extends TestCase
         $fromRegina = $this->lead($this->regina, [self::TAG]);
         $worked = $this->lead($this->regina, [self::TAG], ['status' => 'active']);
         $untagged = $this->lead($this->regina);
+        $called = $this->lead($this->regina, [self::TAG], ['contact_time' => '10']);
+        $claimed = $this->lead(null, [self::TAG]);
+        CustomerClaim::create(['phone_key' => LeadGenerator::normalizePhone($claimed->phone_number), 'user_id' => $this->regina->id, 'claimed_at' => now()]);
 
         $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
+
+        // A lead another CRA already called, and a customer another CRA claimed, stay theirs.
+        $this->assertSame($this->regina->id, $called->fresh()->assigned_to);
+        $this->assertNull($claimed->fresh()->assigned_to);
 
         $this->assertSame(ExclusiveLeads::TAGGED, $this->listToday()[$fromPool->id]);
         $this->assertSame(ExclusiveLeads::TAGGED, $this->listToday()[$fromRegina->id]);
@@ -124,13 +134,22 @@ class ExclusiveLeadTaggingTest extends TestCase
 
     public function test_the_tag_taken_off_in_pos_takes_an_open_lead_off_her_for_good_and_another_takes_its_place(): void
     {
-        $this->pancake()->shouldNotReceive('addOrderTag', 'removeOrderTag');
         $removed = $this->listed($this->lead(null, [self::TAG]));
         $worked = $this->listed($this->lead(null, [self::TAG], ['status' => 'active']));
+        $staleSync = $this->listed($this->lead(null, [self::TAG]));
         $waiting = $this->lead(null, [self::TAG]);
         ExclusiveReservedLead::create(['user_id' => $this->joanna->id, 'month' => '2026-11-01', 'lead_id' => $waiting->id, 'source' => ExclusiveLeads::RANDOM]);
-        collect([$removed, $worked, $waiting])->each(fn (Lead $lead) => $this->tagSeen($lead));
-        PancakeOrder::whereIn('pancake_order_id', [$removed->order_id, $worked->order_id])->update(['tags' => []]);
+        collect([$removed, $worked, $staleSync, $waiting])->each(fn (Lead $lead) => $this->tagSeen($lead));
+        PancakeOrder::whereIn('pancake_order_id', [$removed->order_id, $worked->order_id, $staleSync->order_id])->update(['tags' => []]);
+
+        // Pancake itself: the tag is off two orders, but still on the one a sync saved without it.
+        $pancake = $this->pancake();
+        $pancake->shouldNotReceive('addOrderTag', 'removeOrderTag');
+        $pancake->shouldReceive('ordersByNumber')->andReturn([
+            ['display_id' => $removed->order_id, 'tags' => [['id' => 398]]],
+            ['display_id' => $worked->order_id, 'tags' => []],
+            ['display_id' => $staleSync->order_id, 'tags' => [['id' => self::TAG]]],
+        ]);
 
         // A missing tag right after it was seen may be a sync that read the order before it: nothing moves yet.
         $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
@@ -144,6 +163,8 @@ class ExclusiveLeadTaggingTest extends TestCase
         $this->assertTrue(ExclusiveRemovedLead::where('lead_id', $removed->id)->where('via', ExclusiveRemovedLead::VIA_POS)->exists());
         $this->assertSame($this->joanna->id, $worked->fresh()->assigned_to);
         $this->assertNull(ExclusiveLeadTag::firstWhere('lead_id', $worked->id)->tagged_at);
+        $this->assertSame($this->joanna->id, $staleSync->fresh()->assigned_to);
+        $this->assertSame([self::TAG], PancakeOrder::firstWhere('pancake_order_id', $staleSync->order_id)->tags);
         // The held lead takes the removed one's place today.
         $this->assertSame(ExclusiveLeads::RANDOM, $this->listToday()[$waiting->id]);
 
@@ -217,6 +238,43 @@ class ExclusiveLeadTaggingTest extends TestCase
 
         // A failed order is tried again only the next day.
         $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
+    }
+
+    public function test_a_tag_from_before_never_pulls_a_lead_and_the_undo_sends_back_those_it_did(): void
+    {
+        $this->pancake()->shouldNotReceive('addOrderTag', 'removeOrderTag');
+        $old = $this->lead($this->regina, [self::TAG], ['listed_on' => '2026-11-02']);
+        ExclusiveOldTag::create(['pancake_order_id' => $old->order_id]);
+
+        $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
+        $this->assertSame($this->regina->id, $old->fresh()->assigned_to);
+
+        // What the first sync did before old tags were known: it gave her these.
+        $fromRegina = $this->lead($this->regina, [self::TAG], ['listed_on' => '2026-11-02']);
+        $fromPool = $this->lead(null, [self::TAG], ['listed_on' => '2026-11-03', 'est_out_of_stock_date' => '2026-11-03']);
+        $workedSince = $this->lead(null, [self::TAG]);
+        app(ExclusiveLeads::class)->addTagged($this->joanna, CarbonImmutable::parse('2026-11-06'), collect([$fromRegina, $fromPool, $workedSince]));
+        $workedSince->fresh()->forceFill(['status' => 'active'])->save();
+        collect([$fromRegina, $fromPool, $workedSince])->each(fn (Lead $lead) => ExclusiveOldTag::create(['pancake_order_id' => $lead->order_id]));
+
+        $this->artisan('leads:undo-tagged-pulls')
+            ->expectsOutputToContain('Back to the CRA who had them: 1, back to the pool: 1, worked or moved since (stay): 1.')
+            ->assertSuccessful();
+        $this->assertSame($this->joanna->id, $fromRegina->fresh()->assigned_to);
+
+        $this->artisan('leads:undo-tagged-pulls', ['--apply' => true])->assertSuccessful();
+
+        $this->assertSame($this->regina->id, $fromRegina->fresh()->assigned_to);
+        $this->assertSame('2026-11-02', $fromRegina->fresh()->listed_on->toDateString());
+        $this->assertNull($fromPool->fresh()->assigned_to);
+        $this->assertSame('2026-11-03', $fromPool->fresh()->listed_on->toDateString());
+        $this->assertSame([$workedSince->id => ExclusiveLeads::TAGGED], $this->listToday());
+        $this->assertFalse(ExclusiveLeadTag::whereIn('lead_id', [$fromRegina->id, $fromPool->id])->exists());
+
+        // And the sync doesn't give them to her again.
+        $this->artisan('leads:sync-exclusive-tags')->assertSuccessful();
+        $this->assertSame($this->regina->id, $fromRegina->fresh()->assigned_to);
+        $this->assertNull($fromPool->fresh()->assigned_to);
     }
 
     public function test_the_dry_run_changes_nothing(): void

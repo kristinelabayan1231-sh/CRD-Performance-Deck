@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ExclusiveLeadTag;
+use App\Models\ExclusiveOldTag;
 use App\Models\ExclusiveRemovedLead;
 use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
@@ -66,28 +67,42 @@ class ExclusiveLeadTagging
     }
 
     /**
-     * Open leads due by $day whose order a supervisor tagged in POS, not hers yet and not held for her. Leads whose tag the
-     * website looks after are left out: their tag is coming off (untagLeft).
+     * Leads due by $day whose order a supervisor tagged in POS, not hers yet and not held for her, that nobody has
+     * contacted yet (no status, date or time of contact) and that aren't sold. Leads whose tag the website looks after are
+     * left out: their tag is coming off (untagLeft). So are orders tagged from before (ExclusiveOldTag): CRAs pasted her
+     * numbers into Pancake, so those tags aren't a supervisor's. So are another CRA's High AOV / VIP customers and customers another
+     * CRA claimed: those stay with that CRA, tag or not.
      *
      * @return Collection<int, Lead>
      */
     public function newlyTagged(User $cra, CarbonImmutable $day): Collection
     {
-        return PancakeOrder::whereJsonContains('tags', self::tagId())->distinct()->pluck('pancake_order_id')
+        $leads = PancakeOrder::whereJsonContains('tags', self::tagId())->distinct()->pluck('pancake_order_id')
             ->chunk(self::CHUNK)
             ->flatMap(fn (Collection $numbers) => Lead::whereIn('order_id', $numbers->values()->all())
                 ->where(fn (Builder $q) => $q->whereNull('assigned_to')->orWhere('assigned_to', '!=', $cra->id))
-                ->withoutPosSales()->unprocessed()->notConverted()
+                ->withoutPosSales()->unprocessed()->whereNull('contact_time')->notConverted()
                 ->whereDate('listed_on', '<=', $day)
                 ->whereNotIn('id', ExclusiveReservedLead::select('lead_id'))
                 ->whereNotIn('id', ExclusiveLeadTag::select('lead_id'))
+                ->whereNotIn('order_id', ExclusiveOldTag::select('pancake_order_id'))
                 ->get())
             ->values();
+
+        $phones = $leads->map(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))->filter()->unique()->values()->all();
+        $highValue = rescue(fn () => app(HighValueCustomers::class)->crasFor($phones), []);
+        $claimed = app(CustomerOwners::class)->claimed($phones);
+
+        return $leads->reject(function (Lead $lead) use ($cra, $highValue, $claimed) {
+            $phone = LeadGenerator::normalizePhone((string) $lead->phone_number);
+
+            return ($highValue[$phone] ?? $cra->id) !== $cra->id || ($claimed[$phone] ?? $cra->id) !== $cra->id;
+        })->values();
     }
 
     /**
-     * Leads of hers whose tag a supervisor took off in POS: the website saw the tag on their order, and the synced order
-     * no longer has it.
+     * Leads of hers whose tag may have been taken off in POS: the website saw the tag on their order, and the synced order
+     * no longer has it. applyTakenOff() checks each in Pancake before anything moves.
      *
      * @return Collection<int, Lead>
      */
@@ -119,6 +134,22 @@ class ExclusiveLeadTagging
      */
     public function applyTakenOff(User $cra, CarbonImmutable $day, Collection $leads): array
     {
+        if ($leads->isEmpty()) {
+            return ['removed' => 0, 'kept' => 0];
+        }
+
+        // Only what Pancake itself shows: a sync that read an order before the tag went on may have saved it without.
+        $live = collect($this->pancake->ordersByNumber($leads->map(fn (Lead $lead) => self::orderNumber($lead))->unique()->values()->all()))
+            ->keyBy(fn (array $order) => (string) ($order['display_id'] ?? ''))
+            ->map(fn (array $order) => collect($order['tags'] ?? [])->map(fn ($tag) => (int) (is_array($tag) ? ($tag['id'] ?? 0) : $tag))->filter()->values()->all());
+        foreach ($live as $number => $tags) {
+            if (in_array(self::tagId(), $tags, true)) {
+                $this->saveTags((string) $number, $tags);
+            }
+        }
+        $leads = $leads->filter(fn (Lead $lead) => $live->has(self::orderNumber($lead)) && ! in_array(self::tagId(), $live[self::orderNumber($lead)], true))->values();
+        $this->forgetOldTags($leads->map(fn (Lead $lead) => self::orderNumber($lead))->all());
+
         $open = Lead::whereIn('id', $leads->pluck('id')->all())->unprocessed()->notConverted()->pluck('id')->flip();
         [$remove, $keep] = $leads->partition(fn (Lead $lead) => isset($open[$lead->id]));
 
@@ -227,6 +258,7 @@ class ExclusiveLeadTagging
 
             Log::info('Exclusive tag removed: lead left the exclusive CRA', ['lead_id' => $row->lead_id, 'order' => $orderNumber, 'tags_before' => $tags['before'], 'tags_after' => $tags['after']]);
             $this->saveTags($orderNumber, $tags['after']);
+            $this->forgetOldTags([$orderNumber]);
             $row->delete();
             $done['untagged']++;
         }
@@ -254,6 +286,7 @@ class ExclusiveLeadTagging
         $tags = $this->pancake->removeOrderTag($orderNumber, self::tagId());
         Log::info('Exclusive lead taken off on the website', ['lead_id' => $lead->id, 'order' => $orderNumber, 'user_id' => $by->id, 'tags_before' => $tags['before'], 'tags_after' => $tags['after']]);
         $this->saveTags($orderNumber, $tags['after']);
+        $this->forgetOldTags([$orderNumber]);
 
         $this->exclusive->takeOff($cra, Lead::today(), collect([$lead->fresh()]), $by, ExclusiveRemovedLead::VIA_WEBSITE);
     }
@@ -266,6 +299,18 @@ class ExclusiveLeadTagging
     public function note(User $cra, Lead $lead, array $values): void
     {
         ExclusiveLeadTag::updateOrCreate(['lead_id' => $lead->id], ['user_id' => $cra->id, ...$values]);
+    }
+
+    /**
+     * Pancake confirmed the tag is off these orders: tagging one again is a supervisor's (ExclusiveOldTag).
+     *
+     * @param  list<string>  $orderNumbers
+     */
+    private function forgetOldTags(array $orderNumbers): void
+    {
+        if ($orderNumbers !== []) {
+            ExclusiveOldTag::whereIn('pancake_order_id', $orderNumbers)->delete();
+        }
     }
 
     /**

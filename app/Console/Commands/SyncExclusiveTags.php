@@ -34,7 +34,7 @@ class SyncExclusiveTags extends Command
 
         if ($this->option('dry-run')) {
             $this->info("{$name} on {$day->toDateString()}:");
-            $this->line("  Tag taken off in POS, would leave her: {$takenOff->count()}");
+            $this->line("  Tag missing on the synced order, checked in Pancake before leaving her: {$takenOff->count()}");
             $this->line("  Tagged in POS, would join her list: {$tagged->count()}");
             $this->line('  Her month\'s leads whose order still needs the tag: '.$tagging->untaggedLeads($cra)->count());
 
