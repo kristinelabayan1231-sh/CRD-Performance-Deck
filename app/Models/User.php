@@ -39,6 +39,7 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'deactivated_at' => 'datetime',
             'show_product_qty' => 'boolean',
+            'sms_auto_send' => 'boolean',
             'daily_sales_goal' => 'decimal:2',
         ];
     }

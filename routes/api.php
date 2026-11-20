@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\McPayrollController;
 use App\Http\Controllers\Api\RetentionDailyController;
+use App\Http\Controllers\Api\SmsReplyUploadController;
 use App\Http\Controllers\CallRecordingUploadController;
 use App\Http\Middleware\AuthenticateApiKey;
 use App\Models\ApiKey;
@@ -9,6 +10,9 @@ use Illuminate\Support\Facades\Route;
 
 // From each CRA's phone (MacroDroid), signed with the CRA's upload token from Settings → Call Recordings.
 Route::post('/call-recordings', CallRecordingUploadController::class)->middleware('throttle:60,1')->name('api.call-recordings.store');
+
+// Customers' replies to restock texts, from each CRA's phone (MacroDroid "Forward replies"), signed with the same upload token.
+Route::post('/sms-replies', SmsReplyUploadController::class)->middleware('throttle:120,1')->name('api.sms-replies.store');
 
 // For other departments' reports, with a key from Settings → API Keys.
 Route::prefix('external/v1')->name('api.external.')->middleware([AuthenticateApiKey::class, 'throttle:60,1'])->group(function () {
