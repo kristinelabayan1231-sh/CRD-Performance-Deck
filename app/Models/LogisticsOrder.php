@@ -8,7 +8,6 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Collection;
 
 /**
  * An FSD- or CRD-delivered order for the Customer Database: from the logistics retention
@@ -61,21 +60,33 @@ class LogisticsOrder extends Model
         $saved = 0;
         $from = self::coveredFrom();
         $catalog = new ProductCatalog;
+        $batch = [];
 
-        collect($rows)
-            ->map(fn (array $row) => [
+        // A thousand rows at a time: the full report holds ~67k orders, and building them all first ran the instance out of memory.
+        foreach ($rows as $row) {
+            $row = [
                 ...$row,
                 'source' => $row['source'] ?? self::SOURCE_LOGISTICS,
                 'phone_key' => LeadGenerator::normalizePhone($row['phone_number']),
                 // No product from the Product Consumption list: left out of the Customer Database.
                 'non_crd' => $catalog->unlistedText($row['product'] ?? null, isset($row['delivered_date']) ? substr((string) $row['delivered_date'], 0, 10) : null),
-            ])
-            ->filter(fn (array $row) => $row['order_id'] !== '' && $row['delivered_date'] >= $from && $row['phone_key'] !== '')
-            ->map(fn (array $row) => [...$row, 'created_at' => $now, 'updated_at' => $now])
-            ->chunk(1000)
-            ->each(function (Collection $chunk) use (&$saved) {
-                $saved += static::insertOrIgnore($chunk->values()->all());
-            });
+            ];
+
+            if ($row['order_id'] === '' || $row['delivered_date'] < $from || $row['phone_key'] === '') {
+                continue;
+            }
+
+            $batch[] = [...$row, 'created_at' => $now, 'updated_at' => $now];
+
+            if (count($batch) === 1000) {
+                $saved += static::insertOrIgnore($batch);
+                $batch = [];
+            }
+        }
+
+        if ($batch !== []) {
+            $saved += static::insertOrIgnore($batch);
+        }
 
         return $saved;
     }
