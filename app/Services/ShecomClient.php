@@ -5,13 +5,18 @@ namespace App\Services;
 use App\Models\LogisticsOrder;
 use Carbon\CarbonImmutable;
 use Closure;
+use Generator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use JsonMachine\Exception\JsonMachineException;
+use JsonMachine\Exception\PathNotFoundException;
+use JsonMachine\Items;
+use JsonMachine\JsonDecoder\ExtJsonDecoder;
 use RuntimeException;
 
 class ShecomClient
 {
-    /** Held while the full retention report is read and worked on (~150 MB decoded). */
+    /** Held while the full retention report is read and worked on. */
     public const REPORT_LOCK = 'shecom-report';
 
     /**
@@ -58,64 +63,110 @@ class ShecomClient
 
     /**
      * The retention report, with its large per-order retention lists reduced to
-     * daily counts (by delivered date) as soon as it is read. The FSD orders are
-     * kept in a slim form for the lead generator, and every delivered order for the Customer Database.
+     * daily counts (by delivered date) as it is read. The FSD orders are kept in a
+     * slim form for the lead generator, and every delivered order for the Customer Database.
+     *
+     * The report (~18 MB of JSON, ~110 MB if decoded at once) is read one row at a time as it
+     * downloads, so the small instance's web server and syncs aren't run out of memory.
      *
      * @return array{stock_outs: list<array<string, mixed>>, fsd_orders: list<array<string, mixed>>, delivered: list<array<string, mixed>>, summary: array<string, int|float>, days: array<string, array{fb_delivered: int, fb_retained: int, crd_delivered: int, crd_again: int}>}
      */
     public function report(): array
     {
-        $body = $this->fetch();
-
-        $fsdOrders = array_map(fn (array $row) => [
-            'order_id' => (string) ($row['order_id'] ?? ''),
-            'tracking_number' => $row['tracking_number'] ?? null,
-            'customer_name' => (string) ($row['customer_name'] ?? ''),
-            'phone_number' => (string) ($row['phone_number'] ?? ''),
-            'product_name' => (string) ($row['product'] ?? ''),
-            'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
-        ], $body['retention_detail'] ?? []);
-
-        $delivered = self::deliveredForCustomers($body);
-
+        $stockOuts = [];
+        $summary = [];
+        $fsdOrders = [];
         $days = [];
-        $count = function (string $list, string $total, string $flagKey, string $flagged) use (&$body, &$days) {
-            foreach ($body[$list] ?? [] as $row) {
-                $day = substr((string) ($row['delivered_date'] ?? ''), 0, 10);
+        // Every delivered order by list: a CRD order on the out-of-stock list wins over the repeat list, which wins over FSD.
+        $delivered = ['stock_outs' => [], 'repeat_detail' => [], 'retention_detail' => []];
 
-                if ($day === '') {
+        $countDay = function (array $row, string $total, string $flagKey, string $flagged) use (&$days): void {
+            $day = substr((string) ($row['delivered_date'] ?? ''), 0, 10);
+
+            if ($day === '') {
+                return;
+            }
+
+            $days[$day] ??= ['fb_delivered' => 0, 'fb_retained' => 0, 'crd_delivered' => 0, 'crd_again' => 0];
+            $days[$day][$total]++;
+            $days[$day][$flagged] += ! empty($row[$flagKey]) ? 1 : 0;
+        };
+
+        $items = Items::fromIterable($this->download(), [
+            'pointer' => ['/stock_outs', '/retention_summary', '/retention_detail', '/repeat_detail'],
+            'decoder' => new ExtJsonDecoder(true),
+        ]);
+
+        try {
+            foreach ($items as $key => $row) {
+                $list = substr($items->getMatchedJsonPointer(), 1);
+
+                if ($list === 'retention_summary') {
+                    $summary[$key] = $row;
+
                     continue;
                 }
 
-                $days[$day] ??= ['fb_delivered' => 0, 'fb_retained' => 0, 'crd_delivered' => 0, 'crd_again' => 0];
-                $days[$day][$total]++;
-                $days[$day][$flagged] += ! empty($row[$flagKey]) ? 1 : 0;
+                if ($list === 'stock_outs') {
+                    $stockOuts[] = $row;
+                    $delivered[$list][] = self::slimDelivered($row, LogisticsOrder::TEAM_CRD);
+
+                    continue;
+                }
+
+                if ($list === 'retention_detail') {
+                    $fsdOrders[] = [
+                        'order_id' => (string) ($row['order_id'] ?? ''),
+                        'tracking_number' => $row['tracking_number'] ?? null,
+                        'customer_name' => (string) ($row['customer_name'] ?? ''),
+                        'phone_number' => (string) ($row['phone_number'] ?? ''),
+                        'product_name' => (string) ($row['product'] ?? ''),
+                        'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
+                    ];
+                    $delivered[$list][] = self::slimDelivered($row, LogisticsOrder::TEAM_FSD);
+                    $countDay($row, 'fb_delivered', 'retained_by_crd', 'fb_retained');
+
+                    continue;
+                }
+
+                $delivered[$list][] = self::slimDelivered($row, LogisticsOrder::TEAM_CRD);
+                $countDay($row, 'crd_delivered', 'ordered_again_via_crd', 'crd_again');
             }
-            unset($body[$list]);
-        };
-        $count('retention_detail', 'fb_delivered', 'retained_by_crd', 'fb_retained');
-        $count('repeat_detail', 'crd_delivered', 'ordered_again_via_crd', 'crd_again');
+        } catch (PathNotFoundException) {
+            // Raised only once the whole report is read: a list the report doesn't have stays empty.
+        } catch (JsonMachineException) {
+            // A body that isn't valid JSON counts as an empty report, as it always has.
+            return ['stock_outs' => [], 'fsd_orders' => [], 'delivered' => [], 'summary' => [], 'days' => []];
+        }
+
         ksort($days);
 
+        $orders = [];
+
+        foreach ($delivered as $rows) {
+            foreach ($rows as $order) {
+                $orders[$order['order_id']] ??= $order;
+            }
+        }
+
         return [
-            'stock_outs' => $body['stock_outs'] ?? [],
+            'stock_outs' => $stockOuts,
             'fsd_orders' => $fsdOrders,
-            'delivered' => $delivered,
-            'summary' => $body['retention_summary'] ?? [],
+            'delivered' => array_values($orders),
+            'summary' => $summary,
             'days' => $days,
         ];
     }
 
     /**
-     * Every FSD- and CRD-delivered order, slimmed for the Customer Database. A CRD order on
-     * both the out-of-stock list and the repeat list is kept once, with its qty.
+     * A delivered order slimmed for the Customer Database.
      *
-     * @param  array<string, mixed>  $body  the decoded retention report
-     * @return list<array{order_id: string, team: string, customer_name: string, phone_number: string, product: string, qty: ?int, delivered_date: string}>
+     * @param  array<string, mixed>  $row
+     * @return array{order_id: string, team: string, customer_name: string, phone_number: string, product: string, qty: ?int, delivered_date: string}
      */
-    private static function deliveredForCustomers(array $body): array
+    private static function slimDelivered(array $row, string $team): array
     {
-        $slim = fn (string $team) => fn (array $row) => [
+        return [
             'order_id' => (string) ($row['order_id'] ?? ''),
             'team' => $team,
             'customer_name' => trim((string) ($row['customer_name'] ?? '')),
@@ -124,18 +175,6 @@ class ShecomClient
             'qty' => isset($row['qty']) ? max(1, (int) $row['qty']) : null,
             'delivered_date' => substr((string) ($row['delivered_date'] ?? ''), 0, 10),
         ];
-
-        $orders = [];
-
-        foreach ([
-            ...array_map($slim(LogisticsOrder::TEAM_CRD), $body['stock_outs'] ?? []),
-            ...array_map($slim(LogisticsOrder::TEAM_CRD), $body['repeat_detail'] ?? []),
-            ...array_map($slim(LogisticsOrder::TEAM_FSD), $body['retention_detail'] ?? []),
-        ] as $order) {
-            $orders[$order['order_id']] ??= $order;
-        }
-
-        return array_values($orders);
     }
 
     /**
@@ -231,11 +270,11 @@ class ShecomClient
     }
 
     /**
-     * The decoded retention report.
+     * The retention report's JSON, piece by piece as it downloads.
      *
-     * @return array<string, mixed>
+     * @return Generator<int, string>
      */
-    private function fetch(): array
+    private function download(): Generator
     {
         $key = config('services.shecom.key');
 
@@ -243,12 +282,13 @@ class ShecomClient
             throw new RuntimeException('SHECOM_API_KEY is not set in .env.');
         }
 
-        // The full report is about 18 MB of JSON (~150 MB once decoded), above PHP's default 128 MB.
+        // Read as it downloads, the report stays far below this; the limit is kept for the work done with it afterwards.
         $this->raiseMemoryLimit(config('services.shecom.memory_limit'));
 
         $response = Http::withToken($key)
             ->acceptJson()
             ->timeout(180)
+            ->withOptions(['stream' => true])
             ->retry(2, 2000, throw: false)
             ->get(rtrim(config('services.shecom.url'), '/').'/management/retention-stockout');
 
@@ -256,7 +296,11 @@ class ShecomClient
             throw new RuntimeException("Retention API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
         }
 
-        return json_decode($response->body(), true) ?: [];
+        $body = $response->toPsrResponse()->getBody();
+
+        while (! $body->eof()) {
+            yield $body->read(64 * 1024);
+        }
     }
 
     private function raiseMemoryLimit(string $limit): void
