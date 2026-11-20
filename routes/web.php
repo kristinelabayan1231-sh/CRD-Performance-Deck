@@ -61,6 +61,10 @@ use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationOptionController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\SegmentationSummaryController;
+use App\Http\Controllers\SmsReminderController;
+use App\Http\Controllers\SmsReminderSettingController;
+use App\Http\Controllers\SmsReplyController;
+use App\Http\Controllers\SmsTemplateController;
 use App\Http\Controllers\SpielController;
 use App\Http\Controllers\UserAccessController;
 use App\Http\Controllers\WeeklySegmentationController;
@@ -161,6 +165,23 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('call-recordings')->name('call-recordings.')->middleware('can:call_recordings.view')->group(function () {
         Route::get('/', [CallRecordingController::class, 'index'])->name('index');
         Route::get('/{callRecording}/audio', [CallRecordingController::class, 'audio'])->name('audio');
+    });
+
+    Route::prefix('sms-reminders')->name('sms-reminders.')->middleware('can:sms_reminders.view')->group(function () {
+        Route::get('/', [SmsReminderController::class, 'index'])->name('index');
+        Route::patch('/reminders/{restockReminder}', [SmsReminderController::class, 'update'])->name('update');
+        Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
+        Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
+        Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
+        Route::get('/replies', [SmsReplyController::class, 'index'])->name('replies.index');
+        Route::patch('/replies/{smsReply}', [SmsReplyController::class, 'handle'])->name('replies.handle');
+
+        Route::prefix('templates')->name('templates.')->middleware('can:sms_reminders.manage')->group(function () {
+            Route::get('/', [SmsTemplateController::class, 'index'])->name('index');
+            Route::post('/', [SmsTemplateController::class, 'store'])->name('store');
+            Route::put('/{smsTemplate}', [SmsTemplateController::class, 'update'])->name('update');
+            Route::delete('/{smsTemplate}', [SmsTemplateController::class, 'destroy'])->name('destroy');
+        });
     });
 
     Route::prefix('conversion-breakdown')->name('conversion.')->middleware('can:conversion.view')->group(function () {
@@ -343,6 +364,12 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::post('/tokens/{user}', [CallRecordingSettingController::class, 'issueToken'])->name('token');
             Route::put('/phones/{user}', [CallRecordingSettingController::class, 'updatePhone'])->name('phone');
             Route::put('/phones/{user}/shared', [CallRecordingSettingController::class, 'updateSharedPhone'])->name('shared-phone');
+        });
+
+        Route::prefix('sms-reminders')->name('sms-reminders.')->middleware('can:sms_reminders.manage')->group(function () {
+            Route::get('/', [SmsReminderSettingController::class, 'index'])->name('index');
+            Route::put('/', [SmsReminderSettingController::class, 'update'])->name('update');
+            Route::post('/test', [SmsReminderSettingController::class, 'test'])->middleware('throttle:10,1')->name('test');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

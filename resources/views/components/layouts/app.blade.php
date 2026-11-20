@@ -34,6 +34,7 @@
                     ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view')],
                     ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view')],
                     ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view')],
+                    ['SMS Reminders', route('sms-reminders.index'), request()->routeIs('sms-reminders.*'), $user->can('sms_reminders.view')],
                     ['CRA Schedule', route('cra-schedule.index'), request()->routeIs('cra-schedule.*'), $user->can('on_duty.view')],
                 ]],
                 ['name' => 'Exclusive Leads', 'icon' => 'target', 'items' => [

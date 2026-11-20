@@ -186,3 +186,23 @@ Schedule::command('cache:prune-expired')
 Schedule::command('mc:snapshot')
     ->dailyAt('00:10')
     ->timezone(config('segmentation.timezone'));
+
+// SMS Reminders: the customers whose product runs out in 7 days (real date), at 6:30 AM and again at 8:40 so late
+// deliveries and reorders are picked up before the 9:30 send. Leaves customers already left out, queued or sent alone.
+Schedule::command('reminders:build')
+    ->cron('30 6 * * *')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30)
+    ->runInBackground();
+Schedule::command('reminders:build')
+    ->cron('40 8 * * *')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30)
+    ->runInBackground();
+
+// SMS Reminders queue: every minute each CRA's phone sends its next queued text (one a minute keeps under Android's
+// "allow sending?" prompt), only in sending hours and while Settings → SMS Reminders is on.
+Schedule::command('reminders:send')
+    ->everyMinute()
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(5);
