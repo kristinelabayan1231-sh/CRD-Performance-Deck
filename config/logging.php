@@ -21,6 +21,13 @@ return [
     'default' => env('LOG_CHANNEL', 'stack'),
 
     /*
+    | Artisan commands whose peak memory reaches this many MB log it when they end (0 = every command), so the
+    | host's logs show which syncs push the small instance toward its memory limit.
+    */
+
+    'command_memory_mb' => (int) env('LOG_COMMAND_MEMORY_MB', 64),
+
+    /*
     |--------------------------------------------------------------------------
     | Deprecations Log Channel
     |--------------------------------------------------------------------------

@@ -22,6 +22,9 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
+# Container memory in the logs (docker/memory-watch.sh).
+sh docker/memory-watch.sh &
+
 # Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php).
 php artisan schedule:work &
 
