@@ -9,6 +9,9 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+// The jobs that run in their own process (runInBackground) start a few minutes apart, each at its usual frequency:
+// the web server and every sync share one 512 MB instance, and several starting in the same minute ran it out of memory.
+
 // Sync and assign today's Segmentation Tracker leads every hour (catches
 // late-recorded orders and newly added CRAs). The tracker page also syncs
 // on open when the last sync is over an hour old.
@@ -30,7 +33,7 @@ Schedule::command('leads:build-exclusive')
 // Exclusive Lead Tracker: her leads and the CRD - ANNA (EXCLUSIVE LEADS) POS tag kept together. A lead a supervisor tags in
 // POS joins her list, one whose tag comes off leaves her (another takes its place), and her month's orders get the tag.
 Schedule::command('leads:sync-exclusive-tags')
-    ->everyFiveMinutes()
+    ->cron('2-59/5 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(15)
     ->runInBackground();
@@ -104,7 +107,7 @@ Schedule::command('leads:record-pos-sales --last=7')
 // looked up once in Pancake, so Retained vs Repeat counts them. New CRD customers are
 // picked up within 15 minutes.
 Schedule::command('customers:check-history')
-    ->everyFifteenMinutes()
+    ->cron('9-59/15 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
@@ -122,7 +125,7 @@ Schedule::command('customers:assign-high-aov')
 // ahead of time and kept past the next run, so pages open from the cache instead of
 // building them inside a page view (too slow on the live server).
 Schedule::command('customers:warm-cache')
-    ->everyTwoMinutes()
+    ->cron('1-59/2 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(10)
     ->runInBackground();
@@ -130,7 +133,7 @@ Schedule::command('customers:warm-cache')
 // CRA Dashboard: the customers up for reassignment (no reorder within 30 days of their last delivery), worked out
 // ahead and kept past the next run; in its own process, as it reads every CRA customer's orders.
 Schedule::command('customers:refresh-reassignment')
-    ->everyTenMinutes()
+    ->cron('4-59/10 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
@@ -138,7 +141,7 @@ Schedule::command('customers:refresh-reassignment')
 // CRA Dashboard → Check who gets these (supervisors): customers with an open lead whose claim, High AOV / VIP CRA and
 // most-orders CRA disagree, worked out ahead in its own process.
 Schedule::command('leads:refresh-conflicts')
-    ->everyTenMinutes()
+    ->cron('6-59/10 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
@@ -166,7 +169,7 @@ Schedule::command('presentation-board:refresh-cras')
 
 // Presentation Board: older orders' Pancake pages, a little at a time (the web service and syncs share one instance); does nothing once finished.
 Schedule::command('pancake:backfill-pages --minutes=8')
-    ->everyTenMinutes()
+    ->cron('8-59/10 * * * *')
     ->timezone(config('segmentation.timezone'))
     ->withoutOverlapping(20)
     ->runInBackground();
