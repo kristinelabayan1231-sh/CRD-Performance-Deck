@@ -171,6 +171,13 @@ Schedule::command('pancake:backfill-pages --minutes=8')
     ->withoutOverlapping(20)
     ->runInBackground();
 
+// The database cache's expired rows (old Customer Database versions are never read again, so Laravel never deletes
+// them): about 40 MB a day that would otherwise fill the database's disk. At a quiet hour.
+Schedule::command('cache:prune-expired')
+    ->dailyAt('03:40')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30);
+
 // MC / salaries API: save CRD - MC as this month's payroll every day, so each month has its figures even when nobody
 // edits CRD - MC or calls the API, and a month keeps what it had once it ends. Edits in CRD - MC save it too.
 Schedule::command('mc:snapshot')
