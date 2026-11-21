@@ -334,6 +334,25 @@ class PresentationBoardTest extends TestCase
         $this->assertEquals(500, $range['months'][0]['untagged_gross']);
     }
 
+    public function test_a_snapshot_from_before_the_split_says_it_comes_with_the_next_refresh(): void
+    {
+        $this->sale('2026-08-03', 1000);
+        $board = app(PresentationBoard::class);
+        $board->refresh();
+        $page = fn () => $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']));
+        $notice = "These figures appear after the board's next refresh";
+
+        $page()->assertOk()->assertDontSee($notice);
+
+        $old = $board->snapshot();
+        foreach ($old['days'] as $day => $figures) {
+            $old['days'][$day] = array_diff_key($figures, array_flip(['sc_gross', 'sc_orders', 'bc_gross', 'bc_orders', 'untagged_gross', 'untagged_orders']));
+        }
+        Cache::forever(PresentationBoard::CACHE_KEY, $old);
+
+        $page()->assertOk()->assertSee($notice, false)->assertSee('₱1,000');
+    }
+
     public function test_an_account_used_in_fsd_counts_as_crd_only_from_the_day_its_cra_joined(): void
     {
         config(['customers.crd_accounts_from' => ['Crd Rej  Vergara' => '2026-07-29']]);

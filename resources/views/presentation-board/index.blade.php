@@ -180,6 +180,8 @@
                 $cardUrl = fn (string $status, string $list) => route('customers.churn', ['from' => $churnFrom.'-01', 'to' => $dates()['to'], 'status' => $status, 'list' => $list]);
                 $ordersUrl = fn (?string $month = null) => route('conversion.orders', $dates($month));
                 $col = fn (string $key) => array_column($months, $key);
+                // A snapshot taken before the Segmentation / Broadcast split has no tag figures: say so rather than show ₱0.
+                $hasSplit = array_key_exists('sc_gross', reset($snapshot['days']) ?: []);
                 $monthCount = count($months);
                 $lastMonth = $months[$monthCount - 1];
                 $firstMonth = $monthCount > 1 ? $months[0] : null;
@@ -344,9 +346,9 @@
                                 <a href="{{ $ordersUrl($month['key']) }}" data-point="{{ $month['key'] }}" data-read="{{ $read }}" data-read-target="board-read-sales" title="{{ $read }}. Click for the orders." class="flex h-full min-w-0 flex-col items-center justify-end gap-1" style="background: transparent; border-radius: 6px; color: inherit">
                                     <span style="font-size: 12px; font-weight: 700; white-space: nowrap">{{ $everyValue || $month['gross'] == $salesPeak || $month['key'] === $lastKey ? $millions($month['gross']) : '' }}</span>
                                     <span class="flex flex-col-reverse overflow-hidden" style="width: 100%; max-width: 64px; height: {{ round($month['gross'] / $salesPeak * 82) }}%; border-radius: 6px 6px 0 0">
-                                        @foreach ([['sc', $crd], ['bc', $broadcast], ['untagged', $reactivation]] as [$type, $color])
-                                            @if ($month['gross'] > 0 && $month[$type.'_gross'] > 0)
-                                                <span style="display: block; flex: {{ round($month[$type.'_gross'] / $month['gross'], 4) }}; background-color: {{ $color }}; {{ $isOpen ? $stripes : '' }}"></span>
+                                        @foreach ($hasSplit ? [['sc_gross', $crd], ['bc_gross', $broadcast], ['untagged_gross', $reactivation]] : [['gross', $crd]] as [$part, $color])
+                                            @if ($month['gross'] > 0 && $month[$part] > 0)
+                                                <span style="display: block; flex: {{ round($month[$part] / $month['gross'], 4) }}; background-color: {{ $color }}; {{ $isOpen ? $stripes : '' }}"></span>
                                             @endif
                                         @endforeach
                                     </span>
@@ -565,6 +567,9 @@
                     <h2 id="sales-split-title" style="{{ $h2 }}">Segmentation vs Broadcast sales</h2>
                     <span id="board-read-split" data-read-default="{{ $splitRead }}" style="font-size: 13px; {{ $muted }}">{{ $splitRead }}</span>
                 </header>
+                @if (! $hasSplit)
+                    <p role="status" style="{{ $note }}; padding: 16px">These figures appear after the board's next refresh (every {{ \App\Services\PresentationBoard::EVERY_HOURS }} hours). Total sales above already include them.</p>
+                @else
                 <div class="flex flex-wrap gap-5" style="padding: 16px">
                     <div class="flex flex-col gap-4" style="flex: 1 1 280px">
                         @if ($tagged > 0)
@@ -619,6 +624,7 @@
                         @endforeach
                     </div>
                 </div>
+                @endif
             </section>
 
             <section aria-labelledby="products-title" class="min-w-0" style="{{ $glass }}">
