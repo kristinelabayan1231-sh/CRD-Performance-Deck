@@ -308,4 +308,40 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($supervisor)->get(route('sms-reminders.replies.index'))->assertOk()->assertSee('Magkano po?');
         $this->actingAs($this->mika)->get(route('sms-reminders.replies.index'))->assertOk()->assertDontSee('Magkano po?');
     }
+
+    private function reply(User $cra, string $phone, string $kind, string $body, bool $handled = false): SmsReply
+    {
+        $phoneKey = $this->delivered($phone, cra: $cra);
+        $this->artisan('reminders:build');
+
+        return SmsReply::create(['user_id' => $cra->id, 'restock_reminder_id' => RestockReminder::firstWhere('phone_key', $phoneKey)->id,
+            'phone_key' => $phoneKey, 'phone_number' => $phone, 'body' => $body, 'kind' => $kind, 'received_at' => now(),
+            'handled_at' => $handled ? now() : null]);
+    }
+
+    public function test_a_cra_is_alerted_to_their_own_customers_who_want_to_reorder(): void
+    {
+        $this->reply($this->anna, '09170000001', SmsReply::YES, 'Yes');
+        $this->reply($this->anna, '09170000002', SmsReply::YES, 'Oo', handled: true);
+        $this->reply($this->anna, '09170000003', SmsReply::OTHER, 'Magkano po?');
+        $this->reply($this->mika, '09170000004', SmsReply::YES, 'Yes po');
+
+        $this->actingAs($this->anna)->get(route('dashboard'))->assertSee('1 customer wants to reorder');
+        $this->actingAs($this->anna)->getJson(route('sms-reminders.reorder-alerts'))->assertOk()->assertJson(['count' => 1]);
+        $this->actingAs($this->anna)->get(route('sms-reminders.replies.index', ['show' => 'reorder']))
+            ->assertOk()->assertSee('Maria Santos 1')->assertDontSee('Maria Santos 2')->assertDontSee('Magkano po?')->assertDontSee('Maria Santos 4');
+    }
+
+    public function test_the_call_button_dials_a_reply_from_the_cras_own_phone(): void
+    {
+        $reply = $this->reply($this->anna, '09170000001', SmsReply::YES, 'Yes');
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->actingAs($this->mika)->postJson(route('sms-reminders.replies.call', $reply))->assertForbidden();
+        $this->actingAs($this->anna)->postJson(route('sms-reminders.replies.call', $reply))->assertOk();
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://trigger.macrodroid.com/device-1/call') && $request['number'] === '09170000001');
+    }
 }

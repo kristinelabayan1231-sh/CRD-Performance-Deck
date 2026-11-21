@@ -175,6 +175,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
         Route::get('/replies', [SmsReplyController::class, 'index'])->name('replies.index');
         Route::patch('/replies/{smsReply}', [SmsReplyController::class, 'handle'])->name('replies.handle');
+        Route::post('/replies/{smsReply}/call', [SmsReplyController::class, 'call'])->middleware('throttle:20,1')->name('replies.call');
+        Route::get('/reorder-alerts', [SmsReplyController::class, 'alerts'])->middleware('throttle:30,1')->name('reorder-alerts');
 
         Route::prefix('templates')->name('templates.')->middleware('can:sms_reminders.manage')->group(function () {
             Route::get('/', [SmsTemplateController::class, 'index'])->name('index');

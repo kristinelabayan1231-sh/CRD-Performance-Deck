@@ -2,12 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CallRecording;
 use App\Models\Lead;
+use App\Services\PhoneDialer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Throwable;
 
 /**
  * The tracker's Call button: sends the lead's number to the signed-in CRA's own phone (their MacroDroid webhook link in
@@ -18,33 +16,12 @@ class LeadCallController extends Controller
     /** MacroDroid's webhook links all start with this. */
     public const WEBHOOK_HOST = 'https://trigger.macrodroid.com/';
 
-    public function __invoke(Request $request, Lead $lead): JsonResponse
+    public function __invoke(Request $request, Lead $lead, PhoneDialer $dialer): JsonResponse
     {
         $user = $request->user();
 
         abort_unless($lead->assigned_to === $user->id || $user->can('segmentation.manage'), 403);
 
-        if (! $user->call_webhook_url) {
-            return response()->json(['message' => 'Your phone isn\'t linked yet. Ask a super admin to add it in Settings → Call Recordings.'], 422);
-        }
-
-        try {
-            $response = Http::connectTimeout(5)->timeout(10)
-                ->get($user->call_webhook_url, ['number' => CallRecording::dialNumber($lead->phone_number), 'lead' => $lead->id]);
-        } catch (Throwable $e) {
-            report($e);
-            $response = null;
-        }
-
-        // MacroDroid answers 404 for a link it doesn't know, e.g. one typed out with a character missing.
-        if ($response?->notFound()) {
-            return response()->json(['message' => 'MacroDroid doesn\'t know your phone link. Copy it again from the Webhook trigger on your phone and save it in Settings → Call Recordings.'], 502);
-        }
-
-        if (! $response?->successful()) {
-            return response()->json(['message' => 'Your phone didn\'t answer. Check that it is on, online and MacroDroid is running.'], 502);
-        }
-
-        return response()->json(['message' => "Calling {$lead->customer_name} on your phone…"]);
+        return $dialer->dial($user, $lead->phone_number, $lead->id, $lead->customer_name);
     }
 }
