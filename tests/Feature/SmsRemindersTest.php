@@ -163,6 +163,7 @@ class SmsRemindersTest extends TestCase
         SmsTemplate::create(['name' => 'Repeat', 'customer_type' => 'repeat', 'body' => 'Repeat text.']);
         SmsTemplate::create(['name' => 'Clear Sight', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}, {product} runs out {run_out_date}. {cra_name}']);
         SmsTemplate::create(['name' => 'Off', 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Off.', 'is_active' => false]);
+        SmsTemplate::create(['name' => 'Follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Kumusta po?']);
 
         $message = app(RestockReminders::class)->messageFor(RestockReminder::firstWhere('phone_key', $phoneKey));
 
@@ -192,21 +193,27 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::SENT, RestockReminder::firstWhere('phone_key', $mikas)->status);
     }
 
-    public function test_nothing_is_sent_while_turned_off_or_outside_sending_hours(): void
+    public function test_nothing_is_sent_while_turned_off_or_outside_the_sending_windows(): void
     {
         $this->delivered('09170000001', cra: $this->anna);
         $this->artisan('reminders:build');
         RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
         Http::preventStrayRequests();
-        Http::fake();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
 
         $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
         $this->artisan('reminders:send');
         $this->turnOn();
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 20:30', 'Asia/Manila'));
-        $this->artisan('reminders:send');
-
+        // Between the 9–11 AM and 2–4 PM windows, and after the last one.
+        foreach (['11:00', '13:59', '16:00', '20:30'] as $time) {
+            $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
+            $this->artisan('reminders:send');
+        }
         Http::assertNothingSent();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 14:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        Http::assertSentCount(1);
     }
 
     public function test_automatic_sending_queues_only_ticked_customers_of_cras_who_turned_it_on(): void
@@ -283,6 +290,22 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::EXCLUDED, RestockReminder::firstWhere('phone_key', $leftOut)->status);
     }
 
+    public function test_a_reply_to_a_test_text_is_saved_for_a_day_without_opting_the_tester_out(): void
+    {
+        $token = $this->anna->issueRecordingToken();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->actingAs($this->supervisor())->post(route('settings.sms-reminders.test'), ['cra' => $this->anna->id, 'number' => '0918 555 1234'])
+            ->assertSessionHasNoErrors();
+
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'YES'])->assertCreated();
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'STOP'])->assertCreated();
+        $this->travel(25)->hours();
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'YES'])->assertStatus(202);
+
+        $this->assertSame(2, SmsReply::where('user_id', $this->anna->id)->whereNull('restock_reminder_id')->count());
+        $this->assertFalse(DoNotText::has('9185551234'));
+    }
+
     public function test_replies_from_the_phone_are_saved_and_stop_opts_the_customer_out(): void
     {
         $token = $this->anna->issueRecordingToken();
@@ -309,11 +332,19 @@ class SmsRemindersTest extends TestCase
 
         $supervisor = $this->supervisor();
         $this->actingAs($supervisor)->get(route('sms-reminders.templates.index'))->assertOk();
-        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), ['enabled' => 1, 'send_time' => '10:00', 'daily_cap' => 150])->assertRedirect();
+        $settings = ['enabled' => 1, 'send_time' => '10:00', 'daily_cap' => 150, 'windows' => [['from' => '10:00', 'until' => '12:00'], ['from' => '', 'until' => '']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $settings)->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertTrue(SmsSettings::enabled());
         $this->assertSame('10:00', SmsSettings::sendTime());
         $this->assertSame(150, SmsSettings::dailyCap());
+        $this->assertSame([['from' => '10:00', 'until' => '12:00']], SmsSettings::windows());
+
+        $overlapping = [...$settings, 'windows' => [['from' => '09:00', 'until' => '11:00'], ['from' => '10:30', 'until' => '12:00']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $overlapping)->assertSessionHasErrors('windows.1.from');
+        $backwards = [...$settings, 'windows' => [['from' => '11:00', 'until' => '09:00']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $backwards)->assertSessionHasErrors('windows.0.until');
+        $this->assertSame([['from' => '10:00', 'until' => '12:00']], SmsSettings::windows());
         $this->actingAs($supervisor)->get(route('settings.sms-reminders.index'))->assertOk()->assertSee(self::SMS_LINK);
     }
 
@@ -366,5 +397,72 @@ class SmsRemindersTest extends TestCase
 
         Http::assertSentCount(1);
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://trigger.macrodroid.com/device-1/call') && $request['number'] === '09170000001');
+    }
+
+    public function test_a_follow_up_typed_by_hand_goes_out_right_away_from_the_customers_cras_phone(): void
+    {
+        $this->turnOn();
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 12:30', 'Asia/Manila'));
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $reminder = RestockReminder::firstWhere('phone_key', $phoneKey);
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        // Outside the sending windows, by a supervisor: still from Anna's phone, as typed.
+        $this->actingAs($this->supervisor())->post(route('sms-reminders.text', $reminder), ['message' => 'Hi Maria, may stock pa po ba kayo?'])
+            ->assertRedirect()->assertSessionHasNoErrors();
+
+        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK)
+            && $request['number'] === '09170000001' && $request['message'] === 'Hi Maria, may stock pa po ba kayo?');
+        $this->assertDatabaseHas('sms_messages', ['restock_reminder_id' => $reminder->id, 'phone_user_id' => $this->anna->id]);
+        $this->assertSame(1, SmsSettings::sentToday($this->anna->id));
+
+        // A reply to it is saved, though the reminder itself wasn't sent.
+        $this->withToken($this->anna->issueRecordingToken())->postJson(route('api.sms-replies.store'), ['number' => '09170000001', 'message' => 'Yes'])->assertCreated();
+    }
+
+    public function test_a_follow_up_is_not_sent_to_another_cras_customer_an_opted_out_number_or_at_night(): void
+    {
+        $this->turnOn();
+        $annas = $this->delivered('09170000001', cra: $this->anna);
+        $optedOut = $this->delivered('09170000002', cra: $this->anna);
+        $this->artisan('reminders:build');
+        DoNotText::create(['phone_key' => $optedOut, 'reason' => 'Replied STOP']);
+        Http::preventStrayRequests();
+        Http::fake();
+        $text = ['message' => 'Hello po'];
+
+        $this->actingAs($this->mika)->post(route('sms-reminders.text', RestockReminder::firstWhere('phone_key', $annas)), $text)->assertForbidden();
+        $this->actingAs($this->anna)->post(route('sms-reminders.text', RestockReminder::firstWhere('phone_key', $optedOut)), $text)->assertSessionHasErrors('text');
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 21:00', 'Asia/Manila'));
+        $this->actingAs($this->anna)->post(route('sms-reminders.text', RestockReminder::firstWhere('phone_key', $annas)), $text)->assertSessionHasErrors('text');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('sms_messages', 0);
+    }
+
+    public function test_the_text_box_offers_every_active_template_starting_on_the_customers_reminder_template(): void
+    {
+        $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $reminderTemplate = SmsTemplate::create(['name' => 'Clear Sight reminder', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}!']);
+        SmsTemplate::create(['name' => 'Kumusta follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po ang {product} mo?']);
+        SmsTemplate::create(['name' => 'Old one', 'body' => 'Old.', 'is_active' => false]);
+
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
+            ->assertSee('Kumusta follow-up')
+            ->assertSee('<option value="'.$reminderTemplate->id.'" selected>Clear Sight reminder</option>', false)
+            ->assertSee('Hi Maria! Reply STOP to opt out.')
+            ->assertDontSee('Old one');
+    }
+
+    public function test_a_supervisor_saves_a_follow_up_template(): void
+    {
+        $this->actingAs($this->supervisor())->post(route('sms-reminders.templates.store'), [
+            'name' => 'Kumusta', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po?', 'is_active' => 1,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertTrue(SmsTemplate::firstWhere('name', 'Kumusta')->isFollowUp());
     }
 }

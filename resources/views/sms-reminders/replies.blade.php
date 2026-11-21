@@ -56,7 +56,10 @@
                         <li @class(['flex flex-wrap items-start justify-between gap-3 px-4 py-3', 'opacity-70' => $reply->handled_at])>
                             <div class="min-w-0 flex-1 space-y-1">
                                 <p class="flex flex-wrap items-center gap-2">
-                                    <span class="font-semibold">{{ $reply->reminder?->customer_name ?: 'Customer' }}</span>
+                                    <span class="font-semibold">{{ $reply->restock_reminder_id ? ($reply->reminder?->customer_name ?: 'Customer') : 'Test text' }}</span>
+                                    @unless ($reply->restock_reminder_id)
+                                        <span class="rounded-full bg-canvas px-2 py-0.5 text-xs font-semibold text-muted">Test</span>
+                                    @endunless
                                     <a href="tel:{{ \App\Models\CallRecording::dialNumber($reply->phone_number) }}" class="text-xs text-muted tabular-nums hover:text-brand-600 hover:underline">{{ \App\Models\CallRecording::dialNumber($reply->phone_number) }}</a>
                                     <span class="rounded-full px-2 py-0.5 text-xs font-semibold {{ $reply->kindClasses() }}">{{ $reply->kindLabel() }}</span>
                                 </p>

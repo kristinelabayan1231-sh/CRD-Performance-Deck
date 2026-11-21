@@ -153,7 +153,7 @@
                                             @csrf @method('PATCH')
                                             <input type="hidden" name="include" value="{{ $ticked ? 0 : 1 }}">
                                             <input type="checkbox" @checked($ticked) @disabled(! $reminder->isChangeable() || ! $isToday) onchange="{{ $submit }}"
-                                                   aria-label="Text {{ $reminder->customer_name }}" class="size-4.5 cursor-pointer rounded accent-brand-600 disabled:cursor-not-allowed">
+                                                   aria-label="Include {{ $reminder->customer_name }} in the reminder texts" class="size-4.5 cursor-pointer rounded accent-brand-600 disabled:cursor-not-allowed">
                                         </form>
                                     </td>
                                     <td class="px-2 py-3">
@@ -165,11 +165,53 @@
                                     @if (! $craId)
                                         <td class="px-2 py-3 whitespace-nowrap">{{ $reminder->cra?->displayName() ?? 'No CRA' }}</td>
                                     @endif
-                                    <td class="max-w-md px-2 py-3">
+                                    <td class="max-w-md space-y-1.5 px-2 py-3">
                                         <details>
                                             <summary class="cursor-pointer text-xs font-semibold text-brand-600 hover:underline">{{ $reminder->status === RestockReminder::SENT ? 'What was sent' : 'Preview' }}</summary>
                                             <p class="mt-1.5 rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed text-ink">{{ $reminder->preview }}</p>
                                         </details>
+                                        @if ($reminder->cra && ! in_array($reminder->phone_key, $doNotText, true))
+                                            {{-- A follow-up typed by hand: sent right away from the customer's CRA's phone --}}
+                                            <details>
+                                                <summary class="inline-flex h-7 cursor-pointer list-none items-center gap-1 rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 [&::-webkit-details-marker]:hidden">
+                                                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H8l-4 4z"/></svg>
+                                                    Text
+                                                </summary>
+                                                <form method="POST" action="{{ route('sms-reminders.text', $reminder) }}" class="mt-2 space-y-2"
+                                                      data-text-form data-fill="{{ json_encode(['{first_name}' => $reminder->firstName() ?: 'po', '{product}' => $reminder->products, '{run_out_date}' => $reminder->run_out_on->format('j M'), '{cra_name}' => $reminder->cra->displayName()]) }}">
+                                                    @csrf
+                                                    <label class="flex flex-col gap-1 text-[0.6875rem] font-semibold text-muted">
+                                                        Template
+                                                        <select data-text-template class="h-8 rounded-lg border border-line bg-white px-2 text-xs font-normal text-ink">
+                                                            @if ($textTemplates->contains('purpose', \App\Models\SmsTemplate::FOLLOW_UP))
+                                                                <optgroup label="Follow-ups">
+                                                                    @foreach ($textTemplates->where('purpose', \App\Models\SmsTemplate::FOLLOW_UP) as $option)
+                                                                        <option value="{{ $option->id }}">{{ $option->name }}</option>
+                                                                    @endforeach
+                                                                </optgroup>
+                                                            @endif
+                                                            <optgroup label="Reminders">
+                                                                @foreach ($textTemplates->where('purpose', \App\Models\SmsTemplate::REMINDER) as $option)
+                                                                    <option value="{{ $option->id }}" @selected($reminder->template_choice === $option->id)>{{ $option->name }}</option>
+                                                                @endforeach
+                                                                <option value="default" @selected($reminder->template_choice === null)>Built-in default</option>
+                                                            </optgroup>
+                                                            <option value="">Write my own</option>
+                                                        </select>
+                                                    </label>
+                                                    <label class="sr-only" for="text-{{ $reminder->id }}">Text to {{ $reminder->customer_name }}</label>
+                                                    <textarea id="text-{{ $reminder->id }}" name="message" rows="4" required maxlength="480"
+                                                              class="w-full min-w-[18rem] rounded-lg border border-line bg-white px-3 py-2 text-xs leading-relaxed text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">{{ app(\App\Services\RestockReminders::class)->messageFor($reminder) }}</textarea>
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <span class="text-[0.6875rem] text-muted">From {{ $reminder->cra->displayName() }}'s phone, right away</span>
+                                                        <button type="submit" class="h-8 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                                                    </div>
+                                                </form>
+                                            </details>
+                                        @endif
+                                        @if ($reminder->manual_messages_count)
+                                            <p class="text-xs text-muted">Followed up {{ $reminder->manual_messages_count === 1 ? 'once' : $reminder->manual_messages_count.' times' }} · last {{ \Carbon\Carbon::parse($reminder->manual_messages_max_sent_at)->timezone($tz)->format('M j, g:i A') }}</p>
+                                        @endif
                                     </td>
                                     <td class="px-4 py-3">
                                         <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap {{ $reminder->statusClasses() }}">{{ $reminder->statusLabel() }}</span>
@@ -201,4 +243,33 @@
             @endif
         </x-panel>
     </div>
+
+    @if ($textTemplates->isNotEmpty() || $rows->isNotEmpty())
+        <script>
+            // The Text button's template dropdown: fills the box with the template for that customer (still editable).
+            (() => {
+                const templates = @json($textTemplates->mapWithKeys(fn ($template) => [$template->id => ['body' => $template->body, 'followUp' => $template->isFollowUp()]]));
+                const defaultBody = @js(config('sms_reminders.default_body'));
+                const optOut = @js(config('sms_reminders.opt_out_line'));
+
+                document.querySelectorAll('[data-text-form]').forEach((form) => {
+                    const values = JSON.parse(form.dataset.fill);
+                    const box = form.querySelector('textarea');
+                    form.querySelector('[data-text-template]').addEventListener('change', (event) => {
+                        const choice = event.target.value;
+                        if (choice === '') {
+                            box.value = '';
+                        } else {
+                            const template = choice === 'default' ? { body: defaultBody, followUp: false } : templates[choice];
+                            let text = Object.entries(values).reduce((body, [placeholder, value]) => body.replaceAll(placeholder, value), template.body).trim();
+                            // Reminder texts always carry the opt-out line, as when they're sent automatically.
+                            if (!template.followUp && !/stop/i.test(text)) text = `${text} ${optOut}`;
+                            box.value = text;
+                        }
+                        box.focus();
+                    });
+                });
+            })();
+        </script>
+    @endif
 </x-layouts.app>

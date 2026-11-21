@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\DoNotText;
 use App\Models\RestockReminder;
+use App\Models\SmsMessage;
 use App\Models\SmsReply;
+use App\Models\SmsTemplate;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\RestockReminders;
@@ -46,13 +48,15 @@ class SmsReminderController extends Controller
             ->when(($filters['status'] ?? null) === 'send', fn (Builder $query) => $query->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED]))
             ->when(($filters['status'] ?? null) === 'sent', fn (Builder $query) => $query->where('status', RestockReminder::SENT))
             ->when(($filters['status'] ?? null) === 'out', fn (Builder $query) => $query->whereIn('status', [RestockReminder::EXCLUDED, RestockReminder::SKIPPED, RestockReminder::FAILED]))
-            ->with('cra')
+            ->with('cra')->withCount('manualMessages')->withMax('manualMessages', 'sent_at')
             ->orderByRaw("case status when 'queued' then 0 when 'pending' then 1 when 'failed' then 2 when 'sent' then 3 when 'excluded' then 4 else 5 end")
             ->orderBy('customer_name')
             ->paginate(100)->withQueryString();
 
         $rows->getCollection()->each(function (RestockReminder $reminder) use ($reminders) {
             $reminder->preview = $reminder->message ?? $reminders->messageFor($reminder);
+            // The Text button's dropdown starts on the template the customer's reminder uses.
+            $reminder->template_choice = $reminders->templateFor($reminder)?->id;
         });
 
         $craForActions = $craId ? $cras->firstWhere('id', $craId) : null;
@@ -81,6 +85,12 @@ class SmsReminderController extends Controller
             'sendTime' => SmsSettings::sendTime(),
             'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null : null,
             'daysBefore' => RestockReminders::daysBefore(),
+            // The Text button's template choices: follow-ups first, then reminders.
+            'textTemplates' => SmsTemplate::where('is_active', true)
+                ->orderByRaw('case when purpose = ? then 0 else 1 end', [SmsTemplate::FOLLOW_UP])->orderBy('name')
+                ->get(['id', 'name', 'purpose', 'body']),
+            // Customers who asked not to be texted get no Text button.
+            'doNotText' => DoNotText::whereIn('phone_key', $rows->getCollection()->pluck('phone_key'))->pluck('phone_key')->all(),
         ]);
     }
 
@@ -184,6 +194,50 @@ class SmsReminderController extends Controller
         return back()->with('status', $data['on']
             ? "Automatic sending on: {$cra->displayName()}'s ticked customers are texted every day at ".SmsSettings::sendTime().'.'
             : "Automatic sending off for {$cra->displayName()}: texts go out only with Send now.");
+    }
+
+    /**
+     * A follow-up text typed by hand, sent right away from the customer's CRA's phone (so replies come back to them).
+     * Allowed outside the sending windows (manual_hours), counted against the phone's daily cap, never to a number on
+     * the do-not-text list.
+     */
+    public function text(Request $request, RestockReminder $restockReminder, SmsSender $sender): RedirectResponse
+    {
+        $this->authorizeCra($request->user(), $restockReminder->user_id);
+        $data = $request->validate(['message' => ['required', 'string', 'max:480']], [], ['message' => 'text']);
+        $cra = $restockReminder->cra;
+        $hours = config('sms_reminders.manual_hours');
+
+        $problem = match (true) {
+            ! SmsSettings::enabled() => 'SMS Reminders is turned off in Settings → SMS Reminders, so nothing is sent.',
+            ! $cra => 'This customer has no CRA, so there\'s no phone to text from.',
+            DoNotText::has($restockReminder->phone_key) => 'This customer asked not to be texted.',
+            ! SmsSettings::withinManualHours() => 'Texts can be sent between '.CarbonImmutable::createFromFormat('H:i', $hours['from'])->format('g:i A')
+                .' and '.CarbonImmutable::createFromFormat('H:i', $hours['until'])->format('g:i A').'.',
+            SmsSettings::sentToday($cra->id) >= SmsSettings::dailyCap() => "{$cra->displayName()}'s phone already sent today's limit of ".SmsSettings::dailyCap().' texts.',
+            default => null,
+        };
+
+        if ($problem) {
+            return back()->withErrors(['text' => $problem])->withInput();
+        }
+
+        $result = $sender->send($cra, $restockReminder->phone_number, trim($data['message']));
+
+        if ($result !== SmsSender::SENT) {
+            return back()->withErrors(['text' => SmsSender::explain($result)])->withInput();
+        }
+
+        SmsMessage::create([
+            'restock_reminder_id' => $restockReminder->id,
+            'phone_user_id' => $cra->id,
+            'sent_by' => $request->user()->id,
+            'phone_number' => $restockReminder->phone_number,
+            'body' => trim($data['message']),
+            'sent_at' => now(),
+        ]);
+
+        return back()->with('status', 'Text sent to '.($restockReminder->customer_name ?: 'the customer')." from {$cra->displayName()}'s phone.");
     }
 
     /**

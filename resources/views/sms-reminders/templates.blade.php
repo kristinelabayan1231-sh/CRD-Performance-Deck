@@ -9,7 +9,7 @@
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">SMS Reminders <span class="text-sm font-normal text-muted">· Templates</span></h1>
-                <p class="text-sm text-muted">Each customer gets the closest fit: product + customer type, then product, then customer type, then "Any". With no template, the built-in default is sent.</p>
+                <p class="text-sm text-muted">Reminders: each customer gets the closest fit (product + customer type, then product, then customer type, then "Any"); with no template, the built-in default is sent. Follow-ups: picked by the CRA from the Text button.</p>
             </div>
             @include('sms-reminders._tabs')
         </header>
@@ -37,7 +37,7 @@
                                 <span class="rounded-full bg-canvas px-2 py-0.5 text-[0.6875rem] font-semibold text-muted">Off</span>
                             @endunless
                         </span>
-                        <span class="text-xs text-muted">{{ $item->product?->name ?? 'Any product' }} · {{ $item->customerTypeLabel() }}</span>
+                        <span class="text-xs text-muted">{{ $item->isFollowUp() ? 'Follow-up' : 'Reminder' }} · {{ $item->product?->name ?? 'Any product' }} · {{ $item->customerTypeLabel() }}</span>
                     </a>
                 @empty
                     <p class="px-4 py-6 text-sm text-muted">No templates yet: every customer gets the built-in default until you add one.</p>
@@ -53,6 +53,16 @@
                 <label class="flex flex-col gap-1.5 text-sm font-semibold">
                     Template name
                     <input type="text" name="name" required maxlength="100" value="{{ old('name', $template?->name) }}" placeholder="e.g. Clear Sight · Repeat" class="{{ $control }} font-normal">
+                </label>
+
+                <label class="flex flex-col gap-1.5 text-sm font-semibold">
+                    Used for
+                    <select name="purpose" class="{{ $control }} font-normal">
+                        @foreach (\App\Models\SmsTemplate::PURPOSES as $value => $purposeLabel)
+                            <option value="{{ $value }}" @selected(old('purpose', $template?->purpose ?? \App\Models\SmsTemplate::REMINDER) === $value)>{{ $purposeLabel }}</option>
+                        @endforeach
+                    </select>
+                    <span class="text-xs font-normal text-muted">Every active template can be picked from the Text button's dropdown. Only reminder templates are sent automatically.</span>
                 </label>
 
                 <div class="grid gap-3 sm:grid-cols-2">

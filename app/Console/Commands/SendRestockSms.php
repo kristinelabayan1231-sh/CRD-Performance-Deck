@@ -43,13 +43,10 @@ class SendRestockSms extends Command
         }
 
         $craIds = RestockReminder::where('status', RestockReminder::QUEUED)->whereNotNull('user_id')->distinct()->pluck('user_id');
-        $dayStart = $now->startOfDay()->utc();
         $sent = 0;
 
         foreach (User::whereIn('id', $craIds)->get() as $cra) {
-            $sentToday = RestockReminder::where('user_id', $cra->id)->where('sent_at', '>=', $dayStart)->count();
-
-            if ($sentToday >= SmsSettings::dailyCap()) {
+            if (SmsSettings::sentToday($cra->id) >= SmsSettings::dailyCap()) {
                 continue;
             }
 

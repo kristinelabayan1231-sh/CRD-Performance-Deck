@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One customer's restock text for one reminder day (their product runs out replenishment_days_before days later), for
@@ -64,6 +65,14 @@ class RestockReminder extends Model
     public function cra(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /**
+     * Follow-up texts sent by hand to this customer.
+     */
+    public function manualMessages(): HasMany
+    {
+        return $this->hasMany(SmsMessage::class);
     }
 
     public function template(): BelongsTo

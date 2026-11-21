@@ -118,7 +118,7 @@ class RestockReminders
      */
     public function templateFor(RestockReminder $reminder): ?SmsTemplate
     {
-        $this->templates ??= SmsTemplate::where('is_active', true)->orderByDesc('id')->get();
+        $this->templates ??= SmsTemplate::where('is_active', true)->where('purpose', SmsTemplate::REMINDER)->orderByDesc('id')->get();
 
         return $this->templates
             ->filter(fn (SmsTemplate $template) => ($template->product_id === null || $template->product_id === $reminder->product_id)

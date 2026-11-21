@@ -170,6 +170,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::prefix('sms-reminders')->name('sms-reminders.')->middleware('can:sms_reminders.view')->group(function () {
         Route::get('/', [SmsReminderController::class, 'index'])->name('index');
         Route::patch('/reminders/{restockReminder}', [SmsReminderController::class, 'update'])->name('update');
+        Route::post('/reminders/{restockReminder}/text', [SmsReminderController::class, 'text'])->middleware('throttle:30,1')->name('text');
         Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
         Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');

@@ -12,7 +12,7 @@
         @csrf @method('PUT')
         <div>
             <h2 class="text-base font-semibold">Restock texts</h2>
-            <p class="text-sm text-muted">Every morning at 6:30 the app lists the customers whose product runs out in {{ config('segmentation.replenishment_days_before') }} days. Their texts go out from their own CRA's phone (MacroDroid), one a minute, between {{ \Carbon\Carbon::createFromFormat('H:i', $hours['from'])->format('g:i A') }} and {{ \Carbon\Carbon::createFromFormat('H:i', $hours['until'])->format('g:i A') }}.</p>
+            <p class="text-sm text-muted">Every morning at 6:30 the app lists the customers whose product runs out in {{ config('segmentation.replenishment_days_before') }} days. Their texts go out from their own CRA's phone (MacroDroid), one a minute, only {{ $windowsLabel }}; what's left after the last window waits for the next day.</p>
         </div>
         <label class="flex items-center gap-2.5 text-sm font-semibold">
             <input type="hidden" name="enabled" value="0">
@@ -28,9 +28,23 @@
                 Most texts per phone a day
                 <input type="number" name="daily_cap" value="{{ $dailyCap }}" min="1" max="1000" required class="{{ $control }} w-36 font-normal">
             </label>
-            <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Save</button>
         </div>
-        <p class="text-xs text-muted">The send time applies to CRAs who turned on "Send automatically every day" on their SMS Reminders page. Keep the daily limit low (about 200) so the telco doesn't flag a SIM as spam.</p>
+        <fieldset class="flex flex-wrap items-end gap-4">
+            <legend class="mb-1.5 text-sm font-semibold">Sending windows</legend>
+            @foreach (['Morning', 'Afternoon'] as $index => $name)
+                @php($window = $windows[$index] ?? ['from' => '', 'until' => ''])
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-xs font-semibold tracking-wide text-muted uppercase">{{ $name }}{{ $index ? ' (optional)' : '' }}</span>
+                    <div class="flex items-center gap-1.5">
+                        <input type="time" name="windows[{{ $index }}][from]" value="{{ old("windows.$index.from", $window['from']) }}" @required($index === 0) aria-label="{{ $name }} from" class="{{ $control }}">
+                        <span class="text-sm text-muted">to</span>
+                        <input type="time" name="windows[{{ $index }}][until]" value="{{ old("windows.$index.until", $window['until']) }}" @required($index === 0) aria-label="{{ $name }} until" class="{{ $control }}">
+                    </div>
+                </div>
+            @endforeach
+            <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Save</button>
+        </fieldset>
+        <p class="text-xs text-muted">The send time applies to CRAs who turned on "Send automatically every day" on their SMS Reminders page; their texts start in the next window from then. One text a minute means a 2-hour window sends up to 120 per phone. Keep the daily limit low (about 200) so the telco doesn't flag a SIM as spam. Leave the afternoon times blank for one window only.</p>
     </form>
 
     <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm">

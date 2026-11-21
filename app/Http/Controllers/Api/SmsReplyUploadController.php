@@ -35,13 +35,28 @@ class SmsReplyUploadController extends Controller
             'message' => ['required', 'string', 'max:2000'],
         ]);
         $phoneKey = CustomerLink::primaryFor(LeadGenerator::normalizePhone($data['number']));
-        $reminder = RestockReminder::where('phone_key', $phoneKey)->where('status', RestockReminder::SENT)->latest('sent_at')->first();
-
-        if (! $reminder) {
-            return response()->json(['message' => 'Not a reply to a restock text; ignored.'], 202);
-        }
+        // The latest restock text sent to the number, or follow-up typed by hand to it.
+        $reminder = RestockReminder::where('phone_key', $phoneKey)
+            ->where(fn ($query) => $query->where('status', RestockReminder::SENT)->orWhereHas('manualMessages'))
+            ->latest('id')->first();
 
         $kind = SmsReply::kindOf($data['message']);
+
+        if (! $reminder) {
+            // A reply to a test text (Settings → SMS Reminders) within a day is saved too, so the setup can be checked;
+            // a test STOP doesn't opt the tester's number out.
+            $testCra = SmsReply::testCraFor($phoneKey);
+
+            if (! $testCra) {
+                return response()->json(['message' => 'Not a reply to a restock text or a test text; ignored.'], 202);
+            }
+
+            SmsReply::create(['user_id' => $testCra, 'phone_key' => $phoneKey, 'phone_number' => $data['number'],
+                'body' => $data['message'], 'kind' => $kind, 'received_at' => now()]);
+
+            return response()->json(['message' => 'Test reply saved.', 'kind' => $kind], 201);
+        }
+
         $reply = SmsReply::create([
             'user_id' => $reminder->user_id ?? $phoneOwner->id,
             'restock_reminder_id' => $reminder->id,
