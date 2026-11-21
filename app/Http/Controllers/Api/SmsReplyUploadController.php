@@ -35,7 +35,10 @@ class SmsReplyUploadController extends Controller
             'message' => ['required', 'string', 'max:2000'],
         ]);
         $phoneKey = CustomerLink::primaryFor(LeadGenerator::normalizePhone($data['number']));
-        $reminder = RestockReminder::where('phone_key', $phoneKey)->where('status', RestockReminder::SENT)->latest('sent_at')->first();
+        // The latest restock text sent to the number, or follow-up typed by hand to it.
+        $reminder = RestockReminder::where('phone_key', $phoneKey)
+            ->where(fn ($query) => $query->where('status', RestockReminder::SENT)->orWhereHas('manualMessages'))
+            ->latest('id')->first();
 
         $kind = SmsReply::kindOf($data['message']);
 

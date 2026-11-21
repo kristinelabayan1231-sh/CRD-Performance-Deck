@@ -153,7 +153,7 @@
                                             @csrf @method('PATCH')
                                             <input type="hidden" name="include" value="{{ $ticked ? 0 : 1 }}">
                                             <input type="checkbox" @checked($ticked) @disabled(! $reminder->isChangeable() || ! $isToday) onchange="{{ $submit }}"
-                                                   aria-label="Text {{ $reminder->customer_name }}" class="size-4.5 cursor-pointer rounded accent-brand-600 disabled:cursor-not-allowed">
+                                                   aria-label="Include {{ $reminder->customer_name }} in the reminder texts" class="size-4.5 cursor-pointer rounded accent-brand-600 disabled:cursor-not-allowed">
                                         </form>
                                     </td>
                                     <td class="px-2 py-3">
@@ -165,11 +165,33 @@
                                     @if (! $craId)
                                         <td class="px-2 py-3 whitespace-nowrap">{{ $reminder->cra?->displayName() ?? 'No CRA' }}</td>
                                     @endif
-                                    <td class="max-w-md px-2 py-3">
+                                    <td class="max-w-md space-y-1.5 px-2 py-3">
                                         <details>
                                             <summary class="cursor-pointer text-xs font-semibold text-brand-600 hover:underline">{{ $reminder->status === RestockReminder::SENT ? 'What was sent' : 'Preview' }}</summary>
                                             <p class="mt-1.5 rounded-lg bg-canvas px-3 py-2 text-xs leading-relaxed text-ink">{{ $reminder->preview }}</p>
                                         </details>
+                                        @if ($reminder->cra && ! in_array($reminder->phone_key, $doNotText, true))
+                                            {{-- A follow-up typed by hand: sent right away from the customer's CRA's phone --}}
+                                            <details>
+                                                <summary class="inline-flex h-7 cursor-pointer list-none items-center gap-1 rounded-full bg-brand-50 px-2.5 text-xs font-semibold text-brand-700 hover:bg-brand-100 [&::-webkit-details-marker]:hidden">
+                                                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5h16v11H8l-4 4z"/></svg>
+                                                    Text
+                                                </summary>
+                                                <form method="POST" action="{{ route('sms-reminders.text', $reminder) }}" class="mt-2 space-y-2">
+                                                    @csrf
+                                                    <label class="sr-only" for="text-{{ $reminder->id }}">Text to {{ $reminder->customer_name }}</label>
+                                                    <textarea id="text-{{ $reminder->id }}" name="message" rows="4" required maxlength="480"
+                                                              class="w-full min-w-[18rem] rounded-lg border border-line bg-white px-3 py-2 text-xs leading-relaxed text-ink focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">{{ $reminder->preview }}</textarea>
+                                                    <div class="flex items-center justify-between gap-2">
+                                                        <span class="text-[0.6875rem] text-muted">From {{ $reminder->cra->displayName() }}'s phone, right away</span>
+                                                        <button type="submit" class="h-8 rounded-lg bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700">Send</button>
+                                                    </div>
+                                                </form>
+                                            </details>
+                                        @endif
+                                        @if ($reminder->manual_messages_count)
+                                            <p class="text-xs text-muted">Followed up {{ $reminder->manual_messages_count === 1 ? 'once' : $reminder->manual_messages_count.' times' }} · last {{ \Carbon\Carbon::parse($reminder->manual_messages_max_sent_at)->timezone($tz)->format('M j, g:i A') }}</p>
+                                        @endif
                                     </td>
                                     <td class="px-4 py-3">
                                         <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap {{ $reminder->statusClasses() }}">{{ $reminder->statusLabel() }}</span>

@@ -23,6 +23,10 @@ return [
         ['from' => '14:00', 'until' => '16:00'],
     ],
 
+    // Follow-up texts a CRA sends by hand (one at a time, right away) may go out between these hours (Manila), outside
+    // the sending windows too: a customer who replied shouldn't wait for the next window.
+    'manual_hours' => ['from' => '08:00', 'until' => '20:00'],
+
     // Defaults until set in Settings → SMS Reminders.
     'send_time' => '09:30',
     'daily_cap' => 200,

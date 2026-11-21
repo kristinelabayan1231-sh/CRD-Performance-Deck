@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\RestockReminder;
 use App\Models\Setting;
+use App\Models\SmsMessage;
 use Carbon\CarbonImmutable;
 
 /**
@@ -62,6 +64,28 @@ class SmsSettings
         $time = ($at ?? self::now())->format('H:i');
 
         return collect(self::windows())->contains(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+    }
+
+    /**
+     * Whether a follow-up typed by hand may go out now (config sms_reminders.manual_hours).
+     */
+    public static function withinManualHours(?CarbonImmutable $at = null): bool
+    {
+        $time = ($at ?? self::now())->format('H:i');
+        $hours = config('sms_reminders.manual_hours');
+
+        return $time >= $hours['from'] && $time < $hours['until'];
+    }
+
+    /**
+     * Texts a CRA's phone has sent today (Manila): reminders and follow-ups typed by hand, against the daily cap.
+     */
+    public static function sentToday(int $craId): int
+    {
+        $dayStart = self::now()->startOfDay()->utc();
+
+        return RestockReminder::where('user_id', $craId)->where('sent_at', '>=', $dayStart)->count()
+            + SmsMessage::where('phone_user_id', $craId)->where('sent_at', '>=', $dayStart)->count();
     }
 
     /**
