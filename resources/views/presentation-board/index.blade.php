@@ -638,7 +638,8 @@
                 @php
                     $othersName = \App\Services\PresentationBoard::OTHERS;
                     $listed = collect($products)->reject(fn (array $product) => $product['name'] === $othersName)->values();
-                    $productPeak = max(1, $listed->max('sales') ?? 1);
+                    // The bar: a product's own sales, then what was upsold on its orders (the "+… upsold" under it), on one scale.
+                    $productPeak = max(1, $listed->max(fn (array $product) => $product['sales'] + $product['upsold_value']) ?? 1);
                     $upsell = $added;
                     // A product's Upsell % is what was upsold on its orders; for Others and its items, the share of their own sales that came as an upsell.
                     $upsellRate = fn (array $row, bool $own) => $own ? ($row['value'] ? $row['upsell_value'] / $row['value'] : 0.0) : ($row['sales'] ? $row['upsold_value'] / $row['sales'] : 0.0);
@@ -696,14 +697,14 @@
                 @endphp
                 <div class="flex flex-col gap-2" style="padding: 12px 16px 16px; font-size: 13px">
                     <div class="flex flex-wrap gap-x-4 gap-y-1" style="font-size: 12px; color: var(--pb-soft)">
-                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $crd }}"></span>Main / reorder</span>
-                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $upsell }}"></span>Upsell</span>
+                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $crd }}"></span>Product's own sales</span>
+                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $upsell }}"></span>Upsold on its orders (other products added)</span>
                         <span style="{{ $muted }}">Right: each product's sales by month, {{ $months[0]['label'] }}–{{ $monthName($lastMonth) }}</span>
                     </div>
                     <div class="overflow-x-auto">
                         <div style="min-width: 760px">
                             <div style="{{ $rowColumns }}; padding: 0 10px 6px 32px; font-size: 11px; font-weight: 600; text-align: right; {{ $muted }}">
-                                <span></span><span class="text-left">Product</span><span class="text-left">Main / upsell</span><span>Sales</span><span>Orders</span><span>Qty</span><span style="text-align: center">By month</span>
+                                <span></span><span class="text-left">Product</span><span class="text-left">Sales + upsold</span><span>Sales</span><span>Orders</span><span>Qty</span><span style="text-align: center">By month</span>
                             </div>
                             <div data-product-rows role="region" aria-label="Product list, scrolls" tabindex="0" class="flex flex-col gap-2" style="max-height: 470px; overflow-y: auto; padding: 2px 4px 2px 0">
                                 @foreach ($products as $rank => $product)
@@ -713,8 +714,8 @@
                                         $byMonth = $isOthers ? [] : $monthlySales($product['name']);
                                         $hasMonths = array_sum($byMonth) > 0;
                                         $hasDrawer = $product['upsell_value'] > 0 || $product['upsold'] || ($isOthers && $others) || $hasMonths;
-                                        $mainWidth = min(100, round(max(0, max($product['sales'], $product['value']) - $product['upsell_value']) / $productPeak * 100, 2));
-                                        $upWidth = min(100 - $mainWidth, round($product['upsell_value'] / $productPeak * 100, 2));
+                                        $mainWidth = min(100, round($product['sales'] / $productPeak * 100, 2));
+                                        $upWidth = min(100 - $mainWidth, round($product['upsold_value'] / $productPeak * 100, 2));
                                         $upsoldPeak = max(1, collect($product['upsold'])->max('value') ?? 1);
                                     @endphp
                                     @if ($isOthers)
@@ -755,7 +756,7 @@
                                                     @endif
                                                 </span>
                                                 <span class="flex flex-col gap-1" style="min-width: 0">
-                                                    <span aria-hidden="true" class="flex overflow-hidden" style="height: 14px; border-radius: 4px; background: var(--pb-track)" title="Main / reorder {{ $peso($product['value'] - $product['upsell_value']) }} · upsell {{ $peso($product['upsell_value']) }}">
+                                                    <span aria-hidden="true" class="flex overflow-hidden" style="height: 14px; border-radius: 4px; background: var(--pb-track)" title="{{ $product['name'] }} sales {{ $peso($product['sales']) }} · upsold on its orders {{ $peso($product['upsold_value']) }}">
                                                         <span style="width: {{ $mainWidth }}%; background: {{ $crd }}"></span><span style="width: {{ $upWidth }}%; background: {{ $upsell }}"></span>
                                                     </span>
                                                     @if ($product['upsold_value'] > 0)
