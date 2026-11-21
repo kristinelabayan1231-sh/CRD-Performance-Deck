@@ -603,6 +603,8 @@ class PresentationBoardTest extends TestCase
 
         $this->assertEquals($board['totals']['gross'], $row['gross']);
         $this->assertEquals(2200, $row['gross']);
+        $this->assertSame(2, $row['orders']);
+        $this->assertEquals(1100, $row['aov']);
         $this->assertEquals(20, $row['capacity']);
         $this->assertSame(2, $row['answered_days']);
         $this->assertEquals(2900, $cras->range($snapshot, '2026-01', '2026-11')['gross']);
@@ -662,17 +664,23 @@ class PresentationBoardTest extends TestCase
             ->assertOk()->assertSee('These figures appear after the next scheduled refresh.');
 
         Cache::forever(PresentationBoardCras::CACHE_KEY, [
-            'months' => ['2026-11' => [$this->cra->id => ['gross' => 2000.0, 'answered' => 120, 'answered_days' => 2, 'ni' => -500.0]]],
+            'months' => [
+                '2026-10' => [$this->cra->id => ['gross' => 1000.0, 'orders' => 2, 'answered' => 60, 'answered_days' => 2, 'ni' => null]],
+                '2026-11' => [$this->cra->id => ['gross' => 2000.0, 'orders' => 2, 'answered' => 120, 'answered_days' => 2, 'ni' => -500.0]],
+            ],
             'high_value' => [$this->cra->id => ['high_aov' => 7, 'vip' => 2]],
         ]);
 
-        $this->actingAs($this->supervisor)->get(route('presentation-board.index'))
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-11']))
             ->assertOk()
             ->assertSee('CRA performance, year to date')
             ->assertSee('Regina')
-            ->assertSee('₱2,000')
             ->assertSee('−₱500')
             ->assertSee('100.0% of team gross')
+            // Each month's dot opens its gross, orders and AOV, and its change from the month before.
+            ->assertSeeInOrder(['data-cra-dot="1"', 'Nov 1–6 2026', '₱2,000', '2 orders · AOV ₱1,000', 'vs Oct'], false)
+            // The table: the last month vs the first with sales, AOV and capacity a day included.
+            ->assertSeeInOrder(['data-cra-compare="default"', 'Nov 1–6 vs Oct', 'AOV', '₱1,000', '₱500', 'Capacity a day', '60', '30', 'High AOV', '7'], false)
             ->assertDontSee('These figures appear after the next scheduled refresh.');
     }
 

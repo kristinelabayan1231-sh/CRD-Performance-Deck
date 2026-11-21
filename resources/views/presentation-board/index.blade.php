@@ -153,6 +153,13 @@
         /* The board is drawn in px; the rest of the app is at 87.5% (html font-size), so the board matches it. */
         [data-presentation-board] { zoom: .875; }
         [data-presentation-board] .pb-tip-box { display: none; }
+        [data-presentation-board] .pb-dot { position: absolute; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: 0 0 -11px -11px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+        [data-presentation-board] .pb-dot-mark { display: block; width: 9px; height: 9px; box-sizing: border-box; border: 2px solid; border-radius: 50%; transition: transform .12s; }
+        [data-presentation-board] .pb-dot:hover .pb-dot-mark, [data-presentation-board] .pb-dot:focus-visible .pb-dot-mark { transform: scale(1.45); }
+        [data-presentation-board] .pb-dot:focus-visible { outline: 2px solid var(--pb-accent-line, currentColor); outline-offset: 1px; border-radius: 50%; }
+        [data-presentation-board] .pb-dot-tip { display: none; position: absolute; bottom: 22px; z-index: 30; min-width: 150px; padding: 8px 10px; border-radius: 10px; background: var(--pb-text); color: var(--pb-solid); box-shadow: 0 8px 24px rgb(0 0 0 / .22); text-align: left; white-space: nowrap; pointer-events: none; }
+        [data-presentation-board] .pb-dot:hover .pb-dot-tip, [data-presentation-board] .pb-dot:focus-visible .pb-dot-tip { display: block; }
+        [data-presentation-board] [data-cra-card]:hover, [data-presentation-board] [data-cra-card]:focus-within { position: relative; z-index: 5; }
         [data-presentation-board] .pb-tile:hover, [data-presentation-board] .pb-tile:focus-within { z-index: 30; }
         [data-presentation-board] .pb-tip:hover .pb-tip-box, [data-presentation-board] .pb-tip:focus-within .pb-tip-box { display: block; }
         [data-presentation-board] [data-product-sort][aria-pressed="true"] { background: var(--pb-on); color: var(--pb-text); font-weight: 600; }
@@ -853,15 +860,20 @@
                             </ul>
                         </div>
                     @endif
-                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); padding: 16px">
+                    <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); padding: 16px">
                         @foreach ($craPerformance['rows'] as $row)
                             @php
-                                $craValues = array_map(fn (array $month) => $craMonths[$month['key']][$row['user']->id] ?? 0.0, $months);
-                                // Against her first month with sales in the range (a CRA who started later has none before).
+                                $craFigures = array_map(fn (array $month) => $craMonths[$month['key']][$row['user']->id] ?? ['gross' => 0.0, 'orders' => 0, 'aov' => null, 'capacity' => null, 'ni' => null], $months);
+                                $craValues = array_column($craFigures, 'gross');
+                                // By default against her first month with sales in the range (a CRA who started later has none before).
                                 $craFirst = collect($craValues)->search(fn (float $value) => $value > 0);
-                                $craChip = $craFirst !== false && $craFirst < $monthCount - 1 ? $chip($paced($craValues[$monthCount - 1]), $craValues[$craFirst]) : null;
+                                $craBase = $craFirst !== false && $craFirst < $monthCount - 1 ? $craFirst : null;
+                                $craPeak = max(1, ...$craValues);
+                                $craY = fn (float $value) => round($value / $craPeak * 88, 2);
+                                $craX = fn (int $index) => round(($index + .5) / $monthCount * 100, 2);
+                                $craPoints = collect($craValues)->map(fn (float $value, int $index) => $craX($index).','.(100 - $craY($value)))->join(' ');
                             @endphp
-                            <article class="flex flex-col gap-3.5" style="padding: 16px; {{ $cell }}; border-radius: 14px">
+                            <article data-cra-card class="flex flex-col gap-3.5" style="padding: 16px; {{ $cell }}; border-radius: 14px">
                                 <div class="flex items-center gap-3">
                                     <x-avatar :user="$row['user']" style="width: 64px; height: 64px; font-size: 20px; font-weight: 700; color: var(--pb-text); background: {{ $crdTint }}; border: 2px solid var(--pb-hero-line)" />
                                     <div class="min-w-0">
@@ -883,33 +895,52 @@
                                 </div>
 
                                 @if (array_sum($craValues) > 0)
-                                    <div class="flex flex-col gap-1">
-                                        {!! $sparkline($craValues, $accent, $isRunning) !!}
-                                        {!! $valueRow($craValues, $millions, narrow: true) !!}
-                                        @if ($craChip)
-                                            <span style="{{ $craChip['style'] }}">{{ $craChip['text'] }} · {{ $monthName($lastMonth) }} vs {{ $months[$craFirst]['label'] }}</span>
-                                        @endif
+                                    {{-- Each month's dot opens its gross; pointing at one swaps the table below to that month vs the one before. --}}
+                                    <div>
+                                        <div style="position: relative; height: 96px; margin: 18px 6px 0">
+                                            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
+                                                <path d="M{{ $craX(0) }},100 L{{ str_replace(' ', ' L', $craPoints) }} L{{ $craX($monthCount - 1) }},100 Z" style="fill: {{ $accent }}; opacity: .14"></path>
+                                                <polyline points="{{ $craPoints }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $accent }}; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round"></polyline>
+                                            </svg>
+                                            @foreach ($craFigures as $index => $figures)
+                                                @php
+                                                    $isOpen = $isRunning && $index === $monthCount - 1;
+                                                    $before = $index > 0 ? $craFigures[$index - 1] : null;
+                                                    $dotChange = $index === 0 ? 'First month picked' : ($before['gross'] > 0 ? 'vs '.$months[$index - 1]['label'].' '.$chip($isOpen ? $paced($figures['gross']) : $figures['gross'], $before['gross'])['text'].($isOpen ? ', at its pace' : '') : 'No sales in '.$months[$index - 1]['label']);
+                                                    $left = $craX($index);
+                                                    $tipShift = $left < 25 ? '0' : ($left > 75 ? '-100%' : '-50%');
+                                                @endphp
+                                                <button type="button" data-cra-dot="{{ $index }}" class="pb-dot" style="left: {{ $left }}%; bottom: {{ $craY($figures['gross']) }}%" aria-label="{{ $monthName($months[$index]) }}: gross {{ $peso($figures['gross']) }}, {{ $number($figures['orders']) }} orders">
+                                                    <span aria-hidden="true" class="pb-dot-mark" style="background: {{ $isOpen ? 'var(--pb-solid)' : $accent }}; border-color: {{ $accent }}"></span>
+                                                    <span aria-hidden="true" class="pb-dot-tip" style="left: {{ $left < 25 ? '-4px' : ($left > 75 ? 'calc(100% + 4px)' : '50%') }}; transform: translateX({{ $tipShift }})">
+                                                        <strong style="display: block; font-size: 12px">{{ $monthName($months[$index]) }} {{ \Carbon\CarbonImmutable::parse($months[$index]['key'].'-01')->format('Y') }}</strong>
+                                                        <span style="display: block; margin-top: 1px; font-size: 15px; font-weight: 700">{{ $figures['gross'] > 0 ? $peso($figures['gross']) : 'No sales' }}</span>
+                                                        @if ($figures['gross'] > 0)
+                                                            <span style="display: block; margin-top: 2px; font-size: 11px; opacity: .8">{{ $number($figures['orders']) }} {{ Str::plural('order', $figures['orders']) }} · AOV {{ $peso($figures['aov']) }}</span>
+                                                        @endif
+                                                        <span style="display: block; font-size: 11px; opacity: .8">{{ $dotChange }}</span>
+                                                    </span>
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <div aria-hidden="true" style="display: grid; grid-template-columns: repeat({{ $monthCount }}, minmax(0, 1fr)); padding-top: 4px; border-top: 1px solid var(--pb-line2)">
+                                            @foreach ($months as $index => $month)
+                                                <span data-cra-axis="{{ $index }}" style="overflow: hidden; text-align: center; font-size: 10px; {{ $muted }}">{{ $monthCount > 8 && $index % 2 && $index !== $monthCount - 1 ? '' : $month['label'] }}</span>
+                                            @endforeach
+                                        </div>
                                     </div>
                                 @endif
 
-                                <dl class="grid grid-cols-2 gap-x-2.5 gap-y-3" style="margin: 0; padding-top: 12px; border-top: 1px solid var(--pb-line)">
-                                    <div>
-                                        <dt style="font-size: 12px; {{ $muted }}">NI, from Nov</dt>
-                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700; color: {{ $row['ni'] === null ? $text : ($row['ni'] < 0 ? $lost : $added) }}">{{ $row['ni'] === null ? '—' : ($row['ni'] < 0 ? '−' : '').$peso(abs($row['ni'])) }}</dd>
+                                <div style="padding-top: 12px; border-top: 1px solid var(--pb-line)">
+                                    <div data-cra-compare="default">
+                                        @include('presentation-board._cra-compare', ['cur' => $monthCount - 1, 'base' => $craBase, 'craRow' => $row, 'hint' => $craBase === null ? 'No earlier month with sales' : ($craBase > 0 ? 'vs '.$months[$craBase]['label'].', the first month with sales' : 'last month vs first month picked')])
                                     </div>
-                                    <div>
-                                        <dt style="font-size: 12px; {{ $muted }}">Capacity a day</dt>
-                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $row['capacity'] === null ? '—' : number_format($row['capacity']) }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt style="font-size: 12px; {{ $muted }}">High AOV</dt>
-                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $number($row['high_aov']) }}</dd>
-                                    </div>
-                                    <div>
-                                        <dt style="font-size: 12px; {{ $muted }}">VIP</dt>
-                                        <dd style="margin: 2px 0 0; font-size: 15px; font-weight: 700">{{ $number($row['vip']) }}</dd>
-                                    </div>
-                                </dl>
+                                    @foreach ($craFigures as $index => $figures)
+                                        <div data-cra-compare="{{ $index }}" hidden>
+                                            @include('presentation-board._cra-compare', ['cur' => $index, 'base' => $index > 0 ? $index - 1 : null, 'craRow' => $row, 'hint' => 'the month you point at vs the one before'])
+                                        </div>
+                                    @endforeach
+                                </div>
                             </article>
                         @endforeach
                     </div>
