@@ -289,6 +289,22 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::EXCLUDED, RestockReminder::firstWhere('phone_key', $leftOut)->status);
     }
 
+    public function test_a_reply_to_a_test_text_is_saved_for_a_day_without_opting_the_tester_out(): void
+    {
+        $token = $this->anna->issueRecordingToken();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->actingAs($this->supervisor())->post(route('settings.sms-reminders.test'), ['cra' => $this->anna->id, 'number' => '0918 555 1234'])
+            ->assertSessionHasNoErrors();
+
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'YES'])->assertCreated();
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'STOP'])->assertCreated();
+        $this->travel(25)->hours();
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639185551234', 'message' => 'YES'])->assertStatus(202);
+
+        $this->assertSame(2, SmsReply::where('user_id', $this->anna->id)->whereNull('restock_reminder_id')->count());
+        $this->assertFalse(DoNotText::has('9185551234'));
+    }
+
     public function test_replies_from_the_phone_are_saved_and_stop_opts_the_customer_out(): void
     {
         $token = $this->anna->issueRecordingToken();

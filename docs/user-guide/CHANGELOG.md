@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-21 · SMS Reminders · A reply to a test text (Settings → SMS Reminders → Send a test text) is now saved for a day and shows in Replies as "Test text", so the Forward replies macro can be checked; a test STOP does not opt the number out · shots: none
 - 2026-11-21 · SMS Reminders · Texts go out only in two sending windows, 9:00–11:00 AM and 2:00–4:00 PM by default (was 9 AM–8 PM), one a minute per phone; Settings → SMS Reminders has Morning and Afternoon (optional) window times; what is left after the last window waits for the next day · shots: settings-sms-reminders
 - 2026-11-21 · SMS Reminders · "Already reordered" now means the same product was delivered again or ordered in Pancake POS (not canceled) after the delivery that runs out; another product no longer skips the customer, and a customer due for two products is texted only about the one not restocked · shots: none
 - 2026-11-21 · SMS Reminders · Customers who reply YES show as "wants to reorder": the CRA gets a green "N customers want to reorder" button in the top bar and a pop-up (checked every minute) that opens Replies → Wants to reorder; each reply has a Call button that dials from the CRA's phone (MacroDroid) with the recording going to the customer's lead; Mark handled clears it · shots: sms-replies, top bar

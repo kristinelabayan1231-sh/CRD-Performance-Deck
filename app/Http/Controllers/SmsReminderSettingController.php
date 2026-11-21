@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Setting;
+use App\Models\SmsReply;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\SmsSender;
@@ -73,6 +74,10 @@ class SmsReminderSettingController extends Controller
         $cra = User::findOrFail($data['cra']);
 
         $result = $sender->send($cra, $data['number'], "Test text from the CRD Performance Deck via {$cra->displayName()}'s phone. Reply YES to check replies come back.");
+
+        if ($result === SmsSender::SENT) {
+            SmsReply::rememberTest(LeadGenerator::normalizePhone($data['number']), $cra->id);
+        }
 
         return $result === SmsSender::SENT
             ? back()->with('status', "Test text sent from {$cra->displayName()}'s phone. Check it arrived, then reply YES and look for it in SMS Reminders → Replies.")

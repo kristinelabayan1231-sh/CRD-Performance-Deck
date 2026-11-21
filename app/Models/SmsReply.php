@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * A text a customer sent to a CRA's phone, passed on by its "Forward replies" macro (POST /api/sms-replies).
@@ -33,6 +34,27 @@ class SmsReply extends Model
             'received_at' => 'datetime',
             'handled_at' => 'datetime',
         ];
+    }
+
+    /** How long a reply to a test text (Settings → SMS Reminders) is still saved. */
+    private const TEST_HOURS = 24;
+
+    /**
+     * A test text went from $craId's phone to $phoneKey: its reply is saved for a day, so the setup can be checked.
+     */
+    public static function rememberTest(string $phoneKey, int $craId): void
+    {
+        Cache::put('sms_reminders.test.'.$phoneKey, $craId, now()->addHours(self::TEST_HOURS));
+    }
+
+    /**
+     * The CRA whose phone sent $phoneKey a test text in the last day, if any.
+     */
+    public static function testCraFor(string $phoneKey): ?int
+    {
+        $craId = Cache::get('sms_reminders.test.'.$phoneKey);
+
+        return $craId ? (int) $craId : null;
     }
 
     /**
