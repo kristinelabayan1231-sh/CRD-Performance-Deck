@@ -1075,7 +1075,7 @@
                                 <div style="{{ $columns }}; position: sticky; top: 0; background: var(--pb-solid); font-weight: 600; color: var(--pb-soft)">
                                     <span class="text-left">{{ ['daily' => 'Day', 'weekly' => 'Week', 'monthly' => 'Month'][$period] }}</span><span>Leads</span>
                                     @if ($team['added'])<span title="New customers (was Acquired leads)">New</span>@endif
-                                    <span title="What the rate is out of">Base</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churn %</span>
+                                    <span title="Customers the rate is out of: {{ $team['boughtName'] }} ÷ Out of = Rate">Out of</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churn %</span>
                                 </div>
                                 @foreach ($periods as $row)
                                     <div style="{{ $columns }}; {{ $rowLine }}">
