@@ -25,7 +25,7 @@
             $labelled[$line['key']] = $value;
         }
     }
-    $muted = 'color: #bdb6cf';
+    $muted = 'color: var(--pb-muted)';
 @endphp
 
 <div class="flex min-w-0 gap-2">
@@ -35,12 +35,12 @@
         @endforeach
     </div>
     <div class="min-w-0 flex-1">
-        <div data-chart style="position: relative; height: {{ $height }}px; background-image: linear-gradient(rgb(255 255 255 / .1) 1px, transparent 1px); background-size: 100% 25%; border-bottom: 1px solid rgb(255 255 255 / .3)">
+        <div data-chart style="position: relative; height: {{ $height }}px; background-image: linear-gradient(var(--pb-grid) 1px, transparent 1px); background-size: 100% 25%; border-bottom: 1px solid var(--pb-axis)">
             @if ($split && $split['at'] > 0)
                 @php
                     $splitLeft = round($split['at'] / $count * 100, 2);
                 @endphp
-                <span aria-hidden="true" style="position: absolute; top: 0; bottom: 0; left: {{ $splitLeft }}%; width: 1px; background: rgb(255 255 255 / .35)"></span>
+                <span aria-hidden="true" style="position: absolute; top: 0; bottom: 0; left: {{ $splitLeft }}%; width: 1px; background: var(--pb-axis)"></span>
                 <span style="position: absolute; top: 2px; left: {{ $splitLeft }}%; transform: translateX(-100%); padding-right: 6px; font-size: 12px; white-space: nowrap; {{ $muted }}">{{ $split['before'] }}</span>
                 <span style="position: absolute; top: 2px; left: {{ $splitLeft }}%; padding-left: 6px; font-size: 12px; white-space: nowrap; {{ $muted }}">{{ $split['after'] }}</span>
             @endif
@@ -53,7 +53,7 @@
             @foreach ($series as $line)
                 @foreach ($months as $index => $month)
                     @if ($month[$line['key']] !== null)
-                        <span aria-hidden="true" style="position: absolute; left: {{ $x($index) }}%; bottom: {{ $y($month[$line['key']]) }}%; width: 8px; height: 8px; margin: 0 0 -4px -4px; border-radius: 50%; background: {{ $line['color'] }}; box-shadow: 0 0 0 2px #2d2a3e"></span>
+                        <span aria-hidden="true" style="position: absolute; left: {{ $x($index) }}%; bottom: {{ $y($month[$line['key']]) }}%; width: 8px; height: 8px; margin: 0 0 -4px -4px; border-radius: 50%; background: {{ $line['color'] }}; box-shadow: 0 0 0 2px var(--pb-solid)"></span>
                         @if ($index === array_key_last($months) && isset($labelled[$line['key']]))
                             <span style="position: absolute; left: {{ $x($index) }}%; bottom: {{ $y($month[$line['key']]) }}%; transform: translate(-50%, -8px); font-size: 12px; font-weight: 700; white-space: nowrap">{{ number_format($month[$line['key']] * 100, 1) }}%</span>
                         @endif

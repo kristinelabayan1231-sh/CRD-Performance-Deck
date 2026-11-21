@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Services\ExclusiveLeads;
 use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
 use App\Services\PresentationBoardCras;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -12,7 +15,7 @@ use Illuminate\View\View;
 
 class PresentationBoardController extends Controller
 {
-    public function __invoke(Request $request, PresentationBoard $board, PresentationBoardCras $cras, PancakePageBackfill $backfill): View
+    public function __invoke(Request $request, PresentationBoard $board, PresentationBoardCras $cras, PancakePageBackfill $backfill, ExclusiveLeads $exclusive): View
     {
         $filters = $request->validate([
             'from' => ['nullable', 'date_format:Y-m'],
@@ -44,9 +47,13 @@ class PresentationBoardController extends Controller
         $productsFrom = min(max($filters['products_from'] ?? $from.'-01', $firstDay), $lastDay);
         $productsTo = max(min($filters['products_to'] ?? CarbonImmutable::parse($to.'-01')->endOfMonth()->toDateString(), $lastDay), $productsFrom);
         $topProducts = $board->products($snapshot, $productsFrom, $productsTo);
+        $monthKeys = array_column($figures['months'], 'key');
 
         return view('presentation-board.index', [
             ...$figures,
+            'productMonths' => $this->productMonths($board, $snapshot, $monthKeys),
+            'craMonths' => $craSnapshot ? $this->craMonths($cras, $craSnapshot, $monthKeys) : [],
+            'exclusive' => $this->exclusive($exclusive, $monthKeys),
             'products' => $topProducts['products'],
             'others' => $topProducts['others'],
             'topProducts' => [...$topProducts, 'first_day' => $firstDay, 'last_day' => $lastDay, 'picked' => isset($filters['products_from']) || isset($filters['products_to'])],
@@ -60,5 +67,63 @@ class PresentationBoardController extends Controller
             'period' => $period,
             'progress' => $backfill->progress(),
         ]);
+    }
+
+    /**
+     * Each month's top products, for the product trend lines: the same products() a month at a time.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @param  list<string>  $months
+     * @return array<string, array<string, array{sales: float, orders: int}>> month => product name => figures
+     */
+    private function productMonths(PresentationBoard $board, array $snapshot, array $months): array
+    {
+        return collect($months)->mapWithKeys(fn (string $month) => [$month => collect($board->products($snapshot, $month.'-01', CarbonImmutable::parse($month.'-01')->endOfMonth()->toDateString())['products'])
+            ->mapWithKeys(fn (array $product) => [$product['name'] => ['sales' => (float) $product['sales'], 'orders' => (int) $product['orders']]])
+            ->all()])->all();
+    }
+
+    /**
+     * Each month's gross per CRA, for the CRA cards' trend lines: the same range() a month at a time.
+     *
+     * @param  array<string, mixed>  $craSnapshot
+     * @param  list<string>  $months
+     * @return array<string, array<int, float>> month => user id => gross
+     */
+    private function craMonths(PresentationBoardCras $cras, array $craSnapshot, array $months): array
+    {
+        return collect($months)->mapWithKeys(fn (string $month) => [$month => collect($cras->range($craSnapshot, $month, $month)['rows'])
+            ->mapWithKeys(fn (array $row) => [$row['user']->id => (float) $row['gross']])
+            ->all()])->all();
+    }
+
+    /**
+     * The exclusive CRAs' months in the range, as the Exclusive Leads Dashboard counts them: month() for the list, its
+     * targets and days, salesSplit() for exclusive vs normal sales. Months before a CRA's exclusive start or after today
+     * are left out.
+     *
+     * @param  list<string>  $months
+     * @return list<array{user: User, months: array<string, array{figures: array<string, mixed>, sales: array<string, array{orders: int, gross: float}>}>}>
+     */
+    private function exclusive(ExclusiveLeads $exclusive, array $months): array
+    {
+        $today = WorkingDate::realToday();
+
+        return $exclusive->cras()->map(function (User $cra) use ($exclusive, $months, $today) {
+            $start = WorkingDate::realDayFor($cra->exclusive_from)->format('Y-m');
+            $figures = [];
+            foreach ($months as $month) {
+                if ($month < $start || $month > $today->format('Y-m')) {
+                    continue;
+                }
+                $day = CarbonImmutable::parse($month.'-01');
+                $figures[$month] = [
+                    'figures' => $exclusive->month($cra, $day),
+                    'sales' => $exclusive->salesSplit($cra, $day, $day->endOfMonth()->startOfDay()->min($today)),
+                ];
+            }
+
+            return ['user' => $cra, 'months' => $figures];
+        })->filter(fn (array $row) => $row['months'] !== [])->values()->all();
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CvrOrderEntry;
 use App\Models\DeliveredOrder;
 use App\Models\Lead;
 use App\Models\LogisticsOrder;
@@ -309,6 +310,28 @@ class PresentationBoardTest extends TestCase
         $this->assertSame('Sinuxyl', $range['products'][0]['name']);
         $this->assertEquals(2200, $range['products'][0]['sales']);
         $this->assertSame(2, $range['products'][0]['orders']);
+    }
+
+    public function test_sales_split_into_segmentation_and_broadcast_by_tag_with_the_cvr_trackers_type_winning(): void
+    {
+        $this->sale('2026-07-03', 500, PancakeOrder::SEGMENTATION)->forceFill(['conversion_type' => null])->save();
+        $this->sale('2026-08-03', 1000);
+        $this->sale('2026-08-04', 600, PancakeOrder::BROADCAST);
+        $switched = $this->sale('2026-08-05', 300, PancakeOrder::BROADCAST);
+        $this->sale('2026-08-06', 200, PancakeOrder::BROADCAST, status: PancakeOrder::CANCELED);
+        CvrOrderEntry::create(['pancake_order_id' => $switched->pancake_order_id, 'order_type' => PancakeOrder::SEGMENTATION]);
+
+        $range = app(PresentationBoard::class)->range($this->snapshot(), '2026-07', '2026-08', 'monthly');
+        $totals = $range['totals'];
+
+        $this->assertEquals(1300, $totals['sc_gross']);
+        $this->assertSame(2, $totals['sc_orders']);
+        $this->assertEquals(800, $totals['bc_gross']);
+        $this->assertSame(1, $totals['bc_orders']);
+        $this->assertEquals(800, $totals['bc_aov']);
+        $this->assertEquals(500, $totals['untagged_gross']);
+        $this->assertEquals($totals['gross'], $totals['sc_gross'] + $totals['bc_gross'] + $totals['untagged_gross']);
+        $this->assertEquals(500, $range['months'][0]['untagged_gross']);
     }
 
     public function test_an_account_used_in_fsd_counts_as_crd_only_from_the_day_its_cra_joined(): void
@@ -634,6 +657,19 @@ class PresentationBoardTest extends TestCase
             ->assertDontSee('These figures appear after the next scheduled refresh.');
     }
 
+    public function test_an_exclusive_cra_gets_their_own_section_and_other_cras_do_not(): void
+    {
+        $this->sale('2026-11-03', 1000);
+        app(PresentationBoard::class)->refresh();
+        $board = fn () => $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-11', 'to' => '2026-11']));
+
+        $board()->assertDontSee('Leads on her list');
+
+        $this->cra->update(['exclusive_from' => '2026-10-01']);
+
+        $board()->assertSeeInOrder(['Exclusive leads · Regina', 'Leads on her list', 'Her exclusive vs normal sales']);
+    }
+
     public function test_the_page_needs_its_permission_and_says_so_until_the_first_snapshot(): void
     {
         $this->actingAs($this->cra)->get(route('presentation-board.index'))->assertForbidden();
@@ -804,6 +840,21 @@ class PresentationBoardTest extends TestCase
             ->assertOk()->assertSee('₱7,000')->assertDontSee('₱8,000')->assertSee('Aug 31');
 
         $this->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-02']))->assertSessionHasErrors('to');
+    }
+
+    public function test_the_change_compares_the_last_month_picked_with_the_first_and_names_the_running_months_days(): void
+    {
+        $this->sale('2026-08-03', 1000);
+        $this->sale('2026-09-03', 5000);
+        $this->sale('2026-10-03', 2000);
+        $this->sale('2026-11-03', 500);
+        app(PresentationBoard::class)->refresh();
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-10']))
+            ->assertOk()->assertSee('▲ +100.0% · Oct vs Aug')->assertSee('Oct vs Aug</th>', false)->assertDontSee('Oct vs Sep');
+
+        $this->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-11']))
+            ->assertOk()->assertSee('Nov 1–6 vs Oct')->assertSee('Nov 1–6 so far');
     }
 
     public function test_the_backfill_fills_only_empty_pages_and_picks_up_where_it_stopped(): void
