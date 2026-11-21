@@ -231,9 +231,9 @@
                     ['name' => 'FSD leads', 'leads' => 'fsd_leads', 'wait' => 'fsd_waiting', 'bought' => 'retained', 'base' => 'retained_base', 'rate' => 'retained_rate', 'lost' => 'fsd_lost', 'due' => 'fsd_due', 'churn' => 'fsd_churn_rate', 'boughtName' => 'Retained', 'color' => $fsd, 'tint' => $fsdTint, 'added' => true, 'id' => 'fsd'],
                     ['name' => 'CRD leads', 'leads' => 'crd_leads', 'wait' => 'crd_waiting', 'bought' => 'repeat', 'base' => 'repeat_base', 'rate' => 'repeat_rate', 'lost' => 'crd_lost', 'due' => 'crd_due', 'churn' => 'crd_churn_rate', 'boughtName' => 'Repeat', 'color' => $crd, 'tint' => $crdTint, 'added' => false, 'id' => 'crd'],
                 ];
-                $sections = ['totals' => 'Totals', 'short' => 'In short', 'rates' => 'Rates', 'months' => 'Month by month', 'products-title' => 'Top products', 'cra-performance' => 'CRAs']
+                $sections = ['totals' => 'Totals', 'short' => 'In short', 'rates' => 'Rates', 'months' => 'Month by month', 'sales-split' => 'Seg vs Broadcast', 'products-title' => 'Top products', 'cra-performance' => 'CRAs']
                     + ($exclusive ? ['exclusive' => 'Exclusive leads'] : [])
-                    + ['customers' => 'Leads', 'sales-split' => 'Seg vs Broadcast', 'details' => 'Daily / weekly', 'churn' => 'Churn', 'counted' => 'How counted'];
+                    + ['customers' => 'Leads', 'details' => 'Daily / weekly', 'churn' => 'Churn', 'counted' => 'How counted'];
             @endphp
 
             <header class="flex flex-wrap items-end justify-between gap-4">
@@ -521,6 +521,78 @@
                     @if ($hasPartial)
                         <p style="{{ $note }}">* Churn is partial before July: tracker leads start in June. The total's rate uses {{ $totals['churn_label'] }} only.</p>
                     @endif
+                </div>
+            </section>
+
+            <section id="sales-split" aria-labelledby="sales-split-title" style="{{ $glass }}">
+                @php
+                    $untaggedColor = $reactivation;
+                    $salesTypes = [
+                        ['key' => 'sc', 'name' => 'Segmentation', 'color' => $crd],
+                        ['key' => 'bc', 'name' => 'Broadcast', 'color' => $broadcast],
+                    ];
+                    $tagged = $totals['sc_gross'] + $totals['bc_gross'];
+                    $splitRead = $tagged ? 'Segmentation '.number_format($totals['sc_gross'] / $tagged * 100, 1).'% · Broadcast '.number_format($totals['bc_gross'] / $tagged * 100, 1).'% of tagged sales' : 'No tagged sales in these months';
+                    $tagsFrom = \Carbon\CarbonImmutable::parse(config('segmentation.conversion_tags_from'))->format('M j');
+                    $splitParts = array_map(fn (array $type) => [$type['name'], $totals[$type['key'].'_gross'], $type['color'], $peso($totals[$type['key'].'_gross'])], $salesTypes);
+                @endphp
+                <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
+                    <h2 id="sales-split-title" style="{{ $h2 }}">Segmentation vs Broadcast sales</h2>
+                    <span id="board-read-split" data-read-default="{{ $splitRead }}" style="font-size: 13px; {{ $muted }}">{{ $splitRead }}</span>
+                </header>
+                <div class="flex flex-wrap gap-5" style="padding: 16px">
+                    <div class="flex flex-col gap-4" style="flex: 1 1 280px">
+                        @if ($tagged > 0)
+                            <div class="flex justify-center">{!! $donut($splitParts, $millions($tagged), 'tagged sales', $splitRead, 170) !!}</div>
+                        @endif
+                        @foreach ($salesTypes as $type)
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-baseline justify-between gap-3">
+                                    <span class="flex items-center gap-2" style="font-size: 14px; font-weight: 600"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span>
+                                    <span style="font-size: 26px; font-weight: 700; font-variant-numeric: normal">{{ $peso($totals[$type['key'].'_gross']) }}</span>
+                                </div>
+                                <span style="font-size: 13px; {{ $muted }}">{{ $tagged ? number_format($totals[$type['key'].'_gross'] / $tagged * 100, 1).'%' : '—' }} of tagged sales · {{ $number($totals[$type['key'].'_orders']) }} {{ Str::plural('order', $totals[$type['key'].'_orders']) }} · AOV {{ $peso($totals[$type['key'].'_aov']) }}</span>
+                            </div>
+                        @endforeach
+                        @if ($totals['untagged_gross'])
+                            <p style="{{ $note }}"><span aria-hidden="true" style="display: inline-block; {{ $swatch }}; margin-right: 5px; background: {{ $untaggedColor }}"></span><strong style="color: {{ $text }}">{{ $peso($totals['untagged_gross']) }}</strong> ({{ $number($totals['untagged_orders']) }} {{ Str::plural('order', $totals['untagged_orders']) }}) sold before the tags started on {{ $tagsFrom }}, so not split. Shares are of tagged sales.</p>
+                        @endif
+                        <p style="{{ $note }}">By each order's CRD - SEGMENTATION / CRD - BROADCAST tag; the CVR Tracker's Type of Order wins over it. Together they make the total sales above.</p>
+                    </div>
+                    <div class="flex min-w-0 flex-col gap-2" data-chart style="flex: 999 1 560px">
+                        <div class="mb-1 flex flex-wrap gap-3" style="font-size: 13px; {{ $muted }}">
+                            @foreach ($salesTypes as $type)
+                                <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span>
+                            @endforeach
+                            @if ($totals['untagged_gross'])
+                                <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $untaggedColor }}"></span>Before the tags</span>
+                            @endif
+                            <span>Bar = each month's sales, by share</span>
+                        </div>
+                        @foreach ($months as $month)
+                            @php
+                                $monthTagged = $month['sc_gross'] + $month['bc_gross'];
+                                $read = $month['label'].': Segmentation '.$peso($month['sc_gross']).' ('.$number($month['sc_orders']).' orders) · Broadcast '.$peso($month['bc_gross']).' ('.$number($month['bc_orders']).' orders)'
+                                    .($monthTagged ? ' · Broadcast '.number_format($month['bc_gross'] / $monthTagged * 100, 1).'%' : '')
+                                    .($month['untagged_gross'] ? ' · before the tags '.$peso($month['untagged_gross']) : '');
+                                $monthAll = $monthTagged + $month['untagged_gross'];
+                            @endphp
+                            <a href="{{ $ordersUrl($month['key']) }}" data-point="split-{{ $month['key'] }}" data-read="{{ $read }}" data-read-target="board-read-split" title="{{ $read }}. Click for the orders." class="grid items-center gap-2.5" style="grid-template-columns: 48px minmax(0, 1fr) 84px; padding: 3px 4px; border-radius: 6px; background: transparent; color: inherit; font-size: 12px">
+                                <span style="font-weight: 700; color: var(--pb-soft)">{{ $month['label'] }}</span>
+                                <span class="flex overflow-hidden" style="height: 22px; border-radius: 6px; background: var(--pb-track)">
+                                    @foreach ([...$salesTypes, ['key' => 'untagged', 'color' => $untaggedColor]] as $type)
+                                        @if ($monthAll > 0 && $month[$type['key'].'_gross'] > 0)
+                                            @php
+                                                $share = $month[$type['key'].'_gross'] / $monthAll * 100;
+                                            @endphp
+                                            <span class="flex items-center justify-center" style="width: {{ round($share, 2) }}%; background: {{ $type['color'] }}; font-size: 11px; font-weight: 700; color: #fff">{{ $share >= 12 ? number_format($share).'%' : '' }}</span>
+                                        @endif
+                                    @endforeach
+                                </span>
+                                <span style="text-align: right; font-weight: 700">{{ $millions($monthAll) }}</span>
+                            </a>
+                        @endforeach
+                    </div>
                 </div>
             </section>
 
@@ -835,78 +907,6 @@
                         @endforeach
                     </div>
                     <p style="{{ $note }}">New customers are counted when they first buy; due to reorder when their supply runs out, so the lines differ. Each month's customers open from Month by month.</p>
-                </div>
-            </section>
-
-            <section id="sales-split" aria-labelledby="sales-split-title" style="{{ $glass }}">
-                @php
-                    $untaggedColor = $reactivation;
-                    $salesTypes = [
-                        ['key' => 'sc', 'name' => 'Segmentation', 'color' => $crd],
-                        ['key' => 'bc', 'name' => 'Broadcast', 'color' => $broadcast],
-                    ];
-                    $tagged = $totals['sc_gross'] + $totals['bc_gross'];
-                    $splitRead = $tagged ? 'Segmentation '.number_format($totals['sc_gross'] / $tagged * 100, 1).'% · Broadcast '.number_format($totals['bc_gross'] / $tagged * 100, 1).'% of tagged sales' : 'No tagged sales in these months';
-                    $tagsFrom = \Carbon\CarbonImmutable::parse(config('segmentation.conversion_tags_from'))->format('M j');
-                    $splitParts = array_map(fn (array $type) => [$type['name'], $totals[$type['key'].'_gross'], $type['color'], $peso($totals[$type['key'].'_gross'])], $salesTypes);
-                @endphp
-                <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
-                    <h2 id="sales-split-title" style="{{ $h2 }}">Segmentation vs Broadcast sales</h2>
-                    <span id="board-read-split" data-read-default="{{ $splitRead }}" style="font-size: 13px; {{ $muted }}">{{ $splitRead }}</span>
-                </header>
-                <div class="flex flex-wrap gap-5" style="padding: 16px">
-                    <div class="flex flex-col gap-4" style="flex: 1 1 280px">
-                        @if ($tagged > 0)
-                            <div class="flex justify-center">{!! $donut($splitParts, $millions($tagged), 'tagged sales', $splitRead, 170) !!}</div>
-                        @endif
-                        @foreach ($salesTypes as $type)
-                            <div class="flex flex-col gap-1">
-                                <div class="flex items-baseline justify-between gap-3">
-                                    <span class="flex items-center gap-2" style="font-size: 14px; font-weight: 600"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span>
-                                    <span style="font-size: 26px; font-weight: 700; font-variant-numeric: normal">{{ $peso($totals[$type['key'].'_gross']) }}</span>
-                                </div>
-                                <span style="font-size: 13px; {{ $muted }}">{{ $tagged ? number_format($totals[$type['key'].'_gross'] / $tagged * 100, 1).'%' : '—' }} of tagged sales · {{ $number($totals[$type['key'].'_orders']) }} {{ Str::plural('order', $totals[$type['key'].'_orders']) }} · AOV {{ $peso($totals[$type['key'].'_aov']) }}</span>
-                            </div>
-                        @endforeach
-                        @if ($totals['untagged_gross'])
-                            <p style="{{ $note }}"><span aria-hidden="true" style="display: inline-block; {{ $swatch }}; margin-right: 5px; background: {{ $untaggedColor }}"></span><strong style="color: {{ $text }}">{{ $peso($totals['untagged_gross']) }}</strong> ({{ $number($totals['untagged_orders']) }} {{ Str::plural('order', $totals['untagged_orders']) }}) sold before the tags started on {{ $tagsFrom }}, so not split. Shares are of tagged sales.</p>
-                        @endif
-                        <p style="{{ $note }}">By each order's CRD - SEGMENTATION / CRD - BROADCAST tag; the CVR Tracker's Type of Order wins over it. Together they make the total sales above.</p>
-                    </div>
-                    <div class="flex min-w-0 flex-col gap-2" data-chart style="flex: 999 1 560px">
-                        <div class="mb-1 flex flex-wrap gap-3" style="font-size: 13px; {{ $muted }}">
-                            @foreach ($salesTypes as $type)
-                                <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span>
-                            @endforeach
-                            @if ($totals['untagged_gross'])
-                                <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $untaggedColor }}"></span>Before the tags</span>
-                            @endif
-                            <span>Bar = each month's sales, by share</span>
-                        </div>
-                        @foreach ($months as $month)
-                            @php
-                                $monthTagged = $month['sc_gross'] + $month['bc_gross'];
-                                $read = $month['label'].': Segmentation '.$peso($month['sc_gross']).' ('.$number($month['sc_orders']).' orders) · Broadcast '.$peso($month['bc_gross']).' ('.$number($month['bc_orders']).' orders)'
-                                    .($monthTagged ? ' · Broadcast '.number_format($month['bc_gross'] / $monthTagged * 100, 1).'%' : '')
-                                    .($month['untagged_gross'] ? ' · before the tags '.$peso($month['untagged_gross']) : '');
-                                $monthAll = $monthTagged + $month['untagged_gross'];
-                            @endphp
-                            <a href="{{ $ordersUrl($month['key']) }}" data-point="split-{{ $month['key'] }}" data-read="{{ $read }}" data-read-target="board-read-split" title="{{ $read }}. Click for the orders." class="grid items-center gap-2.5" style="grid-template-columns: 48px minmax(0, 1fr) 84px; padding: 3px 4px; border-radius: 6px; background: transparent; color: inherit; font-size: 12px">
-                                <span style="font-weight: 700; color: var(--pb-soft)">{{ $month['label'] }}</span>
-                                <span class="flex overflow-hidden" style="height: 22px; border-radius: 6px; background: var(--pb-track)">
-                                    @foreach ([...$salesTypes, ['key' => 'untagged', 'color' => $untaggedColor]] as $type)
-                                        @if ($monthAll > 0 && $month[$type['key'].'_gross'] > 0)
-                                            @php
-                                                $share = $month[$type['key'].'_gross'] / $monthAll * 100;
-                                            @endphp
-                                            <span class="flex items-center justify-center" style="width: {{ round($share, 2) }}%; background: {{ $type['color'] }}; font-size: 11px; font-weight: 700; color: #fff">{{ $share >= 12 ? number_format($share).'%' : '' }}</span>
-                                        @endif
-                                    @endforeach
-                                </span>
-                                <span style="text-align: right; font-weight: 700">{{ $millions($monthAll) }}</span>
-                            </a>
-                        @endforeach
-                    </div>
                 </div>
             </section>
 
