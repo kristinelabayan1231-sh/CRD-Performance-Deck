@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Cache;
  * Presentation Board → CRA performance: each CRA's year so far, kept as its own snapshot so a failure here never costs
  * the board its figures.
  *
- * Gross sales = the same orders as the board's Sales (Conversion Breakdown). NI = the Daily I.S. CRA card's NET INCOME,
+ * Gross sales = the same orders as the board's Sales (Conversion Breakdown); orders = those of them counted, so AOV =
+ * gross ÷ orders as the board's. NI = the Daily I.S. CRA card's NET INCOME,
  * from NI_FROM on. Capacity a day = customers answered (Segmentation Productivity's Answered) ÷ days they answered
  * anyone. High AOV and VIP = the customers assigned to the CRA now (Customer Database), so they follow no month.
  */
@@ -32,7 +33,7 @@ class PresentationBoardCras
     /**
      * The last snapshot; null until the first one is taken (presentation-board:refresh-cras).
      *
-     * @return array{months: array<string, array<int, array{gross: float, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}|null
+     * @return array{months: array<string, array<int, array{gross: float, orders: int, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}|null
      */
     public function snapshot(): ?array
     {
@@ -42,7 +43,7 @@ class PresentationBoardCras
     /**
      * Take the snapshot again.
      *
-     * @return array{months: array<string, array<int, array{gross: float, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}
+     * @return array{months: array<string, array<int, array{gross: float, orders: int, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}
      */
     public function refresh(): array
     {
@@ -55,7 +56,7 @@ class PresentationBoardCras
     /**
      * The year up to $today.
      *
-     * @return array{months: array<string, array<int, array{gross: float, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}
+     * @return array{months: array<string, array<int, array{gross: float, orders: int, answered: int, answered_days: int, ni: ?float}>>, high_value: array<int, array{high_aov: int, vip: int}>}
      */
     public function build(CarbonImmutable $today): array
     {
@@ -66,13 +67,14 @@ class PresentationBoardCras
         for ($start = $today->startOfYear(); $start->lessThanOrEqualTo($today); $start = $start->addMonth()) {
             $end = $start->endOfMonth()->startOfDay()->min($today);
             $key = $start->format('Y-m');
-            $months[$key] = $cras->mapWithKeys(fn (User $cra) => [$cra->id => ['gross' => 0.0, 'answered' => 0, 'answered_days' => 0, 'ni' => null]])->all();
+            $months[$key] = $cras->mapWithKeys(fn (User $cra) => [$cra->id => ['gross' => 0.0, 'orders' => 0, 'answered' => 0, 'answered_days' => 0, 'ni' => null]])->all();
 
             if ($accounts->isNotEmpty()) {
                 foreach (ConversionBreakdown::taggedOrders($accounts, $start, $end)->cursor() as $order) {
                     $craId = ConversionBreakdown::craFor($order, $accounts);
                     if (isset($months[$key][$craId])) {
                         $months[$key][$craId]['gross'] += $order->sales();
+                        $months[$key][$craId]['orders'] += $order->isCounted() ? 1 : 0;
                     }
                 }
             }
@@ -93,10 +95,11 @@ class PresentationBoardCras
     }
 
     /**
-     * The figures for months $from–$to (Y-m), highest gross first.
+     * The figures for months $from–$to (Y-m), highest gross first. A snapshot from before orders were kept has none
+     * (orders 0, AOV null) until the next refresh.
      *
      * @param  array<string, mixed>  $snapshot
-     * @return array{rows: list<array{user: User, rank: int, gross: float, share: float, ni: ?float, capacity: ?float, answered_days: int, high_aov: int, vip: int}>, gross: float, high_aov: int, vip: int}
+     * @return array{rows: list<array{user: User, rank: int, gross: float, orders: int, aov: ?float, share: float, ni: ?float, capacity: ?float, answered_days: int, high_aov: int, vip: int}>, gross: float, high_aov: int, vip: int}
      */
     public function range(array $snapshot, string $from, string $to): array
     {
@@ -107,10 +110,14 @@ class PresentationBoardCras
             $answered = array_sum(array_column($figures, 'answered'));
             $days = array_sum(array_column($figures, 'answered_days'));
             $netIncomes = array_filter(array_column($figures, 'ni'), fn (?float $netIncome) => $netIncome !== null);
+            $gross = (float) array_sum(array_column($figures, 'gross'));
+            $orders = (int) array_sum(array_column($figures, 'orders'));
 
             return [
                 'user' => $cra,
-                'gross' => (float) array_sum(array_column($figures, 'gross')),
+                'gross' => $gross,
+                'orders' => $orders,
+                'aov' => $orders ? $gross / $orders : null,
                 'ni' => $netIncomes === [] ? null : (float) array_sum($netIncomes),
                 'capacity' => $days ? $answered / $days : null,
                 'answered_days' => $days,

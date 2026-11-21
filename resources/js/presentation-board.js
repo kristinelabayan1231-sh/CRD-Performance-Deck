@@ -47,6 +47,7 @@ export function initPresentationBoard() {
     board.querySelectorAll('[data-chart]').forEach((chart) => chart.addEventListener('mouseleave', clear));
 
     initProductSort(board);
+    initCraCompare(board);
 }
 
 /**
@@ -79,4 +80,30 @@ function initProductSort(board) {
                 rows.insertBefore(row, others);
             });
     }));
+}
+
+/**
+ * CRA cards: pointing at (or tabbing to) a month's dot shows that month vs the one before in the card's table, and its
+ * month name in bold; leaving the dot puts the default comparison back.
+ */
+function initCraCompare(board) {
+    board.querySelectorAll('[data-cra-card]').forEach((card) => {
+        const compare = (key) => {
+            card.querySelectorAll('[data-cra-compare]').forEach((table) => {
+                table.hidden = table.dataset.craCompare !== key;
+            });
+            card.querySelectorAll('[data-cra-axis]').forEach((label) => {
+                label.style.fontWeight = label.dataset.craAxis === key ? '700' : '';
+            });
+        };
+
+        card.querySelectorAll('[data-cra-dot]').forEach((dot) => {
+            const enter = () => compare(dot.dataset.craDot);
+            const leave = () => compare('default');
+            dot.addEventListener('mouseenter', enter);
+            dot.addEventListener('focus', enter);
+            dot.addEventListener('mouseleave', leave);
+            dot.addEventListener('blur', leave);
+        });
+    });
 }

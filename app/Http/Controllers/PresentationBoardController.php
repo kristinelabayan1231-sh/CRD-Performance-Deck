@@ -84,16 +84,23 @@ class PresentationBoardController extends Controller
     }
 
     /**
-     * Each month's gross per CRA, for the CRA cards' trend lines: the same range() a month at a time.
+     * Each month's figures per CRA, for the CRA cards' trend lines, month popups and comparison: the same range() a
+     * month at a time.
      *
      * @param  array<string, mixed>  $craSnapshot
      * @param  list<string>  $months
-     * @return array<string, array<int, float>> month => user id => gross
+     * @return array<string, array<int, array{gross: float, orders: int, aov: ?float, capacity: ?float, ni: ?float}>> month => user id => figures
      */
     private function craMonths(PresentationBoardCras $cras, array $craSnapshot, array $months): array
     {
         return collect($months)->mapWithKeys(fn (string $month) => [$month => collect($cras->range($craSnapshot, $month, $month)['rows'])
-            ->mapWithKeys(fn (array $row) => [$row['user']->id => (float) $row['gross']])
+            ->mapWithKeys(fn (array $row) => [$row['user']->id => [
+                'gross' => (float) $row['gross'],
+                'orders' => $row['orders'],
+                'aov' => $row['aov'],
+                'capacity' => $row['capacity'],
+                'ni' => $row['ni'],
+            ]])
             ->all()])->all();
     }
 
