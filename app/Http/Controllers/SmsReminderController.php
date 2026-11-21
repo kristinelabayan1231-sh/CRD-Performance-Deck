@@ -6,6 +6,7 @@ use App\Models\DoNotText;
 use App\Models\RestockReminder;
 use App\Models\SmsMessage;
 use App\Models\SmsReply;
+use App\Models\SmsTemplate;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\RestockReminders;
@@ -54,6 +55,8 @@ class SmsReminderController extends Controller
 
         $rows->getCollection()->each(function (RestockReminder $reminder) use ($reminders) {
             $reminder->preview = $reminder->message ?? $reminders->messageFor($reminder);
+            // The Text button's dropdown starts on the template the customer's reminder uses.
+            $reminder->template_choice = $reminders->templateFor($reminder)?->id;
         });
 
         $craForActions = $craId ? $cras->firstWhere('id', $craId) : null;
@@ -82,6 +85,10 @@ class SmsReminderController extends Controller
             'sendTime' => SmsSettings::sendTime(),
             'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null : null,
             'daysBefore' => RestockReminders::daysBefore(),
+            // The Text button's template choices: follow-ups first, then reminders.
+            'textTemplates' => SmsTemplate::where('is_active', true)
+                ->orderByRaw('case when purpose = ? then 0 else 1 end', [SmsTemplate::FOLLOW_UP])->orderBy('name')
+                ->get(['id', 'name', 'purpose', 'body']),
             // Customers who asked not to be texted get no Text button.
             'doNotText' => DoNotText::whereIn('phone_key', $rows->getCollection()->pluck('phone_key'))->pluck('phone_key')->all(),
         ]);

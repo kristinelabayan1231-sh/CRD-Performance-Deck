@@ -163,6 +163,7 @@ class SmsRemindersTest extends TestCase
         SmsTemplate::create(['name' => 'Repeat', 'customer_type' => 'repeat', 'body' => 'Repeat text.']);
         SmsTemplate::create(['name' => 'Clear Sight', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}, {product} runs out {run_out_date}. {cra_name}']);
         SmsTemplate::create(['name' => 'Off', 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Off.', 'is_active' => false]);
+        SmsTemplate::create(['name' => 'Follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Kumusta po?']);
 
         $message = app(RestockReminders::class)->messageFor(RestockReminder::firstWhere('phone_key', $phoneKey));
 
@@ -439,5 +440,29 @@ class SmsRemindersTest extends TestCase
 
         Http::assertNothingSent();
         $this->assertDatabaseCount('sms_messages', 0);
+    }
+
+    public function test_the_text_box_offers_every_active_template_starting_on_the_customers_reminder_template(): void
+    {
+        $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $reminderTemplate = SmsTemplate::create(['name' => 'Clear Sight reminder', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}!']);
+        SmsTemplate::create(['name' => 'Kumusta follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po ang {product} mo?']);
+        SmsTemplate::create(['name' => 'Old one', 'body' => 'Old.', 'is_active' => false]);
+
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
+            ->assertSee('Kumusta follow-up')
+            ->assertSee('<option value="'.$reminderTemplate->id.'" selected>Clear Sight reminder</option>', false)
+            ->assertSee('Hi Maria! Reply STOP to opt out.')
+            ->assertDontSee('Old one');
+    }
+
+    public function test_a_supervisor_saves_a_follow_up_template(): void
+    {
+        $this->actingAs($this->supervisor())->post(route('sms-reminders.templates.store'), [
+            'name' => 'Kumusta', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po?', 'is_active' => 1,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertTrue(SmsTemplate::firstWhere('name', 'Kumusta')->isFollowUp());
     }
 }

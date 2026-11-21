@@ -48,12 +48,13 @@ class SmsTemplateController extends Controller
     }
 
     /**
-     * @return array{name: string, product_id: ?int, customer_type: ?string, body: string, is_active: bool}
+     * @return array{name: string, purpose: string, product_id: ?int, customer_type: ?string, body: string, is_active: bool}
      */
     private function validated(Request $request): array
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
+            'purpose' => ['required', Rule::in(array_keys(SmsTemplate::PURPOSES))],
             'product_id' => ['nullable', 'integer', Rule::exists('products', 'id')->where('is_tsd', false)],
             'customer_type' => ['nullable', Rule::in(array_keys(config('sms_reminders.customer_types')))],
             'body' => ['required', 'string', 'max:480'],
