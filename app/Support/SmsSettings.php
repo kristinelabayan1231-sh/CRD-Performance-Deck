@@ -6,8 +6,8 @@ use App\Models\Setting;
 use Carbon\CarbonImmutable;
 
 /**
- * Settings → SMS Reminders: whether texts go out at all, the daily automatic send time, and the most texts a CRA's
- * phone sends a day.
+ * Settings → SMS Reminders: whether texts go out at all, the daily automatic send time, the windows texts go out in,
+ * and the most texts a CRA's phone sends a day.
  */
 class SmsSettings
 {
@@ -16,6 +16,9 @@ class SmsSettings
     public const SEND_TIME = 'sms_reminders.send_time';
 
     public const DAILY_CAP = 'sms_reminders.daily_cap';
+
+    /** JSON list of {from, until} (HH:MM, Manila). */
+    public const WINDOWS = 'sms_reminders.windows';
 
     /** Off until a supervisor turns it on. */
     public static function enabled(): bool
@@ -42,11 +45,32 @@ class SmsSettings
         return CarbonImmutable::now(config('segmentation.timezone'));
     }
 
+    /**
+     * The windows texts go out in (Manila), earliest first.
+     *
+     * @return list<array{from: string, until: string}>
+     */
+    public static function windows(): array
+    {
+        $saved = json_decode((string) Setting::value(self::WINDOWS), true);
+
+        return is_array($saved) && $saved !== [] ? $saved : config('sms_reminders.sending_windows');
+    }
+
     public static function withinSendingHours(?CarbonImmutable $at = null): bool
     {
         $time = ($at ?? self::now())->format('H:i');
-        $hours = config('sms_reminders.sending_hours');
 
-        return $time >= $hours['from'] && $time < $hours['until'];
+        return collect(self::windows())->contains(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+    }
+
+    /**
+     * "9:00–11:00 AM and 2:00–4:00 PM".
+     */
+    public static function windowsLabel(): string
+    {
+        $format = fn (string $time) => CarbonImmutable::createFromFormat('H:i', $time)->format('g:i A');
+
+        return collect(self::windows())->map(fn (array $window) => $format($window['from']).'–'.$format($window['until']))->join(', ', ' and ');
     }
 }

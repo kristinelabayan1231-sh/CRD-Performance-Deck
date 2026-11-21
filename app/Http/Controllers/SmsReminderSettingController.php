@@ -26,21 +26,36 @@ class SmsReminderSettingController extends Controller
             'dailyCap' => SmsSettings::dailyCap(),
             'cras' => LeadGenerator::cras()->map(fn (User $cra) => ['cra' => $cra, 'link' => SmsSender::linkFor($cra), 'hasToken' => (bool) $cra->recording_token]),
             'replyUrl' => route('api.sms-replies.store'),
-            'hours' => config('sms_reminders.sending_hours'),
+            'windows' => SmsSettings::windows(),
+            'windowsLabel' => SmsSettings::windowsLabel(),
         ]);
     }
 
+    /**
+     * The second sending window is optional (both times blank = one window); each ends after it starts, and the second
+     * starts after the first ends.
+     */
     public function update(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'enabled' => ['sometimes', 'boolean'],
             'send_time' => ['required', 'date_format:H:i'],
             'daily_cap' => ['required', 'integer', 'min:1', 'max:1000'],
+            'windows.0.from' => ['required', 'date_format:H:i'],
+            'windows.0.until' => ['required', 'date_format:H:i', 'after:windows.0.from'],
+            'windows.1.from' => ['nullable', 'required_with:windows.1.until', 'date_format:H:i', 'after_or_equal:windows.0.until'],
+            'windows.1.until' => ['nullable', 'required_with:windows.1.from', 'date_format:H:i', 'after:windows.1.from'],
+        ], [
+            'windows.0.until.after' => 'The morning window has to end after it starts.',
+            'windows.1.until.after' => 'The afternoon window has to end after it starts.',
+            'windows.1.from.after_or_equal' => 'The afternoon window has to start after the morning one ends.',
         ]);
+        $windows = array_values(array_filter($data['windows'], fn (array $window) => filled($window['from'] ?? null)));
 
         Setting::put(SmsSettings::ENABLED, $request->boolean('enabled') ? '1' : '0', $request->user());
         Setting::put(SmsSettings::SEND_TIME, $data['send_time'], $request->user());
         Setting::put(SmsSettings::DAILY_CAP, (string) $data['daily_cap'], $request->user());
+        Setting::put(SmsSettings::WINDOWS, json_encode($windows), $request->user());
 
         return back()->with('status', 'SMS Reminders saved.');
     }

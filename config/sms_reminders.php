@@ -16,8 +16,12 @@ return [
     // The MacroDroid webhook identifier of the "Send reminder" macro: the phone link with its last part swapped for this.
     'webhook_identifier' => 'sms',
 
-    // Texts go out only between these hours (Manila); what's left waits for the next day.
-    'sending_hours' => ['from' => '09:00', 'until' => '20:00'],
+    // Texts go out only in these windows (Manila), until Settings → SMS Reminders changes them; what's left after the
+    // last window waits for the next day. Short windows with a break look less like a mass blast to the telcos.
+    'sending_windows' => [
+        ['from' => '09:00', 'until' => '11:00'],
+        ['from' => '14:00', 'until' => '16:00'],
+    ],
 
     // Defaults until set in Settings → SMS Reminders.
     'send_time' => '09:30',

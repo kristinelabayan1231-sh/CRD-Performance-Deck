@@ -192,21 +192,27 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::SENT, RestockReminder::firstWhere('phone_key', $mikas)->status);
     }
 
-    public function test_nothing_is_sent_while_turned_off_or_outside_sending_hours(): void
+    public function test_nothing_is_sent_while_turned_off_or_outside_the_sending_windows(): void
     {
         $this->delivered('09170000001', cra: $this->anna);
         $this->artisan('reminders:build');
         RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
         Http::preventStrayRequests();
-        Http::fake();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
 
         $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
         $this->artisan('reminders:send');
         $this->turnOn();
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 20:30', 'Asia/Manila'));
-        $this->artisan('reminders:send');
-
+        // Between the 9–11 AM and 2–4 PM windows, and after the last one.
+        foreach (['11:00', '13:59', '16:00', '20:30'] as $time) {
+            $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
+            $this->artisan('reminders:send');
+        }
         Http::assertNothingSent();
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 14:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        Http::assertSentCount(1);
     }
 
     public function test_automatic_sending_queues_only_ticked_customers_of_cras_who_turned_it_on(): void
@@ -309,11 +315,19 @@ class SmsRemindersTest extends TestCase
 
         $supervisor = $this->supervisor();
         $this->actingAs($supervisor)->get(route('sms-reminders.templates.index'))->assertOk();
-        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), ['enabled' => 1, 'send_time' => '10:00', 'daily_cap' => 150])->assertRedirect();
+        $settings = ['enabled' => 1, 'send_time' => '10:00', 'daily_cap' => 150, 'windows' => [['from' => '10:00', 'until' => '12:00'], ['from' => '', 'until' => '']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $settings)->assertRedirect()->assertSessionHasNoErrors();
 
         $this->assertTrue(SmsSettings::enabled());
         $this->assertSame('10:00', SmsSettings::sendTime());
         $this->assertSame(150, SmsSettings::dailyCap());
+        $this->assertSame([['from' => '10:00', 'until' => '12:00']], SmsSettings::windows());
+
+        $overlapping = [...$settings, 'windows' => [['from' => '09:00', 'until' => '11:00'], ['from' => '10:30', 'until' => '12:00']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $overlapping)->assertSessionHasErrors('windows.1.from');
+        $backwards = [...$settings, 'windows' => [['from' => '11:00', 'until' => '09:00']]];
+        $this->actingAs($supervisor)->put(route('settings.sms-reminders.update'), $backwards)->assertSessionHasErrors('windows.0.until');
+        $this->assertSame([['from' => '10:00', 'until' => '12:00']], SmsSettings::windows());
         $this->actingAs($supervisor)->get(route('settings.sms-reminders.index'))->assertOk()->assertSee(self::SMS_LINK);
     }
 
