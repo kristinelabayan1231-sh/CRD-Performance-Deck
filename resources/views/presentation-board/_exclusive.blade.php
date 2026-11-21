@@ -64,12 +64,12 @@
         $boughtSoFar += $day['repeat'] + $day['retained'];
         $leadPoints[] = $dx($index + 1).','.round(200 - min($addedSoFar, $target * 1.2) / ($target * 1.2) * 180, 1);
         $boughtPoints[] = $dx($index + 1).','.round(200 - min($boughtSoFar, $boughtPeak) / $boughtPeak * 180, 1);
-        $hits[] = [$dx($index), \Carbon\CarbonImmutable::parse($day['date'])->format('M j').': '.$number($day['new']).' added ('.$number($day['quota']).' quota) · running '.$number($added).' of '.$number($target).' · '.$number($day['repeat'] + $day['retained']).' bought'];
+        $hits[] = [$dx($index), \Carbon\CarbonImmutable::parse($day['date'])->format('M j').': '.$number($day['new']).' added ('.$number($day['quota']).' quota) · running '.$number($addedSoFar).' of '.$number($target).' · '.$number($day['repeat'] + $day['retained']).' bought'];
         $lastDay = $index + 1;
     }
     $ty = fn (float $leads) => round(200 - $leads / ($target * 1.2) * 180, 1);
     $mixParts = collect($latest['figures']['actual']['mix'])->filter()->map(fn (int $count, string $source) => [$sourceLabels[$source] ?? $source, $count, ['leftover' => 'var(--pb-bc)', 'tagged' => 'var(--pb-excl)', 'high_value' => 'var(--pb-crd)', 'handled' => 'var(--pb-added)', 'random' => 'var(--pb-fsd)'][$source] ?? 'var(--pb-react)', $number($count)])->values()->all();
-    $splitPeak = max(1, ...array_map(fn (array $entry) => $entry['sales']['overall']['gross'], $byMonth));
+    $splitPeak = max(1, ...array_values(array_map(fn (array $entry) => $entry['sales']['overall']['gross'], $byMonth)));
 @endphp
 
 <section id="exclusive" aria-labelledby="exclusive-title-{{ $cra->id }}" style="{{ $glass }}">

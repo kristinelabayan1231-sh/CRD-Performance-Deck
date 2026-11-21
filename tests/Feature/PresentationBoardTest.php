@@ -663,11 +663,12 @@ class PresentationBoardTest extends TestCase
         app(PresentationBoard::class)->refresh();
         $board = fn () => $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-11', 'to' => '2026-11']));
 
-        $board()->assertDontSee('Leads on her list');
+        $board()->assertOk()->assertDontSee('Leads on her list');
 
         $this->cra->update(['exclusive_from' => '2026-10-01']);
 
-        $board()->assertSeeInOrder(['Exclusive leads · Regina', 'Leads on her list', 'Her exclusive vs normal sales']);
+        $board()->assertOk()->assertSeeInOrder(['Exclusive leads · Regina', 'Leads on her list', 'Her exclusive vs normal sales']);
+        $board()->assertOk()->assertSee(' quota) · running 0 of ');
     }
 
     public function test_the_page_needs_its_permission_and_says_so_until_the_first_snapshot(): void
