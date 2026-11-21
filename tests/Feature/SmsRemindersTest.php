@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CustomerClaim;
 use App\Models\DeliveredOrder;
 use App\Models\DoNotText;
+use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\RestockReminder;
 use App\Models\Role;
@@ -108,17 +109,39 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::PENDING, $reminders[$due]->status);
     }
 
-    public function test_customers_who_reordered_or_opted_out_are_skipped(): void
+    public function test_customers_who_restocked_the_same_product_or_opted_out_are_skipped(): void
     {
-        $reordered = $this->delivered('09170000001', cra: $this->anna);
-        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl');
-        $optedOut = $this->delivered('09170000002', cra: $this->anna);
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $redelivered = $this->delivered('09170000001', cra: $this->anna);
+        $this->delivered('09170000001', '2026-11-18');
+        $reorderedInPos = $this->delivered('09170000002', cra: $this->anna);
+        PancakeOrder::create(['pancake_order_id' => 'POS-1', 'ordered_on' => '2026-11-19', 'phone_key' => $reorderedInPos,
+            'items' => [['name' => 'Clear Sight 3.0', 'qty' => 1]]]);
+        $otherProduct = $this->delivered('09170000003', cra: $this->anna);
+        $this->delivered('09170000003', '2026-11-18', 'Sinuxyl');
+        PancakeOrder::create(['pancake_order_id' => 'POS-2', 'ordered_on' => '2026-11-19', 'phone_key' => $otherProduct,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1]]]);
+        $optedOut = $this->delivered('09170000004', cra: $this->anna);
         DoNotText::create(['phone_key' => $optedOut, 'reason' => 'Replied STOP']);
 
         $this->artisan('reminders:build')->assertSuccessful();
 
-        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $reordered, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $redelivered, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $reorderedInPos, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $otherProduct, 'status' => RestockReminder::PENDING, 'products' => 'Clear Sight 3.0']);
         $this->assertDatabaseHas('restock_reminders', ['phone_key' => $optedOut, 'status' => RestockReminder::SKIPPED, 'error' => 'Opted out']);
+    }
+
+    public function test_only_the_products_not_yet_restocked_are_in_the_text(): void
+    {
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->delivered('09170000001', product: 'Sinuxyl');
+        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl');
+
+        $this->artisan('reminders:build');
+
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $phoneKey, 'status' => RestockReminder::PENDING, 'products' => 'Clear Sight 3.0']);
     }
 
     public function test_rebuilding_leaves_customers_the_cra_already_left_out(): void
