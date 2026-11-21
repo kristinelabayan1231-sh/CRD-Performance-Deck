@@ -6,6 +6,8 @@
     $peso = fn (int|float|null $value) => $value === null ? '—' : '₱'.number_format($value);
     // Short sales label: ₱2.99M from a million, ₱460K below it.
     $millions = fn (int|float $value) => abs($value) >= 1000000 ? '₱'.number_format($value / 1000000, 2).'M' : '₱'.number_format($value / 1000).'K';
+    // Short money that stays exact for small amounts: ₱8,450 under ₱10K, ₱352K or ₱1.46M above.
+    $pesoShort = fn (int|float $value) => abs($value) >= 10000 ? $millions($value) : $peso($value);
     // Short count: 12K from ten thousand.
     $compact = fn (int|float $value) => abs($value) >= 10000 ? number_format($value / 1000).'K' : number_format($value);
     $percent = fn (?float $value) => $value === null ? '—' : number_format($value * 100, 1).'%';
@@ -39,7 +41,7 @@
 
     // The change of the last month against the one before: counts in %, rates in points.
     $chip = function (int|float|null $current, int|float|null $before, bool $rate = false, bool $lowerIsBetter = false, bool $neutral = false): array {
-        $base = 'display: inline-block; align-self: flex-start; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; ';
+        $base = 'display: inline-block; align-self: flex-start; max-width: 100%; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.4; white-space: normal; ';
         if ($current === null || $before === null || (! $rate && (float) $before === 0.0)) {
             return ['text' => 'no earlier month', 'style' => $base.'background: var(--pb-chip); color: var(--pb-muted)'];
         }
@@ -148,7 +150,10 @@
         [data-presentation-board] summary { list-style: none; }
         [data-presentation-board] summary::-webkit-details-marker { display: none; }
         [data-presentation-board] details[open] > summary .pb-chevron { transform: rotate(90deg); }
+        /* The board is drawn in px; the rest of the app is at 87.5% (html font-size), so the board matches it. */
+        [data-presentation-board] { zoom: .875; }
         [data-presentation-board] .pb-tip-box { display: none; }
+        [data-presentation-board] .pb-tile:hover, [data-presentation-board] .pb-tile:focus-within { z-index: 30; }
         [data-presentation-board] .pb-tip:hover .pb-tip-box, [data-presentation-board] .pb-tip:focus-within .pb-tip-box { display: block; }
         [data-presentation-board] [data-product-sort][aria-pressed="true"] { background: var(--pb-on); color: var(--pb-text); font-weight: 600; }
         [data-presentation-board] [data-product-sort][aria-pressed="false"] { background: transparent; color: var(--pb-muted); font-weight: 400; }
@@ -189,20 +194,40 @@
                 $paced = fn (?float $value) => $value === null ? null : $value * $paceFactor;
                 // The running month shows its days so far (Nov 1–21) wherever it is named.
                 $monthName = fn (array $month) => $isRunning && $month['key'] === $lastKey ? $month['label'].' 1–'.$today->day : $month['label'];
-                $versus = $firstMonth ? $monthName($lastMonth).' vs '.$firstMonth['label'].($isRunning ? ' · at its full-month pace' : '') : 'one month picked';
+                $versus = $firstMonth ? $monthName($lastMonth).' vs '.$firstMonth['label'] : 'one month picked';
+                // The last month against the first month picked that has a figure (conversion starts in October, a count
+                // may be 0 early on): the chip and the months it names, or null when there is nothing earlier to compare.
+                $changeOf = function (array $values, bool $rate = false, bool $flow = false, bool $lowerIsBetter = false, bool $neutral = false) use ($chip, $paced, $months, $monthCount, $monthName, $isRunning) {
+                    $values = array_values($values);
+                    $last = $values[$monthCount - 1] ?? null;
+                    $base = collect($values)->search(fn ($value, int $index) => $index < $monthCount - 1 && $value !== null && (float) $value != 0.0);
+                    if ($last === null || $base === false) {
+                        return null;
+                    }
+                    $change = $chip($flow && $isRunning ? $paced($last) : $last, $values[$base], $rate, $lowerIsBetter, $neutral);
+
+                    return [...$change, 'text' => $change['text'].' · '.$monthName($months[$monthCount - 1]).' vs '.$months[$base]['label']];
+                };
+                $noChange = $monthCount > 1 ? 'No earlier month with a figure' : 'One month picked';
                 $monthGrid = 'display: grid; grid-template-columns: repeat('.$monthCount.', minmax(0, 1fr)); gap: 4px';
                 // Values under a trend line: every month for up to six, else the first and last, so long ranges stay readable.
                 $everyValue = $monthCount <= 6;
-                $valueRow = function (array $values, callable $format) use ($monthGrid, $months, $everyValue, $monthCount) {
+                // Values under a trend line, one column per label (the months picked unless $labels is given). Every value for
+                // up to six columns, else the first and last, pinned to the edges so long numbers aren't cut off.
+                $valueRow = function (array $values, callable $format, ?array $labels = null, bool $narrow = false) use ($months, $monthName) {
+                    $labels ??= array_column($months, 'label');
+                    $count = count($labels);
+                    $every = $count <= 6;
                     $cells = '';
-                    foreach ($months as $index => $month) {
-                        $value = $values[$index] ?? null;
-                        $show = $everyValue || $index === 0 || $index === $monthCount - 1;
-                        $cells .= '<span style="display: flex; flex-direction: column; align-items: center; min-width: 0; font-size: 10px; color: var(--pb-muted); white-space: nowrap; overflow: hidden">'
-                            .'<strong style="font-size: 11px; color: var(--pb-soft)">'.($show && $value !== null ? e($format($value)) : '&nbsp;').'</strong>'.e($month['label']).'</span>';
+                    foreach (array_values($labels) as $index => $label) {
+                        $value = array_values($values)[$index] ?? null;
+                        $isEdge = $index === 0 || $index === $count - 1;
+                        $align = $every || ! $isEdge ? 'center' : ($index === 0 ? 'flex-start' : 'flex-end');
+                        $cells .= '<span style="display: flex; flex-direction: column; align-items: '.$align.'; min-width: 0; font-size: 10px; color: var(--pb-muted); white-space: nowrap; overflow: '.($every || ! $isEdge ? 'hidden' : 'visible').'">'
+                            .'<strong style="font-size: 11px; color: var(--pb-soft)">'.(($every || $isEdge) && $value !== null ? e($format($value)) : '&nbsp;').'</strong>'.($narrow && ! $every && ! $isEdge ? '&nbsp;' : e($label)).'</span>';
                     }
 
-                    return '<div style="'.$monthGrid.'; padding-top: 3px; border-top: 1px solid var(--pb-line2)">'.$cells.'</div>';
+                    return '<div style="display: grid; grid-template-columns: repeat('.$count.', minmax(0, 1fr)); gap: 4px; padding-top: 3px; border-top: 1px solid var(--pb-line2)">'.$cells.'</div>';
                 };
                 $tiles = [
                     ['label' => 'New customers', 'old' => 'was Acquired leads', 'dot' => $added, 'value' => $number($totals['added']), 'url' => $listUrl('added'), 'sub' => '+'.$number($totals['added_waiting']).' waiting',
@@ -288,7 +313,7 @@
             <section id="totals" aria-label="Totals" class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr))">
                 @php
                     $salesPeak = max(1, ...array_map(fn (array $month) => $month['gross'], $months));
-                    $salesChip = $chip($paced($lastMonth['gross']), $firstMonth['gross'] ?? null);
+                    $salesChip = $changeOf($col('gross'), flow: true);
                     $stripes = 'background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(255 255 255 / .35) 4px 6px)';
                 @endphp
                 <div class="flex flex-wrap" style="grid-column: 1 / -1; gap: 16px 24px; {{ $hero }}; padding: 16px">
@@ -296,7 +321,7 @@
                         <span style="font-size: 13px; font-weight: 600; color: {{ $accent }}">Overall total sales, every CRA</span>
                         <a href="{{ $ordersUrl() }}" title="See these orders" style="font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -1px; font-variant-numeric: normal; {{ $link }}">{{ $peso($totals['gross']) }}</a>
                         <span style="font-size: 13px; {{ $muted }}">{{ $number($totals['orders']) }} orders · AOV {{ $peso($totals['aov']) }}</span>
-                        <span style="{{ $salesChip['style'] }}">{{ $salesChip['text'] }} · {{ $versus }}</span>
+                        <span style="{{ $salesChip['style'] ?? $muted }}">{{ $salesChip['text'] ?? $noChange }}</span>
                         @if ($isRunning)
                             <span style="font-size: 12px; {{ $muted }}">{{ $monthName($lastMonth) }} so far {{ $peso($lastMonth['gross']) }} · full-month pace ≈ {{ $peso($paced($lastMonth['gross'])) }}</span>
                         @endif
@@ -340,9 +365,9 @@
                     @php
                         $values = $tile['values'];
                         $last = $values[$monthCount - 1] ?? null;
-                        $tileChip = $chip(($tile['flow'] ?? false) ? $paced($last) : $last, $monthCount > 1 ? $values[0] : null, $tile['rate'] ?? false, false, $tile['neutral'] ?? false);
+                        $tileChip = $changeOf($values, $tile['rate'] ?? false, $tile['flow'] ?? false, false, $tile['neutral'] ?? false);
                     @endphp
-                    <div class="flex flex-col gap-1.5" style="position: relative; {{ $glass }}; padding: 14px 16px">
+                    <div class="pb-tile flex flex-col gap-1.5" style="position: relative; {{ $glass }}; padding: 14px 16px">
                         <span class="flex flex-wrap items-center gap-1.5" style="font-size: 13px; font-weight: 600; {{ $muted }}">
                             <span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 50%; background: {{ $tile['dot'] }}"></span>{{ $tile['label'] }}
                             @if ($tile['old'] ?? null)
@@ -378,7 +403,7 @@
                         <span style="font-size: 13px; {{ $muted }}">{{ $tile['sub'] }}</span>
                         {!! $sparkline($values, $tile['dot'], $isRunning && ($tile['flow'] ?? false)) !!}
                         {!! $valueRow($values, $tile['format']) !!}
-                        <span style="{{ $tileChip['style'] }}">{{ $tileChip['text'] }} · {{ $versus }}</span>
+                        <span style="{{ $tileChip['style'] ?? 'font-size: 12px; '.$muted }}">{{ $tileChip['text'] ?? $noChange }}</span>
                     </div>
                 @endforeach
             </section>
@@ -428,7 +453,7 @@
                     <div class="flex flex-col gap-4" style="flex: 1 1 280px">
                         @foreach ($rateCards as $card)
                             @php
-                                $rateChip = $chip($lastMonth[$card['key']], $firstMonth[$card['key']] ?? null, true);
+                                $rateChip = $changeOf($col($card['key']), rate: true);
                             @endphp
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-baseline justify-between gap-3">
@@ -436,7 +461,7 @@
                                     <span style="font-size: 26px; font-weight: 700; font-variant-numeric: normal">{{ $percent($card['value']) }}</span>
                                 </div>
                                 <span style="font-size: 13px; {{ $muted }}">{{ $card['sub'] }}</span>
-                                <span style="{{ $rateChip['style'] }}">{{ $rateChip['text'] }} · {{ $firstMonth ? $monthName($lastMonth).' vs '.$firstMonth['label'] : 'one month picked' }}</span>
+                                <span style="{{ $rateChip['style'] ?? 'font-size: 12px; '.$muted }}">{{ $rateChip['text'] ?? $noChange }}</span>
                             </div>
                         @endforeach
                         <p style="{{ $note }}">Each month matches its Dashboard tiles.</p>
@@ -601,22 +626,12 @@
                     $othersName = \App\Services\PresentationBoard::OTHERS;
                     $listed = collect($products)->reject(fn (array $product) => $product['name'] === $othersName)->values();
                     $productPeak = max(1, $listed->max('sales') ?? 1);
-                    $productColumns = 'display: grid; grid-template-columns: minmax(150px, 1.6fr) 1fr 54px 64px 54px 64px minmax(100px, 130px); gap: 10px; min-width: 700px; text-align: right';
                     $upsell = $added;
                     // A product's Upsell % is what was upsold on its orders; for Others and its items, the share of their own sales that came as an upsell.
                     $upsellRate = fn (array $row, bool $own) => $own ? ($row['value'] ? $row['upsell_value'] / $row['value'] : 0.0) : ($row['sales'] ? $row['upsold_value'] / $row['sales'] : 0.0);
                     $upsellPill = fn (float $rate) => $rate > 0
                         ? '<span style="justify-self: end; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--pb-good-bg); color: '.$upsell.'">'.($rate < .001 ? '<0.1%' : number_format($rate * 100, 1).'%').'</span>'
                         : '<span style="justify-self: end; font-size: 12px; '.$muted.'">0%</span>';
-                    $splitBar = fn (array $row, float $scale) => '<span aria-hidden="true" style="display: flex; height: 6px; border-radius: 999px; background: var(--pb-track); overflow: hidden">'
-                        .'<span style="height: 6px; width: '.min(100, round(max(0, max($row['sales'], $row['value']) - $row['upsell_value']) / $scale * 100, 2)).'%; background: '.$crd.'"></span>'
-                        .'<span style="height: 6px; width: '.min(100, round($row['upsell_value'] / $scale * 100, 2)).'%; background: '.$upsell.'"></span></span>';
-                    // Shecom leaves a TSD add-on next to a CRD product out of gross; what it sold for shows beside it.
-                    $soldFor = fn (array $row) => $row['value'] - $row['sales'] >= 1
-                        ? '<span style="display: block; font-size: 12px; font-weight: 500; '.$muted.'">Sold for '.e($peso($row['value'])).' · '.e($peso($row['value'] - $row['sales'])).' left out of gross by Shecom</span>'
-                        : '';
-                    $drawer = 'display: flex; flex-direction: column; gap: 6px; margin: 0 0 8px 14px; padding: 10px 12px; border-radius: 8px; background: var(--pb-drawer)';
-                    $breakdownColumns = 'display: grid; grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(56px, 1fr)); gap: 8px; text-align: right; font-size: 13px';
                     $chevron = '<span aria-hidden="true" class="pb-chevron" style="display: inline-block; width: 14px; font-size: 11px; transition: transform .15s; '.$muted.'">▸</span>';
                     $monthlySales = fn (string $name) => array_map(fn (array $month) => $productMonths[$month['key']][$name]['sales'] ?? 0.0, $months);
                     $monthlyOrders = fn (string $name) => array_map(fn (array $month) => $productMonths[$month['key']][$name]['orders'] ?? 0, $months);
@@ -661,90 +676,149 @@
                         </ul>
                     </div>
                 @endif
-                <div class="overflow-x-auto" style="padding: 10px 16px 14px; font-size: 14px">
-                    <div style="{{ $productColumns }}; padding: 0 0 6px; border-bottom: 1px solid var(--pb-line2); font-size: 13px; font-weight: 600; {{ $muted }}">
-                        <span class="text-left">Product</span><span>Sales</span><span>Share</span><span>Orders</span><span>Qty</span><span style="color: {{ $upsell }}">Upsell</span><span style="text-align: center">{{ $months[0]['label'] }}–{{ $lastMonth['label'] }}</span>
+                @php
+                    $rowColumns = 'display: grid; grid-template-columns: 22px minmax(130px, 190px) minmax(120px, 1fr) 104px 64px 64px minmax(110px, 150px); align-items: center; gap: 10px';
+                    $h3 = 'margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--pb-muted)';
+                    $miniCell = 'padding: 4px 0 4px 10px; white-space: nowrap';
+                @endphp
+                <div class="flex flex-col gap-2" style="padding: 12px 16px 16px; font-size: 13px">
+                    <div class="flex flex-wrap gap-x-4 gap-y-1" style="font-size: 12px; color: var(--pb-soft)">
+                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $crd }}"></span>Main / reorder</span>
+                        <span class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $upsell }}"></span>Upsell</span>
+                        <span style="{{ $muted }}">Right: each product's sales by month, {{ $months[0]['label'] }}–{{ $monthName($lastMonth) }}</span>
                     </div>
-                    <div data-product-rows style="max-height: 430px; overflow-y: auto; min-width: 700px">
-                        @foreach ($products as $rank => $product)
-                            @php
-                                $isOthers = $product['name'] === $othersName;
-                                $rate = $upsellRate($product, $isOthers);
-                                $byMonth = $isOthers ? [] : $monthlySales($product['name']);
-                                $hasMonths = array_sum($byMonth) > 0;
-                                $hasDrawer = $product['upsell_value'] > 0 || $product['upsold'] || ($isOthers && $others) || $hasMonths;
-                                $figures = '<span>'.e($peso($product['sales'])).'</span><span style="'.$muted.'">'.number_format($product['share'] * 100).'%</span><span>'.e($number($product['orders'])).'</span><span>'.e($number($product['qty'])).'</span>'.$upsellPill($rate)
-                                    .'<span title="'.e($product['name'].' by month: '.collect($months)->map(fn (array $month, int $index) => $month['label'].' '.$peso($byMonth[$index] ?? 0))->join(', ')).'">'.($hasMonths ? $sparkline($byMonth, $crd, $isRunning) : '').'</span>';
-                            @endphp
-                            <details @if ($isOthers) data-others @else data-product data-sales="{{ round($product['sales'], 2) }}" data-upsell="{{ round($rate, 6) }}" @endif class="group" style="{{ $rowLine }}" @if (! $hasDrawer) data-empty @endif>
-                                <summary class="{{ $hasDrawer ? 'cursor-pointer' : '' }}" style="{{ $productColumns }}; align-items: center; padding: 7px 0">
-                                    <span class="flex flex-col gap-1 text-left">
-                                        <span style="font-weight: 600">{!! $hasDrawer ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}@if ($isOthers)Others <span style="font-size: 12px; font-weight: 500; {{ $muted }}">· {{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption, click to see</span>@else<span data-rank>{{ $rank + 1 }}</span>. {{ $product['name'] }}@endif
-                                            @if ($product['upsold_value'] > 0)
-                                                <span style="font-size: 12px; font-weight: 500; color: {{ $upsell }}">+{{ $peso($product['upsold_value']) }} upsold</span>
-                                            @endif
-                                        </span>
-                                        {!! $soldFor($product) !!}
-                                        {!! $splitBar($product, $productPeak) !!}
-                                    </span>
-                                    {!! $figures !!}
-                                </summary>
-                                @if ($hasDrawer)
-                                    @if ($product['upsell_value'] > 0 || $product['upsold'] || $hasMonths)
-                                        <div style="{{ $drawer }}">
-                                            @if ($product['upsell_value'] > 0)
-                                                <div style="{{ $breakdownColumns }}; font-size: 12px; font-weight: 600; {{ $muted }}"><span class="text-left">Sold as</span><span>Orders</span><span>Value</span><span>Qty</span><span>% of value</span></div>
-                                                @foreach ([['Main / reorder', $crd, ''], ['Upsell', $upsell, 'upsell_']] as [$label, $color, $prefix])
-                                                    @php
-                                                        $part = $prefix === '' ? ['value' => $product['value'] - $product['upsell_value'], 'orders' => $product['orders'] - $product['upsell_orders'], 'qty' => $product['qty'] - $product['upsell_qty']] : ['value' => $product['upsell_value'], 'orders' => $product['upsell_orders'], 'qty' => $product['upsell_qty']];
-                                                    @endphp
-                                                    <div style="{{ $breakdownColumns }}"><span class="flex items-center gap-1.5 text-left"><span style="{{ $swatch }}; background: {{ $color }}"></span>{{ $label }}</span><span>{{ $number($part['orders']) }}</span><span>{{ $peso($part['value']) }}</span><span>{{ $number($part['qty']) }}</span><span>{{ $product['value'] ? number_format($part['value'] / $product['value'] * 100, 1).'%' : '—' }}</span></div>
-                                                @endforeach
-                                            @endif
-                                            @if ($product['upsold'])
-                                                <p style="margin: {{ $product['upsell_value'] > 0 ? '6px' : '0' }} 0 2px; font-size: 12px; font-weight: 600; color: {{ $upsell }}">Upsold on {{ $product['name'] }} orders</p>
-                                                <div style="{{ $breakdownColumns }}; font-size: 12px; font-weight: 600; {{ $muted }}"><span class="text-left">Product</span><span>Orders</span><span>Qty</span><span>Value</span><span>% of sales</span></div>
-                                                @foreach ($product['upsold'] as $item)
-                                                    <div style="{{ $breakdownColumns }}"><span class="text-left" style="overflow-wrap: anywhere">{{ $item['name'] }}</span><span>{{ $number($item['orders']) }}</span><span>{{ $number($item['qty']) }}</span><span>{{ $peso($item['value']) }}</span><span>{{ $product['sales'] ? number_format($item['value'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
-                                                @endforeach
-                                                <div style="{{ $breakdownColumns }}; padding-top: 4px; border-top: 1px solid var(--pb-row); font-weight: 600"><span class="text-left">Total upsold</span><span>{{ $number(array_sum(array_column($product['upsold'], 'orders'))) }}</span><span>{{ $number(array_sum(array_column($product['upsold'], 'qty'))) }}</span><span>{{ $peso($product['upsold_value']) }}</span><span>{{ $product['sales'] ? number_format($product['upsold_value'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
-                                                <p style="margin: 2px 0 0; font-size: 12px; {{ $muted }}">Value = the upsell's Pancake price. % of sales = value ÷ {{ $product['name'] }} sales ({{ $peso($product['sales']) }}).</p>
-                                            @endif
-                                            @if ($hasMonths)
+                    <div class="overflow-x-auto">
+                        <div style="min-width: 760px">
+                            <div style="{{ $rowColumns }}; padding: 0 10px 6px 32px; font-size: 11px; font-weight: 600; text-align: right; {{ $muted }}">
+                                <span></span><span class="text-left">Product</span><span class="text-left">Main / upsell</span><span>Sales</span><span>Orders</span><span>Qty</span><span style="text-align: center">By month</span>
+                            </div>
+                            <div data-product-rows role="region" aria-label="Product list, scrolls" tabindex="0" class="flex flex-col gap-2" style="max-height: 470px; overflow-y: auto; padding: 2px 4px 2px 0">
+                                @foreach ($products as $rank => $product)
+                                    @php
+                                        $isOthers = $product['name'] === $othersName;
+                                        $rate = $upsellRate($product, $isOthers);
+                                        $byMonth = $isOthers ? [] : $monthlySales($product['name']);
+                                        $hasMonths = array_sum($byMonth) > 0;
+                                        $hasDrawer = $product['upsell_value'] > 0 || $product['upsold'] || ($isOthers && $others) || $hasMonths;
+                                        $mainWidth = min(100, round(max(0, max($product['sales'], $product['value']) - $product['upsell_value']) / $productPeak * 100, 2));
+                                        $upWidth = min(100 - $mainWidth, round($product['upsell_value'] / $productPeak * 100, 2));
+                                        $upsoldPeak = max(1, collect($product['upsold'])->max('value') ?? 1);
+                                    @endphp
+                                    @if ($isOthers)
+                                        <details data-others style="border-radius: 10px; background: var(--pb-cell); border: 1px dashed var(--pb-line2)" @if (! $others) data-empty @endif>
+                                            <summary class="{{ $others ? 'cursor-pointer' : '' }} flex items-center gap-2" style="padding: 10px; list-style: none">
+                                                {!! $others ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}
+                                                <strong>Others</strong><span style="{{ $muted }}">· {{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption{{ $others ? ', click to see' : '' }}</span>
+                                                <span style="margin-left: auto; font-weight: 700">{{ $peso($product['sales']) }}</span>
+                                                <span style="width: 64px; text-align: right; {{ $muted }}">{{ $number($product['orders']) }}</span>
+                                            </summary>
+                                            @if ($others)
                                                 @php
-                                                    $ordersByMonth = $monthlyOrders($product['name']);
+                                                    $otherPeak = max(1, collect($others)->max('sales') ?? 1);
                                                 @endphp
-                                                <p style="margin: 6px 0 2px; font-size: 12px; font-weight: 600; {{ $muted }}">By month, {{ $months[0]['label'] }}–{{ $lastMonth['label'] }} (the months picked)</p>
-                                                <div class="overflow-x-auto">
-                                                    <table style="width: 100%; border-collapse: collapse; font-size: 12px">
-                                                        <thead><tr style="text-align: right; {{ $muted }}"><th scope="col" style="text-align: left; font-weight: 600; padding: 3px 0"></th>@foreach ($months as $month)<th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px">{{ $month['label'] }}</th>@endforeach</tr></thead>
-                                                        <tbody>
-                                                            <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Sales</th>@foreach ($byMonth as $value)<td style="padding: 4px 0 4px 10px; white-space: nowrap">{{ $peso($value) }}</td>@endforeach</tr>
-                                                            <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Orders</th>@foreach ($ordersByMonth as $value)<td style="padding: 4px 0 4px 10px">{{ $number($value) }}</td>@endforeach</tr>
-                                                            <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Rank</th>@foreach ($months as $month)<td style="padding: 4px 0 4px 10px">{{ ($place = $rankIn($month['key'], $product['name'])) ? '#'.$place : '—' }}</td>@endforeach</tr>
-                                                        </tbody>
-                                                    </table>
+                                                <div class="flex flex-col gap-1" style="padding: 0 12px 12px 32px; font-size: 12px">
+                                                    @foreach ($others as $other)
+                                                        <div style="display: grid; grid-template-columns: minmax(140px, 240px) minmax(0, 1fr) 90px 64px 54px; align-items: center; gap: 8px">
+                                                            <span style="overflow-wrap: anywhere">{{ $other['name'] }}</span>
+                                                            <span aria-hidden="true" style="display: block; height: 6px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 6px; border-radius: 999px; width: {{ round($other['sales'] / $otherPeak * 100, 2) }}%; background: {{ $reactivation }}"></span></span>
+                                                            <span style="text-align: right; font-weight: 700">{{ $peso($other['sales']) }}</span>
+                                                            <span style="text-align: right; {{ $muted }}">{{ $number($other['orders']) }} {{ Str::plural('order', $other['orders']) }}</span>
+                                                            {!! $upsellPill($upsellRate($other, true)) !!}
+                                                        </div>
+                                                    @endforeach
                                                 </div>
                                             @endif
-                                        </div>
-                                    @endif
-                                    @if ($isOthers && $others)
-                                        {{-- Others opens into the items it holds, by their own name in the order. --}}
-                                        <div style="margin: 0 0 8px; border-radius: 8px; background: var(--pb-drawer)">
-                                            @foreach ($others as $other)
-                                                <div style="{{ $productColumns }}; min-width: 0; align-items: center; padding: 5px 8px; font-size: 13px; {{ $rowLine }}">
-                                                    <span class="flex flex-col gap-1 text-left"><span style="overflow-wrap: anywhere">{{ $other['name'] }}</span>{!! $soldFor($other) !!}{!! $splitBar($other, max(1, $other['sales'], $other['value'])) !!}</span>
-                                                    <span>{{ $peso($other['sales']) }}</span><span style="{{ $muted }}">{{ $other['share'] >= .005 ? number_format($other['share'] * 100).'%' : '<1%' }}</span><span>{{ $number($other['orders']) }}</span><span>{{ $number($other['qty']) }}</span>{!! $upsellPill($upsellRate($other, true)) !!}<span></span>
+                                        </details>
+                                    @else
+                                    <details data-product data-sales="{{ round($product['sales'], 2) }}" data-upsell="{{ round($rate, 6) }}" style="border-radius: 10px; background: var(--pb-cell); border: 1px solid var(--pb-line)" @if (! $hasDrawer) data-empty @endif>
+                                        <summary class="{{ $hasDrawer ? 'cursor-pointer' : '' }} flex items-center gap-2" style="padding: 8px 10px; list-style: none">
+                                            {!! $hasDrawer ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}
+                                            <span style="flex: 1; min-width: 0; {{ $rowColumns }}">
+                                                <span data-rank style="font-weight: 700; {{ $muted }}">{{ $rank + 1 }}</span>
+                                                <span style="min-width: 0; font-weight: 700; overflow-wrap: anywhere">{{ $product['name'] }}
+                                                    <span style="display: block; font-size: 11px; font-weight: 500; {{ $muted }}">{{ number_format($product['share'] * 100, 1) }}% share</span>
+                                                    @if ($product['value'] - $product['sales'] >= 1)
+                                                        <span style="display: block; font-size: 11px; font-weight: 500; {{ $muted }}" title="Shecom leaves a TSD add-on next to a CRD product out of gross">Sold for {{ $peso($product['value']) }}</span>
+                                                    @endif
+                                                </span>
+                                                <span class="flex flex-col gap-1" style="min-width: 0">
+                                                    <span aria-hidden="true" class="flex overflow-hidden" style="height: 14px; border-radius: 4px; background: var(--pb-track)" title="Main / reorder {{ $peso($product['value'] - $product['upsell_value']) }} · upsell {{ $peso($product['upsell_value']) }}">
+                                                        <span style="width: {{ $mainWidth }}%; background: {{ $crd }}"></span><span style="width: {{ $upWidth }}%; background: {{ $upsell }}"></span>
+                                                    </span>
+                                                    @if ($product['upsold_value'] > 0)
+                                                        <span style="font-size: 11px; font-weight: 600; color: {{ $upsell }}">+{{ $pesoShort($product['upsold_value']) }} upsold</span>
+                                                    @endif
+                                                </span>
+                                                <span style="text-align: right; font-weight: 700" title="{{ $peso($product['sales']) }}">{{ $pesoShort($product['sales']) }}
+                                                    <span style="display: block; font-size: 11px; font-weight: 500; {{ $muted }}">{{ $rate > 0 ? ($rate < .001 ? '<0.1' : number_format($rate * 100, 1)).'% upsell' : 'no upsell' }}</span>
+                                                </span>
+                                                <span style="text-align: right">{{ $number($product['orders']) }}</span>
+                                                <span style="text-align: right">{{ $number($product['qty']) }}</span>
+                                                <span title="{{ $product['name'] }} by month: {{ collect($months)->map(fn (array $month, int $index) => $month['label'].' '.$peso($byMonth[$index] ?? 0))->join(', ') }}">{!! $hasMonths ? $sparkline($byMonth, $crd, $isRunning) : '' !!}</span>
+                                            </span>
+                                        </summary>
+                                        @if ($hasDrawer)
+                                            <div class="grid gap-x-6 gap-y-3" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); padding: 4px 12px 14px 32px; font-size: 12px">
+                                                @if ($product['upsell_value'] > 0)
+                                                <div class="flex min-w-0 flex-col gap-1.5">
+                                                        <h3 style="{{ $h3 }}">Sold as</h3>
+                                                        <table style="width: 100%; border-collapse: collapse">
+                                                            <thead><tr style="text-align: right; {{ $muted }}"><th scope="col" style="text-align: left; font-weight: 600; padding: 3px 0">Type</th><th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px">Orders</th><th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px">Value</th><th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px">Qty</th><th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px">% of value</th></tr></thead>
+                                                            <tbody>
+                                                                @foreach ([['Main / reorder', $crd, ''], ['Upsell', $upsell, 'upsell_']] as [$label, $color, $prefix])
+                                                                    @php
+                                                                        $part = $prefix === '' ? ['value' => $product['value'] - $product['upsell_value'], 'orders' => $product['orders'] - $product['upsell_orders'], 'qty' => $product['qty'] - $product['upsell_qty']] : ['value' => $product['upsell_value'], 'orders' => $product['upsell_orders'], 'qty' => $product['upsell_qty']];
+                                                                    @endphp
+                                                                    <tr style="text-align: right; border-top: 1px solid var(--pb-row)">
+                                                                        <th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0"><span class="inline-flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $color }}"></span>{{ $label }}</span></th>
+                                                                        <td style="{{ $miniCell }}">{{ $number($part['orders']) }}</td><td style="{{ $miniCell }}">{{ $peso($part['value']) }}</td><td style="{{ $miniCell }}">{{ $number($part['qty']) }}</td><td style="{{ $miniCell }}; font-weight: 700">{{ $product['value'] ? number_format($part['value'] / $product['value'] * 100, 1).'%' : '—' }}</td>
+                                                                    </tr>
+                                                                @endforeach
+                                                            </tbody>
+                                                        </table>
                                                 </div>
-                                            @endforeach
-                                        </div>
+                                                @endif
+                                                @if ($product['upsold'])
+                                                    <div class="flex min-w-0 flex-col gap-1.5">
+                                                        <h3 style="{{ $h3 }}">Upsold on {{ $product['name'] }} orders</h3>
+                                                        @foreach ($product['upsold'] as $item)
+                                                            <div style="display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 76px 48px; align-items: center; gap: 4px 8px">
+                                                                <span style="font-weight: 600; overflow-wrap: anywhere">{{ $item['name'] }}</span>
+                                                                <span aria-hidden="true" style="display: block; height: 8px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 8px; border-radius: 999px; width: {{ round($item['value'] / $upsoldPeak * 100, 2) }}%; background: {{ $upsell }}"></span></span>
+                                                                <span style="text-align: right; font-weight: 700" title="{{ $peso($item['value']) }}">{{ $pesoShort($item['value']) }}</span>
+                                                                <span style="text-align: right; {{ $muted }}">{{ $product['sales'] ? number_format($item['value'] / $product['sales'] * 100, 1).'%' : '—' }}</span>
+                                                                <span style="grid-column: 2 / -1; margin-top: -3px; font-size: 11px; {{ $muted }}">{{ $number($item['orders']) }} {{ Str::plural('order', $item['orders']) }} · {{ $number($item['qty']) }} qty</span>
+                                                            </div>
+                                                        @endforeach
+                                                        <div class="flex justify-between gap-2" style="padding-top: 6px; border-top: 1px solid var(--pb-line2); font-weight: 700"><span>Total upsold</span><span>{{ $peso($product['upsold_value']) }} · {{ $product['sales'] ? number_format($product['upsold_value'] / $product['sales'] * 100, 1).'%' : '—' }}</span></div>
+                                                        <p style="margin: 0; line-height: 1.4; {{ $muted }}">Value = the upsell's Pancake price. % of sales = value ÷ {{ $product['name'] }} sales ({{ $peso($product['sales']) }}).</p>
+                                                    </div>
+                                                @endif
+                                                @if ($hasMonths)
+                                                    <div class="flex min-w-0 flex-col gap-1.5" style="grid-column: 1 / -1">
+                                                        <h3 style="{{ $h3 }}">By month</h3>
+                                                        <div class="overflow-x-auto">
+                                                            <table style="width: 100%; border-collapse: collapse">
+                                                                <thead><tr style="text-align: right; {{ $muted }}"><th scope="col" style="text-align: left; font-weight: 600; padding: 3px 0"><span class="sr-only">Figure</span></th>@foreach ($months as $month)<th scope="col" style="font-weight: 600; padding: 3px 0 3px 10px; white-space: nowrap">{{ $monthName($month) }}</th>@endforeach</tr></thead>
+                                                                <tbody>
+                                                                    <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Sales</th>@foreach ($byMonth as $value)<td style="{{ $miniCell }}" title="{{ $peso($value) }}">{{ $pesoShort($value) }}</td>@endforeach</tr>
+                                                                    <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Orders</th>@foreach ($monthlyOrders($product['name']) as $value)<td style="{{ $miniCell }}">{{ $number($value) }}</td>@endforeach</tr>
+                                                                    <tr style="text-align: right; border-top: 1px solid var(--pb-row)"><th scope="row" style="text-align: left; font-weight: 600; padding: 4px 0">Rank</th>@foreach ($months as $month)<td style="{{ $miniCell }}">{{ ($place = $rankIn($month['key'], $product['name'])) ? '#'.$place : '—' }}</td>@endforeach</tr>
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                        </div>
+                                                @endif
+                                            </div>
+                                        @endif
+                                    </details>
                                     @endif
-                                @endif
-                            </details>
-                        @endforeach
+                                @endforeach
+                            </div>
+                        </div>
                     </div>
-                    <p style="margin: 8px 0 0; font-size: 12px; font-weight: 600; color: var(--pb-soft)">{{ $listed->count() }} {{ Str::plural('product', $listed->count()) }}@if (collect($products)->contains('name', $othersName)) + Others @endif · the list scrolls</p>
-                    <p style="margin: 6px 0 0; font-size: 12px; line-height: 1.5; {{ $muted }}">Upsell = a product new to the customer, added to an order with a product they've bought before, valued at its Pancake price (Shecom leaves TSD add-ons out of gross, so much of it is on top of gross). For a product, Upsell % = what was upsold on its orders ÷ its sales; under Others, the share of the item's own value that came as an upsell. The trend line and By month follow the months picked. Click a product for its breakdown.</p>
+                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: var(--pb-soft)">{{ $listed->count() }} {{ Str::plural('product', $listed->count()) }}@if (collect($products)->contains('name', $othersName)) + Others @endif · the list scrolls</p>
+                    <p style="margin: 0; font-size: 12px; line-height: 1.5; {{ $muted }}">Click a product for its breakdown. Upsell = a product new to the customer, added to an order with one they've bought before, valued at its Pancake price (Shecom leaves TSD add-ons out of gross, so much of it is on top of gross). For a product, Upsell % = what was upsold on its orders ÷ its sales; under Others, the share of the item's own value that came as an upsell.</p>
                 </div>
             </section>
 
@@ -777,7 +851,9 @@
                         @foreach ($craPerformance['rows'] as $row)
                             @php
                                 $craValues = array_map(fn (array $month) => $craMonths[$month['key']][$row['user']->id] ?? 0.0, $months);
-                                $craChip = $chip($paced($craValues[$monthCount - 1]), $monthCount > 1 ? $craValues[0] : null);
+                                // Against her first month with sales in the range (a CRA who started later has none before).
+                                $craFirst = collect($craValues)->search(fn (float $value) => $value > 0);
+                                $craChip = $craFirst !== false && $craFirst < $monthCount - 1 ? $chip($paced($craValues[$monthCount - 1]), $craValues[$craFirst]) : null;
                             @endphp
                             <article class="flex flex-col gap-3.5" style="padding: 16px; {{ $cell }}; border-radius: 14px">
                                 <div class="flex items-center gap-3">
@@ -803,8 +879,10 @@
                                 @if (array_sum($craValues) > 0)
                                     <div class="flex flex-col gap-1">
                                         {!! $sparkline($craValues, $accent, $isRunning) !!}
-                                        {!! $valueRow($craValues, $millions) !!}
-                                        <span style="{{ $craChip['style'] }}">{{ $craChip['text'] }} · {{ $versus }}</span>
+                                        {!! $valueRow($craValues, $millions, narrow: true) !!}
+                                        @if ($craChip)
+                                            <span style="{{ $craChip['style'] }}">{{ $craChip['text'] }} · {{ $monthName($lastMonth) }} vs {{ $months[$craFirst]['label'] }}</span>
+                                        @endif
                                     </div>
                                 @endif
 
@@ -852,8 +930,30 @@
                     $leadPeak = max(1, ...$col('added'), ...$col('fsd_leads'), ...$col('crd_leads'));
                     $leadStep = $leadPeak > 4000 ? 2000 : ($leadPeak > 2000 ? 1000 : ($leadPeak > 400 ? 200 : 50));
                     $leadTop = max($leadStep, (int) ceil($leadPeak / $leadStep) * $leadStep);
-                    $lx = fn (int $index) => round(($index + .5) / $monthCount * 640, 1);
-                    $ly = fn (float $value) => round(220 - $value / $leadTop * 200, 1);
+                    // Lines in a stretched SVG; dots, numbers and labels are HTML so they stay their size at any width.
+                    $leadHeight = 240;
+                    $lx = fn (int $index) => round(($index + .5) / $monthCount * 100, 2);
+                    $ly = fn (float $value) => round($value / $leadTop * 100, 2);
+                    // Each labelled month's values, highest first, pushed apart so no two labels overlap.
+                    $leadLabels = [];
+                    foreach ($months as $index => $month) {
+                        if (! ($everyValue || $index === 0 || $index === $monthCount - 1)) {
+                            continue;
+                        }
+                        $placed = [];
+                        foreach (collect($leadSeries)->map(fn (array $line) => ['value' => $line[2][$index], 'color' => $line[1]])->sortByDesc('value') as $label) {
+                            if ($placed !== [] && $compact(end($placed)['value']) === $compact($label['value'])) {
+                                continue;
+                            }
+                            $top = $leadHeight * (1 - $label['value'] / $leadTop);
+                            $placed[] = [...$label, 'top' => $placed === [] ? $top : max($top, end($placed)['top'] + 16)];
+                        }
+                        // Keep the lowest label inside the chart, then push the ones above it up if they now overlap.
+                        for ($at = count($placed) - 1; $at >= 0; $at--) {
+                            $placed[$at]['top'] = round(min($placed[$at]['top'], $at === count($placed) - 1 ? $leadHeight - 9 : $placed[$at + 1]['top'] - 16), 1);
+                        }
+                        $leadLabels[$index] = $placed;
+                    }
                 @endphp
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 id="customers-title" style="{{ $h2 }}">Leads and customers</h2>
@@ -870,41 +970,53 @@
                             </span>
                         @endforeach
                     </div>
-                    <div data-chart style="position: relative">
-                        <svg viewBox="0 0 640 240" role="img" aria-label="Line chart: new customers and customers due to reorder, FSD and CRD, by month; the numbers are in Month by month" style="display: block; width: 100%; height: auto; overflow: visible">
+                    <div class="flex min-w-0 gap-2">
+                        <div aria-hidden="true" style="position: relative; width: 44px; flex: none; height: {{ $leadHeight }}px; font-size: 12px; text-align: right; {{ $muted }}">
                             @for ($step = 0; $step <= $leadTop; $step += $leadStep)
-                                <line x1="0" x2="640" y1="{{ $ly($step) }}" y2="{{ $ly($step) }}" style="stroke: var(--pb-grid); stroke-width: 1"></line>
-                                <text x="0" y="{{ $ly($step) - 4 }}" style="fill: var(--pb-muted); font-size: 11px">{{ $compact($step) }}</text>
+                                <span style="position: absolute; right: 0; bottom: {{ $ly($step) }}%; transform: translateY(50%); white-space: nowrap">{{ $compact($step) }}</span>
                             @endfor
-                            @foreach ($leadSeries as $seriesIndex => [$name, $color, $values])
-                                @php
-                                    $points = collect($values)->map(fn ($value, int $index) => $lx($index).','.$ly($value))->join(' ');
-                                @endphp
-                                @if ($seriesIndex === 0 && $monthCount > 1)
-                                    <path d="M{{ $lx(0) }},220 L{{ str_replace(' ', ' L', $points) }} L{{ $lx($monthCount - 1) }},220 Z" style="fill: {{ $color }}; opacity: .08"></path>
-                                @endif
-                                <polyline points="{{ $points }}" style="fill: none; stroke: {{ $color }}; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round"></polyline>
-                                @foreach ($values as $index => $value)
-                                    <circle cx="{{ $lx($index) }}" cy="{{ $ly($value) }}" r="5" style="fill: {{ $isRunning && $index === $monthCount - 1 && $seriesIndex === 0 ? 'var(--pb-solid)' : $color }}; stroke: {{ $color }}; stroke-width: 3"></circle>
-                                    @if ($everyValue || $index === 0 || $index === $monthCount - 1)
-                                        <text x="{{ $lx($index) }}" y="{{ $ly($value) + ($seriesIndex === 0 ? 22 : -12) }}" style="fill: {{ $color }}; font-size: 12px; font-weight: 700; text-anchor: middle">{{ $compact($value) }}</text>
-                                    @endif
-                                @endforeach
-                            @endforeach
-                        </svg>
-                        <div class="flex" style="position: absolute; inset: 0">
-                            @foreach ($months as $month)
-                                @php
-                                    $read = $month['label'].': new customers '.$number($month['added']).' · due FSD '.$number($month['fsd_leads']).' · due CRD '.$number($month['crd_leads']).' · waiting '.$number($month['fsd_waiting'] + $month['crd_waiting']);
-                                @endphp
-                                <span data-point="{{ $month['key'] }}" data-read="{{ $read }}" data-read-target="board-read-leads" title="{{ $read }}" class="flex-1" style="background: transparent; border-radius: 6px"></span>
-                            @endforeach
                         </div>
-                    </div>
-                    <div aria-hidden="true" style="{{ $monthGrid }}; padding-top: 4px; border-top: 1px solid var(--pb-line2); font-size: 12px; font-weight: 600; {{ $muted }}">
-                        @foreach ($months as $month)
-                            <span class="text-center">{{ $month['label'] }}</span>
-                        @endforeach
+                        <div class="min-w-0 flex-1">
+                            <div data-chart style="position: relative; height: {{ $leadHeight }}px; border-bottom: 1px solid var(--pb-axis)">
+                                @for ($step = $leadStep; $step <= $leadTop; $step += $leadStep)
+                                    <span aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: {{ $ly($step) }}%; height: 1px; background: var(--pb-grid)"></span>
+                                @endfor
+                                <svg role="img" aria-label="Line chart: new customers and customers due to reorder, FSD and CRD, by month; the numbers are in Month by month" viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
+                                    @foreach ($leadSeries as $seriesIndex => [$name, $color, $values])
+                                        @php
+                                            $points = collect($values)->map(fn ($value, int $index) => $lx($index).','.(100 - $ly($value)))->join(' ');
+                                        @endphp
+                                        @if ($seriesIndex === 0 && $monthCount > 1)
+                                            <path d="M{{ $lx(0) }},100 L{{ str_replace(' ', ' L', $points) }} L{{ $lx($monthCount - 1) }},100 Z" style="fill: {{ $color }}; opacity: .08"></path>
+                                        @endif
+                                        <polyline points="{{ $points }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $color }}; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round"></polyline>
+                                    @endforeach
+                                </svg>
+                                @foreach ($leadSeries as $seriesIndex => [$name, $color, $values])
+                                    @foreach ($values as $index => $value)
+                                        <span aria-hidden="true" style="position: absolute; left: {{ $lx($index) }}%; bottom: {{ $ly($value) }}%; width: 9px; height: 9px; margin: 0 0 -4.5px -4.5px; border-radius: 50%; background: {{ $isRunning && $index === $monthCount - 1 ? 'var(--pb-solid)' : $color }}; border: 2px solid {{ $color }}; box-sizing: border-box"></span>
+                                    @endforeach
+                                @endforeach
+                                @foreach ($leadLabels as $index => $labels)
+                                    @foreach ($labels as $label)
+                                        <span aria-hidden="true" style="position: absolute; left: {{ $lx($index) }}%; top: {{ $label['top'] }}px; transform: translate({{ $index === $monthCount - 1 && $monthCount > 1 ? 'calc(-100% - 9px)' : '9px' }}, -50%); padding: 0 3px; border-radius: 4px; background: var(--pb-solid); font-size: 12px; font-weight: 700; line-height: 15px; white-space: nowrap; color: {{ $label['color'] }}">{{ $compact($label['value']) }}</span>
+                                    @endforeach
+                                @endforeach
+                                <div class="flex" style="position: absolute; inset: 0">
+                                    @foreach ($months as $month)
+                                        @php
+                                            $read = $month['label'].': new customers '.$number($month['added']).' · due FSD '.$number($month['fsd_leads']).' · due CRD '.$number($month['crd_leads']).' · waiting '.$number($month['fsd_waiting'] + $month['crd_waiting']);
+                                        @endphp
+                                        <span data-point="{{ $month['key'] }}" data-read="{{ $read }}" data-read-target="board-read-leads" title="{{ $read }}" class="flex-1" style="background: transparent; border-radius: 6px"></span>
+                                    @endforeach
+                                </div>
+                            </div>
+                            <div aria-hidden="true" style="{{ $monthGrid }}; padding-top: 4px; font-size: 12px; font-weight: 600; {{ $muted }}">
+                                @foreach ($months as $month)
+                                    <span class="text-center">{{ $monthName($month) }}</span>
+                                @endforeach
+                            </div>
+                        </div>
                     </div>
                     <p style="{{ $note }}">New customers are counted when they first buy; due to reorder when their supply runs out, so the lines differ. Each month's customers open from Month by month.</p>
                 </div>

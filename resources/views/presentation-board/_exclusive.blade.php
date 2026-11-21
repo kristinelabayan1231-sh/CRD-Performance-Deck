@@ -13,6 +13,10 @@
     $latest = $byMonth[$latestKey];
     $latestLabel = \Carbon\CarbonImmutable::parse($latestKey.'-01')->format('M');
     $latestRunning = $isRunning && $latestKey === $lastKey;
+    // Her months within the range (the board's month indexes), named as the board names them.
+    $ownIndexes = collect($months)->filter(fn (array $month) => isset($byMonth[$month['key']]))->map(fn () => true)->all();
+    $ownLabels = array_values(array_column(array_intersect_key($months, $ownIndexes), 'label'));
+    $ownVersus = count($ownLabels) > 1 ? ($latestRunning ? $monthName($lastMonth) : end($ownLabels)).' vs '.$ownLabels[0] : '';
     $leadsTotal = $sum(fn (array $entry) => $entry['figures']['actual']['unique_leads']);
     $boughtTotal = $sum($bought);
     $exclusiveGross = $sum(fn (array $entry) => $entry['sales']['exclusive']['gross']);
@@ -31,7 +35,7 @@
         ['Confirmed orders', 'From customers on her lists, POS sales included. Target '.$number($latest['figures']['targets']['confirmed_orders']).' this month.',
             $per(fn (array $entry) => $entry['figures']['actual']['confirmed']), $compact, true, false, $number($sum(fn (array $entry) => $entry['figures']['actual']['confirmed'])), 'orders'],
         ['Exclusive sales', 'Her sales to her exclusive leads (assigned or tagged in POS).',
-            $per(fn (array $entry) => $entry['sales']['exclusive']['gross']), $millions, true, false, $peso($exclusiveGross), $number($exclusiveOrders).' orders · AOV '.$peso($exclusiveOrders ? $exclusiveGross / $exclusiveOrders : null)],
+            $per(fn (array $entry) => $entry['sales']['exclusive']['gross']), $millions, true, false, $peso($exclusiveGross), $number($exclusiveOrders).' '.Str::plural('order', $exclusiveOrders).' · AOV '.$peso($exclusiveOrders ? $exclusiveGross / $exclusiveOrders : null)],
     ];
     // Her latest month against the team.
     $craRow = collect($craPerformance['rows'] ?? [])->first(fn (array $row) => $row['user']->id === $cra->id);
@@ -111,26 +115,32 @@
                     <span class="flex items-center gap-1.5"><span aria-hidden="true" style="width: 14px; height: 3px; border-radius: 2px; background: {{ $added }}"></span>Bought, running total (right scale)</span>
                 </span>
             </div>
-            <svg viewBox="0 0 640 210" role="img" aria-label="Line chart: leads added to {{ $cra->displayName() }}'s list each day of {{ $latestLabel }}, running total against the month's target, with buyers" style="display: block; width: 100%; height: auto; overflow: visible">
-                @foreach ([0, .25, .5, .75, 1] as $share)
-                    <line x1="0" x2="640" y1="{{ $ty($target * $share) }}" y2="{{ $ty($target * $share) }}" style="stroke: var(--pb-grid); stroke-width: 1"></line>
-                    <text x="0" y="{{ $ty($target * $share) - 4 }}" style="fill: var(--pb-muted); font-size: 11px">{{ $compact($target * $share) }}</text>
-                    <text x="640" y="{{ $ty($target * $share) - 4 }}" style="fill: {{ $added }}; font-size: 11px; text-anchor: end">{{ $share ? $number(round($boughtPeak * $share / 1.2)) : '' }}</text>
+            <div style="position: relative; height: 210px">
+                <svg viewBox="0 0 640 210" preserveAspectRatio="none" role="img" aria-label="Line chart: leads added to {{ $cra->displayName() }}'s list each day of {{ $latestLabel }}, running total against the month's target, with buyers" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
+                    @foreach ([0, .25, .5, .75, 1] as $share)
+                        <line x1="0" x2="640" y1="{{ $ty($target * $share) }}" y2="{{ $ty($target * $share) }}" vector-effect="non-scaling-stroke" style="stroke: var(--pb-grid); stroke-width: 1"></line>
+                    @endforeach
+                    <polyline points="0,200 640,{{ $ty($target) }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: var(--pb-muted); stroke-width: 2; stroke-dasharray: 6 5"></polyline>
+                    @if (count($leadPoints) > 1)
+                        <path d="M{{ implode(' L', $leadPoints) }} L{{ $dx($lastDay) }},200 Z" style="fill: {{ $exclusiveColor }}; opacity: .14"></path>
+                        <polyline points="{{ implode(' ', $leadPoints) }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $exclusiveColor }}; stroke-width: 3; stroke-linejoin: round"></polyline>
+                        <polyline points="{{ implode(' ', $boughtPoints) }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $added }}; stroke-width: 2.5; stroke-linejoin: round"></polyline>
+                    @endif
+                    @if ($latestRunning && $lastDay)
+                        <line x1="{{ $dx($lastDay) }}" x2="{{ $dx($lastDay) }}" y1="14" y2="200" vector-effect="non-scaling-stroke" style="stroke: var(--pb-line2); stroke-width: 1"></line>
+                    @endif
+                    @foreach ($hits as [$x, $read])
+                        <rect x="{{ $x }}" y="0" width="{{ round(640 / max(1, $dayCount), 1) }}" height="200" style="fill: transparent"><title>{{ $read }}</title></rect>
+                    @endforeach
+                </svg>
+                @foreach ([.25, .5, .75, 1] as $share)
+                    <span aria-hidden="true" style="position: absolute; left: 0; top: {{ $ty($target * $share) - 15 }}px; font-size: 11px; line-height: 13px; {{ $muted }}">{{ $compact($target * $share) }}</span>
+                    <span aria-hidden="true" style="position: absolute; right: 0; top: {{ $ty($target * $share) - 15 }}px; font-size: 11px; line-height: 13px; color: {{ $added }}">{{ $number(round($boughtPeak * $share / 1.2)) }}</span>
                 @endforeach
-                <polyline points="0,200 640,{{ $ty($target) }}" style="fill: none; stroke: var(--pb-muted); stroke-width: 2; stroke-dasharray: 6 5"></polyline>
-                @if (count($leadPoints) > 1)
-                    <path d="M{{ implode(' L', $leadPoints) }} L{{ $dx($lastDay) }},200 Z" style="fill: {{ $exclusiveColor }}; opacity: .14"></path>
-                    <polyline points="{{ implode(' ', $leadPoints) }}" style="fill: none; stroke: {{ $exclusiveColor }}; stroke-width: 3; stroke-linejoin: round"></polyline>
-                    <polyline points="{{ implode(' ', $boughtPoints) }}" style="fill: none; stroke: {{ $added }}; stroke-width: 2.5; stroke-linejoin: round"></polyline>
-                @endif
                 @if ($latestRunning && $lastDay)
-                    <line x1="{{ $dx($lastDay) }}" x2="{{ $dx($lastDay) }}" y1="12" y2="200" style="stroke: var(--pb-line2); stroke-width: 1"></line>
-                    <text x="{{ $dx($lastDay) }}" y="9" style="fill: var(--pb-muted); font-size: 11px; text-anchor: middle">today</text>
+                    <span aria-hidden="true" style="position: absolute; left: {{ round($dx($lastDay) / 640 * 100, 2) }}%; top: 0; transform: translateX(-50%); font-size: 11px; line-height: 13px; {{ $muted }}">today</span>
                 @endif
-                @foreach ($hits as [$x, $read])
-                    <rect x="{{ $x }}" y="0" width="{{ round(640 / max(1, $dayCount), 1) }}" height="200" style="fill: transparent"><title>{{ $read }}</title></rect>
-                @endforeach
-            </svg>
+            </div>
             <div aria-hidden="true" class="flex justify-between" style="font-size: 11px; {{ $muted }}"><span>Day 1</span><span>Day {{ $dayCount }}</span></div>
             <p style="{{ $note }}; font-size: 12px">{{ $number($addedSoFar) }} added by day {{ $lastDay }}{{ $lastDay ? ' ('.$percent($addedSoFar / $target).' of the target)' : '' }} · {{ $number($latest['figures']['planned']['leads']) }} planned for the month{{ $latest['figures']['planned']['short_of_target'] ? ', '.$number($latest['figures']['planned']['short_of_target']).' short of the target' : '' }}. Hover a day for its numbers.</p>
         </div>
@@ -138,7 +148,10 @@
         <div class="grid gap-2.5" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">
             @foreach ($exTiles as [$label, $about, $values, $format, $flow, $isRate, $total, $totalNote])
                 @php
-                    $tileChip = $chip($flow ? $paced($values[$monthCount - 1] ?? null) : ($values[$monthCount - 1] ?? null), $monthCount > 1 ? $values[0] : null, $isRate);
+                    // Only her own months (from her exclusive start): her latest against her first.
+                    $own = array_values(array_intersect_key($values, $ownIndexes));
+                    $ownCount = count($own);
+                    $tileChip = $ownCount > 1 ? $chip($flow && $latestRunning ? $paced($own[$ownCount - 1]) : $own[$ownCount - 1], $own[0], $isRate) : null;
                 @endphp
                 <div class="flex flex-col gap-2" style="{{ $cell }}; padding: 12px 14px">
                     <div class="flex flex-col gap-0.5">
@@ -146,9 +159,13 @@
                         <span style="font-size: 12px; line-height: 1.4; {{ $muted }}">{{ $about }}</span>
                     </div>
                     <span class="flex flex-wrap items-baseline gap-2"><span style="font-size: 22px; line-height: 1.1; font-weight: 700">{{ $total }}</span><span style="font-size: 12px; {{ $muted }}">{{ $totalNote }}</span></span>
-                    {!! $sparkline($values, $exclusiveColor, $latestRunning && $flow) !!}
-                    {!! $valueRow($values, $format) !!}
-                    <span style="{{ $tileChip['style'] }}">{{ $tileChip['text'] }} · {{ $versus }}</span>
+                    @if ($ownCount > 1)
+                        {!! $sparkline($own, $exclusiveColor, $latestRunning && $flow) !!}
+                        {!! $valueRow($own, $format, $ownLabels, narrow: true) !!}
+                        <span style="{{ $tileChip['style'] }}">{{ $tileChip['text'] }} · {{ $ownVersus }}</span>
+                    @else
+                        <span style="font-size: 12px; {{ $muted }}">Only {{ $ownLabels[0] ?? $latestLabel }} so far, no earlier month to compare.</span>
+                    @endif
                 </div>
             @endforeach
         </div>
