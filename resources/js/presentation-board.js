@@ -1,8 +1,7 @@
 /**
  * Presentation Board: pointing at a month marks it on every chart and shows its numbers in each chart's read-out;
- * leaving the chart puts the read-outs back.
+ * leaving the chart puts the read-outs back. The mark's colour follows the Light / Dark theme (--pb-mark).
  */
-const MARK = 'rgb(255 255 255 / .08)';
 
 export function initPresentationBoard() {
     const board = document.querySelector('[data-presentation-board]');
@@ -36,8 +35,9 @@ export function initPresentationBoard() {
         }
 
         clear();
+        const mark = getComputedStyle(board).getPropertyValue('--pb-mark').trim() || 'rgb(255 255 255 / .08)';
         board.querySelectorAll(`[data-point="${element.dataset.point}"]`).forEach((match) => {
-            match.style.background = MARK;
+            match.style.background = mark;
             show(match, match.dataset.read);
         });
     };
@@ -69,13 +69,8 @@ function initProductSort(board) {
         const by = button.dataset.productSort;
         const others = rows.querySelector('[data-others]');
 
-        buttons.forEach((other) => {
-            const on = other === button;
-            other.setAttribute('aria-pressed', String(on));
-            other.style.background = on ? 'rgb(195 155 255 / .25)' : 'transparent';
-            other.style.fontWeight = on ? '600' : '400';
-            other.style.color = on ? '#f1eef8' : '#bdb6cf';
-        });
+        // The pressed look comes from the board's stylesheet ([data-product-sort][aria-pressed]), so it follows the theme.
+        buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
 
         [...rows.querySelectorAll('[data-product]')]
             .sort((a, b) => (Number(b.dataset[by]) - Number(a.dataset[by])) || (Number(b.dataset.sales) - Number(a.dataset.sales)))

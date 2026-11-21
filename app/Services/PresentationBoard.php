@@ -26,7 +26,8 @@ use Illuminate\Support\Facades\DB;
  * order, no lead assigned). In both in one month, they count under CRD. Orders whose page isn't known yet are kept apart
  * as waiting until PancakePageBackfill finishes their month. Acquired leads (added) = a customer's first delivery ever, from FSD.
  * Retained, Repeat and Conversion are the Dashboard's, month by month; churned and for reactivation are Customer
- * Churn's, by the end of each customer's reorder window; Sales are Conversion Breakdown's gross sales of every CRA.
+ * Churn's, by the end of each customer's reorder window; Sales are Conversion Breakdown's gross sales of every CRA,
+ * also split Segmentation / Broadcast by tag (untagged = before the tags existed).
  * Top products splits each product's sales into main / reorder and upsell: a product the customer hasn't bought before
  * (in any earlier Pancake order, its items named as on the new order's day) on an order with one they have, filed
  * under that product as upsold on its orders.
@@ -66,7 +67,11 @@ class PresentationBoard
         'fsd_leads', 'crd_leads', 'fsd_waiting', 'crd_waiting', 'added', 'added_waiting',
         'fsd_due', 'fsd_lost', 'fsd_reactivation', 'crd_due', 'crd_lost', 'crd_reactivation', 'all_due', 'all_lost', 'all_reactivation',
         'retained', 'retained_base', 'repeat', 'repeat_base', 'gross', 'shecom_gross', 'orders', 'upsell_value', 'upsell_orders',
+        'sc_gross', 'sc_orders', 'bc_gross', 'bc_orders', 'untagged_gross', 'untagged_orders',
     ];
+
+    /** Sales by the order's tag (the CVR Tracker's Type of Order over it): figure prefix => counted_type. */
+    public const SALES_TYPES = ['sc' => PancakeOrder::SEGMENTATION, 'bc' => PancakeOrder::BROADCAST, 'untagged' => PancakeOrder::UNTAGGED];
 
     public function __construct(
         private ProductCatalog $catalog,
@@ -361,6 +366,8 @@ class PresentationBoard
             'retained_rate' => self::rate($sums['retained'], $sums['retained_base']),
             'repeat_rate' => self::rate($sums['repeat'], $sums['repeat_base']),
             'aov' => $sums['orders'] ? $sums['gross'] / $sums['orders'] : null,
+            'sc_aov' => $sums['sc_orders'] ? $sums['sc_gross'] / $sums['sc_orders'] : null,
+            'bc_aov' => $sums['bc_orders'] ? $sums['bc_gross'] / $sums['bc_orders'] : null,
         ];
     }
 
@@ -780,6 +787,10 @@ class PresentationBoard
                 $days[$day]['gross'] += $order->sales();
                 $days[$day]['shecom_gross'] += (float) ($order->shecom_sales ?? 0);
                 $days[$day]['orders'] += $counted ? 1 : 0;
+                // Segmentation vs Broadcast: the same gross and orders, by tag.
+                $type = array_search($order->counted_type, self::SALES_TYPES, true) ?: 'sc';
+                $days[$day]["{$type}_gross"] += $order->sales();
+                $days[$day]["{$type}_orders"] += $counted ? 1 : 0;
 
                 // Upsell: a product the customer hasn't bought before, on an order with one they have (the host: the
                 // biggest of those, so an upsell is filed once). Without one bought before, every item is main.
