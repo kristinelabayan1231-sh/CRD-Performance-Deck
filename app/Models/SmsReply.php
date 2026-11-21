@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -32,6 +33,14 @@ class SmsReply extends Model
             'received_at' => 'datetime',
             'handled_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Customers who replied YES and haven't been handled yet (the CRA still has to call them).
+     */
+    public function scopeWantsToReorder(Builder $query): void
+    {
+        $query->where('kind', self::YES)->whereNull('handled_at');
     }
 
     public function cra(): BelongsTo

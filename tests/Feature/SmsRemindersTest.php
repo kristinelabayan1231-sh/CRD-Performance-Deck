@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\CustomerClaim;
 use App\Models\DeliveredOrder;
 use App\Models\DoNotText;
+use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\RestockReminder;
 use App\Models\Role;
@@ -108,17 +109,39 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::PENDING, $reminders[$due]->status);
     }
 
-    public function test_customers_who_reordered_or_opted_out_are_skipped(): void
+    public function test_customers_who_restocked_the_same_product_or_opted_out_are_skipped(): void
     {
-        $reordered = $this->delivered('09170000001', cra: $this->anna);
-        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl');
-        $optedOut = $this->delivered('09170000002', cra: $this->anna);
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $redelivered = $this->delivered('09170000001', cra: $this->anna);
+        $this->delivered('09170000001', '2026-11-18');
+        $reorderedInPos = $this->delivered('09170000002', cra: $this->anna);
+        PancakeOrder::create(['pancake_order_id' => 'POS-1', 'ordered_on' => '2026-11-19', 'phone_key' => $reorderedInPos,
+            'items' => [['name' => 'Clear Sight 3.0', 'qty' => 1]]]);
+        $otherProduct = $this->delivered('09170000003', cra: $this->anna);
+        $this->delivered('09170000003', '2026-11-18', 'Sinuxyl');
+        PancakeOrder::create(['pancake_order_id' => 'POS-2', 'ordered_on' => '2026-11-19', 'phone_key' => $otherProduct,
+            'items' => [['name' => 'Sinuxyl', 'qty' => 1]]]);
+        $optedOut = $this->delivered('09170000004', cra: $this->anna);
         DoNotText::create(['phone_key' => $optedOut, 'reason' => 'Replied STOP']);
 
         $this->artisan('reminders:build')->assertSuccessful();
 
-        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $reordered, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $redelivered, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $reorderedInPos, 'status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']);
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $otherProduct, 'status' => RestockReminder::PENDING, 'products' => 'Clear Sight 3.0']);
         $this->assertDatabaseHas('restock_reminders', ['phone_key' => $optedOut, 'status' => RestockReminder::SKIPPED, 'error' => 'Opted out']);
+    }
+
+    public function test_only_the_products_not_yet_restocked_are_in_the_text(): void
+    {
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->delivered('09170000001', product: 'Sinuxyl');
+        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl');
+
+        $this->artisan('reminders:build');
+
+        $this->assertDatabaseHas('restock_reminders', ['phone_key' => $phoneKey, 'status' => RestockReminder::PENDING, 'products' => 'Clear Sight 3.0']);
     }
 
     public function test_rebuilding_leaves_customers_the_cra_already_left_out(): void
@@ -307,5 +330,41 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($supervisor)->get(route('sms-reminders.index'))->assertOk()->assertSee('Maria Santos 1')->assertSee('Maria Santos 2');
         $this->actingAs($supervisor)->get(route('sms-reminders.replies.index'))->assertOk()->assertSee('Magkano po?');
         $this->actingAs($this->mika)->get(route('sms-reminders.replies.index'))->assertOk()->assertDontSee('Magkano po?');
+    }
+
+    private function reply(User $cra, string $phone, string $kind, string $body, bool $handled = false): SmsReply
+    {
+        $phoneKey = $this->delivered($phone, cra: $cra);
+        $this->artisan('reminders:build');
+
+        return SmsReply::create(['user_id' => $cra->id, 'restock_reminder_id' => RestockReminder::firstWhere('phone_key', $phoneKey)->id,
+            'phone_key' => $phoneKey, 'phone_number' => $phone, 'body' => $body, 'kind' => $kind, 'received_at' => now(),
+            'handled_at' => $handled ? now() : null]);
+    }
+
+    public function test_a_cra_is_alerted_to_their_own_customers_who_want_to_reorder(): void
+    {
+        $this->reply($this->anna, '09170000001', SmsReply::YES, 'Yes');
+        $this->reply($this->anna, '09170000002', SmsReply::YES, 'Oo', handled: true);
+        $this->reply($this->anna, '09170000003', SmsReply::OTHER, 'Magkano po?');
+        $this->reply($this->mika, '09170000004', SmsReply::YES, 'Yes po');
+
+        $this->actingAs($this->anna)->get(route('dashboard'))->assertSee('1 customer wants to reorder');
+        $this->actingAs($this->anna)->getJson(route('sms-reminders.reorder-alerts'))->assertOk()->assertJson(['count' => 1]);
+        $this->actingAs($this->anna)->get(route('sms-reminders.replies.index', ['show' => 'reorder']))
+            ->assertOk()->assertSee('Maria Santos 1')->assertDontSee('Maria Santos 2')->assertDontSee('Magkano po?')->assertDontSee('Maria Santos 4');
+    }
+
+    public function test_the_call_button_dials_a_reply_from_the_cras_own_phone(): void
+    {
+        $reply = $this->reply($this->anna, '09170000001', SmsReply::YES, 'Yes');
+        Http::preventStrayRequests();
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->actingAs($this->mika)->postJson(route('sms-reminders.replies.call', $reply))->assertForbidden();
+        $this->actingAs($this->anna)->postJson(route('sms-reminders.replies.call', $reply))->assertOk();
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://trigger.macrodroid.com/device-1/call') && $request['number'] === '09170000001');
     }
 }

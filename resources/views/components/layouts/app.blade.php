@@ -152,6 +152,9 @@
                 </div>
 
                 <div class="flex items-center gap-3">
+                    @isset($reorderAlerts)
+                        <x-reorder-alert :count="$reorderAlerts" />
+                    @endisset
                     <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Theme" data-theme-switch>
                         @foreach (['light' => ['Light', 'M12 3v1.5M12 19.5V21M4.6 4.6l1.1 1.1M18.3 18.3l1.1 1.1M3 12h1.5M19.5 12H21M4.6 19.4l1.1-1.1M18.3 5.7l1.1-1.1M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'], 'dark' => ['Dark', 'M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z']] as $theme => [$themeLabel, $path])
                             <button type="button" data-theme-set="{{ $theme }}" aria-pressed="false" title="{{ $themeLabel }} theme" aria-label="{{ $themeLabel }} theme"

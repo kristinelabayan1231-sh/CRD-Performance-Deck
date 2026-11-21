@@ -37,7 +37,8 @@ class RestockReminders
     }
 
     /**
-     * Saves $remindOn's reminders: one per customer (merged numbers once), for their own CRA. Ones already left out,
+     * Saves $remindOn's reminders: one per customer (merged numbers once), for their own CRA, with only the products they
+     * haven't restocked (same product delivered or ordered since). Ones already left out,
      * queued or sent stay as they are; a pending one whose customer has since reordered or opted out is skipped.
      *
      * @return array{due: int, skipped: int}
@@ -57,7 +58,7 @@ class RestockReminders
         }
 
         $allNumbers = array_values(array_unique(array_merge(...array_values($members ?: [[]]))));
-        $orderedSince = $this->lastPancakeOrder($allNumbers);
+        $orderedSince = $this->lastPancakeOrder($allNumbers, $runOut->subDays(self::LOOKBACK_DAYS));
         $optedOut = DoNotText::whereIn('phone_key', $allNumbers)->pluck('phone_key')->flip();
         $owners = $this->owners->for(array_keys($customers));
         $types = $this->customerTypes(array_keys($customers), $members, $deliveries);
@@ -66,12 +67,15 @@ class RestockReminders
         $skipped = 0;
         foreach ($customers as $primary => $orders) {
             $numbers = $members[$primary] ?? [$primary];
-            $lastDelivered = collect($orders)->max('delivered');
-            $reordered = collect($numbers)->contains(fn (string $number) => ($latestDelivery[$number] ?? '') > $lastDelivered
-                || ($orderedSince[$number] ?? '') > $lastDelivered);
+            // A product counts as restocked when the same product was delivered or ordered (Pancake POS, not canceled)
+            // after the delivery that runs out; another product doesn't count. Only products not restocked are texted.
+            $stillDue = collect($orders)->reject(fn (array $order) => collect($numbers)->contains(
+                fn (string $number) => ($latestDelivery[$number][$order['product']->id] ?? '') > $order['delivered']
+                    || ($orderedSince[$number][$order['product']->id] ?? '') > $order['delivered']));
+            $reordered = $stillDue->isEmpty();
             $opted = collect($numbers)->contains(fn (string $number) => isset($optedOut[$number]));
             $first = collect($orders)->sortByDesc('delivered')->first();
-            $products = collect($orders)->pluck('product')->unique('id')->values();
+            $products = ($reordered ? collect($orders) : $stillDue)->pluck('product')->unique('id')->values();
 
             $attributes = [
                 'phone_number' => $first['phone'],
@@ -145,10 +149,10 @@ class RestockReminders
     }
 
     /**
-     * Delivered orders running out on $runOut, by number; plus each number's latest delivery and delivery count in the
-     * window (reorders and customer type).
+     * Delivered orders running out on $runOut, by number; plus each number's latest delivery of each product (reorders)
+     * and delivery count (customer type) in the window.
      *
-     * @return array{0: array<string, list<array{delivered: string, product: Product, phone: string, name: ?string}>>, 1: array<string, string>, 2: array<string, int>}
+     * @return array{0: array<string, list<array{delivered: string, product: Product, phone: string, name: ?string}>>, 1: array<string, array<int, string>>, 2: array<string, int>}
      */
     private function runningOut(CarbonImmutable $runOut): array
     {
@@ -169,13 +173,17 @@ class RestockReminders
                 }
 
                 $delivered = $order->delivered_date->toDateString();
-                $latest[$phoneKey] = max($latest[$phoneKey] ?? '', $delivered);
                 $count[$phoneKey] = ($count[$phoneKey] ?? 0) + 1;
-
                 $product = $this->catalog->match((string) $order->product_raw, $delivered);
-                $days = $product?->consumption_days ?: $order->consumption_days_per_unit;
 
-                if (! $product || ! $days) {
+                if (! $product) {
+                    return;
+                }
+
+                $latest[$phoneKey][$product->id] = max($latest[$phoneKey][$product->id] ?? '', $delivered);
+                $days = $product->consumption_days ?: $order->consumption_days_per_unit;
+
+                if (! $days) {
                     return;
                 }
 
@@ -225,18 +233,27 @@ class RestockReminders
     }
 
     /**
-     * Each number's latest counted Pancake POS order day: an order placed but not yet delivered is a reorder too.
+     * Each number's latest counted Pancake POS order day of each product: an order placed but not yet delivered is a
+     * reorder too.
      *
      * @param  list<string>  $phoneKeys
-     * @return array<string, string>
+     * @return array<string, array<int, string>> phone key => product id => day
      */
-    private function lastPancakeOrder(array $phoneKeys): array
+    private function lastPancakeOrder(array $phoneKeys, CarbonImmutable $since): array
     {
         $last = [];
         foreach (array_chunk($phoneKeys, 1000) as $chunk) {
-            $last += PancakeOrder::counted()->whereIn('phone_key', $chunk)
-                ->groupBy('phone_key')->selectRaw('phone_key, max(ordered_on) as last_on')
-                ->pluck('last_on', 'phone_key')->map(fn ($day) => substr((string) $day, 0, 10))->all();
+            PancakeOrder::counted()->whereIn('phone_key', $chunk)->whereDate('ordered_on', '>=', $since->toDateString())
+                ->get(['id', 'phone_key', 'ordered_on', 'items'])
+                ->each(function (PancakeOrder $order) use (&$last) {
+                    $day = $order->ordered_on->toDateString();
+                    foreach ($order->items ?? [] as $item) {
+                        $product = $this->catalog->match((string) ($item['name'] ?? ''), $day);
+                        if ($product) {
+                            $last[$order->phone_key][$product->id] = max($last[$order->phone_key][$product->id] ?? '', $day);
+                        }
+                    }
+                });
         }
 
         return $last;

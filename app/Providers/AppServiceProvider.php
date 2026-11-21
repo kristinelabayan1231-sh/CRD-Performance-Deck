@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Models\SmsReply;
 use App\Models\User;
 use App\Services\CraIssues;
 use App\Services\PancakeSync;
@@ -61,6 +62,15 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $view->with('craIssues', $issues);
+        });
+
+        // SMS Reminders: the CRA's customers who replied YES and still need a call (top bar button and pop-up).
+        View::composer('components.layouts.app', function (\Illuminate\View\View $view) {
+            $user = auth()->user();
+
+            if ($user?->can('sms_reminders.view')) {
+                $view->with('reorderAlerts', SmsReply::wantsToReorder()->where('user_id', $user->id)->count());
+            }
         });
     }
 }
