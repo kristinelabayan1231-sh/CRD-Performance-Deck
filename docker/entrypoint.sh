@@ -26,7 +26,13 @@ php artisan migrate --force
 sh docker/memory-watch.sh &
 
 # Lead (hourly) + Pancake (every 10 minutes) syncs (routes/console.php).
-php artisan schedule:work &
+# RUN_SCHEDULER=false keeps them off, e.g. on a second host being tested
+# while the main one still runs them.
+if [ "${RUN_SCHEDULER:-true}" != "false" ]; then
+    php artisan schedule:work &
+else
+    echo "RUN_SCHEDULER=false: scheduler not started." >&2
+fi
 
 # Render sets PORT. php-server sends every request that isn't a file to public/index.php.
 exec frankenphp php-server --root /app/public --listen ":${PORT:-8080}"
