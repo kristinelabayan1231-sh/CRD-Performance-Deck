@@ -592,22 +592,32 @@ class PresentationBoard
                 }
             }, 'logistics_orders.id', 'id');
 
-        // Older deliveries, except any order already read above.
+        // Older deliveries, except any order already read above. Each chunk looks up only its own orders: joined in one
+        // query, Postgres expected the "not in logistics" join to leave one row and matched every older delivery to its
+        // Pancake order for each chunk (about 100 seconds a chunk on live, so the refresh never finished).
         DB::table('delivered_orders')
-            ->leftJoin('pancake_orders', 'pancake_orders.pancake_order_id', '=', 'delivered_orders.order_id')
-            ->leftJoin('logistics_orders', 'logistics_orders.order_id', '=', 'delivered_orders.order_id')
-            ->where('delivered_orders.delivered_date', '<', LogisticsOrder::coveredFrom())
-            ->whereNull('logistics_orders.id')
-            ->select([
-                'delivered_orders.id', 'delivered_orders.order_id', 'delivered_orders.product_raw', 'delivered_orders.qty', 'delivered_orders.delivered_date', 'delivered_orders.phone_number',
-                'pancake_orders.phone_key as customer_key', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
-            ])
+            ->where('delivered_date', '<', LogisticsOrder::coveredFrom())
+            ->select(['id', 'order_id', 'product_raw', 'qty', 'delivered_date', 'phone_number'])
             ->chunkById(2000, function (Collection $rows) use ($consider, $accounts) {
+                $orderIds = $rows->pluck('order_id')->map(fn ($orderId) => (string) $orderId)->all();
+                $readAbove = DB::table('logistics_orders')->whereIn('order_id', $orderIds)->pluck('order_id')
+                    ->mapWithKeys(fn ($orderId) => [(string) $orderId => true])->all();
+                $pancake = DB::table('pancake_orders')->whereIn('pancake_order_id', $orderIds)
+                    ->get(['pancake_order_id', 'phone_key', 'page_id', 'seller_name', 'ordered_on'])
+                    ->keyBy(fn (object $order) => (string) $order->pancake_order_id);
+
                 foreach ($rows as $row) {
-                    $row->customer_key = $row->customer_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
+                    if (isset($readAbove[(string) $row->order_id])) {
+                        continue;
+                    }
+                    $order = $pancake[(string) $row->order_id] ?? null;
+                    $row->page_id = $order?->page_id;
+                    $row->seller_name = $order?->seller_name;
+                    $row->ordered_on = $order?->ordered_on;
+                    $row->customer_key = $order?->phone_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
                     $consider($row, self::teamOf($row->seller_name, LogisticsOrder::TEAM_FSD, $accounts, $row->ordered_on), (string) $row->product_raw);
                 }
-            }, 'delivered_orders.id', 'id');
+            });
 
         return $batches;
     }

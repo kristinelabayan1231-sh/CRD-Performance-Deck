@@ -537,9 +537,11 @@
                                         @if ($firstMonth)
                                             @php
                                                 [$changeKey, $changeRate, $changeFlow, $changeLower, $changeNeutral] = [...($change ?? [null]), false, false, false, false];
-                                                $rowChip = $changeKey ? $chip($changeFlow ? $paced($lastMonth[$changeKey]) : $lastMonth[$changeKey], $firstMonth[$changeKey], $changeRate, $changeLower, $changeNeutral) : null;
+                                                // Against the first month picked that has a figure, as the tiles' chips (conversion starts in October).
+                                                $rowBase = $changeKey ? collect($months)->search(fn (array $month, int $index) => $index < $monthCount - 1 && $month[$changeKey] !== null && (float) $month[$changeKey] != 0.0) : false;
+                                                $rowChip = $changeKey && $rowBase !== false && $lastMonth[$changeKey] !== null ? $chip($changeFlow ? $paced($lastMonth[$changeKey]) : $lastMonth[$changeKey], $months[$rowBase][$changeKey], $changeRate, $changeLower, $changeNeutral) : null;
                                             @endphp
-                                            <td style="padding: 8px 10px; white-space: nowrap">@if ($rowChip)<span style="{{ $rowChip['style'] }}">{{ $rowChip['text'] }}</span>@else<span style="{{ $muted }}">—</span>@endif</td>
+                                            <td style="padding: 8px 10px; white-space: nowrap">@if ($rowChip)<span style="{{ $rowChip['style'] }}">{{ $rowChip['text'] }}</span>@if ($rowBase > 0)<span style="{{ $small }}">vs {{ $months[$rowBase]['label'] }}</span>@endif @else<span style="{{ $muted }}">—</span>@endif</td>
                                         @endif
                                     </tr>
                                 @endforeach
@@ -549,7 +551,7 @@
                 </div>
                 <div class="flex flex-col gap-1" style="padding: 8px 16px 14px">
                     @if ($firstMonth)
-                        <p style="{{ $note }}"><strong style="color: {{ $text }}">{{ $monthName($lastMonth) }} vs {{ $firstMonth['label'] }}</strong>: the last month picked against the first, as the chips above. Counts in %, rates in points (pts).@if ($isRunning) Counts that build up day by day (new customers, orders, sales, retained, repeat) use {{ $lastMonth['label'] }}'s full-month pace.@endif</p>
+                        <p style="{{ $note }}"><strong style="color: {{ $text }}">{{ $monthName($lastMonth) }} vs {{ $firstMonth['label'] }}</strong>: the last month picked against the first, as the chips above; a figure that starts later (conversion) against its first month, named under the change. Counts in %, rates in points (pts).@if ($isRunning) Counts that build up day by day (new customers, orders, sales, retained, repeat) use {{ $lastMonth['label'] }}'s full-month pace.@endif</p>
                     @endif
                     <p style="{{ $note }}"><strong style="color: {{ $text }}">New customers</strong> (was Acquired leads): a customer's first delivery on record, from FSD. <strong style="color: {{ $text }}">Net</strong>: new customers minus churned. <strong style="color: {{ $text }}">Churn</strong>: churned customers, with the rate of those due.</p>
                     @if ($hasPartial)
@@ -622,7 +624,7 @@
                                             @php
                                                 $share = $month[$type['key'].'_gross'] / $monthAll * 100;
                                             @endphp
-                                            <span class="flex items-center justify-center" style="width: {{ round($share, 2) }}%; background: {{ $type['color'] }}; font-size: 11px; font-weight: 700; color: #fff">{{ $share >= 12 ? number_format($share).'%' : '' }}</span>
+                                            <span class="flex items-center justify-center" style="width: {{ round($share, 2) }}%; background: {{ $type['color'] }}; font-size: 11px; font-weight: 700; color: {{ $type['key'] === 'untagged' ? 'var(--pb-text)' : '#fff' }}">{{ $share >= 12 ? number_format($share).'%' : '' }}</span>
                                         @endif
                                     @endforeach
                                 </span>
@@ -649,7 +651,8 @@
                     $chevron = '<span aria-hidden="true" class="pb-chevron" style="display: inline-block; width: 14px; font-size: 11px; transition: transform .15s; '.$muted.'">▸</span>';
                     $monthlySales = fn (string $name) => array_map(fn (array $month) => $productMonths[$month['key']][$name]['sales'] ?? 0.0, $months);
                     $monthlyOrders = fn (string $name) => array_map(fn (array $month) => $productMonths[$month['key']][$name]['orders'] ?? 0, $months);
-                    $rankIn = fn (string $month, string $name) => isset($productMonths[$month][$name]) ? collect($productMonths[$month])->filter(fn (array $figures) => $figures['sales'] > $productMonths[$month][$name]['sales'])->count() + 1 : null;
+                    // Rank among the month's products; Others isn't a product, so it never takes a place.
+                    $rankIn = fn (string $month, string $name) => isset($productMonths[$month][$name]) ? collect($productMonths[$month])->except($othersName)->filter(fn (array $figures) => $figures['sales'] > $productMonths[$month][$name]['sales'])->count() + 1 : null;
                     $donutParts = $listed->take(6)->values()->map(fn (array $product, int $index) => [$product['name'], $product['sales'], $palette[$index], $peso($product['sales'])])->all();
                     $rest = $listed->slice(6)->sum('sales') + (collect($products)->firstWhere('name', $othersName)['sales'] ?? 0);
                     if ($rest > 0) {
@@ -720,11 +723,17 @@
                                     @endphp
                                     @if ($isOthers)
                                         <details data-others style="border-radius: 10px; background: var(--pb-cell); border: 1px dashed var(--pb-line2)" @if (! $others) data-empty @endif>
-                                            <summary class="{{ $others ? 'cursor-pointer' : '' }} flex items-center gap-2" style="padding: 10px; list-style: none">
+                                            <summary class="{{ $others ? 'cursor-pointer' : '' }} flex items-center gap-2" style="padding: 8px 10px; list-style: none">
                                                 {!! $others ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}
-                                                <strong>Others</strong><span style="{{ $muted }}">· {{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption{{ $others ? ', click to see' : '' }}</span>
-                                                <span style="margin-left: auto; font-weight: 700">{{ $peso($product['sales']) }}</span>
-                                                <span style="width: 64px; text-align: right; {{ $muted }}">{{ $number($product['orders']) }}</span>
+                                                {{-- The product rows' columns, so sales, orders and qty line up with theirs. --}}
+                                                <span style="flex: 1; min-width: 0; {{ $rowColumns }}">
+                                                    <span></span>
+                                                    <span style="grid-column: span 2; min-width: 0"><strong>Others</strong><span style="display: block; font-size: 11px; {{ $muted }}">{{ number_format(count($others)) }} {{ Str::plural('item', count($others)) }} not in Product Consumption{{ $others ? ', click to see' : '' }}</span></span>
+                                                    <span style="text-align: right; font-weight: 700" title="{{ $peso($product['sales']) }}">{{ $pesoShort($product['sales']) }}<span style="display: block; font-size: 11px; font-weight: 500; {{ $muted }}">{{ number_format($product['share'] * 100, 1) }}% share</span></span>
+                                                    <span style="text-align: right">{{ $number($product['orders']) }}</span>
+                                                    <span style="text-align: right">{{ $number($product['qty']) }}</span>
+                                                    <span></span>
+                                                </span>
                                             </summary>
                                             @if ($others)
                                                 @php
@@ -838,7 +847,7 @@
 
             <section id="cra-performance" aria-labelledby="cra-performance-title" style="{{ $glass }}">
                 <header class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2" style="{{ $head }}">
-                    <h2 id="cra-performance-title" style="{{ $h2 }}">CRA performance, year to date</h2>
+                    <h2 id="cra-performance-title" style="{{ $h2 }}">CRA performance, {{ $from === array_key_first($monthOptions) && $to === array_key_last($monthOptions) ? 'year to date' : ($from === $to ? $monthOptions[$from] : $monthOptions[$from].' – '.$monthOptions[$to]) }}</h2>
                     @if ($craPerformance)
                         <p style="margin: 0; font-size: 13px; {{ $muted }}">Team: <strong style="color: {{ $text }}">{{ $peso($craPerformance['gross']) }}</strong> gross · <strong style="color: {{ $text }}">{{ $number($craPerformance['high_aov']) }}</strong> High AOV · <strong style="color: {{ $text }}">{{ $number($craPerformance['vip']) }}</strong> VIP</p>
                     @endif
@@ -955,7 +964,7 @@
             </section>
 
             @foreach ($exclusive as $exclusiveCra)
-                @include('presentation-board._exclusive', ['exclusiveCra' => $exclusiveCra])
+                @include('presentation-board._exclusive', ['exclusiveCra' => $exclusiveCra, 'isFirstExclusive' => $loop->first])
             @endforeach
 
             <section id="customers" aria-labelledby="customers-title" style="{{ $glass }}">
@@ -1177,13 +1186,13 @@
                             </div>
                             @foreach ($months as $month)
                                 <div data-point="{{ $month['key'] }}" title="{{ $month['label'] }}: new customers {{ $number($month['added']) }}, plus {{ $number($month['added_waiting']) }} waiting, {{ $number($month['all_lost']) }} churned and {{ $number($month['all_reactivation']) }} for reactivation of {{ $number($month['all_due']) }} due" class="min-w-0 flex-1 text-center" style="background: transparent; border-radius: 6px">
-                                    <span class="flex flex-col items-center justify-end gap-0.5" style="height: 120px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added_waiting'] / $churnPeak * 100) }}%; border-radius: 4px 4px 0 0; background: {{ $addedTint }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added'] / $churnPeak * 100) }}%; background: {{ $added }}"></span></span>
+                                    <span class="flex flex-col items-center justify-end gap-0.5" style="height: 110px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added_waiting'] / $churnPeak * 100) }}%; border-radius: 4px 4px 0 0; background: {{ $addedTint }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['added'] / $churnPeak * 100) }}%; background: {{ $added }}"></span></span>
                                     <span style="display: block; height: 2px; background: var(--pb-axis)"></span>
-                                    <span class="flex flex-col items-center justify-start gap-0.5" style="height: 100px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_lost'] / $churnPeak * 100) }}%; background: {{ $lost }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_reactivation'] / $churnPeak * 100) }}%; border-radius: 0 0 4px 4px; background: {{ $reactivation }}"></span></span>
+                                    <span class="flex flex-col items-center justify-start gap-0.5" style="height: 110px"><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_lost'] / $churnPeak * 100) }}%; background: {{ $lost }}"></span><span style="display: block; width: 100%; max-width: 24px; height: {{ round($month['all_reactivation'] / $churnPeak * 100) }}%; border-radius: 0 0 4px 4px; background: {{ $reactivation }}"></span></span>
                                     <span style="display: block; height: 24px; line-height: 24px; font-weight: 700">{{ $month['label'] }}</span>
                                     <a href="{{ $listUrl('added', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['added'] + $month['added_waiting']) }}</a>
-                                    <a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_lost']) }}</a>
-                                    <a href="{{ $churnUrl('reactivation', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_reactivation']) }}{{ $star($month) }}</a>
+                                    <a href="{{ $churnUrl('lost', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_lost']) }}{{ $star($month) }}</a>
+                                    <a href="{{ $churnUrl('reactivation', 'all', $month['key']) }}" style="display: block; height: 24px; line-height: 24px; {{ $link }}">{{ $number($month['all_reactivation']) }}</a>
                                     <span style="display: block; height: 24px; line-height: 24px; font-weight: 700; color: {{ $month['net'] < 0 ? $lost : $added }}">{{ $signed($month['net']) }}</span>
                                     <span style="display: block; height: 38px; line-height: 19px; font-weight: 700">{{ $percent($month['churn_rate']) }}{{ $star($month) }}<span style="{{ $small }}">{{ $number($month['all_lost']) }} of {{ $number($month['all_due']) }}</span></span>
                                     <a href="{{ $churnUrl('lost', 'fsd', $month['key']) }}" style="display: block; height: 38px; line-height: 19px; {{ $link }}">{{ $percent($month['fsd_churn_rate']) }}{{ $star($month) }}<span style="{{ $small }}">{{ $number($month['fsd_lost']) }} of {{ $number($month['fsd_due']) }}</span></a>

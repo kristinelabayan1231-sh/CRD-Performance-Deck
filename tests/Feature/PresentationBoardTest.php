@@ -144,6 +144,22 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(1, $this->month($snapshot, '2026-02')['added']);
     }
 
+    public function test_an_older_delivery_takes_its_team_page_and_customer_from_its_pancake_order(): void
+    {
+        // Delivered Dec 20, 2025, 1 × 30 days: runs out Jan 18. Sold by a CRD account, so a CRD lead, under Pancake's phone key.
+        DeliveredOrder::create(['order_id' => 'D1', 'customer_name' => 'Buyer', 'phone_number' => '+63 917 000 1801', 'product_raw' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2025-12-20', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+        PancakeOrder::create([
+            'pancake_order_id' => 'D1', 'ordered_on' => '2025-12-15', 'seller_name' => self::CRD_SELLER, 'phone_number' => '1801', 'phone_key' => '1801',
+            'status' => 3, 'total_price' => 1000, 'page_id' => self::PAGE, 'items' => [['name' => 'Sinuxyl', 'qty' => 1]],
+        ]);
+
+        $january = $this->month($this->snapshot(), '2026-01');
+
+        $this->assertSame(1, $january['crd_leads']);
+        $this->assertSame(0, $january['fsd_leads']);
+        $this->assertSame('1801', app(PresentationBoard::class)->listed('crd_leads', '2026-01', '2026-01')[0][0]);
+    }
+
     public function test_a_delivery_without_its_own_quantity_uses_the_saved_one_over_the_order_items(): void
     {
         // 3 × 30 days from Feb 1 runs out May 1; the order's items say 1, which would be Mar 2.
@@ -673,7 +689,8 @@ class PresentationBoardTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-11']))
             ->assertOk()
-            ->assertSee('CRA performance, year to date')
+            // Months picked, so the heading names them rather than "year to date".
+            ->assertSee('CRA performance, Oct 2026 – Nov 2026')
             ->assertSee('Regina')
             ->assertSee('−₱500')
             ->assertSee('100.0% of team gross')
