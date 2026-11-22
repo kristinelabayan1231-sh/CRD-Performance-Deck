@@ -857,17 +857,26 @@
                     <p role="status" style="{{ $note }}; padding: 16px">These figures appear after the next scheduled refresh.</p>
                 @else
                     @php
-                        $craParts = collect($craPerformance['rows'])->filter(fn (array $row) => $row['gross'] > 0)->values()
-                            ->map(fn (array $row, int $index) => [$row['user']->displayName(), $row['gross'], $palette[$index % count($palette)], $peso($row['gross'])])->all();
+                        $craSharers = collect($craPerformance['rows'])->filter(fn (array $row) => $row['gross'] > 0)->values();
+                        $craParts = $craSharers->map(fn (array $row, int $index) => [$row['user']->displayName(), $row['gross'], $palette[$index % count($palette)], $peso($row['gross'])])->all();
+                        $craTopShare = max(.0001, $craSharers->max('share') ?? 0);
                     @endphp
                     @if ($craParts && $craPerformance['gross'] > 0)
-                        <div class="flex flex-wrap items-center gap-4" style="padding: 14px 16px 0">
+                        {{-- The donut's key as a ranked list: each CRA's share bar, gross and orders on one line, so name and share sit together. --}}
+                        <div class="flex flex-wrap items-center gap-x-8 gap-y-4" style="padding: 16px 16px 0">
                             {!! $donut($craParts, $millions($craPerformance['gross']), 'team gross', "Donut: each CRA's share of team gross sales") !!}
-                            <ul class="grid gap-x-4 gap-y-1.5" style="flex: 1 1 260px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); font-size: 12px">
-                                @foreach ($craParts as [$name, $value, $color])
-                                    <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; flex: none; background: {{ $color }}"></span><span style="flex: 1">{{ $name }}</span><strong>{{ number_format($value / $craPerformance['gross'] * 100, 1) }}%</strong></li>
+                            {{-- One grid for every row (rows are display: contents), so the bars start and end together. --}}
+                            <ol class="grid min-w-0 items-center gap-x-3 gap-y-2.5" style="flex: 1 1 300px; max-width: 900px; margin: 0; padding: 0; list-style: none; font-size: 13px; grid-template-columns: 14px minmax(70px, 150px) minmax(40px, 1fr) max-content max-content">
+                                @foreach ($craSharers as $index => $sharer)
+                                    <li class="contents">
+                                        <span style="font-size: 12px; font-weight: 700; {{ $muted }}">{{ $sharer['rank'] }}</span>
+                                        <span class="flex min-w-0 items-center gap-2" style="font-weight: 600"><span aria-hidden="true" style="{{ $swatch }}; flex: none; background: {{ $craParts[$index][2] }}"></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ $sharer['user']->displayName() }}</span></span>
+                                        <span aria-hidden="true" style="display: block; height: 8px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 8px; border-radius: 999px; width: {{ round($sharer['share'] / $craTopShare * 100, 1) }}%; background: {{ $craParts[$index][2] }}"></span></span>
+                                        <span style="text-align: right; white-space: nowrap"><strong title="{{ $peso($sharer['gross']) }}">{{ $pesoShort($sharer['gross']) }}</strong><span class="hidden sm:inline" style="font-size: 12px; {{ $muted }}"> · {{ $number($sharer['orders']) }} {{ Str::plural('order', $sharer['orders']) }}</span></span>
+                                        <strong style="min-width: 44px; text-align: right">{{ number_format($sharer['share'] * 100, 1) }}%</strong>
+                                    </li>
                                 @endforeach
-                            </ul>
+                            </ol>
                         </div>
                     @endif
                     <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); padding: 16px">
