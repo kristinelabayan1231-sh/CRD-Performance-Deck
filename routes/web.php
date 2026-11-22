@@ -24,6 +24,7 @@ use App\Http\Controllers\DashboardBoardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DashboardLiveController;
 use App\Http\Controllers\DutyScheduleController;
+use App\Http\Controllers\ExclusiveFsaAccountController;
 use App\Http\Controllers\ExclusiveLeadController;
 use App\Http\Controllers\ExclusiveLeadDashboardController;
 use App\Http\Controllers\ExclusiveLeadLimitController;
@@ -290,6 +291,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         });
 
         Route::prefix('exclusive-leads')->name('exclusive-leads.')->middleware('can:exclusive_leads.manage')->group(function () {
+            Route::post('/{user}/fsa-accounts', [ExclusiveFsaAccountController::class, 'store'])->name('fsa-accounts.store');
+            Route::delete('/fsa-accounts/{account}', [ExclusiveFsaAccountController::class, 'destroy'])->name('fsa-accounts.destroy');
             Route::post('/{user}', [ExclusiveLeadSettingController::class, 'store'])->name('store');
             Route::delete('/{user}', [ExclusiveLeadSettingController::class, 'destroy'])->name('destroy');
         });

@@ -72,7 +72,7 @@
         $lastDay = $index + 1;
     }
     $ty = fn (float $leads) => round(200 - $leads / ($target * 1.2) * 180, 1);
-    $mixParts = collect($latest['figures']['actual']['mix'])->filter()->map(fn (int $count, string $source) => [$sourceLabels[$source] ?? $source, $count, ['leftover' => 'var(--pb-bc)', 'tagged' => 'var(--pb-excl)', 'high_value' => 'var(--pb-crd)', 'handled' => 'var(--pb-added)', 'random' => 'var(--pb-fsd)'][$source] ?? 'var(--pb-react)', $number($count)])->values()->all();
+    $mixParts = collect($latest['figures']['actual']['mix'])->filter()->map(fn (int $count, string $source) => [$sourceLabels[$source] ?? $source, $count, ['leftover' => 'var(--pb-bc)', 'tagged' => 'var(--pb-excl)', 'high_value' => 'var(--pb-crd)', 'handled' => 'var(--pb-added)', 'fsa' => 'var(--pb-accent)', 'random' => 'var(--pb-fsd)'][$source] ?? 'var(--pb-react)', $number($count)])->values()->all();
     $splitPeak = max(1, ...array_values(array_map(fn (array $entry) => $entry['sales']['overall']['gross'], $byMonth)));
 @endphp
 

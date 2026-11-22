@@ -5,6 +5,7 @@
     'tagged' => ['Tagged', 'bg-coral'],
     'high_value' => ['High AOV / VIP', 'bg-brand-500'],
     'handled' => ['Handled twice', 'bg-teal'],
+    'fsa' => ["FSA's customer", 'bg-violet'],
     'random' => ['Random', 'bg-sky'],
 ])
 <div>
