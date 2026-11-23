@@ -180,9 +180,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/replies/{smsReply}/call', [SmsReplyController::class, 'call'])->middleware('throttle:20,1')->name('replies.call');
         Route::get('/reorder-alerts', [SmsReplyController::class, 'alerts'])->middleware('throttle:30,1')->name('reorder-alerts');
 
-        Route::prefix('templates')->name('templates.')->middleware('can:sms_reminders.manage')->group(function () {
+        // Each CRA's own templates and name in texts (SmsTemplateController keeps a CRA to hers).
+        Route::prefix('templates')->name('templates.')->group(function () {
             Route::get('/', [SmsTemplateController::class, 'index'])->name('index');
             Route::post('/', [SmsTemplateController::class, 'store'])->name('store');
+            Route::put('/name', [SmsTemplateController::class, 'name'])->name('name');
             Route::put('/{smsTemplate}', [SmsTemplateController::class, 'update'])->name('update');
             Route::delete('/{smsTemplate}', [SmsTemplateController::class, 'destroy'])->name('destroy');
         });

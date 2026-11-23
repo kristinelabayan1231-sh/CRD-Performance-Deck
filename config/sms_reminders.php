@@ -51,7 +51,7 @@ return [
         '{first_name}' => 'Customer\'s first name',
         '{product}' => 'Product(s) running out',
         '{run_out_date}' => 'Run-out date, e.g. 27 Nov',
-        '{cra_name}' => 'Their CRA\'s name',
+        '{cra_name}' => 'Your name in texts (set it above)',
     ],
 
     // Used when no template fits.

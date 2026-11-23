@@ -85,10 +85,10 @@ class SmsReminderController extends Controller
             'sendTime' => SmsSettings::sendTime(),
             'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null : null,
             'daysBefore' => RestockReminders::daysBefore(),
-            // The Text button's template choices: follow-ups first, then reminders.
-            'textTemplates' => SmsTemplate::where('is_active', true)
+            // The Text button's template choices, each row's CRA's own: follow-ups first, then reminders.
+            'textTemplates' => SmsTemplate::where('is_active', true)->whereIn('user_id', $rows->getCollection()->pluck('user_id')->filter()->unique())
                 ->orderByRaw('case when purpose = ? then 0 else 1 end', [SmsTemplate::FOLLOW_UP])->orderBy('name')
-                ->get(['id', 'name', 'purpose', 'body']),
+                ->get(['id', 'user_id', 'name', 'purpose', 'body']),
             // Customers who asked not to be texted get no Text button.
             'doNotText' => DoNotText::whereIn('phone_key', $rows->getCollection()->pluck('phone_key'))->pluck('phone_key')->all(),
         ]);

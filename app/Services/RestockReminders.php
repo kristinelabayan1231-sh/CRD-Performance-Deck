@@ -113,15 +113,16 @@ class RestockReminders
     }
 
     /**
-     * The template a reminder gets: the active one that fits most closely (product + customer type, then product, then
-     * customer type, then any), the newest when two fit as closely; null when none fits.
+     * The template a reminder gets: its CRA's active one that fits most closely (product + customer type, then product,
+     * then customer type, then any), the newest when two fit as closely; null when none fits (another CRA's never does).
      */
     public function templateFor(RestockReminder $reminder): ?SmsTemplate
     {
         $this->templates ??= SmsTemplate::where('is_active', true)->where('purpose', SmsTemplate::REMINDER)->orderByDesc('id')->get();
 
         return $this->templates
-            ->filter(fn (SmsTemplate $template) => ($template->product_id === null || $template->product_id === $reminder->product_id)
+            ->filter(fn (SmsTemplate $template) => $reminder->user_id !== null && (int) $template->user_id === (int) $reminder->user_id
+                && ($template->product_id === null || $template->product_id === $reminder->product_id)
                 && ($template->customer_type === null || $template->customer_type === $reminder->customer_type))
             ->sortByDesc(fn (SmsTemplate $template) => ($template->product_id ? 2 : 0) + ($template->customer_type ? 1 : 0))
             ->first();
@@ -141,7 +142,7 @@ class RestockReminders
             '{first_name}' => $reminder->firstName() ?: 'po',
             '{product}' => $reminder->products,
             '{run_out_date}' => $reminder->run_out_on->format('j M'),
-            '{cra_name}' => $cra?->displayName() ?? 'ang CRA mo',
+            '{cra_name}' => $cra?->smsName() ?? 'ang CRA mo',
         ]);
         $optOut = config('sms_reminders.opt_out_line');
 
