@@ -378,6 +378,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::get('/', [SmsReminderSettingController::class, 'index'])->name('index');
             Route::put('/', [SmsReminderSettingController::class, 'update'])->name('update');
             Route::post('/test', [SmsReminderSettingController::class, 'test'])->middleware('throttle:10,1')->name('test');
+            Route::patch('/phones/{user}', [SmsReminderSettingController::class, 'ready'])->name('ready');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

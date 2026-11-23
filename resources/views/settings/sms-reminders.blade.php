@@ -50,9 +50,9 @@
     <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm">
         <div class="border-b border-line px-4 py-4">
             <h2 class="text-base font-semibold">CRA phones</h2>
-            <p class="text-sm text-muted">Uses each CRA's phone link and upload token from <a href="{{ route('settings.call-recordings.index') }}" class="font-semibold text-brand-600 hover:underline">Settings → Call Recordings</a>. Each phone needs two MacroDroid macros:</p>
+            <p class="text-sm text-muted">Uses each CRA's phone link and upload token from <a href="{{ route('settings.call-recordings.index') }}" class="font-semibold text-brand-600 hover:underline">Settings → Call Recordings</a>. Each phone needs two MacroDroid macros. Nothing is sent from a phone until it's ready: mark it ready once it sends texts (a test text below), or it becomes ready by itself when it confirms a text.</p>
             <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-                <li><span class="font-semibold text-ink">Send reminder</span>: Webhook trigger with the identifier <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">{{ config('sms_reminders.webhook_identifier') }}</code>, then Send SMS to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>, then HTTP Request <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $sentUrl }}</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">ref</code> (from the webhook), header <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer &lt;upload token&gt;</code>. A text counts as sent only when this comes back; until a phone has confirmed one (send a test text below), nothing is sent from it.</li>
+                <li><span class="font-semibold text-ink">Send reminder</span>: Webhook trigger with the identifier <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">{{ config('sms_reminders.webhook_identifier') }}</code>, then Send SMS to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>, and optionally HTTP Request <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $sentUrl }}</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">ref</code> (from the webhook), header <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer &lt;upload token&gt;</code>, so each text counts as sent only when the phone confirms it went out.</li>
                 <li><span class="font-semibold text-ink">Forward replies</span>: SMS Received trigger, then HTTP Request <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $replyUrl }}</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> and <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>, header <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer &lt;upload token&gt;</code>.</li>
             </ul>
         </div>
@@ -80,11 +80,18 @@
                             </td>
                             <td class="px-4 py-3">{{ $row['hasToken'] ? 'Set' : 'Not made yet' }}</td>
                             <td class="px-4 py-3">
-                                @if ($row['cra']->sms_confirmed_at)
-                                    <span class="text-[#11734b]">Yes, since {{ $row['cra']->sms_confirmed_at->timezone(config('segmentation.timezone'))->format('M j') }}</span>
-                                @else
-                                    <span class="text-coral-700">Not yet: send a test text</span>
-                                @endif
+                                <div class="flex flex-wrap items-center gap-2">
+                                    @if ($row['cra']->sms_confirmed_at)
+                                        <span class="text-[#11734b]">Yes{{ $row['cra']->sms_marked_ready_by ? ', marked by hand' : ', phone confirms texts' }}</span>
+                                    @else
+                                        <span class="text-coral-700">Not yet</span>
+                                    @endif
+                                    <form method="POST" action="{{ route('settings.sms-reminders.ready', $row['cra']) }}">
+                                        @csrf @method('PATCH')
+                                        <input type="hidden" name="ready" value="{{ $row['cra']->sms_confirmed_at ? 0 : 1 }}">
+                                        <button type="submit" class="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold hover:border-brand-400 hover:text-brand-600">{{ $row['cra']->sms_confirmed_at ? 'Mark not ready' : 'Mark ready' }}</button>
+                                    </form>
+                                </div>
                             </td>
                             <td class="px-4 py-3">{{ $row['cra']->sms_auto_send ? 'On' : 'Off' }}</td>
                         </tr>

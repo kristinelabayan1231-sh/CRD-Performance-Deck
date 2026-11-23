@@ -90,7 +90,7 @@ class SmsSender
             self::NO_LINK => 'No phone link: add it in Settings → Call Recordings.',
             self::UNKNOWN_LINK => 'The phone has no "Send reminder" macro (MacroDroid webhook "'.config('sms_reminders.webhook_identifier').'").',
             self::NO_ANSWER => 'The phone didn\'t answer: check it is on, online and MacroDroid is running.',
-            self::NOT_READY => 'This phone isn\'t set up for texts yet: send a test text from Settings → SMS Reminders and check it arrives.',
+            self::NOT_READY => 'This phone isn\'t ready for texts yet: in Settings → SMS Reminders, send it a test text and mark it ready once it arrives.',
             default => 'Sent.',
         };
     }

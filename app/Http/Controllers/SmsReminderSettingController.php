@@ -84,4 +84,22 @@ class SmsReminderSettingController extends Controller
             ? back()->with('status', "Test text handed to {$cra->displayName()}'s phone. Once the phone confirms it went out, the phone shows as ready below; check it arrived, then reply YES and look for it in SMS Reminders → Replies.")
             : back()->withErrors(['test' => SmsSender::explain($result)]);
     }
+
+    /**
+     * Mark a CRA's phone ready for texts by hand (it already sends without the macro's confirm step: its texts count as
+     * sent once the phone takes them), or not ready (nothing is sent from it until a text is confirmed).
+     */
+    public function ready(Request $request, User $user): RedirectResponse
+    {
+        abort_unless(LeadGenerator::cras()->contains('id', $user->id), 404);
+        $ready = $request->validate(['ready' => ['required', 'boolean']])['ready'];
+
+        $user->forceFill($ready
+            ? ['sms_confirmed_at' => $user->sms_confirmed_at ?? now(), 'sms_marked_ready_by' => $request->user()->id]
+            : ['sms_confirmed_at' => null, 'sms_marked_ready_by' => null])->save();
+
+        return back()->with('status', $ready
+            ? "{$user->displayName()}'s phone is ready for texts."
+            : "{$user->displayName()}'s phone isn't ready for texts: nothing is sent from it until a test text is confirmed.");
+    }
 }

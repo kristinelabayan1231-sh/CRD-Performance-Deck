@@ -77,6 +77,9 @@ class SendRestockSms extends Command
             $attempts = $reminder->attempts + 1;
 
             $reminder->update(match (true) {
+                // A phone marked ready by hand doesn't confirm: sent once it takes the text.
+                $result === SmsSender::SENT && $cra->sms_marked_ready_by !== null => ['status' => RestockReminder::SENT, 'handed_at' => now(), 'sent_at' => now(),
+                    'message' => $message, 'sms_template_id' => $reminders->templateFor($reminder)?->id, 'attempts' => $attempts, 'error' => null],
                 // Sent once the phone confirms it (POST /api/sms-sent); until then it stays Sending….
                 $result === SmsSender::SENT => ['handed_at' => now(), 'message' => $message,
                     'sms_template_id' => $reminders->templateFor($reminder)?->id, 'attempts' => $attempts, 'error' => null],
