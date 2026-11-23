@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\DailyIncomeStatement;
 use App\Services\LeadGenerator;
+use App\Services\ReportSummary;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -161,6 +162,20 @@ class ReportSummaryTest extends TestCase
             ->assertViewHas('dayReports', fn (array $reports) => array_column($days($reports), 0) === ['2026-10-01', '2026-10-02']);
         $this->actingAs($this->supervisor)->get(route('report-summary.index', ['date' => '2026-10-08', 'to' => '2026-12-01']))
             ->assertViewHas('dayReports', fn (array $reports) => array_column($days($reports), 0) === ['2026-10-08', '2026-10-09']);
+    }
+
+    public function test_a_cra_no_longer_active_shows_only_where_they_have_figures(): void
+    {
+        $this->sheetOrders();
+        $sharie = $this->cra('Sharie', null);
+        $this->order('CRD SHARIE', PancakeOrder::BROADCAST, 700, '2026-10-01');
+        $sharie->update(['pancake_name' => 'CRD Sharie', 'is_active' => false]);
+        $this->travelTo(CarbonImmutable::parse('2026-10-20 18:00', 'Asia/Manila'));
+        $names = fn (array $report) => $report['rows']->map(fn (array $row) => $row['cra']->displayName())->all();
+        $report = app(ReportSummary::class);
+
+        $this->assertContains('Sharie', $names($report->for(LeadGenerator::crasBetween(CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-07')), CarbonImmutable::parse('2026-10-01'), CarbonImmutable::parse('2026-10-07'))));
+        $this->assertSame(['Lhea', 'Regina', 'Rose'], $names($report->for(LeadGenerator::crasBetween(CarbonImmutable::parse('2026-10-08'), CarbonImmutable::parse('2026-10-14')), CarbonImmutable::parse('2026-10-08'), CarbonImmutable::parse('2026-10-14'))));
     }
 
     public function test_a_days_on_duty_count_entered_by_hand_is_used_instead_of_its_log_ins(): void

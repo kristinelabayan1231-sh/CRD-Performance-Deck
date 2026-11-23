@@ -47,12 +47,24 @@ class ReportSummary
         $onDuty = OnDuty::countFor($from, $to);
 
         return [
-            'rows' => $rows,
+            // Totals above keep every CRA; a CRA no longer active is only listed where they have activity.
+            'rows' => $rows->reject(fn (array $row) => ! $row['cra']->is_active && ! self::hasActivity($row['metrics']))->values(),
             'total' => $total,
             'on_duty' => $onDuty,
             'average_sales' => $onDuty ? $total['bc_gross'] / $onDuty : null,
             'average_ibsc' => $onDuty ? $total['net_income'] / $onDuty : null,
         ];
+    }
+
+    /**
+     * Whether a row has leads, engagements, orders or sales (net income alone is a cost share, not activity).
+     *
+     * @param  array<string, int|float|null>  $metrics
+     */
+    private static function hasActivity(array $metrics): bool
+    {
+        return collect(['leads', 'engagements', 'orders', 'gross', 'is_leads', 'is_engagements', 'is_orders', 'is_gross'])
+            ->contains(fn (string $key) => ($metrics[$key] ?? 0) != 0);
     }
 
     /**
