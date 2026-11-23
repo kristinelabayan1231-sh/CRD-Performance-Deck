@@ -8,6 +8,7 @@ use App\Services\CraGrossSales;
 use App\Services\LeadGenerator;
 use App\Support\SalesGoals;
 use App\Support\WorkingDate;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -31,7 +32,7 @@ class CraGrossSalesController extends Controller
             'show' => ['nullable', Rule::in(array_keys(self::SHOWS))],
         ]);
         $year = (int) ($filters['year'] ?? WorkingDate::realToday()->year);
-        $data = $sales->year(LeadGenerator::cras(), $year);
+        $data = $sales->year(LeadGenerator::crasBetween(CarbonImmutable::create($year), CarbonImmutable::create($year, 12, 31)), $year);
         $canManage = $request->user()->can('cra_gross_sales.manage');
 
         // The table alone, re-drawn after a figure is saved.

@@ -211,7 +211,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
     Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
     Route::prefix('running-sales')->name('running-sales.')->middleware('can:running_sales.view')->group(function () {
         Route::get('/', [RunningSalesController::class, 'index'])->name('index');
-        Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware('throttle:6,1')->name('refresh');
+        Route::post('/refresh', [RunningSalesController::class, 'refresh'])->middleware(['can:running_sales.refresh', 'throttle:6,1'])->name('refresh');
     });
     Route::prefix('product-performance')->name('product-performance.')->middleware('can:product_performance.view')->group(function () {
         Route::get('/', [ProductPerformanceController::class, 'index'])->name('index');

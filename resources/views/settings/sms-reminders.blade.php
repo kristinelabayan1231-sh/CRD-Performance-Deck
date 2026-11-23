@@ -52,17 +52,18 @@
             <h2 class="text-base font-semibold">CRA phones</h2>
             <p class="text-sm text-muted">Uses each CRA's phone link and upload token from <a href="{{ route('settings.call-recordings.index') }}" class="font-semibold text-brand-600 hover:underline">Settings → Call Recordings</a>. Each phone needs two MacroDroid macros:</p>
             <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-                <li><span class="font-semibold text-ink">Send reminder</span>: Webhook trigger with the identifier <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">{{ config('sms_reminders.webhook_identifier') }}</code>, then Send SMS to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>.</li>
+                <li><span class="font-semibold text-ink">Send reminder</span>: Webhook trigger with the identifier <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">{{ config('sms_reminders.webhook_identifier') }}</code>, then Send SMS to <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>, then HTTP Request <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $sentUrl }}</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">ref</code> (from the webhook), header <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer &lt;upload token&gt;</code>. A text counts as sent only when this comes back; until a phone has confirmed one (send a test text below), nothing is sent from it.</li>
                 <li><span class="font-semibold text-ink">Forward replies</span>: SMS Received trigger, then HTTP Request <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">POST {{ $replyUrl }}</code> with <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">number</code> and <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">message</code>, header <code class="rounded bg-canvas px-1 py-0.5 text-xs text-ink">Authorization: Bearer &lt;upload token&gt;</code>.</li>
             </ul>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[44rem] text-left text-sm">
+            <table class="w-full min-w-[52rem] text-left text-sm">
                 <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-4 py-3 font-semibold">CRA</th>
                         <th class="px-4 py-3 font-semibold">Send reminder link</th>
                         <th class="px-4 py-3 font-semibold">Upload token</th>
+                        <th class="px-4 py-3 font-semibold">Ready for texts</th>
                         <th class="px-4 py-3 font-semibold">Automatic sending</th>
                     </tr>
                 </thead>
@@ -78,6 +79,13 @@
                                 @endif
                             </td>
                             <td class="px-4 py-3">{{ $row['hasToken'] ? 'Set' : 'Not made yet' }}</td>
+                            <td class="px-4 py-3">
+                                @if ($row['cra']->sms_confirmed_at)
+                                    <span class="text-[#11734b]">Yes, since {{ $row['cra']->sms_confirmed_at->timezone(config('segmentation.timezone'))->format('M j') }}</span>
+                                @else
+                                    <span class="text-coral-700">Not yet: send a test text</span>
+                                @endif
+                            </td>
                             <td class="px-4 py-3">{{ $row['cra']->sms_auto_send ? 'On' : 'Off' }}</td>
                         </tr>
                     @endforeach

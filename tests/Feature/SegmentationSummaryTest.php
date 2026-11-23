@@ -93,22 +93,53 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'Sinuxyl', ['feedback' => 'no_verbal_conv']);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'Unattended']);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'voicemail']);
+        // No note: a status whose name is a reason joins that reason's row instead of a second one.
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'busy_callback', 'feedback' => 'no_verbal_conv']);
+        $this->lead($this->bea, 'Sinuxyl', ['status' => 'inactive', 'feedback' => 'no_verbal_conv', 'notes' => 'busy daw']);
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedback' => 'no_budget', 'notes' => 'cx ended the call']);
         // Ticked as a second choice still counts.
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedbacks' => ['no_budget', 'no_verbal_conv'], 'notes' => 'wrong number']);
 
+        $noVerbal = fn (array $s) => $s['feedback_reasons']['no_verbal_conv'];
         $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk()
-            ->assertViewHas('summary', fn (array $s) => collect($s['no_verbal']['reasons'])->pluck('total', 'key')->sortKeys()->all() === [
-                'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 2, 'pjr' => 1, 'status_inactive' => 1, 'unattended' => 1, 'wrong_number' => 1,
-            ] && collect($s['no_verbal']['reasons'])->firstWhere('key', 'status_inactive')['label'] === 'Inactive'
-                && count($s['no_verbal']['notes']) === 10)
+            ->assertViewHas('summary', fn (array $s) => collect($noVerbal($s)['reasons'])->pluck('total', 'key')->sortKeys()->all() === [
+                'busy' => 2, 'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 2, 'pjr' => 1, 'status_inactive' => 1, 'unattended' => 1, 'wrong_number' => 1,
+            ] && collect($noVerbal($s)['reasons'])->firstWhere('key', 'status_inactive')['label'] === 'Inactive'
+                && count($noVerbal($s)['notes']) === 12)
             ->assertSee('NO VERBAL CONV · why?')
-            ->assertSeeInOrder(['Why no verbal conversation', '10', 'Back to chart', 'Customer ended / dropped the call', '2', '20%'])
-            ->assertSeeInOrder(['Alice · Oct 3 · PJR/Inactive/CBR/Drop call', '“cx ended the call”']);
+            ->assertSeeInOrder(['Why no verbal conversation', '12', 'Back to chart', 'Drop call', '2', '17%'])
+            ->assertSeeInOrder(['Alice', 'Oct 3 · PJR/Inactive/CBR/Drop call', '“cx <mark', 'ended</mark> the call”'], false);
 
         // The filters apply: Bea's leads only.
         $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id]))
-            ->assertViewHas('summary', fn (array $s) => count($s['no_verbal']['notes']) === 8);
+            ->assertViewHas('summary', fn (array $s) => count($noVerbal($s)['notes']) === 10);
+    }
+
+    public function test_every_other_feedback_choice_shows_the_reasons_from_the_notes(): void
+    {
+        $this->lead($this->alice, 'Sinuxyl', ['status' => 'active', 'feedback' => 'still_have_stocks', 'notes' => 'May 3 pa daw stocks, ubusin muna']);
+        $this->lead($this->alice, 'Sinuxyl', ['status' => 'active', 'feedback' => 'still_have_stocks', 'notes' => 'no budget/ may stock pa']);
+        $this->lead($this->alice, 'Sinuxyl', ['status' => 'active', 'feedback' => 'still_have_stocks', 'notes' => 'anak ang nakausap, nanay ang nagamit']);
+        $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'ineffective', 'notes' => 'Wala naging improvement']);
+        $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'ineffective', 'notes' => 'Offered discount and reservation']);
+        $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'ineffective']);
+        $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'purchased', 'notes' => 'may stock pa pero nag order']);
+
+        $response = $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk();
+        $reasons = $response->viewData('summary')['feedback_reasons'];
+        $totals = fn (string $choice) => collect($reasons[$choice]['reasons'])->pluck('total', 'key')->sortKeys()->all();
+
+        // A note counts in every reason it names; one naming none is Other; what the CRA did isn't a reason.
+        $this->assertSame(['budget' => 1, 'not_user' => 1, 'stock' => 2], $totals('still_have_stocks'));
+        $this->assertSame(3, $reasons['still_have_stocks']['total']);
+        $this->assertSame(['no_improvement' => 1, 'no_note' => 1, 'other' => 1], $totals('ineffective'));
+        // PURCHASED isn't a reason not to reorder.
+        $this->assertArrayNotHasKey('purchased', $reasons);
+
+        $response->assertSee('STILL HAVE STOCKS · why?')->assertDontSee('PURCHASED · why?')
+            ->assertSeeInOrder(['Why customers said STILL HAVE STOCKS', '3', 'Still has stock', '2', '67%'])
+            ->assertSee('data-reasons="stock budget"', false)
+            ->assertSee('“no <mark class="rounded-sm bg-amber-100 text-inherit">budget</mark>/ may <mark class="rounded-sm bg-amber-100 text-inherit">stock</mark> pa”', false);
     }
 
     public function test_summary_moved_from_the_tracker_to_product_performance(): void

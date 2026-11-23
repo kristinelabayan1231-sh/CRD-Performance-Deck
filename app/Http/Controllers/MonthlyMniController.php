@@ -27,7 +27,7 @@ class MonthlyMniController extends Controller
         ]);
         $month = CarbonImmutable::parse(($filters['month'] ?? WorkingDate::realToday()->format('Y-m')).'-01');
         $plan = $filters['plan'] ?? '1m';
-        $cras = LeadGenerator::cras();
+        $cras = LeadGenerator::crasOfMonth($month);
 
         // The ledger alone, re-drawn after an input is saved.
         $view = $request->header('X-Mni-Ledger') ? 'mni._ledger' : 'mni.index';

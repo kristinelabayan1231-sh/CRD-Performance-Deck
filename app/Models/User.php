@@ -40,6 +40,7 @@ class User extends Authenticatable
             'deactivated_at' => 'datetime',
             'show_product_qty' => 'boolean',
             'sms_auto_send' => 'boolean',
+            'sms_confirmed_at' => 'datetime',
             'daily_sales_goal' => 'decimal:2',
         ];
     }

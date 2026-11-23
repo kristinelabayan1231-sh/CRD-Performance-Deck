@@ -73,7 +73,8 @@ $modules = [
         'report_summary.view' => 'View the Report Summary: every CRA\'s weekly, month-to-date and daily orders, sales and per-CRA averages',
     ],
     'Running Sales' => [
-        'running_sales.view' => 'View every CRA\'s running sales (overall and per product) against their daily goal, and refresh them',
+        'running_sales.view' => 'View every CRA\'s running sales (overall and per product) against their daily goal',
+        'running_sales.refresh' => 'Refresh the running sales now with Pancake\'s latest orders',
     ],
     'Presentation Board' => [
         'presentation_board.view' => 'View the CRD team\'s year so far: leads, customers added and lost, rates, sales and top products',

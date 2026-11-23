@@ -27,6 +27,7 @@ class SmsReminderSettingController extends Controller
             'dailyCap' => SmsSettings::dailyCap(),
             'cras' => LeadGenerator::cras()->map(fn (User $cra) => ['cra' => $cra, 'link' => SmsSender::linkFor($cra), 'hasToken' => (bool) $cra->recording_token]),
             'replyUrl' => route('api.sms-replies.store'),
+            'sentUrl' => route('api.sms-sent.store'),
             'windows' => SmsSettings::windows(),
             'windowsLabel' => SmsSettings::windowsLabel(),
         ]);
@@ -73,14 +74,14 @@ class SmsReminderSettingController extends Controller
         ], ['number.regex' => 'Type a PH mobile number, e.g. 0917 123 4567.']);
         $cra = User::findOrFail($data['cra']);
 
-        $result = $sender->send($cra, $data['number'], "Test text from the CRD Performance Deck via {$cra->displayName()}'s phone. Reply YES to check replies come back.");
+        $result = $sender->send($cra, $data['number'], "Test text from the CRD Performance Deck via {$cra->displayName()}'s phone. Reply YES to check replies come back.", SmsSender::TEST_REF);
 
         if ($result === SmsSender::SENT) {
             SmsReply::rememberTest(LeadGenerator::normalizePhone($data['number']), $cra->id);
         }
 
         return $result === SmsSender::SENT
-            ? back()->with('status', "Test text sent from {$cra->displayName()}'s phone. Check it arrived, then reply YES and look for it in SMS Reminders → Replies.")
+            ? back()->with('status', "Test text handed to {$cra->displayName()}'s phone. Once the phone confirms it went out, the phone shows as ready below; check it arrived, then reply YES and look for it in SMS Reminders → Replies.")
             : back()->withErrors(['test' => SmsSender::explain($result)]);
     }
 }

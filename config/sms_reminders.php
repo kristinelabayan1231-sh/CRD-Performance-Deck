@@ -35,8 +35,8 @@ return [
     'retry_minutes' => 5,
     'max_attempts' => 3,
 
-    // Queued texts are still sent this many days after their reminder day (a phone that was off); older ones are dropped.
-    'stale_after_days' => 2,
+    // A text handed to a phone that hasn't confirmed it went out (POST /api/sms-sent) within this many minutes is failed.
+    'confirm_minutes' => 15,
 
     // Customer types a template can be for: key => label.
     'customer_types' => [

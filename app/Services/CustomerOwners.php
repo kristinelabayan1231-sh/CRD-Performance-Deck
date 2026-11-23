@@ -11,6 +11,7 @@ use App\Models\PancakeOrder;
 use App\Models\User;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 /**
  * Each customer's own CRA: the CRA who claimed them from the up-for-reassignment list (CustomerReassignment), else the
@@ -50,6 +51,48 @@ class CustomerOwners
             ->map(fn (array $counted, int $craId) => [...$counted, 'cra' => $craId])
             ->sortBy([['count', 'desc'], ['latest', 'desc'], ['cra', 'asc']])
             ->first()['cra']);
+    }
+
+    /**
+     * A disabled CRA's customers (they handled an order of theirs, or claimed them) who have no active CRA left: each
+     * goes to the CRA among $to with the fewest so far, ties to the earliest, kept as a claim so they stay theirs
+     * (previous_cra_id = $from). Customers another active CRA has handled or claimed go to that CRA on their own.
+     *
+     * @param  Collection<int, User>  $to  the CRAs who take them over
+     * @return int customers handed over
+     */
+    public function inheritFrom(User $from, Collection $to): int
+    {
+        $to = $to->sortBy('id')->values();
+        $sellers = PancakeAccounts::craBySeller(collect([$from]))->keys()->all();
+
+        // Every number they handled an order of (sold from their Pancake account, or claimed for them in the CVR Tracker) or claimed.
+        $numbers = collect()
+            ->merge($sellers === [] ? [] : PancakeOrder::whereIn('seller_name', $sellers)->counted()->distinct()->pluck('phone_key'))
+            ->merge(PancakeOrder::whereIn('pancake_order_id', CvrOrderEntry::where('user_id', $from->id)->select('pancake_order_id'))->counted()->distinct()->pluck('phone_key'))
+            ->merge(CustomerClaim::where('user_id', $from->id)->pluck('phone_key'))
+            ->filter()->map(fn ($key) => (string) $key)->unique()->values()->all();
+
+        if ($numbers === [] || $to->isEmpty()) {
+            return 0;
+        }
+
+        $customers = array_values(array_unique($this->primaries($numbers)));
+        $owned = $this->for($customers);
+        $orphans = array_values(array_filter($customers, fn (string $customer) => ! isset($owned[$customer])));
+        $load = $to->mapWithKeys(fn (User $cra) => [$cra->id => 0])->all();
+
+        foreach (array_chunk($orphans, 500) as $chunk) {
+            $rows = [];
+            foreach ($chunk as $customer) {
+                $craId = array_search(min($load), $load, true);
+                $load[$craId]++;
+                $rows[] = ['phone_key' => $customer, 'user_id' => $craId, 'previous_cra_id' => $from->id, 'claimed_at' => now(), 'created_at' => now(), 'updated_at' => now()];
+            }
+            CustomerClaim::upsert($rows, ['phone_key'], ['user_id', 'previous_cra_id', 'claimed_at', 'updated_at']);
+        }
+
+        return count($orphans);
     }
 
     /**

@@ -908,23 +908,54 @@ function initGreeting() {
     dialog.showModal();
 }
 
-// Product Performance → Segmentation Summary: NO VERBAL CONV's slice or legend row flips the Customer's Feedback card to its reasons; "Back to chart" flips it back.
+// Product Performance → Segmentation Summary: a Customer's Feedback choice's slice or legend row flips the card to why
+// customers gave it; a reason's row shows only its notes; "Back to chart" flips it back.
 function initFlip() {
     const inner = document.querySelector('[data-flip-inner]');
     if (!inner?.querySelector('[data-flip-face="back"]')) return;
-    const faces = { front: inner.querySelector('[data-flip-face="front"]'), back: inner.querySelector('[data-flip-face="back"]') };
+    const front = inner.querySelector('[data-flip-face="front"]');
+    const backs = [...inner.querySelectorAll('[data-flip-face="back"]')];
+    let opener = null;
 
-    const flip = (toBack) => {
-        inner.toggleAttribute('data-flipped', toBack);
+    const filter = (back, reason) => {
+        back.querySelectorAll('[data-reason-filter]').forEach((row) => row.setAttribute('aria-pressed', String(row.dataset.reasonFilter === reason)));
+        back.querySelectorAll('[data-reasons]').forEach((note) => {
+            note.hidden = reason !== null && !note.dataset.reasons.split(' ').includes(reason);
+        });
+        const hint = back.querySelector('[data-reason-hint]');
+        const label = reason && back.querySelector(`[data-reason-filter="${CSS.escape(reason)}"] span`)?.textContent;
+        hint.textContent = label ? `Only the notes for ${label}. Click it again to see every note.` : hint.dataset.allText;
+    };
+
+    const flip = (key) => {
+        const back = key && backs.find((face) => face.dataset.flipKey === key);
+        if (back) {
+            backs.forEach((face) => {
+                face.hidden = face !== back;
+                face.inert = face !== back;
+            });
+            filter(back, null);
+        } else {
+            backs.forEach((face) => (face.inert = true));
+        }
+        inner.toggleAttribute('data-flipped', Boolean(back));
         // Only the side facing the user can be tabbed into or read out.
-        faces.front.inert = toBack;
-        faces.back.inert = !toBack;
-        (toBack ? faces.back.querySelector('[data-flip-close]') : faces.front.querySelector('button[data-flip-open]'))?.focus({ preventScroll: true });
+        front.inert = Boolean(back);
+        (back ? back.querySelector('[data-flip-close]') : opener)?.focus({ preventScroll: true });
     };
 
     inner.addEventListener('click', (event) => {
-        if (event.target.closest('[data-flip-open]')) flip(true);
-        else if (event.target.closest('[data-flip-close]')) flip(false);
+        const open = event.target.closest('[data-flip-open]');
+        const reason = event.target.closest('[data-reason-filter]');
+        if (open) {
+            opener = front.querySelector(`button[data-flip-open="${CSS.escape(open.dataset.flipOpen)}"]`);
+            flip(open.dataset.flipOpen);
+        } else if (event.target.closest('[data-flip-close]')) {
+            flip(null);
+        } else if (reason) {
+            const back = reason.closest('[data-flip-face="back"]');
+            filter(back, reason.getAttribute('aria-pressed') === 'true' ? null : reason.dataset.reasonFilter);
+        }
     });
 }
 

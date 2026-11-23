@@ -195,11 +195,17 @@ class RunningSalesTest extends TestCase
             ->assertViewHas('snapshot', fn (array $snapshot) => $snapshot['team']['sales'] === 6000.0);
     }
 
-    public function test_only_users_with_the_running_sales_permission_can_open_or_refresh_it(): void
+    public function test_a_cra_sees_every_cras_running_sales_but_only_supervisors_refresh_them(): void
     {
-        $this->actingAs($this->regina)->get(route('running-sales.index'))->assertForbidden();
+        $this->actingAs($this->regina)->get(route('running-sales.index'))->assertOk()
+            ->assertSee('Regina')->assertSee('Lhea')->assertDontSee('Refresh now');
         $this->actingAs($this->regina)->post(route('running-sales.refresh'))->assertForbidden();
+
+        $this->actingAs($this->supervisor)->get(route('running-sales.index'))->assertOk()->assertSee('Refresh now');
         $this->actingAs($this->supervisor)->get(route('running-sales.index', ['period' => 'year']))->assertSessionHasErrors('period');
+
+        $defaultUser = User::create(['email' => 'user@example.com', 'role_id' => Role::defaultUser()->id, 'is_active' => true]);
+        $this->actingAs($defaultUser)->get(route('running-sales.index'))->assertForbidden();
     }
 
     public function test_the_next_fetch_is_the_evening_snapshot_when_it_comes_before_the_even_hour(): void

@@ -26,6 +26,12 @@ class SmsSender
     /** The phone didn't answer: off, offline or MacroDroid stopped. */
     public const NO_ANSWER = 'no_answer';
 
+    /** The phone has never confirmed a text went out (no test text came back yet), so nothing is handed to it. */
+    public const NOT_READY = 'not_ready';
+
+    /** The ref a test text carries, so its confirmation marks the phone ready. */
+    public const TEST_REF = 'test';
+
     public static function linkFor(User $cra): ?string
     {
         $link = $cra->call_webhook_url;
@@ -41,9 +47,13 @@ class SmsSender
     }
 
     /**
-     * @return self::SENT|self::NO_LINK|self::UNKNOWN_LINK|self::NO_ANSWER
+     * Hand a text to the CRA's phone. SENT means MacroDroid took it, not that it went out: the "Send reminder" macro
+     * confirms that by posting $ref back (POST /api/sms-sent). A phone that never confirmed a text gets only the test
+     * text ($ref TEST_REF) until one comes back.
+     *
+     * @return self::SENT|self::NO_LINK|self::UNKNOWN_LINK|self::NO_ANSWER|self::NOT_READY
      */
-    public function send(User $cra, string $number, string $message): string
+    public function send(User $cra, string $number, string $message, ?string $ref = null): string
     {
         $link = self::linkFor($cra);
 
@@ -51,9 +61,13 @@ class SmsSender
             return self::NO_LINK;
         }
 
+        if ($cra->sms_confirmed_at === null && $ref !== self::TEST_REF) {
+            return self::NOT_READY;
+        }
+
         try {
             $response = Http::connectTimeout(5)->timeout(10)
-                ->get($link, ['number' => CallRecording::dialNumber($number), 'message' => $message]);
+                ->get($link, array_filter(['number' => CallRecording::dialNumber($number), 'message' => $message, 'ref' => $ref]));
         } catch (Throwable $e) {
             report($e);
 
@@ -76,6 +90,7 @@ class SmsSender
             self::NO_LINK => 'No phone link: add it in Settings → Call Recordings.',
             self::UNKNOWN_LINK => 'The phone has no "Send reminder" macro (MacroDroid webhook "'.config('sms_reminders.webhook_identifier').'").',
             self::NO_ANSWER => 'The phone didn\'t answer: check it is on, online and MacroDroid is running.',
+            self::NOT_READY => 'This phone isn\'t set up for texts yet: send a test text from Settings → SMS Reminders and check it arrives.',
             default => 'Sent.',
         };
     }

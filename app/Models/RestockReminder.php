@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'phone_key', 'phone_number', 'customer_name', 'product_id', 'products', 'customer_type', 'run_out_on', 'remind_on',
     'user_id', 'status', 'excluded_reason', 'status_updated_by', 'sms_template_id', 'message', 'attempts',
-    'next_attempt_at', 'queued_at', 'sent_at', 'error',
+    'next_attempt_at', 'queued_at', 'handed_at', 'sent_at', 'error',
 ])]
 class RestockReminder extends Model
 {
@@ -58,8 +59,37 @@ class RestockReminder extends Model
             'attempts' => 'integer',
             'next_attempt_at' => 'datetime',
             'queued_at' => 'datetime',
+            'handed_at' => 'datetime',
             'sent_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Still to send on $day: not sent yet (pending or queued), from $day or an earlier reminder day, and the product
+     * hasn't run out yet. A text missed on its day (no phone yet, no CRA, sending off) carries over until then.
+     */
+    public function scopeToSendOn(Builder $query, CarbonImmutable $day): Builder
+    {
+        return $query->whereIn('status', [self::PENDING, self::QUEUED])
+            ->whereDate('remind_on', '<=', $day->toDateString())
+            ->whereDate('run_out_on', '>=', $day->toDateString());
+    }
+
+    /**
+     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn).
+     */
+    public function scopeShownOn(Builder $query, CarbonImmutable $day): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->whereDate('remind_on', $day->toDateString())
+            ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString())));
+    }
+
+    /**
+     * Carried over from an earlier reminder day onto $day's list.
+     */
+    public function isCarriedOverTo(CarbonImmutable $day): bool
+    {
+        return $this->remind_on->lt($day->startOfDay());
     }
 
     public function cra(): BelongsTo

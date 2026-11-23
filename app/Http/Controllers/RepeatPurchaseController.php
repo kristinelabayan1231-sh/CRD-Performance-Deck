@@ -34,7 +34,7 @@ class RepeatPurchaseController extends Controller
         $segment = $filters['segment'] ?? 'retained';
         $range = DashboardRange::fromFilters($filters, $today);
         $canViewAll = $user->can('segmentation.view_all');
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($range->from, $range->to);
         // A supervisor sees every CRA or the one picked; a CRA sees their own.
         $cras = match (true) {
             ! $canViewAll => collect([$user]),

@@ -60,7 +60,7 @@ class SegmentationProductivityController extends Controller
             ? $this->dayPeriods($filters, $today)
             : $this->weekPeriods($filters, $today);
 
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($period['from'], $period['to']);
         $colors = $allCras->values()->mapWithKeys(fn (User $cra, int $i) => [$cra->id => self::COLORS[$i] ?? '#8a8f98']);
         $selected = collect($filters['cras'] ?? [])->map(fn ($id) => (int) $id);
         $shown = match (true) {

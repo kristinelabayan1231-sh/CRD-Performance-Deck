@@ -213,7 +213,7 @@ class ActualIncome
         $department = $typed->whereNull('user_id')->pluck('amount', 'field')->all();
         $craTyped = $cras->mapWithKeys(fn (User $cra) => [$cra->id => $typed->where('user_id', $cra->id)->pluck('amount', 'field')->all()])->all();
         $craCount = max($cras->count(), 1);
-        $mni = $this->mni->for(LeadGenerator::cras(), $month->startOfMonth(), '1m')['cras'];
+        $mni = $this->mni->for($cras, $month->startOfMonth(), '1m')['cras'];
 
         $cards = $cras->mapWithKeys(fn (User $cra) => [$cra->id => self::craCard($craTyped[$cra->id], $department, $mni[$cra->id] ?? [], $craCount)])->all();
 

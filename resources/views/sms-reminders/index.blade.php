@@ -13,7 +13,7 @@
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">SMS Reminders</h1>
-                <p class="text-sm text-muted">Customers whose product runs out on <span class="font-semibold text-ink">{{ $day->addDays($daysBefore)->format('D, M j') }}</span>, texted {{ $daysBefore }} days before from their CRA's own phone.</p>
+                <p class="text-sm text-muted">Customers whose product runs out on <span class="font-semibold text-ink">{{ $day->addDays($daysBefore)->format('D, M j') }}</span>, texted {{ $daysBefore }} days before from their CRA's own phone, plus earlier days' customers not texted yet whose product hasn't run out.</p>
             </div>
             @include('sms-reminders._tabs', ['openReplies' => $replies])
         </header>
@@ -97,9 +97,11 @@
                             </button>
                             <span>{{ $cra->sms_auto_send ? 'Sends automatically every day at '.\Carbon\Carbon::createFromFormat('H:i', $sendTime)->format('g:i A') : 'Automatic sending off' }}</span>
                         </form>
-                        @unless ($phoneReady)
+                        @if ($cra && ! \App\Services\SmsSender::linkFor($cra))
                             <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone link isn't set in Settings → Call Recordings.</p>
-                        @endunless
+                        @elseif (! $phoneReady)
+                            <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone isn't set up for texts yet: send a test text from Settings → SMS Reminders. Their texts wait here until it is.</p>
+                        @endif
                     </div>
                 @else
                     <p class="max-w-xs text-sm text-muted">Pick a CRA to send their texts or turn on their automatic sending: texts go out from each CRA's own phone.</p>
@@ -216,6 +218,9 @@
                                     </td>
                                     <td class="px-4 py-3">
                                         <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap {{ $reminder->statusClasses() }}">{{ $reminder->statusLabel() }}</span>
+                                        @if ($reminder->isCarriedOverTo($day))
+                                            <p class="mt-1 text-xs text-muted">From {{ $reminder->remind_on->format('M j') }} · runs out {{ $reminder->run_out_on->format('M j') }}</p>
+                                        @endif
                                         @if ($reminder->sent_at)
                                             <p class="mt-1 text-xs text-muted">{{ $reminder->sent_at->timezone($tz)->format('g:i A') }}</p>
                                         @elseif ($reminder->status === RestockReminder::EXCLUDED && $isToday)

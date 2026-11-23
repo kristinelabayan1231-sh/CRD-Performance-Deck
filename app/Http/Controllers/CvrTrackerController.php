@@ -35,7 +35,7 @@ class CvrTrackerController extends Controller
         ]);
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString());
 
-        $cras = $user->can('cvr_tracker.view_all') ? LeadGenerator::cras() : LeadGenerator::cras()->where('id', $user->id)->values();
+        $cras = $user->can('cvr_tracker.view_all') ? LeadGenerator::crasOn($day) : LeadGenerator::crasOn($day)->where('id', $user->id)->values();
         $cra = $cras->firstWhere('id', (int) ($filters['cra'] ?? 0)) ?? $cras->first();
 
         return view('cvr-tracker.index', [
