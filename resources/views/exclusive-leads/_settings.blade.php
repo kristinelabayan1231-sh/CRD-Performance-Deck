@@ -60,6 +60,11 @@
         @endif
 
         @if ($settingsCras)
+        <datalist id="fsa-sellers">
+            @foreach ($settingsCras['sellers'] as $seller)
+                <option value="{{ $seller }}"></option>
+            @endforeach
+        </datalist>
         <h3 class="bg-canvas/60 px-5 py-2 text-xs font-semibold tracking-wide text-muted uppercase">On this page ({{ $settingsCras['current']->count() }})</h3>
         <ul class="divide-y divide-line">
             @forelse ($settingsCras['current'] as $member)
@@ -77,6 +82,35 @@
                                 <button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white hover:bg-brand-700">Yes, move back</button>
                             </form>
                         </details>
+                    </div>
+
+                    {{-- FSA accounts whose customers are hers while no CRA has handled them (ExclusiveFsaCustomers). --}}
+                    @php($fsaAccounts = $settingsCras['fsa'][$member->id] ?? collect())
+                    <div class="mt-3 rounded-lg border border-line bg-canvas/40 p-3">
+                        <p class="text-xs font-semibold text-muted">FSA accounts ({{ $fsaAccounts->count() }})</p>
+                        <p class="mt-0.5 text-xs text-muted">A customer no CRA has handled whose latest order one of these accounts sold goes only to {{ $member->displayName() }}, after High AOV / VIP and handled customers, before random leads.</p>
+                        @if ($fsaAccounts->isNotEmpty())
+                            <ul class="mt-2 flex flex-wrap gap-1.5">
+                                @foreach ($fsaAccounts as $account)
+                                    <li class="flex items-center gap-1 rounded-full border border-line bg-white py-0.5 pr-1 pl-2.5 text-xs font-medium">
+                                        {{ $account->seller_name }}
+                                        <form method="POST" action="{{ route('settings.exclusive-leads.fsa-accounts.destroy', $account) }}">
+                                            @csrf @method('DELETE')
+                                            <button type="submit" aria-label="Remove {{ $account->seller_name }}" title="Remove" class="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-coral/20 hover:text-coral-700">
+                                                <svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>
+                                            </button>
+                                        </form>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        @endif
+                        <form method="POST" action="{{ route('settings.exclusive-leads.fsa-accounts.store', $member) }}" class="mt-2 flex gap-2">
+                            @csrf
+                            <label class="sr-only" for="fsa-account-{{ $member->id }}">FSA account to add</label>
+                            <input id="fsa-account-{{ $member->id }}" name="seller_name" list="fsa-sellers" required autocomplete="off" placeholder="Pancake account, e.g. KIM GAN"
+                                   class="h-9 min-w-0 flex-1 rounded-lg border border-line bg-white px-2.5 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                            <button type="submit" class="h-9 shrink-0 cursor-pointer rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white hover:bg-brand-700">Add</button>
+                        </form>
                     </div>
                 </li>
             @empty

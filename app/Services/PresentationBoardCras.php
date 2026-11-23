@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\Cache;
  * gross ÷ orders as the board's. NI = the Daily I.S. CRA card's NET INCOME,
  * from NI_FROM on. Capacity a day = customers answered (Segmentation Productivity's Answered) ÷ days they answered
  * anyone. High AOV and VIP = the customers assigned to the CRA now (Customer Database), so they follow no month.
+ * Exclusive = each exclusive CRA's months as the Exclusive Leads Dashboard counts them, kept here because working them
+ * out inside the page view ran past the time and memory limits on the live server.
  */
 class PresentationBoardCras
 {
@@ -28,6 +30,7 @@ class PresentationBoardCras
         private SegmentationProductivity $productivity,
         private DailyIncomeStatement $statement,
         private HighValueCustomers $highValue,
+        private ExclusiveLeads $exclusive,
     ) {}
 
     /**
@@ -91,7 +94,35 @@ class PresentationBoardCras
             }
         }
 
-        return ['months' => $months, 'high_value' => $this->highValueCounts($cras)];
+        return ['months' => $months, 'high_value' => $this->highValueCounts($cras), 'exclusive' => $this->exclusiveMonths($today)];
+    }
+
+    /**
+     * Each exclusive CRA's months of the year from their exclusive start: the Exclusive Leads Dashboard's figures and
+     * their exclusive vs normal sales.
+     *
+     * @return array<int, array<string, array{figures: array<string, mixed>, sales: array<string, array{orders: int, gross: float}>}>> CRA id => Y-m => figures
+     */
+    private function exclusiveMonths(CarbonImmutable $today): array
+    {
+        $exclusive = [];
+
+        foreach ($this->exclusive->cras() as $cra) {
+            $start = WorkingDate::realDayFor($cra->exclusive_from)->format('Y-m');
+
+            for ($day = $today->startOfYear(); $day->lessThanOrEqualTo($today); $day = $day->addMonth()) {
+                if ($day->format('Y-m') < $start) {
+                    continue;
+                }
+
+                $exclusive[$cra->id][$day->format('Y-m')] = [
+                    'figures' => $this->exclusive->month($cra, $day),
+                    'sales' => $this->exclusive->salesSplit($cra, $day, $day->endOfMonth()->startOfDay()->min($today)),
+                ];
+            }
+        }
+
+        return $exclusive;
     }
 
     /**

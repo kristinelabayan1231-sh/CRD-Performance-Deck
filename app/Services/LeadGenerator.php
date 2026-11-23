@@ -447,11 +447,12 @@ class LeadGenerator
     }
 
     /**
-     * Each number's own CRAs: their High AOV / VIP CRA and the CRA who has handled the most of their orders (CustomerOwners).
-     * ownerFor() picks between them for a lead.
+     * Each number's own CRAs: their High AOV / VIP CRA, the CRA who has handled the most of their orders (CustomerOwners)
+     * and the exclusive CRA whose FSA accounts sold their latest order (ExclusiveFsaCustomers). ownerFor() picks between
+     * them for a lead.
      *
      * @param  list<string>  $phoneKeys
-     * @return array{high_value: array<string, int>, handled: array<string, int>} phone key => CRA id
+     * @return array{high_value: array<string, int>, handled: array<string, int>, fsa: array<string, int>} phone key => CRA id
      */
     public function ownersFor(array $phoneKeys, ?HighValueCustomers $highValue = null): array
     {
@@ -460,20 +461,25 @@ class LeadGenerator
         return [
             'high_value' => rescue(fn () => $highValue->crasFor($phoneKeys), []),
             'handled' => rescue(fn () => app(CustomerOwners::class)->for($phoneKeys), []),
+            'fsa' => rescue(fn () => app(ExclusiveFsaCustomers::class)->for($phoneKeys), []),
         ];
     }
 
     /**
      * A lead's own CRA: the customer's High AOV / VIP CRA whatever the product, else the CRA who has handled the most
-     * of their orders when the product is in that CRA's niche (Settings → Niche).
+     * of their orders when the product is in that CRA's niche (Settings → Niche), else, when no CRA has handled them,
+     * the exclusive CRA their FSA's customers go to, when the product is in her niche.
      *
-     * @param  array{high_value: array<string, int>, handled: array<string, int>}  $owners  from ownersFor()
+     * @param  array{high_value: array<string, int>, handled: array<string, int>, fsa?: array<string, int>}  $owners  from ownersFor()
      */
     public static function ownerFor(array $owners, string $phoneKey, ?string $product, NicheRules $niches): ?int
     {
         $handled = $owners['handled'][$phoneKey] ?? null;
+        $fsa = $handled === null ? ($owners['fsa'][$phoneKey] ?? null) : null;
 
-        return $owners['high_value'][$phoneKey] ?? ($handled !== null && $niches->allows($handled, $product) ? $handled : null);
+        return $owners['high_value'][$phoneKey]
+            ?? ($handled !== null && $niches->allows($handled, $product) ? $handled : null)
+            ?? ($fsa !== null && $niches->allows($fsa, $product) ? $fsa : null);
     }
 
     /**

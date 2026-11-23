@@ -55,6 +55,7 @@ class ExclusiveFsdFill
 
                 if ($days <= 0
                     || isset($owners['high_value'][$delivery->phone_key]) || isset($owners['handled'][$delivery->phone_key])
+                    || ($owners['fsa'][$delivery->phone_key] ?? $cra->id) !== $cra->id
                     || ! $niches->allows($cra->id, $product->name)) {
                     continue;
                 }

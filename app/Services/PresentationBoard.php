@@ -435,6 +435,91 @@ class PresentationBoard
         return $lines;
     }
 
+    /**
+     * The range's CRD wins for In short, one card each: the best sales month, CRD repeat, FSD retained and the best
+     * month for CRD leads' conversion. A month still running on $today counts at its full-month pace for sales. A
+     * change is only named when it went up.
+     *
+     * @param  list<array<string, mixed>>  $months
+     * @param  array<string, mixed>  $totals
+     * @return list<array{kind: string, title: string, value: string, line: string, change: ?string}>
+     */
+    public function wins(array $months, array $totals, CarbonImmutable $today): array
+    {
+        if ($months === []) {
+            return [];
+        }
+
+        $running = $today->isLastOfMonth() ? null : $today->format('Y-m');
+        $pace = $today->daysInMonth / $today->day;
+        $paced = fn (array $month) => $month['key'] === $running ? $month['gross'] * $pace : $month['gross'];
+        $percent = fn (?float $rate) => number_format(($rate ?? 0) * 100, 1).'%';
+        $first = $months[0];
+        $last = $months[count($months) - 1];
+        // A rate's rise from the first month that has it to the last, in points; null when it didn't rise.
+        $rise = function (string $key) use ($months, $last) {
+            $base = collect($months)->first(fn (array $month) => $month[$key] !== null && $month['key'] !== $last['key']);
+            $points = $base && $last[$key] !== null ? ($last[$key] - $base[$key]) * 100 : null;
+
+            return $points !== null && $points > .05 ? '▲ +'.number_format($points, 1).' pts since '.$base['label'] : null;
+        };
+        $wins = [];
+
+        $best = collect($months)->sortByDesc($paced)->first();
+        if ($best['gross'] > 0) {
+            $growth = count($months) > 1 && $first['gross'] > 0 ? ($paced($last) - $first['gross']) / $first['gross'] * 100 : null;
+            $wins[] = [
+                'kind' => 'sales',
+                'title' => 'Best sales month',
+                'value' => self::shortPeso($paced($best)),
+                'line' => $best['label'].($best['key'] === $running ? ' at its full-month pace' : '').' was the best month for sales'.($growth !== null && $growth > .05 ? ', and sales are up '.number_format($growth).'% since '.$first['label'].'.' : '.'),
+                'change' => $growth !== null && $growth > .05 ? '▲ +'.number_format($growth, 1).'% since '.$first['label'] : null,
+            ];
+        }
+        if ($totals['repeat'] > 0) {
+            $wins[] = [
+                'kind' => 'crd',
+                'title' => 'CRD repeat',
+                'value' => number_format($totals['repeat']).' '.($totals['repeat'] === 1 ? 'customer' : 'customers'),
+                'line' => 'ordered through a CRA again (2+ orders), '.$percent($totals['repeat_rate']).' of '.number_format($totals['repeat_base']).' CRD customers.',
+                'change' => $rise('repeat_rate'),
+            ];
+        }
+        if ($totals['retained'] > 0) {
+            $wins[] = [
+                'kind' => 'fsd',
+                'title' => 'FSD retained',
+                'value' => number_format($totals['retained']).' '.($totals['retained'] === 1 ? 'customer' : 'customers'),
+                'line' => 'placed their first order through a CRA, '.$percent($totals['retained_rate']).' of '.number_format($totals['retained_base']).' FSD customers.',
+                'change' => $rise('retained_rate'),
+            ];
+        }
+        // In tracker months CRD leads' conversion is the Repeat rate (CRD leads who bought ÷ CRD leads given).
+        $converted = collect($months)->filter(fn (array $month) => $month['conversion'] !== null && $month['repeat_rate'] !== null);
+        if ($converted->isNotEmpty()) {
+            $top = $converted->sortByDesc('repeat_rate')->first();
+            $wins[] = [
+                'kind' => 'conversion',
+                'title' => 'Conversion',
+                'value' => $percent($top['repeat_rate']),
+                'line' => 'of CRD leads contacted in '.$top['label'].' bought'.($converted->count() > 1 && $top['key'] === $converted->last()['key'] ? ', the highest so far' : '').'. Combined conversion that month: '.$percent($top['conversion_rate']).'.',
+                'change' => $converted->count() > 1 && $top['key'] === $converted->last()['key'] ? '▲ Best month so far' : null,
+            ];
+        }
+
+        return $wins;
+    }
+
+    /** ₱4.30M from a million, ₱460K from ten thousand, else the exact pesos. */
+    private static function shortPeso(float $value): string
+    {
+        return match (true) {
+            abs($value) >= 1000000 => '₱'.number_format($value / 1000000, 2).'M',
+            abs($value) >= 10000 => '₱'.number_format($value / 1000).'K',
+            default => '₱'.number_format($value),
+        };
+    }
+
     private static function rate(int|float $part, int|float $of): ?float
     {
         return $of ? $part / $of : null;
@@ -592,22 +677,32 @@ class PresentationBoard
                 }
             }, 'logistics_orders.id', 'id');
 
-        // Older deliveries, except any order already read above.
+        // Older deliveries, except any order already read above. Each chunk looks up only its own orders: joined in one
+        // query, Postgres expected the "not in logistics" join to leave one row and matched every older delivery to its
+        // Pancake order for each chunk (about 100 seconds a chunk on live, so the refresh never finished).
         DB::table('delivered_orders')
-            ->leftJoin('pancake_orders', 'pancake_orders.pancake_order_id', '=', 'delivered_orders.order_id')
-            ->leftJoin('logistics_orders', 'logistics_orders.order_id', '=', 'delivered_orders.order_id')
-            ->where('delivered_orders.delivered_date', '<', LogisticsOrder::coveredFrom())
-            ->whereNull('logistics_orders.id')
-            ->select([
-                'delivered_orders.id', 'delivered_orders.order_id', 'delivered_orders.product_raw', 'delivered_orders.qty', 'delivered_orders.delivered_date', 'delivered_orders.phone_number',
-                'pancake_orders.phone_key as customer_key', 'pancake_orders.page_id', 'pancake_orders.seller_name', 'pancake_orders.ordered_on',
-            ])
+            ->where('delivered_date', '<', LogisticsOrder::coveredFrom())
+            ->select(['id', 'order_id', 'product_raw', 'qty', 'delivered_date', 'phone_number'])
             ->chunkById(2000, function (Collection $rows) use ($consider, $accounts) {
+                $orderIds = $rows->pluck('order_id')->map(fn ($orderId) => (string) $orderId)->all();
+                $readAbove = DB::table('logistics_orders')->whereIn('order_id', $orderIds)->pluck('order_id')
+                    ->mapWithKeys(fn ($orderId) => [(string) $orderId => true])->all();
+                $pancake = DB::table('pancake_orders')->whereIn('pancake_order_id', $orderIds)
+                    ->get(['pancake_order_id', 'phone_key', 'page_id', 'seller_name', 'ordered_on'])
+                    ->keyBy(fn (object $order) => (string) $order->pancake_order_id);
+
                 foreach ($rows as $row) {
-                    $row->customer_key = $row->customer_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
+                    if (isset($readAbove[(string) $row->order_id])) {
+                        continue;
+                    }
+                    $order = $pancake[(string) $row->order_id] ?? null;
+                    $row->page_id = $order?->page_id;
+                    $row->seller_name = $order?->seller_name;
+                    $row->ordered_on = $order?->ordered_on;
+                    $row->customer_key = $order?->phone_key ?: LeadGenerator::normalizePhone((string) $row->phone_number);
                     $consider($row, self::teamOf($row->seller_name, LogisticsOrder::TEAM_FSD, $accounts, $row->ordered_on), (string) $row->product_raw);
                 }
-            }, 'delivered_orders.id', 'id');
+            });
 
         return $batches;
     }

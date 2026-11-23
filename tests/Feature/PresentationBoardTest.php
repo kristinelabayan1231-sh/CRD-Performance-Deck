@@ -144,6 +144,22 @@ class PresentationBoardTest extends TestCase
         $this->assertSame(1, $this->month($snapshot, '2026-02')['added']);
     }
 
+    public function test_an_older_delivery_takes_its_team_page_and_customer_from_its_pancake_order(): void
+    {
+        // Delivered Dec 20, 2025, 1 × 30 days: runs out Jan 18. Sold by a CRD account, so a CRD lead, under Pancake's phone key.
+        DeliveredOrder::create(['order_id' => 'D1', 'customer_name' => 'Buyer', 'phone_number' => '+63 917 000 1801', 'product_raw' => 'Sinuxyl', 'qty' => 1, 'delivered_date' => '2025-12-20', 'source' => DeliveredOrder::SOURCE_PANCAKE]);
+        PancakeOrder::create([
+            'pancake_order_id' => 'D1', 'ordered_on' => '2025-12-15', 'seller_name' => self::CRD_SELLER, 'phone_number' => '1801', 'phone_key' => '1801',
+            'status' => 3, 'total_price' => 1000, 'page_id' => self::PAGE, 'items' => [['name' => 'Sinuxyl', 'qty' => 1]],
+        ]);
+
+        $january = $this->month($this->snapshot(), '2026-01');
+
+        $this->assertSame(1, $january['crd_leads']);
+        $this->assertSame(0, $january['fsd_leads']);
+        $this->assertSame('1801', app(PresentationBoard::class)->listed('crd_leads', '2026-01', '2026-01')[0][0]);
+    }
+
     public function test_a_delivery_without_its_own_quantity_uses_the_saved_one_over_the_order_items(): void
     {
         // 3 × 30 days from Feb 1 runs out May 1; the order's items say 1, which would be Mar 2.
@@ -270,7 +286,7 @@ class PresentationBoardTest extends TestCase
         $this->assertSame($segmentation['customers'], $leads['fsd']['customers'] + $leads['crd']['customers']);
         $this->assertSame($segmentation['base'], $leads['fsd']['base'] + $leads['crd']['base']);
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-01', 'to' => '2026-10']))
-            ->assertOk()->assertSeeInOrder(['Conversion', 'overall', 'FSD leads', '100.0%', '1 of 1', 'CRD leads', '50.0%', '1 of 2']);
+            ->assertOk()->assertSeeInOrder(['Conversion', 'combined', 'FSD leads', '100.0%', '1 of 1', 'CRD leads', '50.0%', '1 of 2']);
     }
 
     public function test_churn_matches_customer_churn_and_adds_up_from_its_days(): void
@@ -673,7 +689,8 @@ class PresentationBoardTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-11']))
             ->assertOk()
-            ->assertSee('CRA performance, year to date')
+            // Months picked, so the heading names them rather than "year to date".
+            ->assertSee('CRA performance, Oct 2026 – Nov 2026')
             ->assertSee('Regina')
             ->assertSee('−₱500')
             ->assertSee('100.0% of team gross')
@@ -690,10 +707,15 @@ class PresentationBoardTest extends TestCase
         app(PresentationBoard::class)->refresh();
         $board = fn () => $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-11', 'to' => '2026-11']));
 
+        app(PresentationBoardCras::class)->refresh();
         $board()->assertOk()->assertDontSee('Leads on her list');
 
         $this->cra->update(['exclusive_from' => '2026-10-01']);
 
+        // Worked out by the CRA refresh, not inside the page view.
+        $board()->assertOk()->assertDontSee('Leads on her list');
+
+        app(PresentationBoardCras::class)->refresh();
         $board()->assertOk()->assertSeeInOrder(['Exclusive leads · Regina', 'Leads on her list', 'Her exclusive vs normal sales']);
         $board()->assertOk()->assertSee(' quota) · running 0 of ');
     }
@@ -854,7 +876,7 @@ class PresentationBoardTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-03', 'to' => '2026-03']))
             ->assertOk()
-            ->assertSee('retain 50.0% (1 of 2)')
+            ->assertSee('FSD retained 50.0% (1 of 2)')
             ->assertSee('of 2');
     }
 
@@ -883,6 +905,63 @@ class PresentationBoardTest extends TestCase
 
         $this->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-11']))
             ->assertOk()->assertSee('Nov 1–6 vs Oct')->assertSee('Nov 1–6 so far');
+    }
+
+    public function test_side_by_side_shows_every_month_picked_and_only_for_a_range(): void
+    {
+        $this->sale('2026-08-03', 1000);
+        $this->sale('2026-09-03', 5000);
+        $this->sale('2026-10-03', 2000);
+        app(PresentationBoard::class)->refresh();
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-10']))
+            ->assertOk()
+            ->assertSee('Side by side, Aug 2026 – Oct 2026')
+            // Each month's sales in its column, the best month starred, the change against the month before.
+            ->assertSeeInOrder(['data-side-view="all"', 'Total sales', '₱1,000', '₱5,000', '▲ +400.0%', '★ Best', '₱2,000', '▼ −60.0%'], false);
+
+        $this->get(route('presentation-board.index', ['from' => '2026-09', 'to' => '2026-09']))
+            ->assertOk()->assertDontSee('Side by side, ')->assertDontSee('data-side-view', false);
+    }
+
+    public function test_top_products_and_cras_compare_each_month_with_the_month_before_the_range(): void
+    {
+        $this->sale('2026-09-03', 1000);
+        $this->sale('2026-10-03', 3000);
+        app(PresentationBoard::class)->refresh();
+        Cache::forever(PresentationBoardCras::CACHE_KEY, [
+            'months' => [
+                '2026-09' => [$this->cra->id => ['gross' => 1000.0, 'orders' => 1, 'answered' => 10, 'answered_days' => 1, 'ni' => null]],
+                '2026-10' => [$this->cra->id => ['gross' => 3000.0, 'orders' => 2, 'answered' => 10, 'answered_days' => 1, 'ni' => null]],
+            ],
+            'high_value' => [],
+        ]);
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-10', 'to' => '2026-10']))
+            ->assertOk()
+            ->assertSeeInOrder(['Top products by month, side by side', 'Sep', 'month before', 'Oct', 'Overall', 'Sinuxyl', '₱1,000', '₱3,000', '▲ +200.0%'])
+            ->assertSeeInOrder(['CRAs by month, side by side', 'Sep', 'month before', 'Oct', 'Overall', 'Regina', '₱1,000', '₱3,000', '▲ +200.0%']);
+    }
+
+    public function test_wins_name_the_best_sales_month_and_only_changes_that_went_up(): void
+    {
+        $board = app(PresentationBoard::class);
+        $snapshot = $this->snapshot();
+        $snapshot['days']['2026-08-10'] = [...$snapshot['days']['2026-08-10'], 'gross' => 1000, 'repeat' => 1, 'repeat_base' => 4];
+        $snapshot['days']['2026-09-10'] = [...$snapshot['days']['2026-09-10'], 'gross' => 3000, 'repeat' => 1, 'repeat_base' => 2];
+        $range = $board->range($snapshot, '2026-08', '2026-09', 'monthly');
+
+        $wins = collect($board->wins($range['months'], $range['totals'], CarbonImmutable::parse('2026-11-06')))->keyBy('kind');
+
+        $this->assertSame('₱3,000', $wins['sales']['value']);
+        $this->assertStringStartsWith('Sep was the best month for sales, and sales are up 200% since Aug', $wins['sales']['line']);
+        $this->assertSame('▲ +200.0% since Aug', $wins['sales']['change']);
+        $this->assertSame('2 customers', $wins['crd']['value']);
+        $this->assertSame('▲ +25.0 pts since Aug', $wins['crd']['change']);
+        $this->assertArrayNotHasKey('fsd', $wins->all());
+
+        $range = $board->range($snapshot, '2026-09', '2026-09', 'monthly');
+        $this->assertNull(collect($board->wins($range['months'], $range['totals'], CarbonImmutable::parse('2026-11-06')))->firstWhere('kind', 'sales')['change']);
     }
 
     public function test_the_backfill_fills_only_empty_pages_and_picks_up_where_it_stopped(): void

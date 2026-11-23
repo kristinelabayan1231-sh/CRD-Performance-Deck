@@ -53,6 +53,9 @@ class ExclusiveLeads
 
     public const HANDLED = 'handled';
 
+    /** A customer no CRA has sold to whose latest order one of her FSA accounts sold (ExclusiveFsaCustomers): hers alone. */
+    public const FSA = 'fsa';
+
     public const RANDOM = 'random';
 
     /** A lead a supervisor gave her by tagging its POS order (ExclusiveLeadTagging): hers whatever the rules say. */
@@ -75,7 +78,7 @@ class ExclusiveLeads
     private const HOLD_BATCH = 2000;
 
     /** Priority order of a day's list. */
-    public const PRIORITY = [self::LEFTOVER, self::TAGGED, self::HIGH_VALUE, self::HANDLED, self::RANDOM];
+    public const PRIORITY = [self::LEFTOVER, self::TAGGED, self::HIGH_VALUE, self::HANDLED, self::FSA, self::RANDOM];
 
     public function __construct(private HighValueCustomers $highValue) {}
 
@@ -343,23 +346,28 @@ class ExclusiveLeads
             ->orderBy('delivered_date')->orderBy('id');
         $found = [];
 
-        for ($offset = 0; count($found) < $count; $offset += self::HOLD_BATCH) {
-            $batch = (clone $pool)->offset($offset)->limit(self::HOLD_BATCH)->get($columns);
-            $leads = app(BacklogFill::class)->withoutReordered($batch, $phoneOf);
-            $classify = $this->classifier($cra, $day, $leads);
+        // Her own customers first (High AOV / VIP, handled, her FSA accounts' customers: nobody else gets those), then
+        // random FSD leads. The second pass runs only when the first leaves room.
+        foreach ([false, true] as $isRandomPass) {
+            for ($offset = 0; count($found) < $count; $offset += self::HOLD_BATCH) {
+                $batch = (clone $pool)->offset($offset)->limit(self::HOLD_BATCH)->get($columns);
+                $leads = app(BacklogFill::class)->withoutReordered($batch, $phoneOf);
+                $classify = $this->classifier($cra, $day, $leads);
 
-            foreach ($leads as $lead) {
-                ['owner' => $owner, 'source' => $source] = $classify($lead);
-                $skip = isset($listedThisMonth[$lead->id]) || ($owner !== null && $owner !== $cra->id)
-                    || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
+                foreach ($leads as $lead) {
+                    ['owner' => $owner, 'source' => $source] = $classify($lead);
+                    $skip = isset($found[$lead->id]) || isset($listedThisMonth[$lead->id]) || ($owner !== null && $owner !== $cra->id)
+                        || ($source === self::RANDOM) !== $isRandomPass
+                        || ($source === self::RANDOM && ($lead->lead_type !== Lead::TYPE_FSD || ! $niches->allows($cra->id, $lead->product_name)));
 
-                if (! $skip && count($found) < $count) {
-                    $found[$lead->id] = $source;
+                    if (! $skip && count($found) < $count) {
+                        $found[$lead->id] = $source;
+                    }
                 }
-            }
 
-            if ($batch->count() < self::HOLD_BATCH) {
-                break;
+                if ($batch->count() < self::HOLD_BATCH) {
+                    break;
+                }
             }
         }
 
@@ -450,7 +458,7 @@ class ExclusiveLeads
 
         $classify = $this->classifier($cra, $day, $waiting);
         $niches = NicheRules::current();
-        $tiers = [self::HIGH_VALUE => [], self::HANDLED => [], self::RANDOM => []];
+        $tiers = [self::HIGH_VALUE => [], self::HANDLED => [], self::FSA => [], self::RANDOM => []];
 
         foreach ($waiting as $lead) {
             ['owner' => $owner, 'source' => $source] = $classify($lead);
@@ -472,7 +480,7 @@ class ExclusiveLeads
         ])->values();
 
         $carried = $leftovers->map(fn (Lead $lead) => ['lead' => $lead, 'source' => self::LEFTOVER]);
-        $new = collect([self::HIGH_VALUE, self::HANDLED, self::RANDOM])
+        $new = collect([self::HIGH_VALUE, self::HANDLED, self::FSA, self::RANDOM])
             ->flatMap(fn (string $source) => $inOrder($tiers[$source])->map(fn (Lead $lead) => ['lead' => $lead, 'source' => $source]))
             ->values();
 
@@ -788,7 +796,8 @@ class ExclusiveLeads
 
     /**
      * Each lead's own CRA and which priority it falls under for $cra: their High AOV / VIP customer, or a customer at
-     * exclusive_leads.high_aov_min with no other CRA; then a customer whose orders they handled; else random.
+     * exclusive_leads.high_aov_min with no other CRA; then a customer whose orders they handled; then a customer of their
+     * FSA accounts no CRA has handled (ExclusiveFsaCustomers); else random.
      *
      * @param  Collection<int, Lead>  $leads
      * @return Closure(Lead): array{owner: ?int, source: string}
@@ -810,6 +819,7 @@ class ExclusiveLeads
                 'owner' => $owner,
                 'source' => match (true) {
                     $isHighValue => self::HIGH_VALUE,
+                    $owner === $cra->id && ! isset($owners['handled'][$phone]) && ($owners['fsa'][$phone] ?? null) === $cra->id => self::FSA,
                     $owner === $cra->id => self::HANDLED,
                     default => self::RANDOM,
                 },

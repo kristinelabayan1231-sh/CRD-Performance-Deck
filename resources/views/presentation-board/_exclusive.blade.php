@@ -72,11 +72,11 @@
         $lastDay = $index + 1;
     }
     $ty = fn (float $leads) => round(200 - $leads / ($target * 1.2) * 180, 1);
-    $mixParts = collect($latest['figures']['actual']['mix'])->filter()->map(fn (int $count, string $source) => [$sourceLabels[$source] ?? $source, $count, ['leftover' => 'var(--pb-bc)', 'tagged' => 'var(--pb-excl)', 'high_value' => 'var(--pb-crd)', 'handled' => 'var(--pb-added)', 'random' => 'var(--pb-fsd)'][$source] ?? 'var(--pb-react)', $number($count)])->values()->all();
+    $mixParts = collect($latest['figures']['actual']['mix'])->filter()->map(fn (int $count, string $source) => [$sourceLabels[$source] ?? $source, $count, ['leftover' => 'var(--pb-bc)', 'tagged' => 'var(--pb-excl)', 'high_value' => 'var(--pb-crd)', 'handled' => 'var(--pb-added)', 'fsa' => 'var(--pb-accent)', 'random' => 'var(--pb-fsd)'][$source] ?? 'var(--pb-react)', $number($count)])->values()->all();
     $splitPeak = max(1, ...array_values(array_map(fn (array $entry) => $entry['sales']['overall']['gross'], $byMonth)));
 @endphp
 
-<section id="exclusive" aria-labelledby="exclusive-title-{{ $cra->id }}" style="{{ $glass }}">
+<section @if ($isFirstExclusive) id="exclusive" @endif aria-labelledby="exclusive-title-{{ $cra->id }}" style="{{ $glass }}">
     <header class="flex flex-wrap items-baseline justify-between gap-2" style="{{ $head }}">
         <h2 id="exclusive-title-{{ $cra->id }}" class="flex items-center gap-2" style="{{ $h2 }}"><span aria-hidden="true" style="width: 10px; height: 10px; border-radius: 50%; background: {{ $exclusiveColor }}"></span>Exclusive leads · {{ $cra->displayName() }}</h2>
         <span style="font-size: 13px; {{ $muted }}">{{ $number($latest['figures']['targets']['leads']) }} leads a month, {{ $number($latest['figures']['limits']['daily_leads']) }} a day · as the Exclusive Leads Dashboard @can('exclusive_leads.view_all')· <a href="{{ route('exclusive-leads.dashboard', ['cra' => $cra->id]) }}" style="{{ $link }}">open it</a>@endcan</span>
@@ -145,7 +145,8 @@
             <p style="{{ $note }}; font-size: 12px">{{ $number($addedSoFar) }} added by day {{ $lastDay }}{{ $lastDay ? ' ('.$percent($addedSoFar / $target).' of the target)' : '' }} · {{ $number($latest['figures']['planned']['leads']) }} planned for the month{{ $latest['figures']['planned']['short_of_target'] ? ', '.$number($latest['figures']['planned']['short_of_target']).' short of the target' : '' }}. Hover a day for its numbers.</p>
         </div>
 
-        <div class="grid gap-2.5" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">
+        {{-- Six tiles: 3 + 3 on a wide screen rather than 5 and one left over. --}}
+        <div class="grid gap-2.5" style="grid-template-columns: repeat(auto-fit, minmax(max(240px, calc((100% - 20px) / 3)), 1fr))">
             @foreach ($exTiles as [$label, $about, $values, $format, $flow, $isRate, $total, $totalNote])
                 @php
                     // Only her own months (from her exclusive start): her latest against her first.

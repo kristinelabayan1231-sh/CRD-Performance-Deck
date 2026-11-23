@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExclusiveFsaAccount;
 use App\Models\ExclusiveLeadLimit;
 use App\Models\Lead;
 use App\Models\PancakeReservation;
@@ -41,6 +42,7 @@ class ExclusiveLeadController extends Controller
         ExclusiveLeads::TAGGED => 'Tagged',
         ExclusiveLeads::HIGH_VALUE => 'High AOV / VIP',
         ExclusiveLeads::HANDLED => 'Handled twice',
+        ExclusiveLeads::FSA => "FSA's customer",
         ExclusiveLeads::RANDOM => 'Random',
         ExclusiveLeads::POS => 'POS sale',
     ];
@@ -353,16 +355,19 @@ class ExclusiveLeadController extends Controller
     }
 
     /**
-     * Active CRAs that can move in, and the ones already in.
+     * Active CRAs that can move in, the ones already in, and the FSA accounts whose customers go to each of those.
      *
      * @param  Collection<int, User>  $exclusiveCras
-     * @return array{available: Collection<int, User>, current: Collection<int, User>}
+     * @return array{available: Collection<int, User>, current: Collection<int, User>, fsa: Collection<int, Collection<int, ExclusiveFsaAccount>>, sellers: list<string>}
      */
     private function settingsCras(Collection $exclusiveCras): array
     {
         return [
             'available' => LeadGenerator::cras()->whereNull('exclusive_from')->values(),
             'current' => $exclusiveCras,
+            // Each exclusive CRA's FSA accounts (ExclusiveFsaCustomers), and the Pancake accounts to pick from.
+            'fsa' => ExclusiveFsaAccount::whereIn('user_id', $exclusiveCras->pluck('id'))->orderBy('seller_name')->get()->groupBy('user_id'),
+            'sellers' => rescue(fn () => ExclusiveFsaAccountController::sellerNames(), []),
         ];
     }
 
