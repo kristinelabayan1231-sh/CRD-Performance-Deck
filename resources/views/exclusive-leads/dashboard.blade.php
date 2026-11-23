@@ -45,13 +45,13 @@
                 </div>
             </div>
 
-            {{-- Repeat, Retained and orders: only customers on the CRA's Exclusive lists for the period --}}
-            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="From the Exclusive Lead Tracker lists">
+            {{-- Repeat, Retained and orders: her Exclusive sales, as the CVR Tracker labels them --}}
+            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Exclusive sales, as in the CVR Tracker">
                 @foreach ([
-                    ['Repeat', number_format($repeats['repeat']), 'CRD leads on the list who bought again'],
-                    ['Retained', number_format($repeats['retained']), 'FSD leads on the list who bought again'],
-                    ['Confirmed orders', number_format($listOrders['orders']), 'from customers on the list'],
-                    ['Gross sales', '₱'.number_format($listOrders['gross']), $listOrders['orders'] ? 'AOV ₱'.number_format($listOrders['gross'] / $listOrders['orders']) : 'from customers on the list'],
+                    ['Repeat', number_format($repeats['repeat']), 'CRD Lead customers who ordered'],
+                    ['Retained', number_format($repeats['retained']), 'FSD Lead customers who ordered'],
+                    ['Confirmed orders', number_format($listOrders['orders']), 'Exclusive orders in the CVR Tracker'],
+                    ['Gross sales', '₱'.number_format($listOrders['gross']), $listOrders['orders'] ? 'AOV ₱'.number_format($listOrders['gross'] / $listOrders['orders']) : 'Exclusive, canceled included'],
                 ] as [$label, $value, $note])
                     <div class="rounded-2xl border border-line bg-white px-5 py-3 shadow-sm">
                         <p class="text-xs font-semibold tracking-wide text-muted uppercase">{{ $label }}</p>

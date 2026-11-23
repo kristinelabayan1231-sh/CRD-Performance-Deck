@@ -707,32 +707,45 @@ class ExclusiveLeadTrackerTest extends TestCase
         $this->assertNotNull($this->joanna->fresh()->exclusive_from);
     }
 
-    public function test_repeat_and_retained_count_only_customers_on_the_days_list_once_per_customer(): void
+    public function test_repeat_and_retained_count_her_exclusive_customers_who_ordered_as_the_cvr_tracker_does(): void
     {
-        $bought = ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-03'];
         $onList = function (string $listDay, array $extra, ?User $cra = null): Lead {
             $lead = $this->lead($listDay, $cra ?? $this->joanna, $extra);
             ExclusiveListLead::create(['user_id' => ($cra ?? $this->joanna)->id, 'list_date' => $listDay, 'lead_id' => $lead->id, 'source' => ExclusiveLeads::HANDLED]);
 
             return $lead;
         };
-        // On Nov 3's list and bought that day: the same customer in two number formats counts once; an FSD Lead is Retained.
-        $onList('2026-11-03', [...$bought, 'phone_number' => '09171112222']);
-        $onList('2026-11-03', [...$bought, 'phone_number' => '+639171112222']);
-        $onList('2026-11-03', [...$bought, 'phone_number' => '09173334444', 'lead_type' => Lead::TYPE_FSD]);
-        // Listed Nov 1, bought Nov 4 when not on that day's list: the month's, not Nov 4's.
-        $onList('2026-11-01', ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-04', 'phone_number' => '09175550000']);
-        // Not counted: bought but on no list (e.g. another CRA's High AOV), another CRA's list, a Yes-less lead.
-        $this->lead('2026-11-03', $this->joanna, [...$bought, 'phone_number' => '09177778888']);
-        $onList('2026-11-03', [...$bought, 'phone_number' => '09175556666'], $this->regina);
-        $onList('2026-11-03', ['repeat_purchase' => 'no', 'phone_number' => '09179990000']);
+        $order = fn (string $day, string $phoneKey, ?User $seller = null, array $extra = []) => PancakeOrder::create([
+            'pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => $day, 'ordered_at' => $day.' 02:00:00',
+            'seller_name' => ($seller ?? $this->joanna)->pancake_name, 'phone_key' => $phoneKey, 'status' => 3, 'total_price' => 800,
+            'conversion_type' => PancakeOrder::SEGMENTATION, ...$extra,
+        ]);
+        $ana = $this->phoneKey($onList('2026-11-03', ['phone_number' => '09171112222']));
+        $bea = $this->phoneKey($onList('2026-11-03', ['phone_number' => '09173334444', 'lead_type' => Lead::TYPE_FSD]));
+        // Listed Nov 1 and ordered Nov 4, no longer on that day's list: still her exclusive customer, as in the CVR Tracker.
+        $cora = $this->phoneKey($onList('2026-11-01', ['phone_number' => '09175550000']));
+        // Ordered Nov 4, before going on her list on Nov 5: a Normal order then.
+        $dina = $this->phoneKey($onList('2026-11-05', ['phone_number' => '09176660000']));
+        $regina = $this->phoneKey($onList('2026-11-03', ['phone_number' => '09175556666'], $this->regina));
+
+        $order('2026-11-03', $ana);
+        $order('2026-11-03', $ana);
+        $order('2026-11-03', $bea);
+        $order('2026-11-04', $ana);
+        $order('2026-11-04', $cora);
+        $order('2026-11-04', $dina);
+        $order('2026-11-04', '9177778888');
+        $order('2026-11-03', $regina, $this->regina);
+        // A customer on no list whose order carries the exclusive POS tag, with no earlier CRA order: Retained.
+        $order('2026-11-04', '9178889999', extra: ['tags' => [config('exclusive_leads.order_tag.id')]]);
 
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
-        $day = fn (string $date) => array_intersect_key(collect($month['days'])->firstWhere('date', $date), array_flip(['repeat', 'retained']));
+        $day = fn (string $date) => array_intersect_key(collect($month['days'])->firstWhere('date', $date), array_flip(['repeat', 'retained', 'confirmed']));
 
-        $this->assertSame(['repeat' => 1, 'retained' => 1], $day('2026-11-03'));
-        $this->assertSame(['repeat' => 0, 'retained' => 0], $day('2026-11-04'));
-        $this->assertSame([2, 1], [$month['actual']['repeat'], $month['actual']['retained']]);
+        $this->assertSame(['repeat' => 1, 'retained' => 1, 'confirmed' => 3], $day('2026-11-03'));
+        $this->assertSame(['repeat' => 2, 'retained' => 1, 'confirmed' => 3], $day('2026-11-04'));
+        // Each customer once in the month: Ana and Cora Repeat, Bea and the tagged customer Retained.
+        $this->assertSame([2, 2, 6], [$month['actual']['repeat'], $month['actual']['retained'], $month['actual']['confirmed']]);
     }
 
     public function test_a_real_day_shows_its_results_with_the_paired_lead_days_list(): void
@@ -764,11 +777,11 @@ class ExclusiveLeadTrackerTest extends TestCase
             ->assertSee($listed->customer_name);
     }
 
-    public function test_confirmed_orders_gross_and_aov_count_only_customers_on_the_list(): void
+    public function test_confirmed_orders_leave_canceled_out_gross_keeps_them_and_normal_customers_stay_out(): void
     {
         $listed = $this->lead('2026-11-03', $this->joanna);
         ExclusiveListLead::create(['user_id' => $this->joanna->id, 'list_date' => '2026-11-03', 'lead_id' => $listed->id, 'source' => ExclusiveLeads::HANDLED]);
-        // The listed customer's two orders count (as Segmentation Productivity, the canceled one doesn't); a customer off the list doesn't.
+        // The listed customer's two orders are confirmed and the canceled one adds to gross, as in the CVR Tracker; a customer off the list doesn't count.
         foreach ([[800, 3, $this->phoneKey($listed)], [1000, 2, $this->phoneKey($listed)], [5000, PancakeOrder::NOT_COUNTED_STATUSES[0], $this->phoneKey($listed)], [700, 3, '9170000999']] as [$total, $status, $phoneKey]) {
             PancakeOrder::create(['pancake_order_id' => 'S'.++$this->seq, 'ordered_on' => '2026-11-03', 'ordered_at' => '2026-11-03 02:00:00',
                 'seller_name' => $this->joanna->pancake_name, 'phone_key' => $phoneKey, 'status' => $status, 'total_price' => $total,
@@ -778,8 +791,8 @@ class ExclusiveLeadTrackerTest extends TestCase
         $month = app(ExclusiveLeads::class)->month($this->joanna, CarbonImmutable::parse('2026-11-01'));
         $day = collect($month['days'])->firstWhere('date', '2026-11-03');
 
-        $this->assertSame([2, 1800.0, 900.0], [$day['confirmed'], $day['gross'], $day['aov']]);
-        $this->assertSame([2, 1800.0, 900.0], [$month['actual']['confirmed'], $month['actual']['gross'], $month['actual']['aov']]);
+        $this->assertSame([2, 6800.0, 3400.0], [$day['confirmed'], $day['gross'], $day['aov']]);
+        $this->assertSame([2, 6800.0, 3400.0], [$month['actual']['confirmed'], $month['actual']['gross'], $month['actual']['aov']]);
     }
 
     public function test_the_month_counts_a_carried_lead_on_each_list_and_once_as_a_unique_lead(): void

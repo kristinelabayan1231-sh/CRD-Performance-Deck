@@ -70,6 +70,7 @@ class ExclusiveLeadDashboardController extends Controller
         $today = WorkingDate::realToday();
         $craLeads = Lead::query()->where('assigned_to', $cra->id);
         $periodFrom = $this->periodFrom($period, $today, WorkingDate::realDayFor($cra->exclusive_from));
+        $sales = $exclusive->salesBetween($cra, $periodFrom, $today)['total'];
 
         return view('exclusive-leads.dashboard', $list + [
             'cra' => $cra,
@@ -77,8 +78,8 @@ class ExclusiveLeadDashboardController extends Controller
             'period' => $period,
             'periodRange' => $this->periodRange($periodFrom, $today),
             'grid' => $grid,
-            'repeats' => $exclusive->repeatsBetween($cra, $periodFrom, $today),
-            'listOrders' => $exclusive->ordersBetween($cra, $periodFrom, $today),
+            'repeats' => $sales,
+            'listOrders' => $sales,
             'callbacks' => (clone $craLeads)->callbackDue($today)->count(),
             'reactivation' => (clone $craLeads)->reactivation(Lead::today(), $today)->count(),
             'callbacksUrl' => route('exclusive-leads.index', ['cra' => $cra->id, 'show' => 'unprocessed', 'full' => 1, 'list' => 'callback']),

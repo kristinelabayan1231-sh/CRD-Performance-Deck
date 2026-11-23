@@ -940,67 +940,111 @@ class ExclusiveLeads
     }
 
     /**
-     * @return Builder<ExclusiveListLead>
-     */
-    /**
-     * The customers on the CRA's lists for real days $from–$to who bought again in those days (Repeat Purchase = Yes),
-     * each once: Repeat for a CRD Lead, Retained for an FSD Lead. Only leads on the lists count, POS sales on them too, so
-     * a sale to a customer kept off the list (another CRA's High AOV/VIP, an old lead) stays out.
+     * Her exclusive sales on real days $from–$to, as the CVR Tracker labels her orders Exclusive: her orders (as salesSplit()
+     * counts them) from customers who were her exclusive leads by the order day, on one of her lists by then or with the
+     * exclusive POS tag (exclusiveCustomers()). Confirmed orders leave canceled ones out; gross keeps them, as the CVR Tracker
+     * does. Repeat and Retained count each customer who ordered once: Repeat for a CRD Lead (a CRA handled them before),
+     * Retained for an FSD Lead. Each real day's, and the span's (a customer who ordered on two days counts once in it).
      *
-     * @return array{repeat: int, retained: int}
+     * @return array{total: array{repeat: int, retained: int, orders: int, gross: float}, days: array<string, array{repeat: int, retained: int, orders: int, gross: float}>}
      */
-    public function repeatsBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    public function salesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $bought = Lead::where('assigned_to', $cra->id)
-            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
-            ->repeatPurchasedBetween($from, $to)
-            ->orderBy('repeat_purchase_on')->orderBy('id')
-            ->get(['id', 'phone_number', 'lead_type'])
-            ->unique(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number) ?: 'lead-'.$lead->id);
-
-        return [
-            'repeat' => $bought->where('lead_type', Lead::TYPE_CRD)->count(),
-            'retained' => $bought->where('lead_type', Lead::TYPE_FSD)->count(),
-        ];
-    }
-
-    /**
-     * The CRA's confirmed orders on real days $from–$to (as Segmentation Productivity: tagged CRD orders counted for them,
-     * canceled and deleted left out) from customers on their lists for those days, POS sales included, with their gross.
-     *
-     * @return array{orders: int, gross: float}
-     */
-    public function ordersBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
-    {
-        $listed = collect(array_keys($this->customersBetween($cra, $from, $to)))->map(fn ($key) => (string) $key);
+        $none = ['repeat' => 0, 'retained' => 0, 'orders' => 0, 'gross' => 0.0];
+        $sales = ['total' => $none, 'days' => []];
         $accounts = ConversionBreakdown::accounts(collect([$cra]));
-        if ($listed->isEmpty() || $accounts->isEmpty()) {
-            return ['orders' => 0, 'gross' => 0.0];
+        if ($accounts->isEmpty() || $from->greaterThan($to)) {
+            return $sales;
         }
 
-        $orders = $listed->chunk(1000)->flatMap(fn (Collection $phones) => ConversionBreakdown::taggedOrders($accounts, $from, $to)
-            ->where(fn (Builder $q) => $q->whereNull('pancake_orders.status')->orWhereNotIn('pancake_orders.status', PancakeOrder::NOT_COUNTED_STATUSES))
-            ->whereIn('pancake_orders.phone_key', $phones->all())
-            ->get())
+        $orders = ConversionBreakdown::taggedOrders($accounts, $from, $to)->whereNotNull('pancake_orders.phone_key')->get()
             ->filter(fn (PancakeOrder $order) => ConversionBreakdown::craFor($order, $accounts) === $cra->id)
-            ->unique('id');
+            ->sortBy(fn (PancakeOrder $order) => [$order->ordered_on->toDateString(), $order->ordered_at?->getTimestamp() ?? 0, $order->id]);
+        if ($orders->isEmpty()) {
+            return $sales;
+        }
 
-        return ['orders' => $orders->count(), 'gross' => (float) $orders->sum(fn (PancakeOrder $order) => $order->sales())];
+        $listed = $this->firstListed($cra, $to);
+        $tagged = $this->taggedCustomers();
+        $pancakeLeadsFrom = self::pancakeLeadsFrom();
+        $customers = app(CustomerDatabase::class);
+        $types = [];
+        $typeOf = function (PancakeOrder $order) use ($listed, $customers, &$types): string {
+            $phone = (string) $order->phone_key;
+
+            return $types[$phone] ??= $listed[$phone]['type']
+                ?? ($customers->hasCraOrderBefore($phone, $order->ordered_at ?? $order->ordered_on) ? Lead::TYPE_CRD : Lead::TYPE_FSD);
+        };
+        $seenInDay = [];
+        $seenInSpan = [];
+
+        foreach ($orders as $order) {
+            $phone = (string) $order->phone_key;
+            $leadDay = WorkingDate::leadDayFor($order->ordered_on)->toDateString();
+            $isExclusive = isset($tagged[$phone])
+                || ($listed[$phone]['list'] ?? '9999') <= $leadDay
+                || ($order->ordered_on->lessThan($pancakeLeadsFrom) && ($listed[$phone]['pos'] ?? '9999') <= $leadDay);
+            if (! $isExclusive) {
+                continue;
+            }
+
+            $date = $order->ordered_on->toDateString();
+            $sales['days'][$date] ??= $none;
+            $sales['days'][$date]['gross'] += $order->sales();
+            $sales['total']['gross'] += $order->sales();
+            if (! $order->isCounted()) {
+                continue;
+            }
+
+            $sales['days'][$date]['orders']++;
+            $sales['total']['orders']++;
+            $group = $typeOf($order) === Lead::TYPE_CRD ? 'repeat' : 'retained';
+            if (! isset($seenInDay[$date][$phone])) {
+                $seenInDay[$date][$phone] = true;
+                $sales['days'][$date][$group]++;
+            }
+            if (! isset($seenInSpan[$phone])) {
+                $seenInSpan[$phone] = true;
+                $sales['total'][$group]++;
+            }
+        }
+
+        return $sales;
     }
 
     /**
-     * Her exclusive leads' customers for real days $from–$to: the numbers (last 10 digits) of leads still hers on those
-     * days' lists, POS sales on them too (only before pancake_leads_from do her own sales go on the lists).
+     * When each customer of hers first went on her exclusive lists, by lead day, up to real day $to, leads still hers only:
+     * 'list' for leads the lists gave her, 'pos' for her own POS sales on them; and the lead type of her latest listed lead.
      *
-     * @return array<string, int> phone key => any value, to look up with isset()
+     * @return array<string, array{list?: string, pos?: string, type: string, type_on: string}> phone key => details
      */
-    public function customersBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to): array
+    private function firstListed(User $cra, CarbonImmutable $to): array
     {
-        return Lead::where('assigned_to', $cra->id)
-            ->whereIn('id', $this->entriesBetween($cra, $from, $to, withPos: true)->select('lead_id'))
-            ->pluck('phone_number')
-            ->map(fn (?string $phone) => LeadGenerator::normalizePhone((string) $phone))
-            ->filter()->unique()->flip()->all();
+        $rows = ExclusiveListLead::query()->join('leads', 'leads.id', '=', 'exclusive_list_leads.lead_id')
+            ->where('exclusive_list_leads.user_id', $cra->id)->where('leads.assigned_to', $cra->id)
+            ->whereDate('exclusive_list_leads.list_date', '<=', WorkingDate::leadDayFor($to))
+            ->groupBy('leads.phone_number', 'leads.lead_type', 'exclusive_list_leads.source')
+            ->toBase()
+            ->get(['leads.phone_number', 'leads.lead_type', 'exclusive_list_leads.source', DB::raw('min(exclusive_list_leads.list_date) as first_on'), DB::raw('max(exclusive_list_leads.list_date) as last_on')]);
+
+        $listed = [];
+        foreach ($rows as $row) {
+            $phone = LeadGenerator::normalizePhone((string) $row->phone_number);
+            if ($phone === '') {
+                continue;
+            }
+
+            $kind = $row->source === self::POS ? 'pos' : 'list';
+            $first = substr((string) $row->first_on, 0, 10);
+            $last = substr((string) $row->last_on, 0, 10);
+            $listed[$phone][$kind] = min($listed[$phone][$kind] ?? $first, $first);
+            if ($last >= ($listed[$phone]['type_on'] ?? '')) {
+                $listed[$phone]['type'] = $row->lead_type;
+                $listed[$phone]['type_on'] = $last;
+            }
+        }
+
+        return $listed;
     }
 
     /**
@@ -1061,6 +1105,9 @@ class ExclusiveLeads
         return $split;
     }
 
+    /**
+     * @return Builder<ExclusiveListLead>
+     */
     private function entriesBetween(User $cra, CarbonImmutable $from, CarbonImmutable $to, bool $withPos = false): Builder
     {
         return ExclusiveListLead::where('user_id', $cra->id)->when(! $withPos, fn (Builder $q) => $q->where('source', '!=', self::POS))
@@ -1114,9 +1161,8 @@ class ExclusiveLeads
 
     /**
      * Targets and actuals for the month and each of its days. Listed leads leave out POS sales. Repeat (CRD Lead) and
-     * Retained (FSD Lead), confirmed orders, gross and AOV count only customers on the lists (repeatsBetween(),
-     * ordersBetween()): a day's are the customers on that day's list, the month's those on any of its lists so far, so
-     * the month can be more than its days added up (a lead listed on the 3rd who bought on the 9th). The repeat purchases
+     * Retained (FSD Lead), confirmed orders, gross and AOV are her exclusive sales as the CVR Tracker counts them
+     * (salesBetween()): orders from customers who were her exclusive leads by the order day. The repeat purchases
      * goal is met by Repeat + Retained. The confirmed orders target is daily: a day
      * off (DutyGoals) or a day before the transfer has none, and the month's is the sum of its days, the daily target
      * × working_days. Targets follow the limits set in Settings (ExclusiveLimits). A lead carried over counts on each day's list; unique_leads counts it once. Worked = processed
@@ -1146,9 +1192,7 @@ class ExclusiveLeads
         // Only days that have started: the customers on the day's list who bought or ordered that day.
         $today = WorkingDate::realToday();
         $none = ['repeat' => 0, 'retained' => 0, 'orders' => 0, 'gross' => 0.0];
-        $listSales = fn (CarbonImmutable $from, CarbonImmutable $to) => $from->greaterThan($today)
-            ? $none
-            : [...$this->repeatsBetween($cra, $from, $to->min($today)), ...$this->ordersBetween($cra, $from, $to->min($today))];
+        $sales = $this->salesBetween($cra, $firstDay->max($start), $end->min($today));
         $goalPercent = (int) config('exclusive_leads.repeat_goal_percent');
         // The month goes by the limits its last day ends on; each day's orders target by that day's.
         $monthLimits = ExclusiveLimits::on($end);
@@ -1190,7 +1234,7 @@ class ExclusiveLeads
                 $orderRates[] = $confirmedGoal;
             }
 
-            $sales = $day->lessThan($firstDay) ? $none : $listSales($day, $day);
+            $daySales = $day->lessThan($firstDay) ? $none : ($sales['days'][$date] ?? $none);
             $days[] = [
                 'date' => $date,
                 'lead_date' => $leadDay->toDateString(),
@@ -1203,20 +1247,20 @@ class ExclusiveLeads
                 'left' => $counted->count() - $worked,
                 'pos' => $rows->count() - $counted->count(),
                 'mix' => $mixOf($rows),
-                'repeat' => $sales['repeat'],
-                'retained' => $sales['retained'],
+                'repeat' => $daySales['repeat'],
+                'retained' => $daySales['retained'],
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
-                'confirmed' => $sales['orders'],
+                'confirmed' => $daySales['orders'],
                 'confirmed_goal' => $confirmedGoal,
                 'is_day_off' => $isDayOff,
-                'gross' => $sales['gross'],
-                'aov' => $sales['orders'] ? $sales['gross'] / $sales['orders'] : null,
+                'gross' => $daySales['gross'],
+                'aov' => $daySales['orders'] ? $daySales['gross'] / $daySales['orders'] : null,
             ];
         }
 
         $counted = $entries->where('source', '!=', self::POS);
         $planned = count($seen) + $held;
-        $monthSales = $listSales($firstDay->max($start), $end);
+        $monthSales = $sales['total'];
 
         return [
             'targets' => [
