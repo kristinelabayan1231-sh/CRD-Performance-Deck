@@ -15,7 +15,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
 
-#[Fillable(['name', 'display_name', 'cra_order', 'pancake_name', 'exclusive_from', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'deactivated_at', 'granted_by', 'last_login_at'])]
+#[Fillable(['name', 'display_name', 'sms_name', 'cra_order', 'pancake_name', 'exclusive_from', 'daily_sales_goal', 'show_product_qty', 'email', 'password', 'google_id', 'avatar', 'role_id', 'is_active', 'deactivated_at', 'granted_by', 'last_login_at'])]
 #[Hidden(['password', 'remember_token', 'recording_token', 'call_webhook_url'])]
 class User extends Authenticatable
 {
@@ -153,6 +153,14 @@ class User extends Authenticatable
     public function displayName(): string
     {
         return $this->display_name ?: ($this->name ?: $this->email);
+    }
+
+    /**
+     * The name a CRA goes by in her SMS texts ({cra_name}): the code name she set herself, else her display name.
+     */
+    public function smsName(): string
+    {
+        return $this->sms_name ?: $this->displayName();
     }
 
     /**

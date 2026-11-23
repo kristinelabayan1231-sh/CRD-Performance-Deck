@@ -7,12 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A text for a product and/or customer type (blank = any). A reminder template is sent automatically: a customer gets
- * the most specific active one that fits (product + type, then product, then type, then any;
- * RestockReminders::templateFor). Every active template, follow-up ones too, can be picked for a follow-up typed by hand
+ * A CRA's own text for a product and/or customer type (blank = any); one CRA's templates never change another's. A
+ * reminder template is sent automatically for its CRA's customers: a customer gets the most specific active one of
+ * their CRA's that fits (product + type, then product, then type, then any; RestockReminders::templateFor), else the
+ * built-in default. Every active template of the CRA, follow-up ones too, can be picked for a follow-up typed by hand
  * (the Text button); a follow-up template is never sent automatically.
  */
-#[Fillable(['name', 'purpose', 'product_id', 'customer_type', 'body', 'is_active', 'updated_by'])]
+#[Fillable(['user_id', 'name', 'purpose', 'product_id', 'customer_type', 'body', 'is_active', 'updated_by'])]
 class SmsTemplate extends Model
 {
     public const REMINDER = 'reminder';
@@ -34,6 +35,12 @@ class SmsTemplate extends Model
         return [
             'is_active' => 'boolean',
         ];
+    }
+
+    /** The CRA whose template this is. */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     public function product(): BelongsTo

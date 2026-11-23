@@ -159,11 +159,14 @@ class SmsRemindersTest extends TestCase
     {
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);
         $this->artisan('reminders:build');
-        SmsTemplate::create(['name' => 'Any', 'body' => 'Default for {first_name}.']);
-        SmsTemplate::create(['name' => 'Repeat', 'customer_type' => 'repeat', 'body' => 'Repeat text.']);
-        SmsTemplate::create(['name' => 'Clear Sight', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}, {product} runs out {run_out_date}. {cra_name}']);
-        SmsTemplate::create(['name' => 'Off', 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Off.', 'is_active' => false]);
-        SmsTemplate::create(['name' => 'Follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Kumusta po?']);
+        $anna = ['user_id' => $this->anna->id];
+        SmsTemplate::create([...$anna, 'name' => 'Any', 'body' => 'Default for {first_name}.']);
+        SmsTemplate::create([...$anna, 'name' => 'Repeat', 'customer_type' => 'repeat', 'body' => 'Repeat text.']);
+        SmsTemplate::create([...$anna, 'name' => 'Clear Sight', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}, {product} runs out {run_out_date}. {cra_name}']);
+        SmsTemplate::create([...$anna, 'name' => 'Off', 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Off.', 'is_active' => false]);
+        SmsTemplate::create([...$anna, 'name' => 'Follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Kumusta po?']);
+        // Another CRA's template never goes to Anna's customers, however closely it fits.
+        SmsTemplate::create(['user_id' => $this->mika->id, 'name' => 'Mika', 'product_id' => $this->clearSight->id, 'customer_type' => 'first', 'body' => 'Mika here.']);
 
         $message = app(RestockReminders::class)->messageFor(RestockReminder::firstWhere('phone_key', $phoneKey));
 
@@ -325,9 +328,9 @@ class SmsRemindersTest extends TestCase
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK) && str_contains($request['message'], 'Hindi ka na makakatanggap'));
     }
 
-    public function test_only_managers_open_templates_and_settings(): void
+    public function test_a_cra_opens_her_own_templates_and_only_managers_open_settings(): void
     {
-        $this->actingAs($this->anna)->get(route('sms-reminders.templates.index'))->assertForbidden();
+        $this->actingAs($this->anna)->get(route('sms-reminders.templates.index'))->assertOk()->assertSee('Your name in texts');
         $this->actingAs($this->anna)->get(route('settings.sms-reminders.index'))->assertForbidden();
 
         $supervisor = $this->supervisor();
@@ -446,23 +449,66 @@ class SmsRemindersTest extends TestCase
     {
         $this->delivered('09170000001', cra: $this->anna);
         $this->artisan('reminders:build');
-        $reminderTemplate = SmsTemplate::create(['name' => 'Clear Sight reminder', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}!']);
-        SmsTemplate::create(['name' => 'Kumusta follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po ang {product} mo?']);
-        SmsTemplate::create(['name' => 'Old one', 'body' => 'Old.', 'is_active' => false]);
+        $reminderTemplate = SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Clear Sight reminder', 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}!']);
+        SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Kumusta follow-up', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po ang {product} mo?']);
+        SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Old one', 'body' => 'Old.', 'is_active' => false]);
+        SmsTemplate::create(['user_id' => $this->mika->id, 'name' => 'Mikas spiel', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Mika here.']);
 
         $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
             ->assertSee('Kumusta follow-up')
             ->assertSee('<option value="'.$reminderTemplate->id.'" selected>Clear Sight reminder</option>', false)
             ->assertSee('Hi Maria! Reply STOP to opt out.')
-            ->assertDontSee('Old one');
+            ->assertDontSee('Old one')
+            ->assertDontSee('Mikas spiel');
     }
 
-    public function test_a_supervisor_saves_a_follow_up_template(): void
+    public function test_a_supervisor_saves_a_follow_up_template_for_the_cra_picked(): void
     {
-        $this->actingAs($this->supervisor())->post(route('sms-reminders.templates.store'), [
+        $this->actingAs($this->supervisor())->post(route('sms-reminders.templates.store', ['cra' => $this->mika->id]), [
             'name' => 'Kumusta', 'purpose' => SmsTemplate::FOLLOW_UP, 'body' => 'Kumusta po?', 'is_active' => 1,
         ])->assertRedirect()->assertSessionHasNoErrors();
 
-        $this->assertTrue(SmsTemplate::firstWhere('name', 'Kumusta')->isFollowUp());
+        $template = SmsTemplate::firstWhere('name', 'Kumusta');
+        $this->assertTrue($template->isFollowUp());
+        $this->assertSame($this->mika->id, $template->user_id);
+    }
+
+    public function test_a_cras_templates_are_her_own_and_saving_never_changes_another_cras(): void
+    {
+        $annas = SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Annas spiel', 'body' => 'Hi from Anna.']);
+        $mikas = SmsTemplate::create(['user_id' => $this->mika->id, 'name' => 'Mikas spiel', 'body' => 'Hi from Mika.']);
+        $edit = ['name' => 'Changed', 'purpose' => SmsTemplate::REMINDER, 'body' => 'Changed.', 'is_active' => 1];
+
+        $this->actingAs($this->anna)->get(route('sms-reminders.templates.index'))->assertOk()->assertSee('Annas spiel')->assertDontSee('Mikas spiel');
+        // Asking for another CRA's list still shows her own.
+        $this->actingAs($this->anna)->get(route('sms-reminders.templates.index', ['cra' => $this->mika->id]))->assertOk()->assertDontSee('Mikas spiel');
+        $this->actingAs($this->anna)->put(route('sms-reminders.templates.update', $mikas), $edit)->assertForbidden();
+        $this->actingAs($this->anna)->delete(route('sms-reminders.templates.destroy', $mikas))->assertForbidden();
+        $this->actingAs($this->anna)->put(route('sms-reminders.templates.update', $annas), $edit)->assertRedirect();
+        $this->actingAs($this->anna)->post(route('sms-reminders.templates.store', ['cra' => $this->mika->id]), [...$edit, 'name' => 'New'])->assertRedirect();
+
+        $this->assertSame('Hi from Mika.', $mikas->fresh()->body);
+        $this->assertSame('Changed.', $annas->fresh()->body);
+        $this->assertSame($this->anna->id, SmsTemplate::firstWhere('name', 'New')->user_id);
+    }
+
+    public function test_a_cra_sets_the_name_her_texts_use(): void
+    {
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Mine', 'body' => 'Si {cra_name} po ito.']);
+
+        // A CRA can't name another CRA: asking for Mika still names herself.
+        $this->actingAs($this->anna)->put(route('sms-reminders.templates.name', ['cra' => $this->mika->id]), ['sms_name' => 'Not Mika'])->assertRedirect();
+        $this->assertSame('Mika', $this->mika->fresh()->smsName());
+        $this->actingAs($this->anna)->put(route('sms-reminders.templates.name'), ['sms_name' => 'Ate Sky'])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame('Ate Sky', $this->anna->fresh()->smsName());
+        $this->assertSame('Si Ate Sky po ito. Reply STOP to opt out.', app(RestockReminders::class)->messageFor(RestockReminder::firstWhere('phone_key', $phoneKey)));
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertSee('Ate Sky');
+
+        // Blank goes back to her display name.
+        $this->actingAs($this->anna)->put(route('sms-reminders.templates.name'), ['sms_name' => ''])->assertRedirect();
+        $this->assertSame('Anna', $this->anna->fresh()->smsName());
     }
 }

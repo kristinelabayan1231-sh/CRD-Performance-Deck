@@ -178,20 +178,21 @@
                                                     Text
                                                 </summary>
                                                 <form method="POST" action="{{ route('sms-reminders.text', $reminder) }}" class="mt-2 space-y-2"
-                                                      data-text-form data-fill="{{ json_encode(['{first_name}' => $reminder->firstName() ?: 'po', '{product}' => $reminder->products, '{run_out_date}' => $reminder->run_out_on->format('j M'), '{cra_name}' => $reminder->cra->displayName()]) }}">
+                                                      data-text-form data-fill="{{ json_encode(['{first_name}' => $reminder->firstName() ?: 'po', '{product}' => $reminder->products, '{run_out_date}' => $reminder->run_out_on->format('j M'), '{cra_name}' => $reminder->cra->smsName()]) }}">
                                                     @csrf
                                                     <label class="flex flex-col gap-1 text-[0.6875rem] font-semibold text-muted">
                                                         Template
+                                                        @php($rowTemplates = $textTemplates->where('user_id', $reminder->user_id))
                                                         <select data-text-template class="h-8 rounded-lg border border-line bg-white px-2 text-xs font-normal text-ink">
-                                                            @if ($textTemplates->contains('purpose', \App\Models\SmsTemplate::FOLLOW_UP))
+                                                            @if ($rowTemplates->contains('purpose', \App\Models\SmsTemplate::FOLLOW_UP))
                                                                 <optgroup label="Follow-ups">
-                                                                    @foreach ($textTemplates->where('purpose', \App\Models\SmsTemplate::FOLLOW_UP) as $option)
+                                                                    @foreach ($rowTemplates->where('purpose', \App\Models\SmsTemplate::FOLLOW_UP) as $option)
                                                                         <option value="{{ $option->id }}">{{ $option->name }}</option>
                                                                     @endforeach
                                                                 </optgroup>
                                                             @endif
                                                             <optgroup label="Reminders">
-                                                                @foreach ($textTemplates->where('purpose', \App\Models\SmsTemplate::REMINDER) as $option)
+                                                                @foreach ($rowTemplates->where('purpose', \App\Models\SmsTemplate::REMINDER) as $option)
                                                                     <option value="{{ $option->id }}" @selected($reminder->template_choice === $option->id)>{{ $option->name }}</option>
                                                                 @endforeach
                                                                 <option value="default" @selected($reminder->template_choice === null)>Built-in default</option>
