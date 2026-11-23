@@ -7,7 +7,6 @@ use App\Services\ExclusiveLeads;
 use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
 use App\Services\PresentationBoardCras;
-use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -48,18 +47,24 @@ class PresentationBoardController extends Controller
         $productsTo = max(min($filters['products_to'] ?? CarbonImmutable::parse($to.'-01')->endOfMonth()->toDateString(), $lastDay), $productsFrom);
         $topProducts = $board->products($snapshot, $productsFrom, $productsTo);
         $monthKeys = array_column($figures['months'], 'key');
+        // The month before the range, so Top products and CRA performance can compare the first month picked with it.
+        $monthBefore = CarbonImmutable::parse($from.'-01')->subMonth()->format('Y-m');
+        $monthBefore = isset($snapshot['months'][$monthBefore]) ? $monthBefore : null;
+        $compareKeys = $monthBefore ? [$monthBefore, ...$monthKeys] : $monthKeys;
 
         return view('presentation-board.index', [
             ...$figures,
-            'productMonths' => $this->productMonths($board, $snapshot, $monthKeys),
-            'craMonths' => $craSnapshot ? $this->craMonths($cras, $craSnapshot, $monthKeys) : [],
-            'exclusive' => $this->exclusive($exclusive, $monthKeys),
+            'productMonths' => $this->productMonths($board, $snapshot, $compareKeys),
+            'craMonths' => $craSnapshot ? $this->craMonths($cras, $craSnapshot, $compareKeys) : [],
+            'monthBefore' => $monthBefore,
+            'exclusive' => $craSnapshot ? $this->exclusive($exclusive, $craSnapshot, $monthKeys) : [],
             'products' => $topProducts['products'],
             'others' => $topProducts['others'],
             'topProducts' => [...$topProducts, 'first_day' => $firstDay, 'last_day' => $lastDay, 'picked' => isset($filters['products_from']) || isset($filters['products_to'])],
             'craPerformance' => $craSnapshot ? $cras->range($craSnapshot, $from, $to) : null,
             // The month range's products, as the other figures.
             'insights' => $board->insights($figures['months'], $figures['totals'], $figures['products']),
+            'wins' => $board->wins($figures['months'], $figures['totals'], CarbonImmutable::parse($snapshot['today'])),
             'snapshot' => $snapshot,
             'monthOptions' => collect($months)->mapWithKeys(fn (string $month) => [$month => CarbonImmutable::parse($month.'-01')->format('M Y')])->all(),
             'from' => $from,
@@ -105,32 +110,19 @@ class PresentationBoardController extends Controller
     }
 
     /**
-     * The exclusive CRAs' months in the range, as the Exclusive Leads Dashboard counts them: month() for the list, its
-     * targets and days, salesSplit() for exclusive vs normal sales. Months before a CRA's exclusive start or after today
-     * are left out.
+     * Each exclusive CRA's months in the range, from the CRA snapshot (presentation-board:refresh-cras); none until a
+     * snapshot that has them.
      *
+     * @param  array<string, mixed>  $craSnapshot
      * @param  list<string>  $months
-     * @return list<array{user: User, months: array<string, array{figures: array<string, mixed>, sales: array<string, array{orders: int, gross: float}>}>}>
+     * @return list<array{user: User, months: array<string, array<string, mixed>>}>
      */
-    private function exclusive(ExclusiveLeads $exclusive, array $months): array
+    private function exclusive(ExclusiveLeads $exclusive, array $craSnapshot, array $months): array
     {
-        $today = WorkingDate::realToday();
+        $saved = $craSnapshot['exclusive'] ?? [];
 
-        return $exclusive->cras()->map(function (User $cra) use ($exclusive, $months, $today) {
-            $start = WorkingDate::realDayFor($cra->exclusive_from)->format('Y-m');
-            $figures = [];
-            foreach ($months as $month) {
-                if ($month < $start || $month > $today->format('Y-m')) {
-                    continue;
-                }
-                $day = CarbonImmutable::parse($month.'-01');
-                $figures[$month] = [
-                    'figures' => $exclusive->month($cra, $day),
-                    'sales' => $exclusive->salesSplit($cra, $day, $day->endOfMonth()->startOfDay()->min($today)),
-                ];
-            }
-
-            return ['user' => $cra, 'months' => $figures];
-        })->filter(fn (array $row) => $row['months'] !== [])->values()->all();
+        return $exclusive->cras()
+            ->map(fn (User $cra) => ['user' => $cra, 'months' => array_intersect_key($saved[$cra->id] ?? [], array_flip($months))])
+            ->filter(fn (array $row) => $row['months'] !== [])->values()->all();
     }
 }

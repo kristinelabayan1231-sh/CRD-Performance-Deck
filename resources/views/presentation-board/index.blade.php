@@ -34,6 +34,16 @@
     $accent = 'var(--pb-accent)';
     $broadcast = 'var(--pb-bc)';
     $exclusiveColor = 'var(--pb-excl)';
+    $sales = 'var(--pb-sales)';
+    $good = 'var(--pb-good)';
+    $eyebrow = 'font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase';
+    // Gold, silver and bronze for the top three of a ranking; a plain badge after that.
+    $medal = fn (int $rank) => match ($rank) {
+        1 => 'background: var(--pb-gold); color: var(--pb-gold-text)',
+        2 => 'background: var(--pb-silver); color: var(--pb-silver-text)',
+        3 => 'background: var(--pb-bronze); color: var(--pb-bronze-text)',
+        default => 'background: var(--pb-chip); color: var(--pb-soft)',
+    };
     $axis = 'border-bottom: 1px solid var(--pb-axis)';
     $rowLine = 'border-bottom: 1px solid var(--pb-row)';
     $swatch = 'width: 10px; height: 10px; border-radius: 3px';
@@ -119,13 +129,14 @@
             --pb-head: linear-gradient(90deg, rgb(124 77 255 / .12), rgb(124 77 255 / .03));
             --pb-pill: rgb(124 77 255 / .12); --pb-pill-text: #4b2a9e; --pb-chip: rgb(31 27 46 / .07);
             --pb-pos-bg: rgb(15 140 120 / .12); --pb-pos-text: #0b6e5f;
-            --pb-field: #ffffff; --pb-field-line: rgb(31 27 46 / .18); --pb-btn: #6b3fd4; --pb-btn-text: #ffffff; --pb-on: rgb(124 77 255 / .16);
-            --pb-accent: #6b3fd4; --pb-track: rgb(31 27 46 / .07); --pb-grid: rgb(31 27 46 / .08); --pb-axis: rgb(31 27 46 / .25);
+            --pb-field: #ffffff; --pb-field-line: rgb(31 27 46 / .18); --pb-btn: #1f1b2e; --pb-btn-text: #ffffff; --pb-on: rgb(31 27 46 / .1);
+            --pb-accent: #3d3a8f; --pb-track: rgb(31 27 46 / .07); --pb-grid: rgb(31 27 46 / .08); --pb-axis: rgb(31 27 46 / .25);
             --pb-mark: rgb(124 77 255 / .08); --pb-link-line: rgb(31 27 46 / .35);
-            --pb-good-bg: rgb(15 140 120 / .12); --pb-good: #0b6e5f; --pb-bad-bg: rgb(214 60 70 / .1); --pb-bad: #b3263a;
+            --pb-good-bg: rgb(36 160 90 / .14); --pb-good: #1d7a45; --pb-bad-bg: rgb(214 60 70 / .1); --pb-bad: #b3263a;
             --pb-crd: #8a3ff0; --pb-crd-tint: rgb(138 63 240 / .3); --pb-fsd: #1f86ad; --pb-fsd-tint: rgb(31 134 173 / .3);
             --pb-added: #1aa58f; --pb-added-tint: rgb(26 165 143 / .32); --pb-lost: #d64550; --pb-react: rgb(31 27 46 / .22);
-            --pb-bc: #c86a14; --pb-excl: #c2367a;
+            --pb-bc: #c2367a; --pb-excl: #a8650f;
+            --pb-sales: #a8650f; --pb-sales-bg: rgb(201 128 20 / .13); --pb-gold: #f2c14e; --pb-gold-text: #3b2a00; --pb-silver: #cfd3dc; --pb-silver-text: #22252c; --pb-bronze: #e0a070; --pb-bronze-text: #3a1d06; --pb-best: rgb(242 193 78 / .22);
             color-scheme: light;
         }
         html[data-theme="dark"] [data-presentation-board] {
@@ -138,13 +149,14 @@
             --pb-head: linear-gradient(90deg, rgb(70 58 108 / .65), rgb(58 49 87 / .3));
             --pb-pill: rgb(195 155 255 / .2); --pb-pill-text: #e4d3ff; --pb-chip: rgb(255 255 255 / .1);
             --pb-pos-bg: rgb(63 209 185 / .18); --pb-pos-text: #b5f2e6;
-            --pb-field: #2d2a3e; --pb-field-line: rgb(255 255 255 / .18); --pb-btn: #c39bff; --pb-btn-text: #211f2d; --pb-on: rgb(195 155 255 / .28);
-            --pb-accent: #c39bff; --pb-track: rgb(255 255 255 / .1); --pb-grid: rgb(255 255 255 / .1); --pb-axis: rgb(255 255 255 / .3);
+            --pb-field: #2d2a3e; --pb-field-line: rgb(255 255 255 / .18); --pb-btn: #f1eef8; --pb-btn-text: #211f2d; --pb-on: rgb(255 255 255 / .16);
+            --pb-accent: #a9b4ff; --pb-track: rgb(255 255 255 / .1); --pb-grid: rgb(255 255 255 / .1); --pb-axis: rgb(255 255 255 / .3);
             --pb-mark: rgb(255 255 255 / .08); --pb-link-line: rgb(255 255 255 / .45);
-            --pb-good-bg: rgb(63 209 185 / .16); --pb-good: #6fe3cf; --pb-bad-bg: rgb(255 154 157 / .16); --pb-bad: #ffb3b5;
+            --pb-good-bg: rgb(111 227 159 / .14); --pb-good: #6fe39f; --pb-bad-bg: rgb(255 154 157 / .16); --pb-bad: #ffb3b5;
             --pb-crd: #a05aff; --pb-crd-tint: rgb(160 90 255 / .38); --pb-fsd: #2a9fc9; --pb-fsd-tint: rgb(42 159 201 / .35);
             --pb-added: #3fd1b9; --pb-added-tint: rgb(63 209 185 / .4); --pb-lost: #ff9a9d; --pb-react: rgb(255 255 255 / .28);
-            --pb-bc: #f5a35c; --pb-excl: #ff7eb6;
+            --pb-bc: #ff7eb6; --pb-excl: #f2b75a;
+            --pb-sales: #f2b75a; --pb-sales-bg: rgb(242 183 90 / .16); --pb-gold: #f2c14e; --pb-gold-text: #3b2a00; --pb-silver: #cfd3dc; --pb-silver-text: #22252c; --pb-bronze: #e0a070; --pb-bronze-text: #3a1d06; --pb-best: rgb(242 193 78 / .2);
             color-scheme: dark;
         }
         [data-presentation-board] summary { list-style: none; }
@@ -162,8 +174,13 @@
         [data-presentation-board] [data-cra-card]:hover, [data-presentation-board] [data-cra-card]:focus-within { position: relative; z-index: 5; }
         [data-presentation-board] .pb-tile:hover, [data-presentation-board] .pb-tile:focus-within { z-index: 30; }
         [data-presentation-board] .pb-tip:hover .pb-tip-box, [data-presentation-board] .pb-tip:focus-within .pb-tip-box { display: block; }
-        [data-presentation-board] [data-product-sort][aria-pressed="true"] { background: var(--pb-on); color: var(--pb-text); font-weight: 600; }
-        [data-presentation-board] [data-product-sort][aria-pressed="false"] { background: transparent; color: var(--pb-muted); font-weight: 400; }
+        [data-presentation-board] [data-product-sort][aria-pressed="true"], [data-presentation-board] [data-side-mode][aria-pressed="true"] { background: var(--pb-on); color: var(--pb-text); font-weight: 600; }
+        [data-presentation-board] [data-product-sort][aria-pressed="false"], [data-presentation-board] [data-side-mode][aria-pressed="false"] { background: transparent; color: var(--pb-muted); font-weight: 400; }
+        /* Gold, silver and bronze for the top three products; the place follows the sort (presentation-board.js). */
+        [data-presentation-board] [data-rank] { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; font-weight: 700; background: var(--pb-chip); color: var(--pb-soft); }
+        [data-presentation-board] [data-rank][data-place="1"] { background: var(--pb-gold); color: var(--pb-gold-text); }
+        [data-presentation-board] [data-rank][data-place="2"] { background: var(--pb-silver); color: var(--pb-silver-text); }
+        [data-presentation-board] [data-rank][data-place="3"] { background: var(--pb-bronze); color: var(--pb-bronze-text); }
     </style>
 
     <div data-presentation-board class="flex flex-col gap-4 tabular-nums"
@@ -186,6 +203,8 @@
                 $churnFrom = collect($months)->firstWhere('churn_partial', false)['key'] ?? $from;
                 $cardUrl = fn (string $status, string $list) => route('customers.churn', ['from' => $churnFrom.'-01', 'to' => $dates()['to'], 'status' => $status, 'list' => $list]);
                 $ordersUrl = fn (?string $month = null) => route('conversion.orders', $dates($month));
+                // Conversion by lead type: in tracker months FSD leads who bought ÷ FSD leads given is the Retained rate, CRD the Repeat rate.
+                $months = array_map(fn (array $month) => [...$month, 'conversion_fsd' => $month['conversion'] === null ? null : $month['retained_rate'], 'conversion_crd' => $month['conversion'] === null ? null : $month['repeat_rate']], $months);
                 $col = fn (string $key) => array_column($months, $key);
                 // A snapshot taken before the Segmentation / Broadcast split has no tag figures: say so rather than show ₱0.
                 $hasSplit = array_key_exists('sc_gross', reset($snapshot['days']) ?: []);
@@ -239,33 +258,33 @@
                     return '<div style="display: grid; grid-template-columns: repeat('.$count.', minmax(0, 1fr)); gap: 4px; padding-top: 3px; border-top: 1px solid var(--pb-line2)">'.$cells.'</div>';
                 };
                 $tiles = [
-                    ['label' => 'New customers', 'old' => 'was Acquired leads', 'dot' => $added, 'value' => $number($totals['added']), 'url' => $listUrl('added'), 'sub' => '+'.$number($totals['added_waiting']).' waiting',
+                    ['group' => 'Coming in', 'label' => 'New customers', 'old' => 'was Acquired leads', 'dot' => $added, 'value' => $number($totals['added']), 'url' => $listUrl('added'), 'sub' => '+'.$number($totals['added_waiting']).' waiting',
                         'values' => $col('added'), 'format' => $compact, 'flow' => true,
                         'info' => ['A customer whose first delivery on record (records start June 2025) came from FSD.', 'Counted once, ever, in the month of that first delivery.', 'Not the same as Due to reorder · FSD: that counts people in the month their supply runs out, often a month or two later, and includes older FSD customers.', 'Example: first delivery Oct 5, 45-day supply → New customer in October, Due to reorder · FSD in November.']],
-                    ['label' => 'Due to reorder · FSD', 'old' => 'was FSD leads', 'dot' => $fsd, 'value' => $number($totals['fsd_leads']), 'url' => $listUrl('fsd_leads'), 'sub' => '+'.$number($totals['fsd_waiting']).' waiting',
+                    ['group' => 'Ran out of supply', 'label' => 'Due to reorder · FSD', 'old' => 'was FSD leads', 'dot' => $fsd, 'value' => $number($totals['fsd_leads']), 'url' => $listUrl('fsd_leads'), 'sub' => '+'.$number($totals['fsd_waiting']).' waiting',
                         'values' => $col('fsd_leads'), 'format' => $compact, 'neutral' => true],
-                    ['label' => 'Due to reorder · CRD', 'old' => 'was CRD leads', 'dot' => $crd, 'value' => $number($totals['crd_leads']), 'url' => $listUrl('crd_leads'), 'sub' => '+'.$number($totals['crd_waiting']).' waiting',
+                    ['group' => 'Ran out of supply', 'label' => 'Due to reorder · CRD', 'old' => 'was CRD leads', 'dot' => $crd, 'value' => $number($totals['crd_leads']), 'url' => $listUrl('crd_leads'), 'sub' => '+'.$number($totals['crd_waiting']).' waiting',
                         'values' => $col('crd_leads'), 'format' => $compact, 'neutral' => true],
-                    ['label' => 'FSD retained', 'dot' => $fsd, 'value' => $number($totals['retained']), 'url' => $listUrl('retained'), 'sub' => $percent($totals['retained_rate']).' of '.$number($totals['retained_base']),
+                    ['group' => 'Retained and repeat', 'about' => 'First order through a CRA', 'label' => 'FSD retained', 'dot' => $fsd, 'value' => $number($totals['retained']), 'url' => $listUrl('retained'), 'sub' => $percent($totals['retained_rate']).' of '.$number($totals['retained_base']),
                         'values' => $col('retained_rate'), 'format' => $percent, 'rate' => true],
-                    ['label' => 'CRD repeat', 'dot' => $crd, 'value' => $number($totals['repeat']), 'url' => $listUrl('repeat'), 'sub' => $percent($totals['repeat_rate']).' of '.$number($totals['repeat_base']),
+                    ['group' => 'Retained and repeat', 'about' => '2+ orders through a CRA', 'label' => 'CRD repeat', 'dot' => $crd, 'value' => $number($totals['repeat']), 'url' => $listUrl('repeat'), 'sub' => $percent($totals['repeat_rate']).' of '.$number($totals['repeat_base']),
                         'values' => $col('repeat_rate'), 'format' => $percent, 'rate' => true],
-                    ['label' => 'Conversion', 'dot' => $accent, 'value' => $percent($totals['conversion_rate']), 'valueNote' => 'overall', 'sub' => 'From October · overall includes broadcast',
+                    ['group' => 'Conversion', 'label' => 'Conversion', 'dot' => $accent, 'value' => $percent($totals['conversion_rate']), 'valueNote' => 'combined', 'sub' => 'Contacted leads who bought · from October · combined includes broadcast',
                         'values' => $col('conversion_rate'), 'format' => $percent, 'rate' => true,
                         'parts' => [['FSD leads', $fsd, $totals['conversion_leads']['fsd']], ['CRD leads', $crd, $totals['conversion_leads']['crd']]]],
-                    ['label' => 'Orders', 'dot' => $accent, 'value' => $number($totals['orders']), 'url' => $ordersUrl(), 'sub' => 'AOV '.$peso($totals['aov']),
+                    ['group' => 'Sales', 'label' => 'Orders', 'dot' => $sales, 'value' => $number($totals['orders']), 'url' => $ordersUrl(), 'sub' => 'AOV '.$peso($totals['aov']),
                         'values' => $col('orders'), 'format' => $compact, 'flow' => true],
                 ];
                 $rateCards = [
                     ['label' => 'Conversion', 'color' => $accent, 'value' => $totals['conversion_rate'], 'key' => 'conversion_rate', 'sub' => $totals['conversion_base'] ? $number($totals['conversion_customers']).' of '.$number($totals['conversion_base']).' · FSD leads '.$percent($totals['conversion_leads']['fsd']['rate']).' · CRD leads '.$percent($totals['conversion_leads']['crd']['rate']).' · Segmentation '.$percent($totals['conversion_tabs']['sc']).' · Broadcast '.$percent($totals['conversion_tabs']['bc']) : 'No tracker data in these months'],
-                    ['label' => 'Retain (FSD)', 'color' => $fsd, 'value' => $totals['retained_rate'], 'key' => 'retained_rate', 'sub' => $number($totals['retained']).' of '.$number($totals['retained_base']).' FSD customers bought again from a CRA'],
-                    ['label' => 'Repeat (CRD)', 'color' => $crd, 'value' => $totals['repeat_rate'], 'key' => 'repeat_rate', 'sub' => $number($totals['repeat']).' of '.$number($totals['repeat_base']).' CRD customers bought again'],
+                    ['label' => 'FSD retained', 'color' => $fsd, 'value' => $totals['retained_rate'], 'key' => 'retained_rate', 'sub' => $number($totals['retained']).' of '.$number($totals['retained_base']).' FSD customers placed their first order through a CRA'],
+                    ['label' => 'CRD repeat', 'color' => $crd, 'value' => $totals['repeat_rate'], 'key' => 'repeat_rate', 'sub' => $number($totals['repeat']).' of '.$number($totals['repeat_base']).' CRD customers ordered through a CRA again (2+ orders)'],
                 ];
                 $teams = [
                     ['name' => 'FSD leads', 'leads' => 'fsd_leads', 'wait' => 'fsd_waiting', 'bought' => 'retained', 'base' => 'retained_base', 'rate' => 'retained_rate', 'lost' => 'fsd_lost', 'due' => 'fsd_due', 'churn' => 'fsd_churn_rate', 'boughtName' => 'Retained', 'color' => $fsd, 'tint' => $fsdTint, 'added' => true, 'id' => 'fsd'],
                     ['name' => 'CRD leads', 'leads' => 'crd_leads', 'wait' => 'crd_waiting', 'bought' => 'repeat', 'base' => 'repeat_base', 'rate' => 'repeat_rate', 'lost' => 'crd_lost', 'due' => 'crd_due', 'churn' => 'crd_churn_rate', 'boughtName' => 'Repeat', 'color' => $crd, 'tint' => $crdTint, 'added' => false, 'id' => 'crd'],
                 ];
-                $sections = ['totals' => 'Totals', 'short' => 'In short', 'rates' => 'Rates', 'months' => 'Month by month', 'sales-split' => 'Seg vs Broadcast', 'products-title' => 'Top products', 'cra-performance' => 'CRAs']
+                $sections = ['totals' => 'Totals'] + ($firstMonth ? ['side-by-side' => 'Side by side'] : []) + ['short' => 'In short', 'rates' => 'Rates', 'months' => 'Month by month', 'sales-split' => 'Seg vs Broadcast', 'products-title' => 'Top products', 'cra-performance' => 'CRAs']
                     + ($exclusive ? ['exclusive' => 'Exclusive leads'] : [])
                     + ['customers' => 'Leads', 'details' => 'Daily / weekly', 'churn' => 'Churn', 'counted' => 'How counted'];
             @endphp
@@ -325,10 +344,10 @@
                     $salesChip = $changeOf($col('gross'), flow: true);
                     $stripes = 'background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgb(255 255 255 / .35) 4px 6px)';
                 @endphp
-                <div class="flex flex-wrap" style="grid-column: 1 / -1; gap: 16px 24px; {{ $hero }}; padding: 16px">
+                <div class="flex flex-wrap" style="grid-column: 1 / -1; gap: 16px 24px; {{ $hero }}; background: linear-gradient(90deg, var(--pb-sales-bg), transparent 45%), var(--pb-hero); padding: 16px">
                     <div class="flex flex-col gap-1.5" style="flex: 1 1 260px">
-                        <span style="font-size: 13px; font-weight: 600; color: {{ $accent }}">Overall total sales, every CRA</span>
-                        <a href="{{ $ordersUrl() }}" title="See these orders" style="font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -1px; font-variant-numeric: normal; {{ $link }}">{{ $peso($totals['gross']) }}</a>
+                        <span style="font-size: 13px; font-weight: 600; color: {{ $sales }}">Overall total sales, every CRA</span>
+                        <a href="{{ $ordersUrl() }}" title="See these orders" style="font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -1px; font-variant-numeric: normal; {{ $link }}; color: {{ $sales }}">{{ $peso($totals['gross']) }}</a>
                         <span style="font-size: 13px; {{ $muted }}">{{ $number($totals['orders']) }} orders · AOV {{ $peso($totals['aov']) }}</span>
                         <span style="{{ $salesChip['style'] ?? $muted }}">{{ $salesChip['text'] ?? $noChange }}</span>
                         @if ($isRunning)
@@ -376,7 +395,11 @@
                         $last = $values[$monthCount - 1] ?? null;
                         $tileChip = $changeOf($values, $tile['rate'] ?? false, $tile['flow'] ?? false, false, $tile['neutral'] ?? false);
                     @endphp
-                    <div class="pb-tile flex flex-col gap-1.5" style="position: relative; {{ $glass }}; padding: 14px 16px">
+                    @php
+                        $groupColor = ['Coming in' => $added, 'Ran out of supply' => 'var(--pb-soft)', 'Retained and repeat' => $good, 'Conversion' => $accent, 'Sales' => $sales][$tile['group']];
+                    @endphp
+                    <div class="pb-tile flex flex-col gap-1.5" style="position: relative; {{ $glass }}; padding: 0 16px 14px; overflow: visible">
+                        <span style="margin: 0 -16px 4px; padding: 7px 16px; border-radius: 16px 16px 0 0; background: color-mix(in srgb, {{ $groupColor }} 12%, transparent); color: {{ $groupColor }}; {{ $eyebrow }}">{{ $tile['group'] }}</span>
                         <span class="flex flex-wrap items-center gap-1.5" style="font-size: 13px; font-weight: 600; {{ $muted }}">
                             <span aria-hidden="true" style="width: 9px; height: 9px; border-radius: 50%; background: {{ $tile['dot'] }}"></span>{{ $tile['label'] }}
                             @if ($tile['old'] ?? null)
@@ -409,6 +432,9 @@
                                 <span style="font-size: 12px; {{ $muted }}">{{ $number($part['customers']) }} of {{ $number($part['base']) }}</span>
                             </span>
                         @endforeach
+                        @if ($tile['about'] ?? null)
+                            <span style="font-size: 12px; font-weight: 600; color: var(--pb-soft)">{{ $tile['about'] }}</span>
+                        @endif
                         <span style="font-size: 13px; {{ $muted }}">{{ $tile['sub'] }}</span>
                         {!! $sparkline($values, $tile['dot'], $isRunning && ($tile['flow'] ?? false)) !!}
                         {!! $valueRow($values, $tile['format']) !!}
@@ -417,10 +443,164 @@
                 @endforeach
             </section>
 
-            <details id="journey" style="{{ $glass }}">
+            {{-- Side by side: every month of the range as a column, or two months picked; only when a range is picked. --}}
+            @if ($firstMonth)
+                @php
+                    $sideRows = [
+                        ['group' => 'Sales', 'color' => $sales],
+                        ['label' => 'Total sales', 'about' => 'every CRA', 'color' => $sales, 'value' => fn (array $m) => $m['gross'], 'format' => $pesoShort, 'flow' => true],
+                        ['label' => 'Orders', 'about' => '', 'color' => $sales, 'value' => fn (array $m) => $m['orders'], 'format' => $number, 'flow' => true],
+                        ['label' => 'AOV', 'about' => 'average order', 'color' => $sales, 'value' => fn (array $m) => $m['aov'], 'format' => $peso],
+                        ['group' => 'Customers', 'color' => $added],
+                        ['label' => 'New customers', 'about' => 'first order ever', 'color' => $added, 'value' => fn (array $m) => $m['added'], 'format' => $number, 'flow' => true],
+                        ['label' => 'Due to reorder · FSD', 'about' => 'supply ran out, no CRA yet', 'color' => $fsd, 'value' => fn (array $m) => $m['fsd_leads'], 'format' => $number, 'neutral' => true],
+                        ['label' => 'Due to reorder · CRD', 'about' => "a CRA's customer, ran out again", 'color' => $crd, 'value' => fn (array $m) => $m['crd_leads'], 'format' => $number, 'neutral' => true],
+                        ['group' => 'Retained and repeat', 'color' => $good],
+                        ['label' => 'FSD retained %', 'about' => 'first order through a CRA', 'color' => $fsd, 'value' => fn (array $m) => $m['retained_rate'], 'format' => $percent, 'rate' => true],
+                        ['label' => 'CRD repeat %', 'about' => '2+ orders through a CRA', 'color' => $crd, 'value' => fn (array $m) => $m['repeat_rate'], 'format' => $percent, 'rate' => true],
+                        ['group' => 'Conversion', 'color' => $accent],
+                        ['later' => true, 'label' => 'FSD leads', 'about' => 'contacted leads who bought', 'color' => $fsd, 'value' => fn (array $m) => $m['conversion'] === null ? null : $m['retained_rate'], 'format' => $percent, 'rate' => true],
+                        ['later' => true, 'label' => 'CRD leads', 'about' => 'contacted leads who bought', 'color' => $crd, 'value' => fn (array $m) => $m['conversion'] === null ? null : $m['repeat_rate'], 'format' => $percent, 'rate' => true],
+                        ['later' => true, 'label' => 'Combined', 'about' => 'includes broadcast buyers', 'color' => $accent, 'value' => fn (array $m) => $m['conversion_rate'], 'format' => $percent, 'rate' => true],
+                        ['group' => 'Lost', 'color' => $lost],
+                        ['later' => true, 'label' => 'Churned', 'about' => 'reached, no order in 30 days', 'color' => $lost, 'value' => fn (array $m) => $m['churn_partial'] ? null : $m['all_lost'], 'format' => $number, 'flow' => true, 'lower' => true],
+                        ['label' => 'Net', 'about' => 'new customers − churned', 'color' => $good, 'value' => fn (array $m) => $m['net'], 'format' => $signed, 'flow' => true],
+                    ];
+                    // Each figure's months: the shown value, the value compared (a count of the running month at its pace) and
+                    // the change against the month before; the best month is starred (fewest for a lower-is-better figure).
+                    $sideFigures = collect($sideRows)->map(function (array $row) use ($months, $monthCount, $isRunning, $paced, $chip) {
+                        if (isset($row['group'])) {
+                            return $row;
+                        }
+                        $values = array_map($row['value'], $months);
+                        $compared = array_map(fn ($value, int $index) => $value === null ? null : (($row['flow'] ?? false) && $isRunning && $index === $monthCount - 1 ? $paced($value) : $value), $values, array_keys($values));
+                        $real = array_filter($compared, fn ($value) => $value !== null);
+                        // A best month only when the months differ (all equal, e.g. all 0, has none).
+                        $best = count(array_unique(array_map('floatval', $real))) > 1 && ! ($row['neutral'] ?? false) ? (($row['lower'] ?? false) ? min($real) : max($real)) : null;
+                        $cells = [];
+                        foreach ($values as $index => $value) {
+                            $before = $index > 0 ? $compared[$index - 1] : null;
+                            // No chip when there is nothing to compare: the first month, a figure that starts here, or a count after a month of 0.
+                            $change = $value === null || $before === null || (! ($row['rate'] ?? false) && (float) $before === 0.0) ? null : $chip($compared[$index], $before, $row['rate'] ?? false, $row['lower'] ?? false, $row['neutral'] ?? false);
+                            $noChange = $index === 0 ? 'first month' : ($before === null ? 'starts here' : '—');
+                            $cells[] = [
+                                'text' => $value === null ? null : ($row['format'])($value),
+                                'compared' => $compared[$index],
+                                'change' => $change,
+                                'noChange' => $noChange,
+                                'best' => $best !== null && $compared[$index] !== null && (float) $compared[$index] === (float) $best,
+                            ];
+                        }
+
+                        return [...$row, 'cells' => $cells];
+                    })->all();
+                    $sideData = [
+                        'months' => array_map(fn (array $month) => $monthName($month), $months),
+                        'figures' => collect($sideFigures)->map(fn (array $row) => isset($row['group'])
+                            ? ['group' => $row['group']]
+                            : ['label' => $row['label'], 'later' => $row['later'] ?? false, 'rate' => $row['rate'] ?? false, 'lower' => $row['lower'] ?? false, 'neutral' => $row['neutral'] ?? false, 'cells' => array_map(fn (array $cell) => ['text' => $cell['text'], 'value' => $cell['compared']], $row['cells'])])->values()->all(),
+                    ];
+                    $sideGrid = 'display: grid; grid-template-columns: minmax(190px, 1.2fr) repeat('.$monthCount.', minmax(118px, 1fr)); column-gap: 6px; min-width: '.(200 + $monthCount * 124).'px';
+                @endphp
+                <section id="side-by-side" aria-labelledby="side-by-side-title" data-side-by-side style="{{ $glass }}">
+                    <header class="flex flex-wrap items-center justify-between gap-3" style="{{ $head }}">
+                        <div class="flex flex-col gap-0.5">
+                            <h2 id="side-by-side-title" style="{{ $h2 }}">Side by side, {{ $monthOptions[$from] }} – {{ $monthOptions[$to] }}</h2>
+                            <span style="font-size: 12px; {{ $muted }}">Chips compare each month with the one before @if ($isRunning)· {{ $monthName($lastMonth) }} at its full-month pace @endif</span>
+                        </div>
+                        <div class="flex flex-wrap items-end gap-2.5">
+                            <div data-side-pick hidden><div class="flex flex-wrap items-end gap-2" style="font-size: 12px; font-weight: 600; {{ $muted }}">
+                                <label class="flex flex-col gap-1">Compare
+                                    <select data-side-a style="height: 36px; border: 1px solid var(--pb-field-line); border-radius: 8px; background: var(--pb-field); padding: 0 8px; font-size: 13px; color: var(--pb-text)">
+                                        @foreach ($months as $index => $month)
+                                            <option value="{{ $index }}" @selected($index === $monthCount - 2)>{{ $monthName($month) }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <span style="padding-bottom: 9px">vs</span>
+                                <label class="flex flex-col gap-1">With
+                                    <select data-side-b style="height: 36px; border: 1px solid var(--pb-field-line); border-radius: 8px; background: var(--pb-field); padding: 0 8px; font-size: 13px; color: var(--pb-text)">
+                                        @foreach ($months as $index => $month)
+                                            <option value="{{ $index }}" @selected($index === $monthCount - 1)>{{ $monthName($month) }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                            </div></div>
+                            <div role="group" aria-label="Comparison view" class="inline-flex" style="padding: 2px; border: 1px solid var(--pb-line2); border-radius: 999px; font-size: 12px">
+                                <button type="button" data-side-mode="all" aria-pressed="true" class="cursor-pointer" style="padding: 6px 12px; border-radius: 999px">Every month</button>
+                                <button type="button" data-side-mode="two" aria-pressed="false" class="cursor-pointer" style="padding: 6px 12px; border-radius: 999px">Two months</button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div data-side-view="all" class="overflow-x-auto" style="padding: 12px 16px 14px">
+                        <div style="{{ $sideGrid }}">
+                            <span style="position: sticky; left: 0; z-index: 1; background: var(--pb-solid)"></span>
+                            @foreach ($months as $month)
+                                @php
+                                    $isOpen = $isRunning && $month['key'] === $lastKey;
+                                @endphp
+                                <div class="flex flex-col items-center gap-0.5 text-center" style="padding: 9px 6px; border-radius: 12px 12px 0 0; background: {{ $isOpen ? 'var(--pb-btn)' : 'var(--pb-on)' }}; color: {{ $isOpen ? 'var(--pb-btn-text)' : 'var(--pb-text)' }}">
+                                    <strong style="font-size: 14px">{{ $monthName($month) }}</strong>
+                                    <span style="font-size: 11px; opacity: .85">{{ $isOpen ? 'so far · day '.$today->day.' of '.$today->daysInMonth : \Carbon\CarbonImmutable::parse($month['key'].'-01')->format('Y') }}</span>
+                                </div>
+                            @endforeach
+                            @foreach ($sideFigures as $sideRow)
+                                @if (isset($sideRow['group']))
+                                    <div style="grid-column: 1 / -1; padding: 14px 4px 6px; border-bottom: 1px solid var(--pb-line2); color: {{ $sideRow['color'] }}; {{ $eyebrow }}">{{ $sideRow['group'] }}</div>
+                                @else
+                                    <div class="flex flex-col justify-center gap-0.5" style="position: sticky; left: 0; z-index: 1; padding: 9px 6px 9px 2px; background: var(--pb-solid); {{ $rowLine }}">
+                                        <span class="flex items-center gap-2" style="font-size: 13px; font-weight: 600"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; flex: none; background: {{ $sideRow['color'] }}"></span>{{ $sideRow['label'] }}</span>
+                                        <span style="padding-left: 16px; font-size: 11px; {{ $muted }}">{{ $sideRow['about'] }}</span>
+                                    </div>
+                                    @foreach ($sideRow['cells'] as $index => $sideCell)
+                                        <div class="flex flex-col items-center justify-center gap-1 text-center" style="padding: 8px 4px; {{ $rowLine }}; background: {{ $sideCell['best'] ? 'var(--pb-best)' : 'transparent' }}">
+                                            @if ($sideCell['text'] === null)
+                                                <span style="font-size: 12px; {{ $muted }}">{{ ($sideRow['later'] ?? false) ? 'Not tracked yet' : '—' }}</span>
+                                            @else
+                                                <strong style="font-size: 16px">{{ $sideCell['text'] }}</strong>
+                                                <span class="flex flex-wrap justify-center gap-1">
+                                                    @if ($sideCell['change'])
+                                                        <span style="{{ $sideCell['change']['style'] }}; font-size: 11px; padding: 1px 7px">{{ $sideCell['change']['text'] }}</span>
+                                                    @else
+                                                        <span style="font-size: 11px; {{ $muted }}">{{ $sideCell['noChange'] }}</span>
+                                                    @endif
+                                                    @if ($sideCell['best'])
+                                                        <span style="padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--pb-gold); color: var(--pb-gold-text)">★ Best</span>
+                                                    @endif
+                                                </span>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                @endif
+                            @endforeach
+                        </div>
+                        <p style="{{ $note }}; margin-top: 10px">★ Best = the strongest month picked for that figure (fewest for churned). "Not tracked yet" = the figure starts later (churn from July, conversion from October). Counts in %, rates in points (pts).</p>
+                    </div>
+
+                    <div data-side-view="two" hidden style="padding: 6px 16px 14px">
+                        <script type="application/json" data-side-data>@json($sideData)</script>
+                        <div class="overflow-x-auto">
+                            <table style="width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px">
+                                <thead>
+                                    <tr style="text-align: right; font-size: 12px; {{ $muted }}">
+                                        <th scope="col" style="text-align: left; padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--pb-line2)">Figure</th>
+                                        <th scope="col" data-side-a-name style="padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--pb-line2)"></th>
+                                        <th scope="col" data-side-b-name style="padding: 8px 10px; font-weight: 700; color: var(--pb-text); border-bottom: 1px solid var(--pb-line2)"></th>
+                                        <th scope="col" style="padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--pb-line2)">Change</th>
+                                    </tr>
+                                </thead>
+                                <tbody data-side-rows></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            @endif
+
+            <details id="journey" open style="{{ $glass }}">
                 <summary class="flex cursor-pointer flex-wrap items-center justify-between gap-2" style="{{ $head }}; border-radius: 16px">
                     <h2 style="{{ $h2 }}"><span aria-hidden="true" class="pb-chevron" style="display: inline-block; margin-right: 6px; font-size: 12px; {{ $muted }}">▸</span>How a customer moves through the numbers</h2>
-                    <span style="font-size: 13px; {{ $muted }}">New customers vs due to reorder · click to show</span>
+                    <span style="font-size: 13px; {{ $muted }}">New customers vs due to reorder · click to hide</span>
                 </summary>
                 <div class="flex flex-col gap-3" style="padding: 14px 16px 16px">
                     <ol class="grid gap-2.5" style="margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))">
@@ -442,20 +622,50 @@
                 </div>
             </details>
 
-            @if ($insights)
-                <section id="short" aria-labelledby="short-title" style="{{ $glass }}; padding: 12px 16px">
-                    <h2 id="short-title" style="margin: 0 0 6px; font-size: 13px; font-weight: 700; color: {{ $accent }}">In short <span style="font-weight: 500; {{ $muted }}">· click a dotted number to see the customers behind it</span></h2>
-                    <ul class="grid gap-x-6 gap-y-1" style="margin: 0; padding: 0; list-style: none; font-size: 14px; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr))">
-                        @foreach ($insights as $line)
-                            <li>{{ $line }}</li>
-                        @endforeach
-                    </ul>
+            @if ($wins || $insights)
+                @php
+                    $winLook = [
+                        'sales' => ['color' => $sales, 'icon' => '₱'],
+                        'crd' => ['color' => $crd, 'icon' => '↻'],
+                        'fsd' => ['color' => $fsd, 'icon' => '★'],
+                        'conversion' => ['color' => $accent, 'icon' => '✓'],
+                    ];
+                @endphp
+                <section id="short" aria-labelledby="short-title" class="flex flex-col gap-2.5">
+                    <h2 id="short-title" class="flex flex-wrap items-center gap-2" style="{{ $h2 }}">In short <span style="padding: 2px 10px; border-radius: 999px; background: var(--pb-good-bg); color: {{ $good }}; font-size: 12px; font-weight: 700">CRD wins · {{ $monthOptions[$from] }}@if ($from !== $to) – {{ $monthOptions[$to] }}@endif</span></h2>
+                    @if ($wins)
+                        <div class="grid gap-3" style="grid-template-columns: repeat(auto-fit, minmax(240px, 1fr))">
+                            @foreach ($wins as $win)
+                                @php
+                                    $look = $winLook[$win['kind']];
+                                @endphp
+                                <div class="flex flex-col gap-1.5" style="padding: 14px 16px; border-radius: 14px; border: 1px solid var(--pb-line); background: color-mix(in srgb, {{ $look['color'] }} 11%, var(--pb-glass))">
+                                    <span class="flex items-center gap-2" style="font-size: 12px; font-weight: 700; color: {{ $look['color'] }}"><span aria-hidden="true" class="flex items-center justify-center" style="width: 26px; height: 26px; border-radius: 8px; background: var(--pb-solid)">{{ $look['icon'] }}</span>{{ $win['title'] }}</span>
+                                    <span style="font-size: 26px; font-weight: 700; letter-spacing: -.5px; color: {{ $look['color'] }}">{{ $win['value'] }}</span>
+                                    <p style="margin: 0; font-size: 13px; line-height: 1.45; color: var(--pb-soft)">{{ $win['line'] }}</p>
+                                    @if ($win['change'])
+                                        <span style="align-self: flex-start; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--pb-good-bg); color: {{ $good }}">{{ $win['change'] }}</span>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+                    @if ($insights)
+                        <div class="flex flex-col gap-1" style="padding: 10px 14px; border-radius: 12px; background: var(--pb-chip); font-size: 13px">
+                            <strong style="font-size: 12px; color: var(--pb-soft)">Good to know · click a dotted number to see the customers behind it</strong>
+                            <ul class="grid gap-x-6 gap-y-0.5" style="margin: 0; padding: 0; list-style: none; color: var(--pb-soft); grid-template-columns: repeat(auto-fit, minmax(380px, 1fr))">
+                                @foreach ($insights as $line)
+                                    <li>{{ $line }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
                 </section>
             @endif
 
             <section id="rates" aria-labelledby="rates-title" style="{{ $glass }}">
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
-                    <h2 id="rates-title" style="{{ $h2 }}">Conversion, retain and repeat by month</h2>
+                    <h2 id="rates-title" style="{{ $h2 }}">Conversion, retained and repeat by month</h2>
                     <span id="board-read-rates" data-read-default="Point at a month for its rates" style="font-size: 13px; {{ $muted }}">Point at a month for its rates</span>
                 </header>
                 <div class="flex flex-wrap gap-5" style="padding: 16px">
@@ -479,8 +689,8 @@
                         <x-presentation-board.line-chart
                             :months="$months" read-target="board-read-rates"
                             :split="$trackerAt ? ['at' => $trackerAt, 'before' => 'Deliveries', 'after' => 'Tracker'] : null"
-                            :series="[['key' => 'conversion_rate', 'color' => $accent, 'name' => 'Conversion'], ['key' => 'retained_rate', 'color' => $fsd, 'name' => 'Retain'], ['key' => 'repeat_rate', 'color' => $crd, 'name' => 'Repeat']]"
-                            :read="fn (array $month) => $month['label'].': conversion '.($month['conversion'] === null ? 'no tracker data' : $of($month['conversion']['all']['customers'], $month['conversion']['all']['base'])).' · retain '.$of($month['retained'], $month['retained_base']).' · repeat '.$of($month['repeat'], $month['repeat_base'])" />
+                            :series="[['key' => 'conversion_rate', 'color' => $accent, 'name' => 'Conversion'], ['key' => 'retained_rate', 'color' => $fsd, 'name' => 'FSD retained'], ['key' => 'repeat_rate', 'color' => $crd, 'name' => 'CRD repeat']]"
+                            :read="fn (array $month) => $month['label'].': conversion '.($month['conversion'] === null ? 'no tracker data' : $of($month['conversion']['all']['customers'], $month['conversion']['all']['base'])).' · FSD retained '.$of($month['retained'], $month['retained_base']).' · CRD repeat '.$of($month['repeat'], $month['repeat_base'])" />
                     </div>
                 </div>
             </section>
@@ -489,27 +699,50 @@
             <section id="months" aria-labelledby="months-title" style="{{ $glass }}">
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 id="months-title" style="{{ $h2 }}">Month by month</h2>
-                    <span style="font-size: 13px; {{ $muted }}">Months across, figures down · scrolls sideways for long ranges @if ($totals['fsd_waiting'] || $totals['crd_waiting'])· + = waiting for page check, not in the lead count @endif</span>
+                    <span style="font-size: 13px; {{ $muted }}">Darker cell = higher in its row · scrolls sideways for long ranges @if ($totals['fsd_waiting'] || $totals['crd_waiting'])· + = waiting for page check, not in the lead count @endif</span>
                 </header>
                 @php
                     $sticky = 'position: sticky; left: 0; z-index: 1; background: var(--pb-solid); text-align: left; white-space: nowrap';
                     $key = fn (string $color) => '<span aria-hidden="true" style="display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: '.$color.'"></span>';
                     $waiting = fn (int|float $count, ?string $url = null) => $count ? ($url ? '<a href="'.e($url).'" style="'.$small.'; '.$link.'">+'.e($number($count)).'</a>' : '<span style="'.$small.'">+'.e($number($count)).'</span>') : '';
                     $ledgerRows = [
+                        ['group' => 'Sales', 'color' => $sales],
+                        ['Gross sales', $sales, fn (array $m) => e($peso($m['gross'])), e($peso($totals['gross'])), ['gross', false, true]],
+                        ['Orders', $sales, fn (array $m) => '<a href="'.e($ordersUrl($m['key'])).'" style="'.$link.'">'.e($number($m['orders'])).'</a>', e($number($totals['orders'])), ['orders', false, true]],
+                        ['AOV', $sales, fn (array $m) => e($peso($m['aov'])), e($peso($totals['aov'])), ['aov', false, false]],
+                        ['group' => 'Coming in', 'color' => $added],
+                        ['New customers', $added, fn (array $m) => '<a href="'.e($listUrl('added', $m['key'])).'" style="'.$link.'">'.e($number($m['added'])).'</a>'.$waiting($m['added_waiting'], $listUrl('added_waiting', $m['key'])), e($number($totals['added'])).$waiting($totals['added_waiting']), ['added', false, true]],
+                        ['group' => 'Ran out of supply', 'color' => 'var(--pb-soft)'],
                         ['Due to reorder · FSD', $fsd, fn (array $m) => '<a href="'.e($listUrl('fsd_leads', $m['key'])).'" style="'.$link.'">'.e($number($m['fsd_leads'])).'</a>'.$waiting($m['fsd_waiting'], $listUrl('fsd_waiting', $m['key'])), e($number($totals['fsd_leads'])).$waiting($totals['fsd_waiting']), ['fsd_leads', false, false, false, true]],
                         ['Due to reorder · CRD', $crd, fn (array $m) => '<a href="'.e($listUrl('crd_leads', $m['key'])).'" style="'.$link.'">'.e($number($m['crd_leads'])).'</a>'.$waiting($m['crd_waiting'], $listUrl('crd_waiting', $m['key'])), e($number($totals['crd_leads'])).$waiting($totals['crd_waiting']), ['crd_leads', false, false, false, true]],
-                        ['New customers', $added, fn (array $m) => '<a href="'.e($listUrl('added', $m['key'])).'" style="'.$link.'">'.e($number($m['added'])).'</a>'.$waiting($m['added_waiting'], $listUrl('added_waiting', $m['key'])), e($number($totals['added'])).$waiting($totals['added_waiting']), ['added', false, true]],
-                        ['Orders', $accent, fn (array $m) => '<a href="'.e($ordersUrl($m['key'])).'" style="'.$link.'">'.e($number($m['orders'])).'</a>', e($number($totals['orders'])), ['orders', false, true]],
-                        ['Gross sales', $accent, fn (array $m) => e($peso($m['gross'])), e($peso($totals['gross'])), ['gross', false, true]],
-                        ['AOV', $accent, fn (array $m) => e($peso($m['aov'])), e($peso($totals['aov'])), ['aov', false, false]],
+                        ['group' => 'Retained and repeat', 'color' => $good],
                         ['FSD retained', $fsd, fn (array $m) => '<a href="'.e($listUrl('retained', $m['key'])).'" style="'.$link.'">'.e($number($m['retained'])).'</a>', e($number($totals['retained'])), ['retained', false, true]],
                         ['Retained %', $fsd, fn (array $m) => e($percent($m['retained_rate'])).'<span style="'.$small.'">of '.e($number($m['retained_base'])).'</span>', e($percent($totals['retained_rate'])).'<span style="'.$small.'">of '.e($number($totals['retained_base'])).'</span>', ['retained_rate', true, false]],
                         ['CRD repeat', $crd, fn (array $m) => '<a href="'.e($listUrl('repeat', $m['key'])).'" style="'.$link.'">'.e($number($m['repeat'])).'</a>', e($number($totals['repeat'])), ['repeat', false, true]],
                         ['Repeat %', $crd, fn (array $m) => e($percent($m['repeat_rate'])).'<span style="'.$small.'">of '.e($number($m['repeat_base'])).'</span>', e($percent($totals['repeat_rate'])).'<span style="'.$small.'">of '.e($number($totals['repeat_base'])).'</span>', ['repeat_rate', true, false]],
-                        ['Conversion', $accent, fn (array $m) => e($percent($m['conversion_rate'])), e($percent($totals['conversion_rate'])), ['conversion_rate', true, false]],
-                        ['Net', $added, fn (array $m) => '<span style="font-weight: 700; color: '.($m['net'] < 0 ? $lost : $added).'">'.e($signed($m['net'])).'</span>', '<span style="font-weight: 700; color: '.($totals['net'] < 0 ? $lost : $added).'">'.e($signed($totals['net'])).'</span>', null],
+                        ['group' => 'Conversion', 'color' => $accent],
+                        ['FSD leads', $fsd, fn (array $m) => e($percent($m['conversion_fsd'])), e($percent($totals['conversion_leads']['fsd']['rate'])), ['conversion_fsd', true, false]],
+                        ['CRD leads', $crd, fn (array $m) => e($percent($m['conversion_crd'])), e($percent($totals['conversion_leads']['crd']['rate'])), ['conversion_crd', true, false]],
+                        ['Combined', $accent, fn (array $m) => e($percent($m['conversion_rate'])), e($percent($totals['conversion_rate'])), ['conversion_rate', true, false]],
+                        ['group' => 'Lost', 'color' => $lost],
                         ['Churn', $lost, fn (array $m) => '<a href="'.e($churnUrl('lost', 'all', $m['key'])).'" style="'.$link.'">'.e($number($m['all_lost'])).'</a>'.e($star($m)).'<span style="'.$small.'">'.e($percent($m['churn_rate'])).' of '.e($number($m['all_due'])).' due</span>', e($number($totals['all_lost'])).'<span style="'.$small.'">'.e($percent($totals['churn_rate'])).' '.e($totals['churn_label']).'</span>', ['all_lost', false, false, true]],
+                        ['Net', $good, fn (array $m) => '<span style="font-weight: 700; color: '.($m['net'] < 0 ? $lost : $good).'">'.e($signed($m['net'])).'</span>', '<span style="font-weight: 700; color: '.($totals['net'] < 0 ? $lost : $good).'">'.e($signed($totals['net'])).'</span>', null],
                     ];
+                    // A light shade per cell: darker = higher within its row, in the row's colour (the running month's counts at its pace).
+                    $heat = function (?array $change, string $color, int $index) use ($months, $monthCount, $isRunning, $paced) {
+                        if (! $change) {
+                            return '';
+                        }
+                        [$key, $isRate, $isFlow] = [...$change, false, false];
+                        $values = array_map(fn (array $month, int $at) => $month[$key] === null ? null : ($isFlow && $isRunning && $at === $monthCount - 1 ? $paced($month[$key]) : $month[$key]), $months, array_keys($months));
+                        $real = array_filter($values, fn ($value) => $value !== null);
+                        if (count($real) < 2 || $values[$index] === null || max($real) == min($real)) {
+                            return '';
+                        }
+                        $share = ($values[$index] - min($real)) / (max($real) - min($real));
+
+                        return 'background: color-mix(in srgb, '.$color.' '.round(4 + $share * 22).'%, transparent);'.($share > .99 ? ' font-weight: 700;' : '');
+                    };
                 @endphp
                 <div style="padding: 12px 16px 6px">
                     <div class="overflow-x-auto" style="border: 1px solid var(--pb-line); border-radius: 12px">
@@ -527,13 +760,22 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach ($ledgerRows as [$label, $color, $cellFor, $total, $change])
+                                @foreach ($ledgerRows as $ledgerRow)
+                                    @if (isset($ledgerRow['group']))
+                                        <tr>
+                                            <th scope="colgroup" colspan="{{ $monthCount + ($firstMonth ? 3 : 2) }}" style="position: sticky; left: 0; padding: 12px 10px 5px; text-align: left; color: {{ $ledgerRow['color'] }}; border-bottom: 1px solid var(--pb-line2); {{ $eyebrow }}">{{ $ledgerRow['group'] }}</th>
+                                        </tr>
+                                        @continue
+                                    @endif
+                                    @php
+                                        [$label, $color, $cellFor, $total, $change] = $ledgerRow;
+                                    @endphp
                                     <tr style="text-align: right; {{ $rowLine }}">
                                         <th scope="row" style="{{ $sticky }}; padding: 8px 10px; font-weight: 600">{!! $key($color) !!}{{ $label }}</th>
-                                        @foreach ($months as $month)
-                                            <td style="padding: 8px 10px; white-space: nowrap">{!! $cellFor($month) !!}</td>
+                                        @foreach ($months as $index => $month)
+                                            <td style="padding: 8px 10px; white-space: nowrap; {{ $heat($change, $color, $index) }}">{!! $cellFor($month) !!}</td>
                                         @endforeach
-                                        <td style="padding: 8px 10px; white-space: nowrap; font-weight: 700">{!! $total !!}</td>
+                                        <td style="padding: 8px 10px; white-space: nowrap; font-weight: 700; background: var(--pb-chip)">{!! $total !!}</td>
                                         @if ($firstMonth)
                                             @php
                                                 [$changeKey, $changeRate, $changeFlow, $changeLower, $changeNeutral] = [...($change ?? [null]), false, false, false, false];
@@ -564,8 +806,8 @@
                 @php
                     $untaggedColor = $reactivation;
                     $salesTypes = [
-                        ['key' => 'sc', 'name' => 'Segmentation', 'color' => $crd],
-                        ['key' => 'bc', 'name' => 'Broadcast', 'color' => $broadcast],
+                        ['key' => 'sc', 'name' => 'Segmentation', 'about' => "sales from CRA customer lists", 'color' => $crd],
+                        ['key' => 'bc', 'name' => 'Broadcast', 'about' => 'sales from mass messages', 'color' => $broadcast],
                     ];
                     $tagged = $totals['sc_gross'] + $totals['bc_gross'];
                     $splitRead = $tagged ? 'Segmentation '.number_format($totals['sc_gross'] / $tagged * 100, 1).'% · Broadcast '.number_format($totals['bc_gross'] / $tagged * 100, 1).'% of tagged sales' : 'No tagged sales in these months';
@@ -582,12 +824,24 @@
                 <div class="flex flex-wrap gap-5" style="padding: 16px">
                     <div class="flex flex-col gap-4" style="flex: 1 1 280px">
                         @if ($tagged > 0)
-                            <div class="flex justify-center">{!! $donut($splitParts, $millions($tagged), 'tagged sales', $splitRead, 170) !!}</div>
+                            <div class="flex overflow-hidden" role="img" aria-label="{{ $splitRead }}" style="min-height: 64px; border-radius: 12px; color: #fff">
+                                @foreach ($salesTypes as $type)
+                                    @php
+                                        $typeShare = $totals[$type['key'].'_gross'] / $tagged * 100;
+                                    @endphp
+                                    @if ($typeShare > 0)
+                                        <div class="flex min-w-0 flex-col justify-center" style="width: {{ round($typeShare, 2) }}%; padding: 8px 12px; background: {{ $type['color'] }}">
+                                            <strong style="font-size: 17px; white-space: nowrap">{{ $typeShare >= 18 ? number_format($typeShare).'%' : '' }}</strong>
+                                            <span style="font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ $typeShare >= 18 ? $type['name'] : '' }}</span>
+                                        </div>
+                                    @endif
+                                @endforeach
+                            </div>
                         @endif
                         @foreach ($salesTypes as $type)
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-baseline justify-between gap-3">
-                                    <span class="flex items-center gap-2" style="font-size: 14px; font-weight: 600"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span>
+                                    <span class="flex flex-col" style="font-size: 14px; font-weight: 600"><span class="flex items-center gap-2"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $type['color'] }}"></span>{{ $type['name'] }}</span><span style="padding-left: 18px; font-size: 12px; font-weight: 500; {{ $muted }}">{{ $type['about'] }}</span></span>
                                     <span style="font-size: 26px; font-weight: 700; font-variant-numeric: normal">{{ $peso($totals[$type['key'].'_gross']) }}</span>
                                 </div>
                                 <span style="font-size: 13px; {{ $muted }}">{{ $tagged ? number_format($totals[$type['key'].'_gross'] / $tagged * 100, 1).'%' : '—' }} of tagged sales · {{ $number($totals[$type['key'].'_orders']) }} {{ Str::plural('order', $totals[$type['key'].'_orders']) }} · AOV {{ $peso($totals[$type['key'].'_aov']) }}</span>
@@ -694,7 +948,7 @@
                     </div>
                 @endif
                 @php
-                    $rowColumns = 'display: grid; grid-template-columns: 22px minmax(130px, 190px) minmax(120px, 1fr) 104px 64px 64px minmax(110px, 150px); align-items: center; gap: 10px';
+                    $rowColumns = 'display: grid; grid-template-columns: 26px minmax(130px, 190px) minmax(120px, 1fr) 104px 64px 64px minmax(110px, 150px); align-items: center; gap: 10px';
                     $h3 = 'margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--pb-muted)';
                     $miniCell = 'padding: 4px 0 4px 10px; white-space: nowrap';
                 @endphp
@@ -757,7 +1011,7 @@
                                         <summary class="{{ $hasDrawer ? 'cursor-pointer' : '' }} flex items-center gap-2" style="padding: 8px 10px; list-style: none">
                                             {!! $hasDrawer ? $chevron : '<span style="display: inline-block; width: 14px"></span>' !!}
                                             <span style="flex: 1; min-width: 0; {{ $rowColumns }}">
-                                                <span data-rank style="font-weight: 700; {{ $muted }}">{{ $rank + 1 }}</span>
+                                                <span data-rank data-place="{{ $rank + 1 }}">{{ $rank + 1 }}</span>
                                                 <span style="min-width: 0; font-weight: 700; overflow-wrap: anywhere">{{ $product['name'] }}
                                                     <span style="display: block; font-size: 11px; font-weight: 500; {{ $muted }}">{{ number_format($product['share'] * 100, 1) }}% share</span>
                                                     @if ($product['value'] - $product['sales'] >= 1)
@@ -843,6 +1097,49 @@
                     <p style="margin: 0; font-size: 12px; font-weight: 600; color: var(--pb-soft)">{{ $listed->count() }} {{ Str::plural('product', $listed->count()) }}@if (collect($products)->contains('name', $othersName)) + Others @endif · the list scrolls</p>
                     <p style="margin: 0; font-size: 12px; line-height: 1.5; {{ $muted }}">Click a product for its breakdown. Upsell = a product new to the customer, added to an order with one they've bought before, valued at its Pancake price (Shecom leaves TSD add-ons out of gross, so much of it is on top of gross). For a product, Upsell % = what was upsold on its orders ÷ its sales; under Others, the share of the item's own value that came as an upsell.</p>
                 </div>
+                @php
+                    // Side by side by month: the month before the range (for comparison), each month picked, then Overall.
+                    $rangeKeys = array_column($months, 'key');
+                    $gridColumns = [
+                        ...($monthBefore ? [['key' => $monthBefore, 'label' => \Carbon\CarbonImmutable::parse($monthBefore.'-01')->format('M'), 'note' => 'month before', 'before' => true, 'open' => false]] : []),
+                        ...array_map(fn (array $month) => ['key' => $month['key'], 'label' => $monthName($month), 'note' => $isRunning && $month['key'] === $lastKey ? 'so far' : \Carbon\CarbonImmutable::parse($month['key'].'-01')->format('Y'), 'before' => false, 'open' => $isRunning && $month['key'] === $lastKey], $months),
+                    ];
+                    // One row: its months' sales and orders, Overall over the months picked, and its best month (running month at its pace).
+                    $gridRowOf = function (string $name, callable $figuresIn) use ($gridColumns, $rangeKeys, $isRunning, $lastKey, $paced) {
+                        $values = [];
+                        foreach ($gridColumns as $column) {
+                            $values[$column['key']] = $figuresIn($column['key']);
+                        }
+                        $inRange = array_intersect_key($values, array_flip($rangeKeys));
+                        $compared = array_map(fn (array $value, string $key) => $isRunning && $key === $lastKey ? $paced($value['gross']) : $value['gross'], $inRange, array_keys($inRange));
+                        $withSales = array_filter($compared, fn (float $value) => $value > 0);
+
+                        return [
+                            'name' => $name,
+                            'values' => $values,
+                            'overall' => array_sum(array_column($inRange, 'gross')),
+                            'overallOrders' => array_sum(array_column($inRange, 'orders')),
+                            'best' => count($withSales) > 1 ? max($withSales) : null,
+                        ];
+                    };
+                    $productGrid = collect($rangeKeys)->flatMap(fn (string $key) => array_keys($productMonths[$key] ?? []))->unique()
+                        ->reject(fn (string $name) => $name === $othersName)
+                        ->map(fn (string $name) => $gridRowOf($name, fn (string $key) => [
+                            'gross' => (float) ($productMonths[$key][$name]['sales'] ?? 0),
+                            'orders' => (int) ($productMonths[$key][$name]['orders'] ?? 0),
+                        ]))
+                        ->sortByDesc('overall')->take(10)->values()
+                        ->map(fn (array $row, int $index) => [...$row, 'rank' => $index + 1])->all();
+                @endphp
+                @if (count($gridColumns) > 1 && $productGrid)
+                    <div class="flex flex-col gap-2" style="padding: 12px 16px 16px; border-top: 1px solid var(--pb-line)">
+                        <div class="flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 style="margin: 0; font-size: 14px; font-weight: 700">Top products by month, side by side</h3>
+                            <span style="font-size: 12px; {{ $muted }}">Top 10 by sales in the months picked · chips compare each month with the one before @if ($monthBefore)· {{ \Carbon\CarbonImmutable::parse($monthBefore.'-01')->format('M') }} shown for comparison @endif</span>
+                        </div>
+                        @include('presentation-board._by-month', ['gridRows' => $productGrid, 'gridFirst' => 'Product'])
+                    </div>
+                @endif
             </section>
 
             <section id="cra-performance" aria-labelledby="cra-performance-title" style="{{ $glass }}">
@@ -858,7 +1155,9 @@
                 @else
                     @php
                         $craSharers = collect($craPerformance['rows'])->filter(fn (array $row) => $row['gross'] > 0)->values();
-                        $craParts = $craSharers->map(fn (array $row, int $index) => [$row['user']->displayName(), $row['gross'], $palette[$index % count($palette)], $peso($row['gross'])])->all();
+                        // Shades of the CRD purple, darkest first, so no CRA takes the FSD, Broadcast or Lost colour.
+                        $craShade = fn (int $index) => 'color-mix(in srgb, var(--pb-crd) '.max(22, 100 - $index * 13).'%, var(--pb-solid))';
+                        $craParts = $craSharers->map(fn (array $row, int $index) => [$row['user']->displayName(), $row['gross'], $craShade($index), $peso($row['gross'])])->all();
                         $craTopShare = max(.0001, $craSharers->max('share') ?? 0);
                     @endphp
                     @if ($craParts && $craPerformance['gross'] > 0)
@@ -866,10 +1165,10 @@
                         <div class="flex flex-wrap items-center gap-x-8 gap-y-4" style="padding: 16px 16px 0">
                             {!! $donut($craParts, $millions($craPerformance['gross']), 'team gross', "Donut: each CRA's share of team gross sales") !!}
                             {{-- One grid for every row (rows are display: contents), so the bars start and end together. --}}
-                            <ol class="grid min-w-0 items-center gap-x-3 gap-y-2.5" style="flex: 1 1 300px; max-width: 900px; margin: 0; padding: 0; list-style: none; font-size: 13px; grid-template-columns: 14px minmax(70px, 150px) minmax(40px, 1fr) max-content max-content">
+                            <ol class="grid min-w-0 items-center gap-x-3 gap-y-2.5" style="flex: 1 1 300px; max-width: 900px; margin: 0; padding: 0; list-style: none; font-size: 13px; grid-template-columns: 22px minmax(70px, 150px) minmax(40px, 1fr) max-content max-content">
                                 @foreach ($craSharers as $index => $sharer)
                                     <li class="contents">
-                                        <span style="font-size: 12px; font-weight: 700; {{ $muted }}">{{ $sharer['rank'] }}</span>
+                                        <span class="flex items-center justify-center" style="width: 22px; height: 22px; border-radius: 50%; font-size: 11px; font-weight: 700; {{ $medal($sharer['rank']) }}">{{ $sharer['rank'] }}</span>
                                         <span class="flex min-w-0 items-center gap-2" style="font-weight: 600"><span aria-hidden="true" style="{{ $swatch }}; flex: none; background: {{ $craParts[$index][2] }}"></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ $sharer['user']->displayName() }}</span></span>
                                         <span aria-hidden="true" style="display: block; height: 8px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 8px; border-radius: 999px; width: {{ round($sharer['share'] / $craTopShare * 100, 1) }}%; background: {{ $craParts[$index][2] }}"></span></span>
                                         <span style="text-align: right; white-space: nowrap"><strong title="{{ $peso($sharer['gross']) }}">{{ $pesoShort($sharer['gross']) }}</strong><span class="hidden sm:inline" style="font-size: 12px; {{ $muted }}"> · {{ $number($sharer['orders']) }} {{ Str::plural('order', $sharer['orders']) }}</span></span>
@@ -892,11 +1191,11 @@
                                 $craX = fn (int $index) => round(($index + .5) / $monthCount * 100, 2);
                                 $craPoints = collect($craValues)->map(fn (float $value, int $index) => $craX($index).','.(100 - $craY($value)))->join(' ');
                             @endphp
-                            <article data-cra-card class="flex flex-col gap-3.5" style="padding: 16px; {{ $cell }}; border-radius: 14px">
+                            <article data-cra-card class="flex flex-col gap-3.5" style="padding: 16px; {{ $cell }}; border-radius: 14px; {{ $row['rank'] === 1 ? 'background: color-mix(in srgb, var(--pb-gold) 14%, var(--pb-glass))' : '' }}">
                                 <div class="flex items-center gap-3">
                                     <x-avatar :user="$row['user']" style="width: 64px; height: 64px; font-size: 20px; font-weight: 700; color: var(--pb-text); background: {{ $crdTint }}; border: 2px solid var(--pb-hero-line)" />
                                     <div class="min-w-0">
-                                        <p style="margin: 0; font-size: 12px; font-weight: 600; color: {{ $accent }}">Rank {{ $row['rank'] }}</p>
+                                        <p class="flex items-center gap-1.5" style="margin: 0; font-size: 12px; font-weight: 600; color: var(--pb-soft)"><span class="flex items-center justify-center" style="width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; {{ $medal($row['rank']) }}">{{ $row['rank'] }}</span>Rank {{ $row['rank'] }}</p>
                                         <h3 style="margin: 1px 0 0; font-size: 16px; font-weight: 700">{{ $row['user']->displayName() }}</h3>
                                         @if ($row['user']->exclusive_from)
                                             <p style="margin: 2px 0 0; font-size: 12px; {{ $muted }}">Exclusive leads @if ($exclusive) · <a href="#exclusive" style="{{ $link }}">see the section</a>@endif</p>
@@ -908,7 +1207,7 @@
                                     <p style="margin: 0; font-size: 12px; font-weight: 600; {{ $muted }}">Gross sales</p>
                                     <p style="margin: 2px 0 8px; font-size: 26px; font-weight: 700">{{ $peso($row['gross']) }}</p>
                                     <div aria-hidden="true" style="height: 6px; border-radius: 999px; background: var(--pb-track)">
-                                        <div style="width: {{ round($row['share'] * 100, 1) }}%; height: 6px; border-radius: 999px; background: {{ $accent }}"></div>
+                                        <div style="width: {{ round($row['share'] * 100, 1) }}%; height: 6px; border-radius: 999px; background: {{ $crd }}"></div>
                                     </div>
                                     <p style="margin: 5px 0 0; font-size: 12px; {{ $muted }}">{{ number_format($row['share'] * 100, 1) }}% of team gross</p>
                                 </div>
@@ -918,8 +1217,8 @@
                                     <div>
                                         <div style="position: relative; height: 96px; margin: 18px 6px 0">
                                             <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible">
-                                                <path d="M{{ $craX(0) }},100 L{{ str_replace(' ', ' L', $craPoints) }} L{{ $craX($monthCount - 1) }},100 Z" style="fill: {{ $accent }}; opacity: .14"></path>
-                                                <polyline points="{{ $craPoints }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $accent }}; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round"></polyline>
+                                                <path d="M{{ $craX(0) }},100 L{{ str_replace(' ', ' L', $craPoints) }} L{{ $craX($monthCount - 1) }},100 Z" style="fill: {{ $crd }}; opacity: .14"></path>
+                                                <polyline points="{{ $craPoints }}" vector-effect="non-scaling-stroke" style="fill: none; stroke: {{ $crd }}; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round"></polyline>
                                             </svg>
                                             @foreach ($craFigures as $index => $figures)
                                                 @php
@@ -930,7 +1229,7 @@
                                                     $tipShift = $left < 25 ? '0' : ($left > 75 ? '-100%' : '-50%');
                                                 @endphp
                                                 <button type="button" data-cra-dot="{{ $index }}" class="pb-dot" style="left: {{ $left }}%; bottom: {{ $craY($figures['gross']) }}%" aria-label="{{ $monthName($months[$index]) }}: gross {{ $peso($figures['gross']) }}, {{ $number($figures['orders']) }} orders">
-                                                    <span aria-hidden="true" class="pb-dot-mark" style="background: {{ $isOpen ? 'var(--pb-solid)' : $accent }}; border-color: {{ $accent }}"></span>
+                                                    <span aria-hidden="true" class="pb-dot-mark" style="background: {{ $isOpen ? 'var(--pb-solid)' : $crd }}; border-color: {{ $crd }}"></span>
                                                     <span aria-hidden="true" class="pb-dot-tip" style="left: {{ $left < 25 ? '-4px' : ($left > 75 ? 'calc(100% + 4px)' : '50%') }}; transform: translateX({{ $tipShift }})">
                                                         <strong style="display: block; font-size: 12px">{{ $monthName($months[$index]) }} {{ \Carbon\CarbonImmutable::parse($months[$index]['key'].'-01')->format('Y') }}</strong>
                                                         <span style="display: block; margin-top: 1px; font-size: 15px; font-weight: 700">{{ $figures['gross'] > 0 ? $peso($figures['gross']) : 'No sales' }}</span>
@@ -964,6 +1263,24 @@
                         @endforeach
                     </div>
 
+                    @php
+                        $craGrid = collect($craPerformance['rows'])->map(fn (array $row) => [
+                            ...$gridRowOf($row['user']->displayName(), fn (string $key) => [
+                                'gross' => (float) ($craMonths[$key][$row['user']->id]['gross'] ?? 0),
+                                'orders' => (int) ($craMonths[$key][$row['user']->id]['orders'] ?? 0),
+                            ]),
+                            'rank' => $row['rank'],
+                        ])->all();
+                    @endphp
+                    @if (count($gridColumns) > 1 && $craGrid)
+                        <div class="flex flex-col gap-2" style="padding: 12px 16px 16px; border-top: 1px solid var(--pb-line)">
+                            <div class="flex flex-wrap items-baseline justify-between gap-2">
+                                <h3 style="margin: 0; font-size: 14px; font-weight: 700">CRAs by month, side by side</h3>
+                                <span style="font-size: 12px; {{ $muted }}">Gross sales per month · chips compare each month with the one before @if ($monthBefore)· {{ \Carbon\CarbonImmutable::parse($monthBefore.'-01')->format('M') }} shown for comparison @endif</span>
+                            </div>
+                            @include('presentation-board._by-month', ['gridRows' => $craGrid, 'gridFirst' => 'CRA'])
+                        </div>
+                    @endif
                     <div class="grid gap-x-6 gap-y-2" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); padding: 14px 16px; border-top: 1px solid var(--pb-line)">
                         <p style="{{ $note }}"><strong style="color: {{ $text }}">NI:</strong> the Daily I.S. CRA card's Net Income. Shows only when November or later is in the months picked.</p>
                         <p style="{{ $note }}"><strong style="color: {{ $text }}">Capacity a day:</strong> customers answered ÷ days they answered anyone (tracker contact dates + Pancake engagements).</p>
@@ -1127,19 +1444,78 @@
                                 </div>
                             </div>
                             <div aria-hidden="true" class="flex justify-between" style="font-size: 12px; font-weight: 600; {{ $muted }}"><span>{{ $periods[0]['label'] }}</span><span>{{ $periods[array_key_last($periods)]['label'] }}</span></div>
-                            <div class="overflow-auto" style="max-height: 300px; font-size: 13px; border-radius: 8px">
-                                <div style="{{ $columns }}; position: sticky; top: 0; background: var(--pb-solid); font-weight: 600; color: var(--pb-soft)">
-                                    <span class="text-left">{{ ['daily' => 'Day', 'weekly' => 'Week', 'monthly' => 'Month'][$period] }}</span><span>Leads</span>
-                                    @if ($team['added'])<span title="New customers (was Acquired leads)">New</span>@endif
-                                    <span title="Customers the rate is out of: {{ $team['boughtName'] }} ÷ Out of = Rate">Out of</span><span>{{ $team['boughtName'] }}</span><span>Rate</span><span>Churn %</span>
+                            @php
+                                $periodName = ['daily' => 'Day', 'weekly' => 'Week', 'monthly' => 'Month'][$period];
+                                // The latest day, week or month that has customers counted (a week still to come has none).
+                                $latestRow = collect($periods)->last(fn (array $row) => $row[$team['base']] > 0) ?? $periods[array_key_last($periods)];
+                                $tableHead = 'position: sticky; top: 0; z-index: 1; background: var(--pb-solid); padding: 6px 8px; font-weight: 600; text-align: right; vertical-align: bottom; color: var(--pb-soft); border-bottom: 1px solid var(--pb-line2)';
+                                $headNote = 'display: block; font-size: 10px; font-weight: 400; color: var(--pb-muted); white-space: normal';
+                                $tableCell = 'padding: 6px 8px; text-align: right; white-space: nowrap';
+                            @endphp
+                            {{-- Two questions, two tables: the first counts customers by the day they were counted (delivered, or given to a CRA from the tracker), the second by the day their supply ran out. --}}
+                            <div class="flex flex-col gap-1.5">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <strong style="font-size: 14px">{{ $team['id'] === 'fsd' ? 'Were FSD customers retained?' : 'Did CRD customers repeat?' }}</strong>
+                                    <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; background: {{ $team['tint'] }}; color: var(--pb-text)">{{ $team['id'] === 'fsd' ? 'Retained = first order through a CRA' : 'Repeat = 2+ orders through a CRA' }}</span>
                                 </div>
-                                @foreach ($periods as $row)
-                                    <div style="{{ $columns }}; {{ $rowLine }}">
-                                        <span class="text-left" style="font-weight: 600">{{ $row['label'] }}</span><span>{{ $number($row[$team['leads']]) }}@if ($row[$team['wait']])<br><span style="font-size: 11px; {{ $muted }}">+{{ $number($row[$team['wait']]) }}</span>@endif</span>
-                                        @if ($team['added'])<span>{{ $number($row['added']) }}</span>@endif
-                                        <span>{{ $number($row[$team['base']]) }}</span><span>{{ $number($row[$team['bought']]) }}</span><span>{{ $percent($row[$team['rate']]) }}</span><span>{{ $percent($row[$team['churn']]) }}<span style="{{ $small }}">{{ $number($row[$team['lost']]) }} of {{ $number($row[$team['due']]) }}</span></span>
-                                    </div>
-                                @endforeach
+                                <p style="margin: 0; font-size: 12px; color: var(--pb-soft)">{{ $latestRow['label'] }}: <strong>{{ $number($latestRow[$team['bought']]) }}</strong> of <strong>{{ $number($latestRow[$team['base']]) }}</strong> {{ $team['id'] === 'fsd' ? 'FSD customers were retained' : 'CRD customers repeated' }} ({{ $percent($latestRow[$team['rate']]) }}).</p>
+                                <div class="overflow-auto" style="max-height: 260px; border-radius: 8px">
+                                    <table style="width: 100%; min-width: 420px; border-collapse: collapse; font-size: 13px">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" style="{{ $tableHead }}; text-align: left">{{ $periodName }}</th>
+                                                <th scope="col" style="{{ $tableHead }}">Out of<span style="{{ $headNote }}">customers counted</span></th>
+                                                @if ($team['added'])
+                                                    <th scope="col" style="{{ $tableHead }}">New<span style="{{ $headNote }}">first order ever</span></th>
+                                                @endif
+                                                <th scope="col" style="{{ $tableHead }}">{{ $team['boughtName'] }}<span style="{{ $headNote }}">{{ $team['id'] === 'fsd' ? 'ordered via a CRA' : 'ordered via a CRA again' }}</span></th>
+                                                <th scope="col" style="{{ $tableHead }}">Rate<span style="{{ $headNote }}">{{ strtolower($team['boughtName']) }} ÷ out of</span></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($periods as $row)
+                                                <tr style="{{ $rowLine }}">
+                                                    <th scope="row" style="{{ $tableCell }}; text-align: left; font-weight: 600">{{ $row['label'] }}</th>
+                                                    <td style="{{ $tableCell }}">{{ $number($row[$team['base']]) }}</td>
+                                                    @if ($team['added'])
+                                                        <td style="{{ $tableCell }}">{{ $number($row['added']) }}</td>
+                                                    @endif
+                                                    <td style="{{ $tableCell }}">{{ $number($row[$team['bought']]) }}</td>
+                                                    <td style="{{ $tableCell }}"><span style="padding: 1px 8px; border-radius: 999px; font-weight: 700; background: {{ $team['tint'] }}">{{ $percent($row[$team['rate']]) }}</span></td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                <strong style="font-size: 14px">Did customers who ran out reorder?</strong>
+                                <div class="overflow-auto" style="max-height: 260px; border-radius: 8px">
+                                    <table style="width: 100%; min-width: 420px; border-collapse: collapse; font-size: 13px">
+                                        <thead>
+                                            <tr>
+                                                <th scope="col" style="{{ $tableHead }}; text-align: left">{{ $periodName }}</th>
+                                                <th scope="col" style="{{ $tableHead }}">Ran out<span style="{{ $headNote }}">due to reorder (leads)</span></th>
+                                                <th scope="col" style="{{ $tableHead }}">Churned<span style="{{ $headNote }}">reached, no order in 30 days</span></th>
+                                                <th scope="col" style="{{ $tableHead }}">Churn %<span style="{{ $headNote }}">churned ÷ due</span></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach ($periods as $row)
+                                                <tr style="{{ $rowLine }}">
+                                                    <th scope="row" style="{{ $tableCell }}; text-align: left; font-weight: 600">{{ $row['label'] }}</th>
+                                                    <td style="{{ $tableCell }}">{{ $number($row[$team['leads']]) }}@if ($row[$team['wait']])<span style="{{ $small }}">+{{ $number($row[$team['wait']]) }} waiting</span>@endif</td>
+                                                    @if ($row[$team['due']])
+                                                        <td style="{{ $tableCell }}">{{ $number($row[$team['lost']]) }}</td>
+                                                        <td style="{{ $tableCell }}"><span style="padding: 1px 8px; border-radius: 999px; font-weight: 700; background: var(--pb-bad-bg); color: var(--pb-bad)">{{ $percent($row[$team['churn']]) }}</span><span style="{{ $small }}">{{ $number($row[$team['lost']]) }} of {{ $number($row[$team['due']]) }}</span></td>
+                                                    @else
+                                                        <td colspan="2" style="{{ $tableCell }}; text-align: center; font-size: 12px; {{ $muted }}">Not tracked yet</td>
+                                                    @endif
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     @endforeach
@@ -1151,15 +1527,14 @@
                     $churnPeak = max(1, ...array_map(fn (array $month) => max($month['added'] + $month['added_waiting'], $month['all_lost'] + $month['all_reactivation']), $months));
                 @endphp
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
-                    <h2 id="churn-title" style="{{ $h2 }}">New customers vs churn</h2>
+                    <h2 id="churn-title" class="flex flex-wrap items-center gap-2.5" style="{{ $h2 }}">New customers vs churn <span title="New customers minus churned" style="padding: 3px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: {{ $totals['net'] < 0 ? 'var(--pb-bad-bg)' : 'var(--pb-good-bg)' }}; color: {{ $totals['net'] < 0 ? 'var(--pb-bad)' : $good }}">Customer growth {{ $signed($totals['net']) }}</span></h2>
                     <ul class="flex flex-wrap gap-3.5" style="margin: 0; padding: 0; list-style: none; font-size: 13px">
                         <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $added }}"></span>New customers {{ $number($totals['added']) }}</li>
                         @if ($totals['added_waiting'])
                             <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $addedTint }}"></span>New customers, waiting {{ $number($totals['added_waiting']) }}</li>
                         @endif
                         <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $lost }}"></span>Churned {{ $number($totals['all_lost']) }}</li>
-                        <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $reactivation }}"></span>For reactivation {{ $number($totals['all_reactivation']) }}</li>
-                        <li style="font-weight: 700">Net {{ $signed($totals['net']) }}</li>
+                        <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; background: {{ $reactivation }}"></span>Not reached yet {{ $number($totals['all_reactivation']) }}</li>
                     </ul>
                 </header>
                 <div class="flex flex-col gap-4" style="padding: 16px">
@@ -1177,7 +1552,7 @@
                                 </svg>
                                 <div class="flex flex-col gap-1">
                                     <h3 style="margin: 0; font-size: 14px; font-weight: 600">{{ $figures['name'] }} churn</h3>
-                                    <span style="font-size: 13px; {{ $muted }}"><a href="{{ $cardUrl('lost', $list) }}" style="{{ $link }}">{{ $number($figures['lost']) }}</a> of <a href="{{ $cardUrl('due', $list) }}" style="{{ $link }}">{{ $number($figures['due']) }}</a> due · <a href="{{ $cardUrl('back', $list) }}" style="{{ $link }}">{{ $number($figures['back']) }}</a> came back · <a href="{{ $cardUrl('reactivation', $list) }}" style="{{ $link }}">{{ $number($figures['reactivation']) }}</a> for reactivation</span>
+                                    <span style="font-size: 13px; {{ $muted }}"><a href="{{ $cardUrl('lost', $list) }}" style="{{ $link }}">{{ $number($figures['lost']) }}</a> of <a href="{{ $cardUrl('due', $list) }}" style="{{ $link }}">{{ $number($figures['due']) }}</a> due · <a href="{{ $cardUrl('back', $list) }}" style="{{ $link }}">{{ $number($figures['back']) }}</a> ordered in time · <a href="{{ $cardUrl('reactivation', $list) }}" style="{{ $link }}">{{ $number($figures['reactivation']) }}</a> not reached yet</span>
                                 </div>
                             </div>
                         @endforeach
@@ -1186,7 +1561,7 @@
                         <div data-chart class="flex gap-1" style="min-width: {{ max(560, 90 + $monthCount * 70) }}px; font-size: 13px">
                             <div style="width: 100px; flex: none; font-weight: 600; {{ $muted }}">
                                 <div style="height: 222px"></div>
-                                @foreach (['Month', 'New customers', 'Churned', 'Reactivation', 'Net'] as $label)
+                                @foreach (['Month', 'New customers', 'Churned', 'Not reached yet', 'Net'] as $label)
                                     <div style="height: 24px; line-height: 24px">{{ $label }}</div>
                                 @endforeach
                                 @foreach (['Churn %', 'FSD %', 'CRD %'] as $label)
@@ -1211,8 +1586,8 @@
                         </div>
                     </div>
                     <div class="flex flex-col gap-1">
-                        <p style="{{ $note }}">Above the line: new customers. Below: churned and for reactivation. Monthly numbers open exactly those customers. Card lists cover the whole range and show each customer once, so they can be shorter.</p>
-                        <p style="{{ $note }}"><strong style="color: {{ $text }}">Churned</strong>: a CRA reached them, 30 days passed, no order. <strong style="color: {{ $text }}">For reactivation</strong>: everyone else due, mostly not reached yet, not in the rate.</p>
+                        <p style="{{ $note }}">Above the line: new customers. Below: churned and not reached yet. Monthly numbers open exactly those customers. Card lists cover the whole range and show each customer once, so they can be shorter.</p>
+                        <p style="{{ $note }}"><strong style="color: {{ $text }}">Churned</strong>: a CRA reached them, 30 days passed, no order. <strong style="color: {{ $text }}">Not reached yet</strong> (was For reactivation): everyone else due, mostly not reached yet, not in the rate.</p>
                         @if ($hasPartial)
                             <p style="{{ $note }}">* Partial: tracker leads start in June. Rates above use {{ $totals['churn_label'] }} only.</p>
                         @endif
@@ -1223,7 +1598,7 @@
                 </div>
             </section>
 
-            <details id="counted" style="{{ $glass }}">
+            <details id="counted" open style="{{ $glass }}">
                 <summary class="flex cursor-pointer flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 style="{{ $h2 }}">How each number is counted</h2>
                     <span style="font-size: 13px; {{ $muted }}">Click to show or hide</span>
@@ -1236,8 +1611,11 @@
                         'Change chip' => 'The last month picked against the first month picked (Month by month has the same change for every figure): counts in %, rates in points (pts). A month still running is compared at its full-month pace (so far × days in the month ÷ days so far); rates never are.',
                         'Churned' => 'A CRA reached them (contact date, status or attempt), 30 days passed, no order since, not marked bought or Reserve.',
                         'Churn rate' => 'Churned ÷ due, for FSD, CRD and overall. Range totals, not an average of months. Overall counts a customer on both lists once.',
-                        'For reactivation' => 'Everyone else due with no order in time. Not in the rate.',
-                        'Retain, repeat, conversion' => "Same as each month's Dashboard tiles. Conversion from October only.",
+                        'Not reached yet (was For reactivation)' => 'Everyone else due with no order in time, mostly not reached by a CRA yet. Not in the rate.',
+                        'FSD retained' => 'An FSD customer whose first order was handled by a CRA. Retained % is out of the FSD customers counted (delivered, or FSD leads given from the tracker).',
+                        'CRD repeat' => "A CRA's customer who ordered through a CRA again (2+ CRA orders). Repeat % is out of the CRD customers counted.",
+                        'Retained, repeat, conversion' => "Same as each month's Dashboard tiles. Conversion from October only; combined also counts broadcast buyers.",
+                        'Side by side' => 'Every month picked as a column, each compared with the month before; ★ Best = the strongest month for that figure. Top products and CRAs also show the month before the range.',
                         'Conversion by lead type' => 'FSD leads = FSD leads who bought ÷ FSD leads given; CRD leads the same for CRD (together the Segmentation rate). Overall also counts broadcast buyers over engagements, as the Dashboard.',
                         'Sales' => "Every CRA's gross, as Conversion Breakdown. Shecom's amount per order, Pancake's until synced.",
                         'Segmentation vs Broadcast' => "The same sales split by each order's CRD - SEGMENTATION / CRD - BROADCAST tag (the CVR Tracker's Type of Order wins). Orders before the tags started aren't split. AOV = gross ÷ confirmed orders of that type.",

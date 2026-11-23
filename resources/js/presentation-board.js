@@ -48,6 +48,7 @@ export function initPresentationBoard() {
 
     initProductSort(board);
     initCraCompare(board);
+    initSideBySide(board);
 }
 
 /**
@@ -76,7 +77,9 @@ function initProductSort(board) {
         [...rows.querySelectorAll('[data-product]')]
             .sort((a, b) => (Number(b.dataset[by]) - Number(a.dataset[by])) || (Number(b.dataset.sales) - Number(a.dataset.sales)))
             .forEach((row, index) => {
-                row.querySelector('[data-rank]').textContent = index + 1;
+                const rank = row.querySelector('[data-rank]');
+                rank.textContent = index + 1;
+                rank.dataset.place = index + 1;
                 rows.insertBefore(row, others);
             });
     }));
@@ -106,4 +109,94 @@ function initCraCompare(board) {
             dot.addEventListener('blur', leave);
         });
     });
+}
+
+/**
+ * Side by side: "Every month" shows each month as a column; "Two months" shows the two months picked with the change
+ * between them, worked out from the figures the page carries (data-side-data). Chip colours follow the theme.
+ */
+function initSideBySide(board) {
+    const section = board.querySelector('[data-side-by-side]');
+
+    if (!section) {
+        return;
+    }
+
+    const data = JSON.parse(section.querySelector('[data-side-data]').textContent);
+    const pickA = section.querySelector('[data-side-a]');
+    const pickB = section.querySelector('[data-side-b]');
+    const rows = section.querySelector('[data-side-rows]');
+
+    const cell = (tag, text, style = '') => {
+        const element = document.createElement(tag);
+        element.textContent = text;
+        element.style.cssText = style;
+
+        return element;
+    };
+
+    const change = (figure, before, now) => {
+        if (before === null || now === null || (!figure.rate && !before)) {
+            return { text: '—', style: 'color: var(--pb-muted)' };
+        }
+
+        const amount = figure.rate ? (now - before) * 100 : (now - before) / Math.abs(before) * 100;
+        const up = amount > 0.05;
+        const down = amount < -0.05;
+        const good = !figure.neutral && (figure.lower ? down : up);
+        const bad = !figure.neutral && (figure.lower ? up : down);
+        const colours = good ? 'background: var(--pb-good-bg); color: var(--pb-good)' : (bad ? 'background: var(--pb-bad-bg); color: var(--pb-bad)' : 'background: var(--pb-chip); color: var(--pb-soft)');
+
+        return {
+            text: `${up ? '▲ +' : (down ? '▼ −' : '')}${Math.abs(amount).toFixed(1)}${figure.rate ? ' pts' : '%'}`,
+            style: `display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; ${colours}`,
+        };
+    };
+
+    const render = () => {
+        const a = Number(pickA.value);
+        const b = Number(pickB.value);
+        section.querySelector('[data-side-a-name]').textContent = data.months[a];
+        section.querySelector('[data-side-b-name]').textContent = data.months[b];
+        rows.replaceChildren();
+
+        data.figures.forEach((figure) => {
+            const row = document.createElement('tr');
+
+            if (figure.group) {
+                const heading = cell('th', figure.group, 'text-align: left; padding: 12px 10px 4px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--pb-muted)');
+                heading.colSpan = 4;
+                heading.scope = 'colgroup';
+                row.append(heading);
+            } else {
+                const before = figure.cells[a];
+                const now = figure.cells[b];
+                const chip = change(figure, before.value, now.value);
+                const changeCell = cell('td', '', 'padding: 8px 10px; text-align: right');
+                changeCell.append(cell('span', chip.text, chip.style));
+                row.style.borderBottom = '1px solid var(--pb-row)';
+                row.append(
+                    cell('th', figure.label, 'text-align: left; padding: 8px 10px; font-weight: 600'),
+                    cell('td', before.text ?? (figure.later ? 'Not tracked yet' : '—'), 'padding: 8px 10px; text-align: right; color: var(--pb-soft)'),
+                    cell('td', now.text ?? (figure.later ? 'Not tracked yet' : '—'), 'padding: 8px 10px; text-align: right; font-weight: 700'),
+                    changeCell,
+                );
+                row.firstChild.scope = 'row';
+            }
+
+            rows.append(row);
+        });
+    };
+
+    section.querySelectorAll('[data-side-mode]').forEach((button) => button.addEventListener('click', () => {
+        const mode = button.dataset.sideMode;
+        section.querySelectorAll('[data-side-mode]').forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        section.querySelectorAll('[data-side-view]').forEach((view) => {
+            view.hidden = view.dataset.sideView !== mode;
+        });
+        section.querySelector('[data-side-pick]').hidden = mode !== 'two';
+    }));
+    pickA.addEventListener('change', render);
+    pickB.addEventListener('change', render);
+    render();
 }
