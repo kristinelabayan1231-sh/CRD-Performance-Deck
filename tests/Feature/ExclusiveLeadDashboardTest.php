@@ -184,16 +184,16 @@ class ExclusiveLeadDashboardTest extends TestCase
             ->assertSee('<input type="hidden" name="full" value="1">', false);
     }
 
-    public function test_repeat_retained_and_orders_count_only_customers_on_the_cras_list(): void
+    public function test_repeat_retained_and_orders_match_her_exclusive_orders_in_the_cvr_tracker(): void
     {
-        $bought = ['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-11-06'];
-        $repeat = $this->listed($this->joanna, 'Ana Repeat', '2026-11-06', $bought);
-        $this->listed($this->joanna, 'Bea Retained', '2026-11-06', ['lead_type' => Lead::TYPE_FSD, ...$bought]);
-        // Bought today but on an earlier list only, or on no list at all: left out of today.
-        $this->listed($this->joanna, 'Cora Earlier List', '2026-11-05', $bought);
-        $notListed = Lead::create([
+        $ana = $this->listed($this->joanna, 'Ana Repeat', '2026-11-06');
+        $bea = $this->listed($this->joanna, 'Bea Retained', '2026-11-06', ['lead_type' => Lead::TYPE_FSD]);
+        // On an earlier list only, ordering today: still her exclusive customer.
+        $cora = $this->listed($this->joanna, 'Cora Earlier List', '2026-11-05');
+        // A POS-sale lead of hers on no list: a Normal order, left out.
+        $dina = Lead::create([
             'order_id' => 'POS-77', 'customer_name' => 'Dina Not Listed', 'phone_number' => '09170000077', 'product_name' => 'ClearSight',
-            'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-01', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $this->joanna->id, 'listed_on' => '2026-11-06', ...$bought,
+            'qty' => 1, 'delivered_date' => '2026-09-01', 'consumption_days' => 30, 'est_out_of_stock_date' => '2026-10-01', 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $this->joanna->id, 'listed_on' => '2026-11-06',
         ]);
         $seller = PancakeEngagement::staffKey($this->joanna->pancake_name);
         $order = fn (string $id, Lead $lead, int $status, float $total) => PancakeOrder::create([
@@ -201,20 +201,15 @@ class ExclusiveLeadDashboardTest extends TestCase
             'phone_key' => substr(preg_replace('/\D/', '', $lead->phone_number), -10), 'conversion_type' => PancakeOrder::SEGMENTATION,
             'items' => [['name' => 'ClearSight', 'qty' => 1]],
         ]);
-        $order('1', $repeat, 1, 1200);
-        $order('2', $repeat, 6, 900);
-        $order('3', $notListed, 1, 5000);
-
-        $exclusive = app(ExclusiveLeads::class);
-        $today = CarbonImmutable::parse('2026-11-06');
-
-        $this->assertSame(['repeat' => 1, 'retained' => 1], $exclusive->repeatsBetween($this->joanna, $today, $today));
-        $this->assertSame(['repeat' => 2, 'retained' => 1], $exclusive->repeatsBetween($this->joanna, $today->startOfMonth(), $today));
-        // The canceled order and the customer not on the list stay out.
-        $this->assertSame(['orders' => 1, 'gross' => 1200.0], $exclusive->ordersBetween($this->joanna, $today, $today));
+        $order('1', $ana, 1, 1200);
+        $order('2', $ana, 6, 900);
+        $order('3', $bea, 1, 500);
+        $order('4', $cora, 1, 700);
+        $order('5', $dina, 1, 5000);
 
         $this->actingAs($this->user(Role::CRA_SUPERVISOR, 'Supervisor'))->get(route('exclusive-leads.dashboard', ['period' => 'today']))
             ->assertOk()
-            ->assertSeeTextInOrder(['Repeat', '1', 'Retained', '1', 'Confirmed orders', '1', 'Gross sales', '₱1,200']);
+            // The canceled order is in gross only, as in the CVR Tracker.
+            ->assertSeeTextInOrder(['Repeat', '2', 'Retained', '1', 'Confirmed orders', '3', 'Gross sales', '₱3,300']);
     }
 }
