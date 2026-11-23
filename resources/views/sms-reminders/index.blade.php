@@ -100,7 +100,7 @@
                         @if ($cra && ! \App\Services\SmsSender::linkFor($cra))
                             <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone link isn't set in Settings → Call Recordings.</p>
                         @elseif (! $phoneReady)
-                            <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone isn't set up for texts yet: send a test text from Settings → SMS Reminders. Their texts wait here until it is.</p>
+                            <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone isn't ready for texts yet: mark it ready in Settings → SMS Reminders once it sends a test text. Their texts wait here until then.</p>
                         @endif
                     </div>
                 @else

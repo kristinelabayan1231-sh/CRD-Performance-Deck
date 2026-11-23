@@ -60,6 +60,11 @@ class SmsRemindersTest extends TestCase
         return $cra;
     }
 
+    private function owner(): User
+    {
+        return User::firstOrCreate(['email' => config('access.super_admin_email')], ['role_id' => Role::superAdmin()->id, 'is_active' => true]);
+    }
+
     private function supervisor(): User
     {
         return User::create(['email' => 'sup@example.com', 'display_name' => 'Sup', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
@@ -598,5 +603,35 @@ class SmsRemindersTest extends TestCase
         $carried->update(['status' => RestockReminder::PENDING, 'handed_at' => null]);
         $this->travelTo(CarbonImmutable::parse('2026-11-28 08:00', 'Asia/Manila'));
         $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertDontSee($carried->customer_name);
+    }
+
+    public function test_a_phone_marked_ready_by_hand_sends_without_the_confirm_step(): void
+    {
+        $this->turnOn();
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
+        $regina = $this->cra('Regina', 'https://trigger.macrodroid.com/device-4/call');
+        $regina->forceFill(['sms_confirmed_at' => null])->save();
+        $phoneKey = $this->delivered('09170000001', cra: $regina);
+        $this->artisan('reminders:build');
+
+        // Only Settings → SMS Reminders managers mark a phone ready.
+        $this->actingAs($regina)->patch(route('settings.sms-reminders.ready', $regina), ['ready' => 1])->assertForbidden();
+        $this->actingAs($this->owner())->patch(route('settings.sms-reminders.ready', $regina), ['ready' => 1])->assertRedirect();
+        $this->assertNotNull($regina->fresh()->sms_confirmed_at);
+
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->artisan('reminders:send');
+
+        // Sent once the phone takes it, as before the confirm step; never failed for a missing confirmation.
+        $reminder = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $this->assertSame(RestockReminder::SENT, $reminder->status);
+        $this->travel(20)->minutes();
+        $this->artisan('reminders:send');
+        $this->assertSame(RestockReminder::SENT, $reminder->fresh()->status);
+
+        // Marked not ready again: nothing goes to it.
+        $this->actingAs($this->owner())->patch(route('settings.sms-reminders.ready', $regina), ['ready' => 0]);
+        $this->assertNull($regina->fresh()->sms_confirmed_at);
     }
 }
