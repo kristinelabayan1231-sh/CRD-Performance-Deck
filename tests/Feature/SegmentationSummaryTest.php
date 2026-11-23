@@ -6,6 +6,7 @@ use App\Models\Lead;
 use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -119,6 +120,23 @@ class SegmentationSummaryTest extends TestCase
         // Supervisors open it from Product Performance.
         $supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
         $this->actingAs($supervisor)->get(route('product-performance.segmentation-summary'))->assertOk();
+    }
+
+    public function test_with_a_working_date_it_follows_the_real_date_and_shows_the_leads_handled_on_it(): void
+    {
+        // Saved on Oct 5 with start Sept 6: a 30-day gap, so real Oct 5 works lead day Sept 5.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-09-06'));
+        $this->lead($this->alice, 'CanPro', [], '2026-09-01');
+        $this->lead($this->alice, 'CanPro', [], '2026-09-05');
+        $this->lead($this->alice, 'CanPro', [], '2026-10-03');  // lead day not worked yet
+
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk()
+            ->assertViewHas('filters', fn (array $filters) => $filters['month'] === '2026-10')
+            ->assertViewHas('summary', fn (array $s) => $s['leads'] === 2)
+            ->assertSeeText('Oct 1–Oct 5, 2026 (lead days Sep 1–5)');
+
+        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['date' => '2026-10-05']))
+            ->assertViewHas('summary', fn (array $s) => $s['leads'] === 1);
     }
 
     public function test_a_cra_sees_only_their_own_leads(): void

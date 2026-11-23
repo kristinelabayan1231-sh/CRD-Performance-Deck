@@ -38,7 +38,7 @@
 <x-layouts.app title="Segmentation Summary">
     <div class="mb-4">@include('product-performance._tabs')</div>
 
-    <h1 class="mb-4 text-xl font-semibold">Product Performance <span class="text-sm font-normal text-muted">· Segmentation Tracker leads, {{ $period }}</span></h1>
+    <h1 class="mb-4 text-xl font-semibold">Product Performance <span class="text-sm font-normal text-muted">· Segmentation Tracker leads, {{ $period }}@if ($leadDays) <span title="The leads handled on these days come from these lead days (est. out of stock).">(lead days {{ $leadDays }})</span>@endif</span></h1>
 
     {{-- Filters: CRA, type, product on the left; month and day on the right --}}
     <form method="GET" action="{{ route('product-performance.segmentation-summary') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
@@ -323,7 +323,7 @@
         <details class="mt-4 rounded-xl bg-white p-4 text-sm shadow-sm">
             <summary class="cursor-pointer font-semibold">How the numbers are worked out</summary>
             <dl class="mt-3 grid gap-x-6 gap-y-2 text-muted sm:grid-cols-2">
-                <div><dt class="font-semibold text-ink">Leads</dt><dd>Segmentation Tracker leads whose lead day (est. out of stock) is in the month picked, up to today's lead day, or the one day picked.</dd></div>
+                <div><dt class="font-semibold text-ink">Leads</dt><dd>Segmentation Tracker leads handled in the month picked (up to today), or on the one day picked: the leads of the lead days (est. out of stock) paired with those days in Settings → Working Date.</dd></div>
                 <div><dt class="font-semibold text-ink">Catered / Pending</dt><dd>Catered = a status, a date of contact, or marked catered. Pending = none of these yet.</dd></div>
                 <div><dt class="font-semibold text-ink">Converted</dt><dd>Repeat Purchase Yes, or Repeat Purchase No with feedback PURCHASED.</dd></div>
                 <div><dt class="font-semibold text-ink">Customer's Feedback</dt><dd>Every Customer's Feedback choice ticked, so a lead with two choices counts in both; By product splits them by the lead's product. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: the notes of its leads grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, other) and every note.</dd></div>
