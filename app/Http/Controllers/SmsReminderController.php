@@ -34,7 +34,7 @@ class SmsReminderController extends Controller
         $filters = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'integer'],
-            'status' => ['nullable', Rule::in(['send', 'sent', 'out'])],
+            'status' => ['nullable', Rule::in(['send', 'follow', 'sent', 'out'])],
         ]);
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString());
         $cras = LeadGenerator::cras();
@@ -47,12 +47,17 @@ class SmsReminderController extends Controller
 
         $rows = (clone $base)
             ->when(($filters['status'] ?? null) === 'send', fn (Builder $query) => $query->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED]))
+            ->when(($filters['status'] ?? null) === 'follow', fn (Builder $query) => $query->where('kind', RestockReminder::FOLLOW_UP))
             ->when(($filters['status'] ?? null) === 'sent', fn (Builder $query) => $query->where('status', RestockReminder::SENT))
             ->when(($filters['status'] ?? null) === 'out', fn (Builder $query) => $query->whereIn('status', [RestockReminder::EXCLUDED, RestockReminder::SKIPPED, RestockReminder::FAILED]))
-            ->with('cra')->withCount('manualMessages')->withMax('manualMessages', 'sent_at')
+            ->with(['cra', 'scheduler'])->withCount('manualMessages')->withMax('manualMessages', 'sent_at')
             ->orderByRaw("case status when 'queued' then 0 when 'pending' then 1 when 'failed' then 2 when 'sent' then 3 when 'excluded' then 4 else 5 end")
             ->orderBy('customer_name')
             ->paginate(100)->withQueryString();
+
+        // Each customer's last text before this day.
+        $lastTexted = RestockReminder::whereIn('phone_key', $rows->getCollection()->pluck('phone_key'))->where('status', RestockReminder::SENT)
+            ->whereDate('remind_on', '<', $day->toDateString())->selectRaw('phone_key, max(sent_at) as last')->groupBy('phone_key')->pluck('last', 'phone_key');
 
         $rows->getCollection()->each(function (RestockReminder $reminder) use ($reminders) {
             $reminder->preview = $reminder->message ?? $reminders->messageFor($reminder);
@@ -71,6 +76,7 @@ class SmsReminderController extends Controller
             'craId' => $craId,
             'cra' => $craForActions,
             'rows' => $rows,
+            'lastTexted' => $lastTexted,
             'counts' => [
                 'toSend' => (int) (($counts[RestockReminder::PENDING] ?? 0) + ($counts[RestockReminder::QUEUED] ?? 0)),
                 'queued' => (int) ($counts[RestockReminder::QUEUED] ?? 0),
@@ -79,6 +85,7 @@ class SmsReminderController extends Controller
                 'skipped' => (int) ($counts[RestockReminder::SKIPPED] ?? 0),
                 'failed' => (int) ($counts[RestockReminder::FAILED] ?? 0),
                 'all' => (int) $counts->sum(),
+                'followUps' => (clone $base)->where('kind', RestockReminder::FOLLOW_UP)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])->count(),
             ],
             'replies' => SmsReply::whereNull('handled_at')->where('kind', '!=', SmsReply::STOP)
                 ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))->count(),
@@ -204,7 +211,7 @@ class SmsReminderController extends Controller
 
     /**
      * A follow-up text typed by hand, sent right away from the customer's CRA's phone (so replies come back to them).
-     * Allowed outside the sending windows (manual_hours), counted against the phone's daily cap, never to a number on
+     * Allowed outside the sending windows (manual_hours), not counted against the phone's daily cap, never to a number on
      * the do-not-text list.
      */
     public function text(Request $request, RestockReminder $restockReminder, SmsSender $sender): RedirectResponse
@@ -220,7 +227,6 @@ class SmsReminderController extends Controller
             DoNotText::has($restockReminder->phone_key) => 'This customer asked not to be texted.',
             ! SmsSettings::withinManualHours() => 'Texts can be sent between '.CarbonImmutable::createFromFormat('H:i', $hours['from'])->format('g:i A')
                 .' and '.CarbonImmutable::createFromFormat('H:i', $hours['until'])->format('g:i A').'.',
-            SmsSettings::sentToday($cra->id) >= SmsSettings::dailyCap() => "{$cra->displayName()}'s phone already sent today's limit of ".SmsSettings::dailyCap().' texts.',
             default => null,
         };
 

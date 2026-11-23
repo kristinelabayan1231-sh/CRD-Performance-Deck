@@ -143,7 +143,8 @@ class SmsRemindersTest extends TestCase
         Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);
         $this->delivered('09170000001', product: 'Sinuxyl');
-        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl');
+        // Restocked with 2 pcs: that order runs out Dec 17, outside the week, so only Clear Sight is texted.
+        $this->delivered('09170000001', '2026-11-18', 'Sinuxyl', qty: 2);
 
         $this->artisan('reminders:build');
 
@@ -370,8 +371,9 @@ class SmsRemindersTest extends TestCase
         $supervisor = $this->supervisor();
 
         $this->actingAs($supervisor)->get(route('sms-reminders.index'))->assertOk()->assertSee('Maria Santos 1')->assertSee('Maria Santos 2');
-        $this->actingAs($supervisor)->get(route('sms-reminders.replies.index'))->assertOk()->assertSee('Magkano po?');
-        $this->actingAs($this->mika)->get(route('sms-reminders.replies.index'))->assertOk()->assertDontSee('Magkano po?');
+        $this->actingAs($supervisor)->get(route('sms-reminders.replies.index'))->assertRedirect(route('sms-reminders.conversations.index', ['show' => 'reply']));
+        $this->actingAs($supervisor)->get(route('sms-reminders.conversations.index'))->assertOk()->assertSee('Magkano po?');
+        $this->actingAs($this->mika)->get(route('sms-reminders.conversations.index'))->assertOk()->assertDontSee('Magkano po?');
     }
 
     private function reply(User $cra, string $phone, string $kind, string $body, bool $handled = false): SmsReply
@@ -393,7 +395,7 @@ class SmsRemindersTest extends TestCase
 
         $this->actingAs($this->anna)->get(route('dashboard'))->assertSee('1 customer wants to reorder');
         $this->actingAs($this->anna)->getJson(route('sms-reminders.reorder-alerts'))->assertOk()->assertJson(['count' => 1]);
-        $this->actingAs($this->anna)->get(route('sms-reminders.replies.index', ['show' => 'reorder']))
+        $this->actingAs($this->anna)->get(route('sms-reminders.conversations.index', ['show' => 'reorder']))
             ->assertOk()->assertSee('Maria Santos 1')->assertDontSee('Maria Santos 2')->assertDontSee('Magkano po?')->assertDontSee('Maria Santos 4');
     }
 
@@ -427,7 +429,8 @@ class SmsRemindersTest extends TestCase
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK)
             && $request['number'] === '09170000001' && $request['message'] === 'Hi Maria, may stock pa po ba kayo?');
         $this->assertDatabaseHas('sms_messages', ['restock_reminder_id' => $reminder->id, 'phone_user_id' => $this->anna->id]);
-        $this->assertSame(1, SmsSettings::sentToday($this->anna->id));
+        // Typed texts are replies: not counted in the phone's daily limit.
+        $this->assertSame(0, SmsSettings::sentToday($this->anna->id));
 
         // A reply to it is saved, though the reminder itself wasn't sent.
         $this->withToken($this->anna->issueRecordingToken())->postJson(route('api.sms-replies.store'), ['number' => '09170000001', 'message' => 'Yes'])->assertCreated();

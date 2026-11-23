@@ -4,14 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\CallRecording;
 use App\Models\SmsReply;
-use App\Services\LeadGenerator;
 use App\Services\PhoneDialer;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use Illuminate\View\View;
 
 /**
  * SMS Reminders → Replies: texts customers sent back to the CRAs' phones. YES = wants to reorder (the CRA calls them
@@ -19,33 +15,6 @@ use Illuminate\View\View;
  */
 class SmsReplyController extends Controller
 {
-    public function index(Request $request): View
-    {
-        $user = $request->user();
-        $filters = $request->validate([
-            'cra' => ['nullable', 'integer'],
-            'show' => ['nullable', Rule::in(['reorder', 'open', 'all'])],
-        ]);
-        $craId = $user->can('sms_reminders.view_all') ? ($filters['cra'] ?? null) : $user->id;
-        $show = $filters['show'] ?? 'open';
-
-        $replies = SmsReply::with(['cra', 'reminder', 'handler'])
-            ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))
-            ->when($show === 'reorder', fn (Builder $query) => $query->wantsToReorder())
-            ->when($show === 'open', fn (Builder $query) => $query->whereNull('handled_at')->where('kind', '!=', SmsReply::STOP))
-            ->latest('received_at')->latest('id')
-            ->paginate(50)->withQueryString();
-
-        return view('sms-reminders.replies', [
-            'replies' => $replies,
-            'show' => $show,
-            'craId' => $craId,
-            'cras' => LeadGenerator::cras(),
-            'reorderCount' => SmsReply::wantsToReorder()->when($craId, fn (Builder $query) => $query->where('user_id', $craId))->count(),
-            'canDial' => (bool) $user->call_webhook_url,
-        ]);
-    }
-
     public function handle(Request $request, SmsReply $smsReply): RedirectResponse
     {
         $this->authorizeReply($request, $smsReply);

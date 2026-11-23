@@ -57,6 +57,9 @@ return [
     // Used when no template fits.
     'default_body' => 'Hi {first_name}! Malapit na maubos ang {product} mo (~{run_out_date}). Reply YES para ma-reserve ang restock mo, o tatawagan ka ni {cra_name}.',
 
+    // A follow-up's text when the CRA has no follow-up template that fits.
+    'follow_up_body' => 'Hi {first_name}, kumusta po ang {product} mo? Kung paubos na, pwede po namin i-reserve ang next order mo. Reply YES o tatawagan ka ni {cra_name}.',
+
     // Added to every text that doesn't already say it.
     'opt_out_line' => 'Reply STOP to opt out.',
 

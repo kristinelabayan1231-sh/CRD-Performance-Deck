@@ -10,8 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A CRA's own text for a product and/or customer type (blank = any); one CRA's templates never change another's. A
  * reminder template is sent automatically for its CRA's customers: a customer gets the most specific active one of
  * their CRA's that fits (product + type, then product, then type, then any; RestockReminders::templateFor), else the
- * built-in default. Every active template of the CRA, follow-up ones too, can be picked for a follow-up typed by hand
- * (the Text button); a follow-up template is never sent automatically.
+ * built-in default. A follow-up template is used the same way for their follow-up texts (sms_reminders.follow_up_body
+ * when none fits), and the CRA can pick one when scheduling a follow-up. Every active template can be picked for a text
+ * typed by hand (the Text button, Conversations).
  */
 #[Fillable(['user_id', 'name', 'purpose', 'product_id', 'customer_type', 'body', 'is_active', 'updated_by'])]
 class SmsTemplate extends Model
@@ -23,7 +24,7 @@ class SmsTemplate extends Model
     /** Purpose => label. */
     public const PURPOSES = [
         self::REMINDER => 'Restock reminder (sent automatically)',
-        self::FOLLOW_UP => 'Follow-up (Text button only)',
+        self::FOLLOW_UP => 'Follow-up (follow-up texts and the Text button)',
     ];
 
     protected $attributes = [

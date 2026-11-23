@@ -62,6 +62,8 @@ use App\Http\Controllers\SegmentationController;
 use App\Http\Controllers\SegmentationOptionController;
 use App\Http\Controllers\SegmentationProductivityController;
 use App\Http\Controllers\SegmentationSummaryController;
+use App\Http\Controllers\SmsConversationController;
+use App\Http\Controllers\SmsFollowUpController;
 use App\Http\Controllers\SmsReminderController;
 use App\Http\Controllers\SmsReminderSettingController;
 use App\Http\Controllers\SmsReplyController;
@@ -73,6 +75,7 @@ use App\Http\Controllers\WorkingDateController;
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Models\Role;
 use App\Support\SettingsTabs;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // Public: linked from the Google sign-in (consent) screen.
@@ -175,7 +178,23 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
         Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
-        Route::get('/replies', [SmsReplyController::class, 'index'])->name('replies.index');
+        // Replies moved into Conversations; old links (and the YES alert) still land there.
+        Route::get('/replies', fn (Request $request) => redirect()->route('sms-reminders.conversations.index', array_filter([
+            'show' => $request->query('show') === 'reorder' ? 'reorder' : 'reply', 'cra' => $request->query('cra'),
+        ])))->name('replies.index');
+        Route::get('/conversations', [SmsConversationController::class, 'index'])->name('conversations.index');
+        Route::prefix('/conversations/{phoneKey}')->name('conversations.')->where(['phoneKey' => '[0-9]+'])->group(function () {
+            Route::post('/text', [SmsConversationController::class, 'text'])->middleware('throttle:30,1')->name('text');
+            Route::post('/reordered', [SmsConversationController::class, 'reordered'])->name('reordered');
+            Route::post('/answered', [SmsConversationController::class, 'answered'])->name('answered');
+            Route::post('/call', [SmsConversationController::class, 'call'])->middleware('throttle:20,1')->name('call');
+        });
+        Route::patch('/conversations/reason/{restockReminder}', [SmsConversationController::class, 'reason'])->name('conversations.reason');
+        Route::get('/follow-ups', [SmsFollowUpController::class, 'index'])->name('follow-ups.index');
+        Route::post('/follow-ups/customer/{phoneKey}', [SmsFollowUpController::class, 'store'])->where(['phoneKey' => '[0-9]+'])->name('follow-ups.store');
+        Route::patch('/follow-ups/{restockReminder}', [SmsFollowUpController::class, 'update'])->name('follow-ups.update');
+        Route::delete('/follow-ups/{restockReminder}', [SmsFollowUpController::class, 'destroy'])->name('follow-ups.destroy');
+        Route::get('/no-response', [SmsFollowUpController::class, 'noResponse'])->name('no-response');
         Route::patch('/replies/{smsReply}', [SmsReplyController::class, 'handle'])->name('replies.handle');
         Route::post('/replies/{smsReply}/call', [SmsReplyController::class, 'call'])->middleware('throttle:20,1')->name('replies.call');
         Route::get('/reorder-alerts', [SmsReplyController::class, 'alerts'])->middleware('throttle:30,1')->name('reorder-alerts');

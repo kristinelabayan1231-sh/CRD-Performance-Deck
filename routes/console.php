@@ -200,6 +200,14 @@ Schedule::command('reminders:build')
     ->withoutOverlapping(30)
     ->runInBackground();
 
+// SMS follow-ups: at 9 PM, customers texted today who haven't reordered get a follow-up 7 days later (up to 3), then go
+// on No response.
+Schedule::command('reminders:follow-up')
+    ->dailyAt('21:00')
+    ->timezone(config('segmentation.timezone'))
+    ->withoutOverlapping(30)
+    ->runInBackground();
+
 // SMS Reminders queue: every minute each CRA's phone sends its next queued text (one a minute keeps under Android's
 // "allow sending?" prompt), only in sending hours and while Settings → SMS Reminders is on.
 Schedule::command('reminders:send')
