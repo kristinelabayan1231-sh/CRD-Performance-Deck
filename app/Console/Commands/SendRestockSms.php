@@ -26,31 +26,38 @@ class SendRestockSms extends Command
         $now = SmsSettings::now();
         $today = WorkingDate::realToday()->toDateString();
 
-        // Automatic sending: from the send time, today's ticked customers of CRAs who turned it on.
+        // Automatic sending: from the send time, the ticked customers still to send today (earlier days' carried over) of
+        // CRAs who turned it on.
         if ($now->format('H:i') >= SmsSettings::sendTime()) {
-            $autoCras = User::where('sms_auto_send', true)->where('is_active', true)->pluck('id');
-            RestockReminder::whereDate('remind_on', $today)->where('status', RestockReminder::PENDING)->whereIn('user_id', $autoCras)
+            // Only phones that have confirmed a text went out (SmsSender::NOT_READY).
+            $autoCras = User::where('sms_auto_send', true)->where('is_active', true)->whereNotNull('sms_confirmed_at')->pluck('id');
+            RestockReminder::toSendOn(WorkingDate::realToday())->where('status', RestockReminder::PENDING)->whereIn('user_id', $autoCras)
                 ->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
         }
 
-        // Texts a phone couldn't send in time are dropped rather than sent late.
-        RestockReminder::where('status', RestockReminder::QUEUED)
-            ->whereDate('remind_on', '<', WorkingDate::realToday()->subDays(config('sms_reminders.stale_after_days'))->toDateString())
-            ->update(['status' => RestockReminder::FAILED, 'error' => 'Not sent in time']);
+        // Texts a phone couldn't send before the product ran out are dropped rather than sent late.
+        RestockReminder::where('status', RestockReminder::QUEUED)->whereDate('run_out_on', '<', $today)
+            ->update(['status' => RestockReminder::FAILED, 'error' => 'Not sent before the product ran out']);
+
+        // Handed to the phone but never confirmed as sent: the macro isn't set up to confirm, or the SMS failed on the phone.
+        RestockReminder::where('status', RestockReminder::QUEUED)->whereNotNull('handed_at')
+            ->where('handed_at', '<', now()->subMinutes(config('sms_reminders.confirm_minutes')))
+            ->update(['status' => RestockReminder::FAILED, 'error' => 'The phone didn\'t confirm the text went out: check the "Send reminder" macro ends with the HTTP request in Settings → SMS Reminders.']);
 
         if (! SmsSettings::withinSendingHours($now)) {
             return self::SUCCESS;
         }
 
-        $craIds = RestockReminder::where('status', RestockReminder::QUEUED)->whereNotNull('user_id')->distinct()->pluck('user_id');
+        $craIds = RestockReminder::where('status', RestockReminder::QUEUED)->whereNull('handed_at')->whereNotNull('user_id')->distinct()->pluck('user_id');
         $sent = 0;
 
-        foreach (User::whereIn('id', $craIds)->get() as $cra) {
+        // A disabled CRA's phone never sends; their texts go to the customer's new CRA (DisabledCraHandover).
+        foreach (User::whereIn('id', $craIds)->where('is_active', true)->get() as $cra) {
             if (SmsSettings::sentToday($cra->id) >= SmsSettings::dailyCap()) {
                 continue;
             }
 
-            $reminder = RestockReminder::where('user_id', $cra->id)->where('status', RestockReminder::QUEUED)
+            $reminder = RestockReminder::where('user_id', $cra->id)->where('status', RestockReminder::QUEUED)->whereNull('handed_at')
                 ->where(fn ($query) => $query->whereNull('next_attempt_at')->orWhere('next_attempt_at', '<=', now()))
                 ->orderBy('queued_at')->orderBy('id')
                 ->first();
@@ -66,12 +73,15 @@ class SendRestockSms extends Command
             }
 
             $message = $reminders->messageFor($reminder, $cra);
-            $result = $sender->send($cra, $reminder->phone_number, $message);
+            $result = $sender->send($cra, $reminder->phone_number, $message, (string) $reminder->id);
             $attempts = $reminder->attempts + 1;
 
             $reminder->update(match (true) {
-                $result === SmsSender::SENT => ['status' => RestockReminder::SENT, 'sent_at' => now(), 'message' => $message,
+                // Sent once the phone confirms it (POST /api/sms-sent); until then it stays Sending….
+                $result === SmsSender::SENT => ['handed_at' => now(), 'message' => $message,
                     'sms_template_id' => $reminders->templateFor($reminder)?->id, 'attempts' => $attempts, 'error' => null],
+                // Not set up for texts: back to "to send", kept until the phone is ready or the product runs out.
+                $result === SmsSender::NOT_READY => ['status' => RestockReminder::PENDING, 'queued_at' => null, 'error' => SmsSender::explain($result)],
                 $result === SmsSender::NO_ANSWER && $attempts < config('sms_reminders.max_attempts') => [
                     'attempts' => $attempts, 'next_attempt_at' => now()->addMinutes(config('sms_reminders.retry_minutes')),
                     'error' => SmsSender::explain($result)],
@@ -81,7 +91,7 @@ class SendRestockSms extends Command
         }
 
         if ($sent > 0) {
-            $this->info("Sent {$sent} restock texts.");
+            $this->info("Handed {$sent} restock texts to the phones.");
         }
 
         return self::SUCCESS;

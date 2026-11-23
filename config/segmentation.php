@@ -166,15 +166,36 @@ return [
     ],
 
     // Summary → NO VERBAL CONV reasons: a lead's note goes to the first group with a keyword in it
-    // (case-insensitive); notes matching none are "Other", leads with no note "No note". Unattended comes first
-    // because "unattended" contains "ended".
+    // (case-insensitive); notes matching none are "Other". A lead with no note goes by its status's label the same way
+    // (a status "PJR" joins the PJR group), else under its status, else "No note". Unattended comes first because
+    // "unattended" contains "ended".
     'no_verbal_reasons' => [
         'unattended' => ['Unattended', ['unattended', 'uanttended', 'unatended']],
-        'ended' => ['Customer ended / dropped the call', ['ended', 'end call', 'call end', 'dropped', 'drop call', 'dropcall', 'hung up', 'didn\'t talk', 'did not talk']],
-        'wrong_number' => ['Wrong number / someone else answered', ['incorrect', 'wrong', 'not the customer', 'kapatid', 'anak', 'asawa', 'nanay', 'tatay']],
+        'ended' => ['Drop call', ['ended', 'end call', 'call end', 'dropped', 'drop call', 'dropcall', 'hung up', 'didn\'t talk', 'did not talk']],
+        'wrong_number' => ['Invalid / wrong number', ['invalid', 'incorrect', 'wrong', 'not the customer', 'kapatid', 'anak', 'asawa', 'partner', 'nanay', 'tatay']],
         'busy' => ['Busy', ['busy']],
-        'cbr' => ['Cannot be reached / out of coverage', ['cbr', 'cannot be reached', 'can\'t be reached', 'out of coverage', 'not reachable', 'unreachable']],
-        'pjr' => ['Phone just rings (PJR)', ['pjr', 'ring', 'dialling', 'dialing', 'no answer']],
+        'cbr' => ['CBR / out of coverage', ['cbr', 'cannot be reached', 'can\'t be reached', 'out of coverage', 'not reachable', 'unreachable']],
+        'pjr' => ['PJR (phone just rings)', ['pjr', 'ring', 'dialling', 'dialing', 'no answer']],
+    ],
+
+    // Summary → why customers gave the other Customer's Feedback choices (all but NO VERBAL CONV and PURCHASED): a note
+    // counts in every reason with a keyword in it (case-insensitive, Tagalog and English), so "no budget, may stock pa"
+    // is both No budget and Still has stock. Notes matching none are "Other". What the CRA did ("offered discount and
+    // reservation") has no keyword, so it never counts as a reason. Listed in this order when tied.
+    'feedback_reasons' => [
+        'stock' => ['Still has stock', ['stock', 'hindi pa ubos', 'di pa ubos', 'marami pa']],
+        'budget' => ['No budget', ['budget', 'walang pera', 'gipit']],
+        'no_improvement' => ['No improvement seen', ['no effect', 'no improvement', 'walang improvement', 'wala naging improvement', 'wala daw improvement', 'walang epekto', 'not effective', 'hindi effective', 'di effective', 'di raw effective', 'nakikitaan', 'nakikita ang improvement']],
+        'irregular' => ['Not used regularly', ['not regular', 'hindi regular', 'di regular', '1 beses', 'isang beses', 'hindi pa nagagamit', 'di pa nagagamit', 'hindi pa nagamit']],
+        'feels_better' => ['Feels better / improving', ['okay na', 'ok na', 'may improvement', 'gumaling', 'magaling na']],
+        'not_user' => ['Someone else answered (not the user)', ['anak', 'asawa', 'kapatid', 'brother', 'sister', 'partner', 'nanay', 'tatay', 'hindi rin yung gumagamit', 'ang nagamit', 'ang gumagamit']],
+        'side_effect' => ['Bad experience (stings, smells, reaction)', ['hapdi', 'mabaho', 'tumubong', 'refund', 'irritat', 'allerg', 'pantal']],
+        'doctor' => ['Saw a doctor / surgery', ['doctor', 'doktor', 'check up', 'checkup', 'opera', 'dr.']],
+        'stopped' => ['Stopped using', ['stop', 'tinigil', 'hindi na ginagamit', 'di na ginagamit']],
+        'later' => ['Will order later / chat instead', ['chat', 'tatawag', 'saka na', 'next time', 'sa susunod', 'mamaya', 'try niya', 'pa order lang']],
+        'just_ordered' => ['Just ordered', ['kakabili', 'kakaorder', 'kaka order']],
+        'slow' => ['Slow improvement', ['mabagal']],
+        'fake' => ["Thinks it's fake", ['fake', 'peke']],
     ],
 
     /*

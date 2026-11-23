@@ -40,7 +40,8 @@ class SmsReminderController extends Controller
         $cras = LeadGenerator::cras();
         $craId = $this->craScope($user, $filters['cra'] ?? null);
 
-        $base = RestockReminder::whereDate('remind_on', $day->toDateString())
+        // The day's customers, and those from earlier days still to send (carried over until their product runs out).
+        $base = RestockReminder::shownOn($day)
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId));
         $counts = (clone $base)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
 
@@ -83,7 +84,8 @@ class SmsReminderController extends Controller
                 ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))->count(),
             'enabled' => SmsSettings::enabled(),
             'sendTime' => SmsSettings::sendTime(),
-            'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null : null,
+            // Ready once the phone link is set and the phone has confirmed a text went out.
+            'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null && $craForActions->sms_confirmed_at !== null : null,
             'daysBefore' => RestockReminders::daysBefore(),
             // The Text button's template choices, each row's CRA's own: follow-ups first, then reminders.
             'textTemplates' => SmsTemplate::where('is_active', true)->whereIn('user_id', $rows->getCollection()->pluck('user_id')->filter()->unique())
@@ -139,7 +141,7 @@ class SmsReminderController extends Controller
         $craId = $this->craScope($request->user(), $data['cra'] ?? null);
         $include = (bool) $data['include'];
 
-        $changed = RestockReminder::whereDate('remind_on', $data['date'])
+        $changed = RestockReminder::shownOn(CarbonImmutable::parse($data['date']))
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))
             ->whereIn('status', $include ? [RestockReminder::EXCLUDED] : [RestockReminder::PENDING, RestockReminder::QUEUED])
             ->update([
@@ -153,7 +155,7 @@ class SmsReminderController extends Controller
     }
 
     /**
-     * Queue a CRA's ticked customers of today now instead of waiting for the automatic send time.
+     * Queue a CRA's ticked customers still to send today (earlier days' included) now instead of waiting for the automatic send time.
      */
     public function sendNow(Request $request): RedirectResponse
     {
@@ -167,7 +169,11 @@ class SmsReminderController extends Controller
             return back()->withErrors(['send' => 'SMS Reminders is turned off in Settings → SMS Reminders, so nothing is sent.']);
         }
 
-        $queued = RestockReminder::whereDate('remind_on', WorkingDate::realToday()->toDateString())->where('user_id', $craId)
+        if (User::whereKey($craId)->value('sms_confirmed_at') === null) {
+            return back()->withErrors(['send' => SmsSender::explain(SmsSender::NOT_READY)]);
+        }
+
+        $queued = RestockReminder::toSendOn(WorkingDate::realToday())->where('user_id', $craId)
             ->where('status', RestockReminder::PENDING)
             ->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
 

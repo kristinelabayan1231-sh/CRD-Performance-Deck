@@ -29,7 +29,7 @@ class SalesGoalProgress
      */
     public function for(Collection $shown, DashboardRange $range): array
     {
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($range->from, $range->to);
         $days = $this->breakdown->days($allCras->merge($shown)->unique('id'), $range->from, $range->to);
         $total = fn (User $cra) => ConversionBreakdown::sum($days[$cra->id] ?? []);
 
@@ -41,7 +41,7 @@ class SalesGoalProgress
 
         $products = $this->productSales->for($shown, $range->from, $range->to);
 
-        // Split among every active CRA; a CRA shown who isn't one (deactivated) keeps their daily goal on every day.
+        // Split among the CRAs of these dates, each only on the days they were active (DutyGoals); a CRA shown who isn't one keeps their daily goal on every day.
         $dutyGoals = DutyGoals::for($allCras, $range->from, $range->to);
 
         $cras = $shown->map(function (User $cra) use ($total, $range, $generalDaily, $products, $dutyGoals) {

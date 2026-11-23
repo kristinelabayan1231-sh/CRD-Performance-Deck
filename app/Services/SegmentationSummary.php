@@ -135,64 +135,105 @@ class SegmentationSummary
                 ]),
         ];
 
-        return [...$summary, 'no_verbal' => $this->noVerbalReasons($scope)];
+        return [...$summary, 'feedback_reasons' => $this->feedbackReasons($scope)];
     }
 
     /**
-     * Why there was no verbal conversation: the NO VERBAL CONV leads' notes sorted into reason groups
-     * by keyword (config segmentation.no_verbal_reasons), with every note, latest contact first.
-     * A lead with no note is grouped under its status; only a lead with neither is "No note".
+     * Why customers gave each Customer's Feedback choice (all but PURCHASED), from the CRAs' notes, with every note,
+     * latest contact first. NO VERBAL CONV: each lead in one group, the first whose keyword is in the note
+     * (config segmentation.no_verbal_reasons); a lead with no note goes by its status's label the same way, else under
+     * its status, else "No note"; a note matching none is "Other". Every other choice: a note counts in each reason with
+     * a keyword in it (config segmentation.feedback_reasons); one matching none is "Other", a lead with no note "No note".
+     * A lead with two choices is under both.
      *
      * @param  Builder<Lead>  $scope
-     * @return array{reasons: list<array{key: string, label: string, total: int}>, notes: list<array{customer: string, cra: ?string, contacted: ?string, status: ?string, note: ?string, reason: string}>}
+     * @return array<string, array{reasons: list<array{key: string, label: string, total: int}>, total: int, notes: list<array{customer: string, cra: ?string, contacted: ?string, status: ?string, product: ?string, note: ?string, reasons: list<string>, keywords: list<string>}>}>
      */
-    private function noVerbalReasons(Builder $scope): array
+    private function feedbackReasons(Builder $scope): array
     {
-        $groups = config('segmentation.no_verbal_reasons');
-        $labels = [...array_map(fn (array $group) => $group[0], $groups), 'other' => 'Other', 'no_note' => 'No note'];
         $statuses = config('segmentation.statuses');
-        $reasonFor = function (?string $note, ?string $status) use ($groups, $statuses, &$labels): string {
-            $note = mb_strtolower(trim((string) $note));
-
-            if ($note === '') {
-                if (! $status) {
-                    return 'no_note';
-                }
-
-                $labels['status_'.$status] = $statuses[$status][0] ?? $status;
-
-                return 'status_'.$status;
-            }
-
+        $noVerbal = config('segmentation.no_verbal_reasons');
+        $others = config('segmentation.feedback_reasons');
+        $labels = [
+            ...array_map(fn (array $group) => $group[0], $noVerbal), ...array_map(fn (array $group) => $group[0], $others),
+            'other' => 'Other', 'no_note' => 'No note',
+        ];
+        $statusLabel = fn (?string $status) => $status ? ($statuses[$status][0] ?? $status) : null;
+        // Every group whose keyword is in $text: [group => the keyword found].
+        $matches = function (string $text, array $groups): array {
+            $text = mb_strtolower($text);
+            $found = [];
             foreach ($groups as $key => [, $keywords]) {
                 foreach ($keywords as $keyword) {
-                    if (str_contains($note, $keyword)) {
-                        return $key;
+                    if (str_contains($text, mb_strtolower($keyword))) {
+                        $found[$key] = $keyword;
+
+                        break;
                     }
                 }
             }
 
-            return 'other';
+            return $found;
         };
 
-        // NO VERBAL CONV ticked, as the main choice or not.
-        $notes = (clone $scope)->whereNotNull('feedback')->with('assignee')
+        $noVerbalReason = function (?string $note, ?string $status) use ($matches, $noVerbal, $statusLabel, &$labels): array {
+            if (trim((string) $note) !== '') {
+                $found = $matches($note, $noVerbal);
+
+                return $found ? [array_key_first($found), [reset($found)]] : ['other', []];
+            }
+            if (! $status) {
+                return ['no_note', []];
+            }
+            if ($found = $matches((string) $statusLabel($status), $noVerbal)) {
+                return [array_key_first($found), []];
+            }
+            $labels['status_'.$status] = $statusLabel($status);
+
+            return ['status_'.$status, []];
+        };
+
+        $byChoice = [];
+        $leads = (clone $scope)->whereNotNull('feedback')->with('assignee')
             ->orderByDesc('contact_date')->orderByDesc('id')
-            ->get(['id', 'customer_name', 'assigned_to', 'contact_date', 'status', 'notes', 'feedback', 'feedbacks'])
-            ->filter(fn (Lead $lead) => in_array('no_verbal_conv', $lead->feedbackKeys(), true))
-            ->map(fn (Lead $lead) => [
+            ->get(['id', 'customer_name', 'assigned_to', 'contact_date', 'status', 'product_name', 'notes', 'feedback', 'feedbacks']);
+
+        foreach ($leads as $lead) {
+            $note = trim((string) $lead->notes) === '' ? null : $lead->notes;
+            $row = [
                 'customer' => $lead->customer_name,
                 'cra' => $lead->assignee?->displayName(),
                 'contacted' => $lead->contact_date?->format('M j'),
-                'status' => $lead->status ? ($statuses[$lead->status][0] ?? $lead->status) : null,
-                'note' => $lead->notes,
-                'reason' => $reasonFor($lead->notes, $lead->status),
-            ]);
+                'status' => $statusLabel($lead->status),
+                'product' => $lead->product_name,
+                'note' => $note,
+            ];
 
-        return [
-            'reasons' => $notes->countBy('reason')->sortDesc()
-                ->map(fn (int $total, string $key) => ['key' => $key, 'label' => $labels[$key], 'total' => $total])->values()->all(),
-            'notes' => $notes->values()->all(),
-        ];
+            foreach ($lead->feedbackKeys() as $choice) {
+                if ($choice === 'purchased') {
+                    continue;
+                }
+                if ($choice === 'no_verbal_conv') {
+                    [$reason, $keywords] = $noVerbalReason($note, $lead->status);
+                    $byChoice[$choice][] = [...$row, 'reasons' => [$reason], 'keywords' => $keywords];
+
+                    continue;
+                }
+                $found = $note === null ? [] : $matches($note, $others);
+                $byChoice[$choice][] = [...$row, 'reasons' => $found ? array_keys($found) : [$note === null ? 'no_note' : 'other'], 'keywords' => array_values($found)];
+            }
+        }
+
+        return collect($byChoice)->map(function (array $notes) use ($labels) {
+            $order = array_flip(array_keys($labels));
+
+            return [
+                'total' => count($notes),
+                'reasons' => collect($notes)->flatMap(fn (array $note) => $note['reasons'])->countBy()
+                    ->sortBy(fn (int $total, string $key) => [-$total, $order[$key] ?? PHP_INT_MAX])
+                    ->map(fn (int $total, string $key) => ['key' => $key, 'label' => $labels[$key] ?? $key, 'total' => $total])->values()->all(),
+                'notes' => $notes,
+            ];
+        })->all();
     }
 }

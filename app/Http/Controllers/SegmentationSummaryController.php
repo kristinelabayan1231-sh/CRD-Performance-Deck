@@ -45,7 +45,7 @@ class SegmentationSummaryController extends Controller
             $filters['month'] = $from->format('Y-m');
         }
 
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($from, $to);
         $filters['cra'] = $canViewAll ? ($filters['cra'] ?? 'all') : (string) $user->id;
         $cras = ctype_digit($filters['cra']) ? $allCras->where('id', (int) $filters['cra'])->values() : $allCras;
         if (! $canViewAll) {

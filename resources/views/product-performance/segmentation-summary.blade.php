@@ -26,9 +26,19 @@
     $pickSlices = collect($sliceColors)->map(fn (string $color, string $key) => ['key' => $key, 'label' => $feedbackOptions[$key][0] ?? $key, 'value' => $picks[$key] ?? 0, 'color' => $color])
         ->put('other', ['key' => 'other', 'label' => $otherLabel, 'value' => $picks->except(array_keys($sliceColors))->sum(), 'color' => '#8a8984']);
     $pickTotal = $pickSlices->sum('value');
-    // NO VERBAL CONV leads: their slice or legend row flips the card to why there was no conversation.
-    $noVerbalTotal = count($summary['no_verbal']['notes']);
-    $noVerbal = $noVerbalTotal > 0;
+    // Every choice but PURCHASED flips the card to why customers gave it (Other: the folded choices together).
+    $reasonsByChoice = $summary['feedback_reasons'];
+    $folded = collect($reasonsByChoice)->except(array_keys($sliceColors));
+    if ($folded->isNotEmpty()) {
+        $reasonsByChoice['other'] = [
+            'total' => $folded->sum('total'),
+            'reasons' => $folded->flatMap(fn (array $choice) => $choice['reasons'])->groupBy('key')
+                ->map(fn ($rows, $key) => ['key' => $key, 'label' => $rows->first()['label'], 'total' => $rows->sum('total')])
+                ->sortByDesc('total')->values()->all(),
+            'notes' => $folded->flatMap(fn (array $choice) => $choice['notes'])->all(),
+        ];
+    }
+    $flipKeys = $pickSlices->keys()->filter(fn (string $key) => $key !== 'purchased' && ! empty($reasonsByChoice[$key]['notes']))->values()->all();
 
     $badge = fn (array $options, ?string $key) => $key && isset($options[$key])
         ? '<span class="rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap '.$options[$key][1].'">'.e($options[$key][0]).'</span>'
@@ -120,59 +130,21 @@
                 @else
                     {{-- Donut and By product side by side at the same height; By product scrolls when longer --}}
                     <div class="grid gap-4 lg:grid-cols-2">
-                    {{-- A flip card: the donut in front; NO VERBAL CONV's slice or legend row turns it to their reasons --}}
+                    {{-- A flip card: the donut in front; a choice's slice or legend row turns it to why customers gave it --}}
                     <div class="grid perspective-[1200px]">
                     <div data-flip-inner class="grid transition-transform duration-500 transform-3d motion-reduce:transition-none data-flipped:rotate-y-180">
                     <div data-flip-face="front" class="col-start-1 row-start-1 backface-hidden">
                     @include('product-performance._feedback-donut', ['slices' => $pickSlices, 'total' => $pickTotal, 'centerLabel' => 'choices ticked',
-                        'ariaLabel' => "Customer's feedback, every choice ticked, {$period}", 'flipKey' => $noVerbal ? 'no_verbal_conv' : null])
+                        'ariaLabel' => "Customer's feedback, every choice ticked, {$period}", 'flipKeys' => $flipKeys])
                     </div>
-                    @if ($noVerbal)
-                        {{-- Back: why there was no verbal conversation, from the CRAs' notes --}}
-                        <div data-flip-face="back" inert class="col-start-1 row-start-1 flex rotate-y-180 flex-col gap-3 rounded-xl bg-white p-4 shadow-sm backface-hidden">
-                            <div class="flex flex-wrap items-center justify-between gap-2">
-                                <h3 class="flex items-center gap-2 text-sm font-bold">
-                                    <span aria-hidden="true" class="size-2.5 rounded-sm bg-[#6250d6]"></span>
-                                    Why no verbal conversation
-                                    <span class="rounded-full bg-canvas px-2 py-0.5 text-xs tabular-nums">{{ number_format($noVerbalTotal) }}</span>
-                                </h3>
-                                <button type="button" data-flip-close class="rounded-lg border border-line px-2.5 py-1 text-xs font-semibold hover:border-brand-400 hover:text-brand-600">← Back to chart</button>
-                            </div>
-                            <table class="w-full text-sm">
-                                <caption class="sr-only">Reasons for no verbal conversation</caption>
-                                <tbody>
-                                    @foreach ($summary['no_verbal']['reasons'] as $reason)
-                                        <tr>
-                                            <td class="w-[45%] py-1 pr-2 text-xs">{{ $reason['label'] }}</td>
-                                            <td class="py-1">
-                                                <div class="h-2 overflow-hidden rounded-full bg-canvas">
-                                                    <div class="h-full rounded-full bg-[#6250d6]" style="width: {{ round($reason['total'] / $noVerbalTotal * 100, 1) }}%"></div>
-                                                </div>
-                                            </td>
-                                            <td class="w-10 py-1 text-right text-xs font-semibold tabular-nums">{{ number_format($reason['total']) }}</td>
-                                            <td class="w-10 py-1 text-right text-xs text-muted tabular-nums">{{ round($reason['total'] / $noVerbalTotal * 100) }}%</td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                            <ul class="max-h-56 divide-y divide-line overflow-y-auto rounded-lg border border-line text-xs" aria-label="Notes">
-                                @foreach ($summary['no_verbal']['notes'] as $note)
-                                    <li class="px-3 py-2">
-                                        <p class="flex flex-wrap justify-between gap-x-2">
-                                            <span class="font-semibold text-ink">{{ $note['customer'] }}</span>
-                                            <span class="text-muted">{{ collect([$note['cra'], $note['contacted'], $note['status']])->filter()->join(' · ') }}</span>
-                                        </p>
-                                        @if ($note['note'])
-                                            <p class="mt-0.5">“{{ $note['note'] }}”</p>
-                                        @elseif (! $note['status'])
-                                            <p class="mt-0.5 text-muted italic">No note</p>
-                                        @endif
-                                    </li>
-                                @endforeach
-                            </ul>
-                            <p class="text-[0.6875rem] text-muted">Grouped by the words in the CRA's note, e.g. "cx ended the call" → Customer ended / dropped the call. Notes that match no group are under Other; leads without a note are grouped by their status.</p>
-                        </div>
-                    @endif
+                    @foreach ($flipKeys as $flipKey)
+                        @include('product-performance._feedback-reasons', [
+                            'key' => $flipKey,
+                            'title' => $flipKey === 'no_verbal_conv' ? 'Why no verbal conversation' : 'Why customers said '.($flipKey === 'other' ? 'Other' : $pickSlices[$flipKey]['label']),
+                            'color' => $pickSlices[$flipKey]['color'],
+                            'reasons' => $reasonsByChoice[$flipKey],
+                        ])
+                    @endforeach
                     </div>
                     </div>
                     <div class="relative min-h-48">
@@ -326,7 +298,7 @@
                 <div><dt class="font-semibold text-ink">Leads</dt><dd>Segmentation Tracker leads handled in the month picked (up to today), or on the one day picked: the leads of the lead days (est. out of stock) paired with those days in Settings → Working Date.</dd></div>
                 <div><dt class="font-semibold text-ink">Catered / Pending</dt><dd>Catered = a status, a date of contact, or marked catered. Pending = none of these yet.</dd></div>
                 <div><dt class="font-semibold text-ink">Converted</dt><dd>Repeat Purchase Yes, or Repeat Purchase No with feedback PURCHASED.</dd></div>
-                <div><dt class="font-semibold text-ink">Customer's Feedback</dt><dd>Every Customer's Feedback choice ticked, so a lead with two choices counts in both; By product splits them by the lead's product. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click NO VERBAL CONV (its slice or legend row) to flip the card to why: the notes of its leads grouped by keyword (PJR, CBR, unattended, customer ended the call, wrong number, busy, other) and every note.</dd></div>
+                <div><dt class="font-semibold text-ink">Customer's Feedback</dt><dd>Every Customer's Feedback choice ticked, so a lead with two choices counts in both; By product splits them by the lead's product. BLOCKED is shown under Other. Leads without feedback aren't in the chart. Click a choice (its slice or legend row) to flip the card to why customers gave it: the notes of its leads sorted into reasons by their words, in Tagalog or English (e.g. Still has stock, No budget, No improvement seen, Someone else answered), with every note; click a reason for only its notes. A note can count in more than one reason. NO VERBAL CONV puts each lead in one group (PJR, CBR, Drop call, Busy, Unattended, Invalid / wrong number); a lead without a note goes by its status.</dd></div>
                 <div><dt class="font-semibold text-ink">Feedback by product</dt><dd>Per product, the customers (by contact number) with Customer's Feedback, their shipments (leads: each is one delivered order) and Qty (the pieces in those orders); open a product for the same per choice ticked. A customer with two choices is under both, so the choices can add up to more than the product.</dd></div>
                 <div><dt class="font-semibold text-ink">Top feedback</dt><dd>The most common main choice of the CRA's or product's leads: PURCHASED when it's ticked, else the first one ticked.</dd></div>
                 <div><dt class="font-semibold text-ink">Time of contact</dt><dd>Leads by the Time of Contact picked; the dark part of each bar is how many of them converted.</dd></div>

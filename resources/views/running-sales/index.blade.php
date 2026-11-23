@@ -39,7 +39,8 @@
                 <span class="font-semibold">Updated {{ $fetchedAt->format('g:i A') }}</span>
                 <span class="text-muted">· fetches every {{ \App\Services\RunningSales::EVERY_HOURS }} hours · next at {{ $nextFetch->format('g:i A') }}</span>
             </div>
-            <form method="POST" action="{{ route('running-sales.refresh') }}">
+            @can('running_sales.refresh')
+                <form method="POST" action="{{ route('running-sales.refresh') }}">
                 @csrf
                 <input type="hidden" name="period" value="{{ $period }}">
                 <input type="hidden" name="show" value="{{ $show }}">
@@ -48,6 +49,7 @@
                     Refresh now
                 </button>
             </form>
+            @endcan
         </section>
 
         @if ($missingAccounts->isNotEmpty())

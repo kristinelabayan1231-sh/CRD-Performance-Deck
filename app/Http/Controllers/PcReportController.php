@@ -43,7 +43,7 @@ class PcReportController extends Controller
         $group = collect($groups)->firstWhere('slug', $filters['product'] ?? null) ?? $groups[0];
 
         $user = $request->user();
-        $allCras = $user->can('pc_report.view_all') ? LeadGenerator::cras() : null;
+        $allCras = $user->can('pc_report.view_all') ? LeadGenerator::crasOn($day) : null;
         $cras = $allCras === null ? collect([$user]) : $allCras->when(
             $filters['cra'] ?? null,
             fn ($cras, $id) => $cras->where('id', (int) $id)->values(),

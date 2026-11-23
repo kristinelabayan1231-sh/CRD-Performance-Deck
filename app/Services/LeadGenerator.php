@@ -359,7 +359,7 @@ class LeadGenerator
      * CRD Leads first, to the CRA with the fewest leads that day whose niche (Settings → Niche) has the product, so
      * everyone fills toward the daily quota together and any excess is spread evenly; a lead no CRA's niche takes
      * waits unassigned. Today's own leads still untouched with another CRA (and not transferred) are moved to their
-     * customer's CRA.
+     * customer's CRA. On today's lead day, disabled CRAs' open leads go to the others first (DisabledCraHandover).
      */
     public function assign(CarbonImmutable $date): int
     {
@@ -368,6 +368,11 @@ class LeadGenerator
 
         if ($cras->isEmpty()) {
             return 0;
+        }
+
+        // A disabled CRA's open leads go to the others first (today's untouched ones are handed out below).
+        if ($date->isSameDay(Lead::today())) {
+            app(DisabledCraHandover::class)->handOver($date);
         }
 
         $this->reclaimForOwners($date, $cras->pluck('id')->all());
@@ -570,6 +575,17 @@ class LeadGenerator
     public static function crasOn(CarbonImmutable $day): Collection
     {
         return self::crasBetween($day, $day);
+    }
+
+    /**
+     * The CRAs a month's statements are shared among (Monthly MNI, Actual Income): those still active on its last day.
+     * A CRA disabled during the month is left out of that month and every month after; earlier months keep them.
+     *
+     * @return Collection<int, User>
+     */
+    public static function crasOfMonth(CarbonImmutable $month): Collection
+    {
+        return self::crasOn($month->endOfMonth()->startOfDay());
     }
 
     /**

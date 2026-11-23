@@ -47,7 +47,7 @@ class DashboardController extends Controller
             $generator->syncLater(Lead::today());
 
             // Supervisors see every CRA; a CRA sees only their own numbers.
-            $cras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
+            $cras = $user->can('segmentation.view_all') ? LeadGenerator::crasBetween($range->from, $range->to) : collect([$user]);
             // Converted counts purchases on the real dates, as the Retained and Repeat tiles do.
             $segmentation = $stats->range($cras, $leadFrom, $leadTo, $range->from, $range->to);
             $segmentation['no_tracker_purchases'] = $user->can('segmentation.view_all') && DeliveredRetention::covers($range->to);
@@ -68,7 +68,7 @@ class DashboardController extends Controller
                 $pancake->syncLater($realToday);
             }
 
-            $cras = $user->can('conversion.view_all') ? LeadGenerator::cras() : collect([$user]);
+            $cras = $user->can('conversion.view_all') ? LeadGenerator::crasBetween($range->from, $range->to) : collect([$user]);
             $results = $goals->for($cras, $range);
             // The CRAs' orders (as Total confirmed orders counts them) that were canceled or are waiting for goods, out of
             // confirmed + canceled (opens Cancelled / Waiting Orders); a CRA sees their own.
@@ -84,7 +84,7 @@ class DashboardController extends Controller
             // Retained and Repeat Customers from the Segmentation Tracker: Repeat Purchase = Yes bought in the dates picked,
             // FSD Leads = Retained out of the FSD leads, CRD Leads = Repeat out of the CRD leads, on the paired lead days.
             if ($user->can('segmentation.view')) {
-                $trackerCras = $user->can('segmentation.view_all') ? LeadGenerator::cras() : collect([$user]);
+                $trackerCras = $user->can('segmentation.view_all') ? LeadGenerator::crasBetween($range->from, $range->to) : collect([$user]);
                 $customers = $stats->customers($trackerCras, $range->from, $range->to, $leadFrom, $leadTo);
 
                 // Before the tracker recorded purchases: Shecom's deliveries, per customer. A delivery has no CRA, so a CRA keeps their own tracker figures.

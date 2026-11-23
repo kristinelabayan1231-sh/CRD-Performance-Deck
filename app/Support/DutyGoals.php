@@ -35,12 +35,17 @@ class DutyGoals
         $general = SalesGoals::craDaily();
         $daily = $cras->mapWithKeys(fn (User $cra) => [$cra->id => SalesGoals::dailyFor($cra, $general)]);
         $goals = $daily->map(fn () => ['goal' => 0.0, 'shared' => 0.0, 'absent_days' => 0, 'rest_days' => 0, 'leave_days' => 0])->all();
+        $byId = $cras->keyBy('id');
 
-        foreach (self::offDays($cras, $from, $to) as $off) {
-            $onDuty = $daily->except(array_keys($off));
-            $share = $onDuty->isEmpty() ? 0.0 : $daily->only(array_keys($off))->sum() / $onDuty->count();
+        foreach (self::offDays($cras, $from, $to) as $date => $off) {
+            // A disabled CRA has no goal from the day they were disabled, and nobody takes it over.
+            $day = CarbonImmutable::parse($date);
+            $dayDaily = $daily->filter(fn (float $goal, int $id) => $byId[$id]->wasActiveOn($day));
+            $off = array_intersect_key($off, $dayDaily->all());
+            $onDuty = $dayDaily->except(array_keys($off));
+            $share = $onDuty->isEmpty() ? 0.0 : $dayDaily->only(array_keys($off))->sum() / $onDuty->count();
 
-            foreach ($daily as $id => $goal) {
+            foreach ($dayDaily as $id => $goal) {
                 if (isset($off[$id])) {
                     $goals[$id]['absent_days']++;
                     $goals[$id][$off[$id] === DutySchedule::REST ? 'rest_days' : 'leave_days']++;

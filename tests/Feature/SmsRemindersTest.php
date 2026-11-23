@@ -54,7 +54,8 @@ class SmsRemindersTest extends TestCase
             'email' => strtolower($name).'@example.com', 'display_name' => $name,
             'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true,
         ]);
-        $cra->forceFill(['call_webhook_url' => $phoneLink])->save();
+        // A phone with a link has confirmed a text went out, so texts go to it (SmsSender::NOT_READY).
+        $cra->forceFill(['call_webhook_url' => $phoneLink, 'sms_confirmed_at' => $phoneLink ? now() : null])->save();
 
         return $cra;
     }
@@ -191,9 +192,11 @@ class SmsRemindersTest extends TestCase
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK) && $request['number'] === '09170000001'
             && str_contains($request['message'], 'Clear Sight 3.0'));
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), 'https://trigger.macrodroid.com/device-2/sms'));
-        $this->assertSame(RestockReminder::SENT, RestockReminder::firstWhere('phone_key', $first)->status);
-        $this->assertSame(RestockReminder::QUEUED, RestockReminder::firstWhere('phone_key', $second)->status);
-        $this->assertSame(RestockReminder::SENT, RestockReminder::firstWhere('phone_key', $mikas)->status);
+        // Handed to the phones, waiting for each phone to confirm it went out.
+        $this->assertNotNull(RestockReminder::firstWhere('phone_key', $first)->handed_at);
+        $this->assertNull(RestockReminder::firstWhere('phone_key', $second)->handed_at);
+        $this->assertNotNull(RestockReminder::firstWhere('phone_key', $mikas)->handed_at);
+        $this->assertSame(RestockReminder::QUEUED, RestockReminder::firstWhere('phone_key', $first)->status);
     }
 
     public function test_nothing_is_sent_while_turned_off_or_outside_the_sending_windows(): void
@@ -237,7 +240,7 @@ class SmsRemindersTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-20 09:30', 'Asia/Manila'));
         $this->artisan('reminders:send');
 
-        $this->assertSame(RestockReminder::SENT, RestockReminder::firstWhere('phone_key', $ticked)->status);
+        $this->assertNotNull(RestockReminder::firstWhere('phone_key', $ticked)->handed_at);
         $this->assertSame(RestockReminder::EXCLUDED, RestockReminder::firstWhere('phone_key', $leftOut)->status);
         $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $mikas)->status);
     }
@@ -510,5 +513,90 @@ class SmsRemindersTest extends TestCase
         // Blank goes back to her display name.
         $this->actingAs($this->anna)->put(route('sms-reminders.templates.name'), ['sms_name' => ''])->assertRedirect();
         $this->assertSame('Anna', $this->anna->fresh()->smsName());
+    }
+
+    public function test_a_text_is_sent_only_once_the_phone_confirms_it_and_an_unready_phone_gets_none(): void
+    {
+        $this->turnOn();
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
+        $july = $this->cra('July', 'https://trigger.macrodroid.com/device-3/call');
+        $july->forceFill(['sms_confirmed_at' => null])->save();
+        $annas = $this->delivered('09170000001', cra: $this->anna);
+        $julys = $this->delivered('09170000002', cra: $july);
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->artisan('reminders:send');
+
+        // July's phone never confirmed a text: nothing goes to it, and her customer waits as "to send".
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK) && $request['ref'] === (string) RestockReminder::firstWhere('phone_key', $annas)->id);
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $julys)->status);
+        $this->actingAs($july)->post(route('sms-reminders.send-now'))->assertSessionHasErrors('send');
+
+        // Anna's text is Sent only when her phone confirms it.
+        $reminder = RestockReminder::firstWhere('phone_key', $annas);
+        $this->assertSame(RestockReminder::QUEUED, $reminder->status);
+        $this->withToken($this->anna->issueRecordingToken())->postJson(route('api.sms-sent.store'), ['ref' => (string) $reminder->id])->assertOk();
+        $this->assertSame(RestockReminder::SENT, $reminder->fresh()->status);
+        $this->assertNotNull($reminder->fresh()->sent_at);
+
+        // A test text whose confirmation comes back makes July's phone ready.
+        $julyToken = $july->issueRecordingToken();
+        $this->actingAs($this->supervisor())->post(route('settings.sms-reminders.test'), ['cra' => $july->id, 'number' => '0918 555 1234'])->assertSessionHasNoErrors();
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'device-3/sms') && $request['ref'] === 'test');
+        $this->withToken($julyToken)->postJson(route('api.sms-sent.store'), ['ref' => 'test'])->assertOk();
+        $this->assertNotNull($july->fresh()->sms_confirmed_at);
+    }
+
+    public function test_a_text_the_phone_never_confirms_is_failed(): void
+    {
+        $this->turnOn();
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->artisan('reminders:send');
+        $this->travel(16)->minutes();
+        $this->artisan('reminders:send');
+
+        $reminder = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $this->assertSame(RestockReminder::FAILED, $reminder->status);
+        $this->assertStringContainsString("didn't confirm", $reminder->error);
+        Http::assertSentCount(1);
+    }
+
+    public function test_customers_not_texted_on_their_day_carry_over_until_their_product_runs_out(): void
+    {
+        $this->turnOn();
+        $this->anna->forceFill(['sms_auto_send' => true])->save();
+        $waiting = $this->delivered('09170000001', cra: $this->anna);
+        $reordered = $this->delivered('09170000002', cra: $this->anna);
+        $this->artisan('reminders:build');
+
+        // Two days later (Nov 22): Nov 20's customers not texted are still on the list; one has reordered since.
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 08:00', 'Asia/Manila'));
+        $this->delivered('09170000002', '2026-11-21');
+        $this->artisan('reminders:build');
+
+        $this->assertSame(RestockReminder::SKIPPED, RestockReminder::firstWhere('phone_key', $reordered)->status);
+        $carried = RestockReminder::firstWhere('phone_key', $waiting);
+        $this->assertSame(RestockReminder::PENDING, $carried->status);
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
+            ->assertSee($carried->customer_name)->assertSee('From Nov 20 · runs out Nov 27');
+
+        // Automatic sending picks it up today.
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 09:30', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertNotNull($carried->fresh()->handed_at);
+
+        // After the product runs out it's no longer on the list.
+        $carried->update(['status' => RestockReminder::PENDING, 'handed_at' => null]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-28 08:00', 'Asia/Manila'));
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertDontSee($carried->customer_name);
     }
 }

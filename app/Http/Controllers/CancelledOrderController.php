@@ -44,7 +44,7 @@ class CancelledOrderController extends Controller
             'range' => [($range = DashboardRange::fromFilters($filters, $today))->from, $range->to],
         };
 
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($from, $to);
         $shown = match (true) {
             ! $user->can('conversion.view_all') => $allCras->where('id', $user->id),
             filled($filters['cra'] ?? null) => $allCras->where('id', (int) $filters['cra']),

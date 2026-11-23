@@ -23,7 +23,7 @@ class ActualIncomeController extends Controller
     {
         $filters = $request->validate(['month' => ['nullable', 'date_format:Y-m']]);
         $month = CarbonImmutable::parse(($filters['month'] ?? WorkingDate::realToday()->format('Y-m')).'-01');
-        $cras = LeadGenerator::cras();
+        $cras = LeadGenerator::crasOfMonth($month);
 
         // The cards alone, re-drawn after an amount is saved.
         $view = $request->header('X-Actual-Income-Cards') ? 'actual-income._cards' : 'actual-income.index';
@@ -57,7 +57,7 @@ class ActualIncomeController extends Controller
             return $this->updateSheetLine($data);
         }
 
-        abort_unless(blank($data['cra'] ?? null) || LeadGenerator::cras()->contains('id', (int) $data['cra']), 422, 'Amounts can only be typed in for active CRAs.');
+        abort_unless(blank($data['cra'] ?? null) || LeadGenerator::crasOfMonth(CarbonImmutable::parse($data['month'].'-01'))->contains('id', (int) $data['cra']), 422, 'Amounts can only be typed in for the month\'s CRAs.');
 
         $isDepartment = blank($data['cra'] ?? null);
         abort_unless(array_key_exists($data['field'], ActualIncome::inputs($isDepartment)), 422, $isDepartment

@@ -84,7 +84,8 @@ class SmsSettings
     {
         $dayStart = self::now()->startOfDay()->utc();
 
-        return RestockReminder::where('user_id', $craId)->where('sent_at', '>=', $dayStart)->count()
+        // Handed to the phone today (sent or waiting for its confirmation).
+        return RestockReminder::where('user_id', $craId)->where(fn ($query) => $query->where('handed_at', '>=', $dayStart)->orWhere('sent_at', '>=', $dayStart))->count()
             + SmsMessage::where('phone_user_id', $craId)->where('sent_at', '>=', $dayStart)->count();
     }
 

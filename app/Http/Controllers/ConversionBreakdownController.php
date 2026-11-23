@@ -58,7 +58,7 @@ class ConversionBreakdownController extends Controller
         $sort = $filters['sort'] ?? 'total_rate';
         [$period, $compare] = $this->periods($view, $filters, $today);
 
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($period['from'], $period['to']);
         $selected = collect($filters['cras'] ?? [])->map(fn ($id) => (int) $id);
         $shown = match (true) {
             ! $canViewAll => $allCras->where('id', $user->id)->values(),
@@ -127,7 +127,7 @@ class ConversionBreakdownController extends Controller
         ]);
         $range = DashboardRange::fromFilters($filters, $today);
 
-        $allCras = LeadGenerator::cras();
+        $allCras = LeadGenerator::crasBetween($range->from, $range->to);
         $shown = match (true) {
             ! $user->can('conversion.view_all') => $allCras->where('id', $user->id),
             filled($filters['cra'] ?? null) => $allCras->where('id', (int) $filters['cra']),

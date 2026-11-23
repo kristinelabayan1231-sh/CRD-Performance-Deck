@@ -122,11 +122,13 @@ class UserAccessController extends Controller
     }
 
     /**
-     * A new or re-enabled CRA picks up today's unassigned leads straight away.
+     * A new or re-enabled CRA picks up today's unassigned leads straight away. A disabled CRA's open leads go to the
+     * other CRAs (LeadGenerator::assign() → DisabledCraHandover); their released backlog joins the pool the next backlog
+     * fill shares out.
      */
     private function assignLeadsIfCra(User $user): void
     {
-        if ($user->is_active && $user->fresh('role')->role?->slug === Role::CRA) {
+        if ($user->fresh('role')->role?->slug === Role::CRA) {
             app(LeadGenerator::class)->assign(Lead::today());
         }
     }

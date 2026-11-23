@@ -109,7 +109,80 @@ class RestockReminders
             ->whereNotIn('phone_key', $saved ?: [''])
             ->update(['status' => RestockReminder::SKIPPED, 'error' => 'Not due any more']);
 
+        $this->refreshCarriedOver($remindOn, $saved);
+
         return ['due' => count($customers) - $skipped, 'skipped' => $skipped];
+    }
+
+    /**
+     * Earlier days' reminders still to send on $remindOn (RestockReminder::scopeToSendOn) are checked again: skipped when
+     * the customer has since reordered the product, opted out or is on $remindOn's own list (one text a customer), and
+     * otherwise given the customer's CRA now (none when nobody has them).
+     *
+     * @param  list<string>  $today  main numbers on $remindOn's own list
+     */
+    private function refreshCarriedOver(CarbonImmutable $remindOn, array $today): void
+    {
+        $carried = RestockReminder::toSendOn($remindOn)->where('status', RestockReminder::PENDING)
+            ->whereDate('remind_on', '<', $remindOn->toDateString())
+            ->get(['id', 'phone_key', 'product_id', 'remind_on', 'user_id']);
+
+        if ($carried->isEmpty()) {
+            return;
+        }
+
+        $members = $this->members($carried->pluck('phone_key')->unique()->values()->all());
+        $numbersOf = fn (RestockReminder $reminder) => $members[$reminder->phone_key] ?? [$reminder->phone_key];
+        $allNumbers = $carried->flatMap($numbersOf)->unique()->values()->all();
+        $optedOut = DoNotText::whereIn('phone_key', $allNumbers)->pluck('phone_key')->flip();
+        $since = CarbonImmutable::parse($carried->min('remind_on'));
+        $ordered = $this->lastPancakeOrder($allNumbers, $since);
+        $delivered = $this->latestDeliveries($allNumbers, $since);
+        $owners = $this->owners->for($carried->pluck('phone_key')->unique()->values()->all());
+        $onToday = array_flip($today);
+
+        foreach ($carried as $reminder) {
+            $numbers = $numbersOf($reminder);
+            $after = $reminder->remind_on->toDateString();
+            $reason = match (true) {
+                isset($onToday[$reminder->phone_key]) => 'In a later reminder',
+                collect($numbers)->contains(fn (string $number) => isset($optedOut[$number])) => 'Opted out',
+                collect($numbers)->contains(fn (string $number) => ($ordered[$number][$reminder->product_id] ?? '') >= $after
+                    || ($delivered[$number][$reminder->product_id] ?? '') >= $after) => 'Already reordered',
+                default => null,
+            };
+
+            $reminder->update($reason
+                ? ['status' => RestockReminder::SKIPPED, 'error' => $reason]
+                : ['user_id' => $owners[$reminder->phone_key] ?? null]);
+        }
+    }
+
+    /**
+     * The latest delivery day of each product per number since $since (Shecom or Pancake POS deliveries).
+     *
+     * @param  list<string>  $phoneKeys
+     * @return array<string, array<int, string>> number => product id => Y-m-d
+     */
+    private function latestDeliveries(array $phoneKeys, CarbonImmutable $since): array
+    {
+        $latest = [];
+        // Delivered orders keep numbers as entered: 9…, 09…, 639… or +639….
+        $formats = collect($phoneKeys)->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key])->all();
+        foreach (array_chunk($formats, 1000) as $chunk) {
+            DeliveredOrder::whereIn('phone_number', $chunk)->whereDate('delivered_date', '>=', $since->toDateString())
+                ->get(['phone_number', 'product_raw', 'delivered_date'])
+                ->each(function (DeliveredOrder $order) use (&$latest) {
+                    $day = $order->delivered_date->toDateString();
+                    $product = $this->catalog->match((string) $order->product_raw, $day);
+                    if ($product) {
+                        $number = LeadGenerator::normalizePhone((string) $order->phone_number);
+                        $latest[$number][$product->id] = max($latest[$number][$product->id] ?? '', $day);
+                    }
+                });
+        }
+
+        return $latest;
     }
 
     /**
