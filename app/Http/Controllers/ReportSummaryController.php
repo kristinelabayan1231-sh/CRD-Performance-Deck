@@ -87,7 +87,7 @@ class ReportSummaryController extends Controller
             'isCapped' => $isCapped,
             'dayReport' => $dayReports[0]['report'],
             'dayReports' => $dayReports,
-            'missingAccounts' => $cras->filter(fn (User $cra) => ! $cra->pancake_name)->values(),
+            'missingAccounts' => $cras->filter(fn (User $cra) => $cra->is_active && ! $cra->pancake_name)->values(),
             'lastSync' => PancakeSync::lastSync($today),
         ]);
     }
