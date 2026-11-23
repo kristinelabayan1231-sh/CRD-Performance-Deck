@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Models\RestockReminder;
 use App\Models\Setting;
-use App\Models\SmsMessage;
 use Carbon\CarbonImmutable;
 
 /**
@@ -78,15 +77,15 @@ class SmsSettings
     }
 
     /**
-     * Texts a CRA's phone has sent today (Manila): reminders and follow-ups typed by hand, against the daily cap.
+     * Restock texts and follow-ups a CRA's phone has sent today (Manila), against the daily cap. Texts typed by hand
+     * (Conversations, the Text button) are replies like a chat and don't count.
      */
     public static function sentToday(int $craId): int
     {
         $dayStart = self::now()->startOfDay()->utc();
 
         // Handed to the phone today (sent or waiting for its confirmation).
-        return RestockReminder::where('user_id', $craId)->where(fn ($query) => $query->where('handed_at', '>=', $dayStart)->orWhere('sent_at', '>=', $dayStart))->count()
-            + SmsMessage::where('phone_user_id', $craId)->where('sent_at', '>=', $dayStart)->count();
+        return RestockReminder::where('user_id', $craId)->where(fn ($query) => $query->where('handed_at', '>=', $dayStart)->orWhere('sent_at', '>=', $dayStart))->count();
     }
 
     /**

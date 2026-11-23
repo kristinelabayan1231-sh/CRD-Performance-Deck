@@ -50,7 +50,7 @@
             <div class="flex flex-col gap-1.5">
                 <span class="text-xs font-semibold tracking-wide text-muted uppercase">Show</span>
                 <div class="flex gap-1.5">
-                    @foreach (['' => 'All · '.$counts['all'], 'send' => 'To send · '.$counts['toSend'], 'sent' => 'Sent · '.$counts['sent'], 'out' => 'Left out · '.($counts['excluded'] + $counts['skipped'] + $counts['failed'])] as $value => $name)
+                    @foreach (['' => 'All · '.$counts['all'], 'send' => 'To send · '.$counts['toSend'], 'follow' => 'Follow-ups · '.$counts['followUps'], 'sent' => 'Sent · '.$counts['sent'], 'out' => 'Left out · '.($counts['excluded'] + $counts['skipped'] + $counts['failed'])] as $value => $name)
                         <a href="{{ request()->fullUrlWithQuery(['status' => $value ?: null, 'page' => null]) }}"
                            @class(['grid h-9 place-items-center rounded-lg border px-3 text-xs font-semibold tabular-nums', 'border-brand-500 bg-brand-50 text-brand-700' => ($status ?? '') === $value, 'border-line bg-white text-muted hover:border-brand-400 hover:text-brand-600' => ($status ?? '') !== $value])>{{ $name }}</a>
                     @endforeach
@@ -66,7 +66,7 @@
             <div class="flex flex-wrap items-center gap-7">
                 <div>
                     <p class="text-4xl leading-none font-bold text-brand-700 tabular-nums">{{ number_format($counts['toSend']) }}</p>
-                    <p class="mt-1 text-sm font-semibold">customers will get a reminder</p>
+                    <p class="mt-1 text-sm font-semibold">customers to text{{ $counts['followUps'] ? ' · '.$counts['followUps'].' of them follow-ups' : '' }}</p>
                 </div>
                 <dl class="grid gap-1 text-sm text-muted">
                     <div><dt class="inline">Sent:</dt> <dd class="inline font-semibold text-ink tabular-nums">{{ $counts['sent'] }}</dd>@if ($counts['queued']) · <span class="font-semibold text-[#1a4f8c]">{{ $counts['queued'] }} sending now</span>@endif</div>
@@ -138,6 +138,8 @@
                                 <th scope="col" class="w-10 px-4 py-2"><span class="sr-only">Text this customer</span></th>
                                 <th scope="col" class="px-2 py-2 text-left font-semibold">Customer</th>
                                 <th scope="col" class="px-2 py-2 text-left font-semibold">Product</th>
+                                <th scope="col" class="px-2 py-2 text-left font-semibold">Why today</th>
+                                <th scope="col" class="px-2 py-2 text-left font-semibold">Last texted</th>
                                 <th scope="col" class="px-2 py-2 text-left font-semibold">Type</th>
                                 @if (! $craId)
                                     <th scope="col" class="px-2 py-2 text-left font-semibold">CRA</th>
@@ -161,8 +163,18 @@
                                     <td class="px-2 py-3">
                                         <p class="font-semibold text-ink">{{ $reminder->customer_name ?: 'No name' }}</p>
                                         <p class="text-xs text-muted tabular-nums">{{ \App\Models\CallRecording::dialNumber($reminder->phone_number) }}</p>
+                                        <p class="mt-1 flex flex-wrap gap-1.5">
+                                            <a href="{{ route('sms-reminders.conversations.index', ['phone' => $reminder->phone_key, 'show' => 'all']) }}" class="text-xs font-semibold text-brand-600 hover:underline">Conversation</a>
+                                        </p>
                                     </td>
                                     <td class="px-2 py-3">{{ $reminder->products }}</td>
+                                    @php([$whyLabel, $whyDetail] = $reminder->why())
+                                    <td class="px-2 py-3">
+                                        <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-[#dde9f7] text-[#1a4f8c]' => ! $reminder->isFollowUp(), 'bg-brand-50 text-brand-700' => $reminder->isFollowUp()])>{{ $whyLabel }}</span>
+                                        <p class="mt-1 text-xs text-muted">{{ $whyDetail }}</p>
+                                        @if ($reminder->note)<p class="text-xs text-muted">Note: {{ $reminder->note }}</p>@endif
+                                    </td>
+                                    <td class="px-2 py-3 text-xs whitespace-nowrap text-muted">{{ isset($lastTexted[$reminder->phone_key]) ? \Carbon\Carbon::parse($lastTexted[$reminder->phone_key])->timezone($tz)->format('M j') : '—' }}</td>
                                     <td class="px-2 py-3 whitespace-nowrap">{{ $reminder->customerTypeLabel() }}</td>
                                     @if (! $craId)
                                         <td class="px-2 py-3 whitespace-nowrap">{{ $reminder->cra?->displayName() ?? 'No CRA' }}</td>
@@ -180,7 +192,7 @@
                                                     Text
                                                 </summary>
                                                 <form method="POST" action="{{ route('sms-reminders.text', $reminder) }}" class="mt-2 space-y-2"
-                                                      data-text-form data-fill="{{ json_encode(['{first_name}' => $reminder->firstName() ?: 'po', '{product}' => $reminder->products, '{run_out_date}' => $reminder->run_out_on->format('j M'), '{cra_name}' => $reminder->cra->smsName()]) }}">
+                                                      data-text-form data-fill="{{ json_encode(['{first_name}' => $reminder->firstName() ?: 'po', '{product}' => $reminder->productsPhrase(), '{run_out_date}' => $reminder->runOutPhrase(), '{cra_name}' => $reminder->cra->smsName()]) }}">
                                                     @csrf
                                                     <label class="flex flex-col gap-1 text-[0.6875rem] font-semibold text-muted">
                                                         Template
