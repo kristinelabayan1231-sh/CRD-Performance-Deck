@@ -101,7 +101,8 @@
 
                             @forelse ($rows as $row)
                                 @php($isEditing = $editing === (string) $row->id)
-                                <tr data-cost-view="{{ $row->id }}" @if ($isEditing) hidden @endif class="align-top">
+                                @php($craDisabled = $row->isForDisabledCra())
+                                <tr data-cost-view="{{ $row->id }}" @if ($isEditing) hidden @endif @class(['align-top', 'bg-canvas/60 text-muted' => $craDisabled])>
                                     <td class="px-4 py-3">
                                         @if ($row->isFilled())
                                             <span class="font-semibold">{{ $row->name }}</span>
@@ -112,7 +113,9 @@
                                     </td>
                                     <td class="px-3 py-3 text-right tabular-nums">
                                         <span class="font-semibold">{{ $plain($row->monthlySalary()) }}</span>
-                                        @if (! $row->isFilled())
+                                        @if ($craDisabled)
+                                            <span class="block text-xs text-muted">CRA disabled {{ $row->cra->deactivated_at->timezone(config('segmentation.timezone'))->format('M j') }} · not counted from then</span>
+                                        @elseif (! $row->isFilled())
                                             <span class="block text-xs text-muted">Vacant · not counted</span>
                                         @endif
                                     </td>
@@ -120,7 +123,7 @@
                                         <button type="button" data-cost-edit="{{ $row->id }}" aria-label="Edit {{ $row->name ?: $row->position }}" class="rounded-lg p-2 text-muted hover:bg-brand-50 hover:text-brand-600">
                                             <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 20h4L19 9l-4-4L4 16v4Zm9-13 4 4"/></svg>
                                         </button>
-                                        <form method="POST" action="{{ route('monthly-cost.destroy', $row) }}" class="inline" onsubmit="return confirm('Delete {{ e(addslashes($row->name ?: $row->position)) }}\'s row?')">
+                                        <form method="POST" action="{{ route('monthly-cost.destroy', $row) }}" class="inline" onsubmit="return confirm('Remove {{ e(addslashes($row->name ?: $row->position)) }}\'s row? It stops counting from today; earlier days keep it.')">
                                             @csrf
                                             @method('DELETE')
                                             <button type="submit" aria-label="Delete {{ $row->name ?: $row->position }}" class="rounded-lg p-2 text-coral-700 hover:bg-coral/10">

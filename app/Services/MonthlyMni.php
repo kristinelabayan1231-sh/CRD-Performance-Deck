@@ -20,7 +20,8 @@ use Illuminate\Support\Collection;
  * Allocation − Product Cost. Ads VAT = 0. Shipping Fee = Orders × ₱75. COD Fee = Projected Delivered × 2%. VAT on COD
  * Fee = COD Fee × 12%. Fulfillment Fee = Orders × ₱25.
  *
- * Operating costs, from CRD - MC (today's figures): Salaries = the CRA's own row + an even share of the rest of TOTAL SALARY
+ * Operating costs, from CRD - MC's rows that count on the month's last day (or the day asked for: the Daily I.S. asks for
+ * each day, so a row deleted or a CRA disabled mid-month still counts on the days before): Salaries = the CRA's own row + an even share of the rest of TOTAL SALARY
  * OF CRD (Manager, Supervisor, other staff and the shared salaries) ÷ number of CRAs. 13th Month = Salaries ÷ 12. SIL =
  * Salaries × 12 ÷ 313. Government Benefits = CRD - MC's Gov. Benefits (half of it on 2M) ÷ number of CRAs. Communication
  * Allowance, Miscellaneous expenses and Product Research to HMO Expense = the department's (typed in) ÷ number of CRAs.
@@ -108,17 +109,20 @@ class MonthlyMni
         'salaries', 'communication', 'thirteenth_month', 'sil', 'gov_benefits', 'misc', 'operating', 'net_income'];
 
     /**
+     * $costRows: CRD - MC's rows to use (default: those counting on the month's last day, MonthlyCostRow::countingOn).
+     *
      * @param  Collection<int, User>  $cras
+     * @param  Collection<int, MonthlyCostRow>|null  $costRows
      * @return array{inputs: Collection<int, MniInput>, department_inputs: MniDepartment, cras: array<int, array<string, float|int|null>>, department: array<string, float|int|null>}
      */
-    public function for(Collection $cras, CarbonImmutable $month, string $plan): array
+    public function for(Collection $cras, CarbonImmutable $month, string $plan, ?Collection $costRows = null): array
     {
         $inputs = MniInput::where('plan', $plan)->whereDate('month', $month)->whereIn('user_id', $cras->pluck('id'))->get()->keyBy('user_id');
         $department = MniDepartment::where('plan', $plan)->whereDate('month', $month)->first() ?? new MniDepartment;
         $craCount = max($cras->count(), 1);
 
         // CRD - MC: each CRA's own row, and the rest of TOTAL SALARY OF CRD shared evenly.
-        $rows = MonthlyCostRow::all();
+        $rows = $costRows ?? MonthlyCostRow::countingOn($month->endOfMonth()->startOfDay());
         $costs = $this->cost->totals($rows);
         $own = $rows->whereIn('user_id', $cras->pluck('id'))->groupBy('user_id')
             ->map(fn (Collection $mine) => $mine->sum(fn (MonthlyCostRow $row) => $row->monthlySalary()));

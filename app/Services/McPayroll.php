@@ -98,7 +98,7 @@ class McPayroll
      */
     private function summary(): array
     {
-        $totals = $this->cost->totals(MonthlyCostRow::all());
+        $totals = $this->cost->totals(MonthlyCostRow::countingOn());
         $people = $totals['people'];
 
         return [
@@ -116,14 +116,14 @@ class McPayroll
     }
 
     /**
-     * One row per person on CRD - MC (vacant positions left out), then each shared salary CRD carries a part of. Start
+     * One row per person on CRD - MC (vacant positions, deleted rows and disabled CRAs' rows left out), then each shared salary CRD carries a part of. Start
      * and end dates aren't kept in CRD - MC, so they are null; whoever is listed is active.
      *
      * @return list<array{position: string, name: ?string, group: string, monthlySalary: float, allocationPct: float, status: string, startDate: null, endDate: null}>
      */
     private function roster(): array
     {
-        $team = MonthlyCostRow::orderBy('sort_order')->orderBy('id')->get()
+        $team = MonthlyCostRow::countingOn()
             ->filter(fn (MonthlyCostRow $row) => $row->isFilled())
             ->map(fn (MonthlyCostRow $row) => [
                 'position' => $row->position,

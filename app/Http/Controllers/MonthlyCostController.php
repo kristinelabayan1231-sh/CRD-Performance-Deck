@@ -28,7 +28,8 @@ class MonthlyCostController extends Controller
         return view('monthly-cost.index', [
             'rows' => $rows,
             'cost' => $cost,
-            'totals' => $cost->totals($rows),
+            // A disabled CRA's own row stays listed but leaves the totals (MonthlyCostRow::countsOn).
+            'totals' => $cost->totals($rows->reject(fn (MonthlyCostRow $row) => $row->isForDisabledCra())),
             'shared' => $cost->shared(),
             'lastChange' => $lastChange,
             'cras' => LeadGenerator::cras(),
@@ -57,13 +58,16 @@ class MonthlyCostController extends Controller
         return back()->with('status', 'Row saved.');
     }
 
+    /**
+     * The row leaves CRD - MC from today; the days before still count it (Monthly MNI, Daily I.S.).
+     */
     public function destroy(MonthlyCostRow $row, McPayroll $payroll): RedirectResponse
     {
         $row->delete();
 
         $payroll->record();
 
-        return back()->with('status', 'Row deleted.');
+        return back()->with('status', 'Row removed. It still counts on the days before today.');
     }
 
     /**
