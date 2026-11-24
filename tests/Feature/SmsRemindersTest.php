@@ -637,4 +637,56 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($this->owner())->patch(route('settings.sms-reminders.ready', $regina), ['ready' => 0]);
         $this->assertNull($regina->fresh()->sms_confirmed_at);
     }
+
+    public function test_a_cras_own_schedule_decides_when_her_texts_are_queued_and_sent(): void
+    {
+        $this->turnOn();
+        // Anna: Mon–Thu and Sat only (not Fri, Nov 20), from 13:00, one window 15:00–16:00. Mika follows the default.
+        $this->anna->forceFill(['sms_auto_send' => true, 'sms_schedule' => ['send_time' => '13:00', 'windows' => [['from' => '15:00', 'until' => '16:00']], 'days' => [1, 2, 3, 4, 6]]])->save();
+        $this->mika->forceFill(['sms_auto_send' => true])->save();
+        $annas = $this->delivered('09170000001', cra: $this->anna);
+        $mikas = $this->delivered('09170000002', cra: $this->mika);
+        $this->artisan('reminders:build');
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 15:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $annas)->status);
+        $this->assertSame(RestockReminder::QUEUED, RestockReminder::firstWhere('phone_key', $mikas)->status);
+
+        // Saturday: queued from 13:00 but sent only inside her 15:00–16:00 window.
+        $this->travelTo(CarbonImmutable::parse('2026-11-21 13:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertSame(RestockReminder::QUEUED, RestockReminder::firstWhere('phone_key', $annas)->status);
+        $this->assertNull(RestockReminder::firstWhere('phone_key', $annas)->handed_at);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-21 15:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertNotNull(RestockReminder::firstWhere('phone_key', $annas)->handed_at);
+    }
+
+    public function test_a_cra_sets_her_own_schedule_and_a_manager_sets_any_cras_in_settings(): void
+    {
+        $own = ['auto_send' => 1, 'use_default' => 0, 'send_time' => '10:15', 'days' => [1, 2, 3, 4, 5],
+            'windows' => [['from' => '10:00', 'until' => '11:30'], ['from' => '', 'until' => '']]];
+
+        $this->actingAs($this->anna)->get(route('sms-reminders.schedule.index'))->assertOk()->assertSee('My own schedule');
+        // A CRA's ?cra= is ignored: she only changes her own.
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update', ['cra' => $this->mika->id]), $own)->assertSessionHasNoErrors();
+        $this->assertSame(['send_time' => '10:15', 'windows' => [['from' => '10:00', 'until' => '11:30']], 'days' => [1, 2, 3, 4, 5]], $this->anna->fresh()->sms_schedule);
+        $this->assertTrue($this->anna->fresh()->sms_auto_send);
+        $this->assertNull($this->mika->fresh()->sms_schedule);
+
+        // Windows stay within the texting hours, and at least one day is picked.
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), [...$own, 'windows' => [['from' => '06:00', 'until' => '07:00']]])->assertSessionHasErrors('windows.0.from');
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), [...$own, 'windows' => [['from' => '19:00', 'until' => '21:00']]])->assertSessionHasErrors('windows.0.until');
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), [...$own, 'days' => []])->assertSessionHasErrors('days');
+        $this->actingAs($this->anna)->put(route('settings.sms-reminders.schedule', $this->anna), $own)->assertForbidden();
+
+        // A manager sees it in Settings and puts her back on the default.
+        $this->actingAs($this->owner())->get(route('settings.sms-reminders.index'))->assertOk()->assertSee('Mon–Fri · from 10:15 AM');
+        $this->actingAs($this->owner())->put(route('settings.sms-reminders.schedule', $this->anna), ['auto_send' => 1, 'use_default' => 1])->assertSessionHasNoErrors();
+        $this->assertNull($this->anna->fresh()->sms_schedule);
+        $this->assertFalse(SmsSettings::scheduleFor($this->anna->fresh())['custom']);
+    }
 }

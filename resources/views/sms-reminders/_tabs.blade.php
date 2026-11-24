@@ -6,6 +6,7 @@
         ['Follow-ups', route('sms-reminders.follow-ups.index', array_filter(['cra' => request('cra')])), request()->routeIs('sms-reminders.follow-ups.*'), $followUpCount ?? null],
         ['No response', route('sms-reminders.no-response', array_filter(['cra' => request('cra')])), request()->routeIs('sms-reminders.no-response'), $noResponseCount ?? null],
         ['Templates', route('sms-reminders.templates.index', array_filter(['cra' => request('cra')])), request()->routeIs('sms-reminders.templates.*'), null],
+        ['Schedule', route('sms-reminders.schedule.index', array_filter(['cra' => request('cra')])), request()->routeIs('sms-reminders.schedule.*'), null],
     ]) as [$label, $href, $active, $badge])
         <a href="{{ $href }}" @if ($active) aria-current="page" @endif
            @class(['inline-flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-semibold', 'bg-ink text-white' => $active, 'border border-line bg-white text-ink hover:border-brand-400 hover:text-brand-600' => ! $active])>

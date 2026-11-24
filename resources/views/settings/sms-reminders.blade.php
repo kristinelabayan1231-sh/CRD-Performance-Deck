@@ -12,7 +12,7 @@
         @csrf @method('PUT')
         <div>
             <h2 class="text-base font-semibold">Restock texts</h2>
-            <p class="text-sm text-muted">Every morning at 6:30 the app lists the customers whose product runs out in {{ config('segmentation.replenishment_days_before') }} days. Their texts go out from their own CRA's phone (MacroDroid), one a minute, only {{ $windowsLabel }}; what's left after the last window waits for the next day.</p>
+            <p class="text-sm text-muted">Every morning at 6:30 the app lists the customers whose product runs out in {{ config('segmentation.replenishment_days_before') }} days. Their texts go out from their own CRA's phone (MacroDroid), one a minute, only in the sending windows; what's left after the last window waits for the next day. Below is the default schedule; each CRA can set her own in SMS Reminders → Schedule, or you can set it for her under CRA phones.</p>
         </div>
         <label class="flex items-center gap-2.5 text-sm font-semibold">
             <input type="hidden" name="enabled" value="0">
@@ -21,7 +21,7 @@
         </label>
         <div class="flex flex-wrap items-end gap-4">
             <label class="flex flex-col gap-1.5 text-sm font-semibold">
-                Automatic send time
+                Default send time
                 <input type="time" name="send_time" value="{{ $sendTime }}" required class="{{ $control }} font-normal">
             </label>
             <label class="flex flex-col gap-1.5 text-sm font-semibold">
@@ -30,21 +30,21 @@
             </label>
         </div>
         <fieldset class="flex flex-wrap items-end gap-4">
-            <legend class="mb-1.5 text-sm font-semibold">Sending windows</legend>
+            <legend class="mb-1.5 text-sm font-semibold">Default sending windows</legend>
             @foreach (['Morning', 'Afternoon'] as $index => $name)
                 @php($window = $windows[$index] ?? ['from' => '', 'until' => ''])
                 <div class="flex flex-col gap-1.5">
                     <span class="text-xs font-semibold tracking-wide text-muted uppercase">{{ $name }}{{ $index ? ' (optional)' : '' }}</span>
                     <div class="flex items-center gap-1.5">
-                        <input type="time" name="windows[{{ $index }}][from]" value="{{ old("windows.$index.from", $window['from']) }}" @required($index === 0) aria-label="{{ $name }} from" class="{{ $control }}">
+                        <input type="time" name="windows[{{ $index }}][from]" value="{{ old('schedule_for') ? $window['from'] : old("windows.$index.from", $window['from']) }}" @required($index === 0) aria-label="{{ $name }} from" class="{{ $control }}">
                         <span class="text-sm text-muted">to</span>
-                        <input type="time" name="windows[{{ $index }}][until]" value="{{ old("windows.$index.until", $window['until']) }}" @required($index === 0) aria-label="{{ $name }} until" class="{{ $control }}">
+                        <input type="time" name="windows[{{ $index }}][until]" value="{{ old('schedule_for') ? $window['until'] : old("windows.$index.until", $window['until']) }}" @required($index === 0) aria-label="{{ $name }} until" class="{{ $control }}">
                     </div>
                 </div>
             @endforeach
             <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Save</button>
         </fieldset>
-        <p class="text-xs text-muted">The send time applies to CRAs who turned on "Send automatically every day" on their SMS Reminders page; their texts start in the next window from then. One text a minute means a 2-hour window sends up to 120 per phone. Keep the daily limit low (about 200) so the telco doesn't flag a SIM as spam. Leave the afternoon times blank for one window only.</p>
+        <p class="text-xs text-muted">The default send time, windows and every day apply to CRAs who turned on automatic sending and haven't set their own schedule; their texts start in the next window from then. The daily limit applies to every phone. One text a minute means a 2-hour window sends up to 120 per phone. Keep the daily limit low (about 200) so the telco doesn't flag a SIM as spam. Leave the afternoon times blank for one window only.</p>
     </form>
 
     <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm">
@@ -64,7 +64,7 @@
                         <th class="px-4 py-3 font-semibold">Send reminder link</th>
                         <th class="px-4 py-3 font-semibold">Upload token</th>
                         <th class="px-4 py-3 font-semibold">Ready for texts</th>
-                        <th class="px-4 py-3 font-semibold">Automatic sending</th>
+                        <th class="px-4 py-3 font-semibold">Automatic texts</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-line">
@@ -93,7 +93,23 @@
                                     </form>
                                 </div>
                             </td>
-                            <td class="px-4 py-3">{{ $row['cra']->sms_auto_send ? 'On' : 'Off' }}</td>
+                            <td class="px-4 py-3">
+                                <details class="group/schedule" @if ($errors->any() && (int) old('schedule_for') === $row['cra']->id) open @endif>
+                                    <summary class="flex cursor-pointer list-none flex-col gap-0.5 [&::-webkit-details-marker]:hidden">
+                                        <span @class(['font-semibold', 'text-[#11734b]' => $row['cra']->sms_auto_send, 'text-muted' => ! $row['cra']->sms_auto_send])>{{ $row['cra']->sms_auto_send ? 'On' : 'Off' }} · {{ $row['schedule']['custom'] ? 'own schedule' : 'default' }}</span>
+                                        <span class="text-xs text-muted">{{ $row['scheduleLabel'] }}</span>
+                                        <span class="text-xs font-semibold text-brand-600 group-open/schedule:hidden">Change</span>
+                                    </summary>
+                                    <div class="mt-3 w-[34rem] max-w-[80vw]">
+                                        @include('sms-reminders._schedule-form', [
+                                            'action' => route('settings.sms-reminders.schedule', $row['cra']),
+                                            'cra' => $row['cra'],
+                                            'schedule' => $row['schedule'],
+                                            'default' => $default,
+                                        ])
+                                    </div>
+                                </details>
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>
