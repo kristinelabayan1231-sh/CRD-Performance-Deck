@@ -7,9 +7,9 @@ return [
     | SMS Reminders
     |--------------------------------------------------------------------------
     |
-    | Restock texts sent from each CRA's own phone (their MacroDroid phone link,
-    | Settings → Call Recordings) to their customers whose product runs out in
-    | segmentation.replenishment_days_before days, by the real date.
+    | Texts sent from each CRA's own phone (their MacroDroid phone link,
+    | Settings → Call Recordings) to the customers on their tracker list for
+    | the day, so a text can take the place of a call.
     |
     */
 
@@ -18,18 +18,20 @@ return [
 
     // Texts go out only in these windows (Manila), until Settings → SMS Reminders changes them; what's left after the
     // last window waits for the next day. Short windows with a break look less like a mass blast to the telcos.
+    // At one text a minute, a 2½-hour window sends the 150 a window of the daily cap below.
     'sending_windows' => [
-        ['from' => '09:00', 'until' => '11:00'],
-        ['from' => '14:00', 'until' => '16:00'],
+        ['from' => '08:30', 'until' => '11:00'],
+        ['from' => '13:30', 'until' => '16:00'],
     ],
 
     // Follow-up texts a CRA sends by hand (one at a time, right away) may go out between these hours (Manila), outside
     // the sending windows too: a customer who replied shouldn't wait for the next window.
     'manual_hours' => ['from' => '08:00', 'until' => '20:00'],
 
-    // Defaults until set in Settings → SMS Reminders.
-    'send_time' => '09:30',
-    'daily_cap' => 200,
+    // Defaults until set in Settings → SMS Reminders. The daily cap is shared between the windows, each window half list
+    // texts and half follow-ups (a kind with nothing waiting leaves its share to the other); what isn't sent carries over.
+    'send_time' => '08:30',
+    'daily_cap' => 300,
 
     // A phone that doesn't answer is tried again after this many minutes, at most this many times.
     'retry_minutes' => 5,
@@ -50,12 +52,17 @@ return [
     'placeholders' => [
         '{first_name}' => 'Customer\'s first name',
         '{product}' => 'Product(s) running out',
-        '{run_out_date}' => 'Run-out date, e.g. 27 Nov',
+        '{run_out_date}' => 'Out-of-stock date on the tracker list, e.g. 27 Oct',
         '{cra_name}' => 'Your name in texts (set it above)',
     ],
 
     // Used when no template fits.
     'default_body' => 'Hi {first_name}! Malapit na maubos ang {product} mo (~{run_out_date}). Reply YES para ma-reserve ang restock mo, o tatawagan ka ni {cra_name}.',
+
+    // Sent instead of any reminder template when the customer's product already ran out before the text goes out (the
+    // tracker lists run about a month behind, and leftovers even more): no date, no "malapit na maubos". Settings → SMS
+    // Reminders can change it.
+    'overdue_body' => 'Hi {first_name}! Kumusta po ang {product} mo? Matagal-tagal na po mula nung huli niyong order, baka ubos na po. Gusto niyo po bang mag-restock? Reply YES para ma-reserve, o tatawagan ka ni {cra_name}.',
 
     // A follow-up's text when the CRA has no follow-up template that fits.
     'follow_up_body' => 'Hi {first_name}, kumusta po ang {product} mo? Kung paubos na, pwede po namin i-reserve ang next order mo. Reply YES o tatawagan ka ni {cra_name}.',

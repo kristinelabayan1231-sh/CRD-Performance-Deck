@@ -94,9 +94,13 @@ class DisabledCraHandover
 
             $handedOver += $owners->inheritFrom($cra, $to);
 
+            // Their texts still to go: to the customer's CRA now, else shared out like the tracker's leads (RestockReminders::craPicker()).
             $reminders = RestockReminder::where('user_id', $cra->id)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])
-                ->whereDate('remind_on', '>=', WorkingDate::realToday())->get(['id', 'phone_key']);
-            $newOwner = $owners->for($reminders->pluck('phone_key')->unique()->values()->all());
+                ->whereDate('remind_on', '>=', WorkingDate::realToday())->get(['id', 'phone_key', 'product_id', 'products', 'covers', 'run_out_on']);
+            $craFor = app(RestockReminders::class)->craPicker($reminders->pluck('phone_key')->unique()->values()->all(), WorkingDate::realToday());
+            $newOwner = $reminders->unique('phone_key')->mapWithKeys(fn (RestockReminder $reminder) => [
+                $reminder->phone_key => $craFor($reminder->phone_key, $reminder->coveredItems()[0]['name'] ?? null, null),
+            ]);
             foreach ($reminders->groupBy(fn (RestockReminder $reminder) => $newOwner[$reminder->phone_key] ?? 0) as $craId => $group) {
                 RestockReminder::whereIn('id', $group->modelKeys())->update(['user_id' => $craId ?: null, 'status' => RestockReminder::PENDING]);
             }

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CustomerClaim;
 use App\Models\DeliveredOrder;
+use App\Models\Lead;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\RestockReminder;
@@ -62,9 +63,29 @@ class SmsFollowUpsTest extends TestCase
         $phoneKey = substr(preg_replace('/\D+/', '', $phone), -10);
         if ($cra) {
             CustomerClaim::firstOrCreate(['phone_key' => $phoneKey], ['user_id' => $cra->id, 'claimed_at' => now()]);
+            $this->listLead($phone, $on, $product, 1, $cra);
         }
 
         return $phoneKey;
+    }
+
+    /**
+     * A lead for the delivery on $cra's tracker list on its reminder day (run-out − 7, the lead day while no Working Date
+     * gap is set), as the tracker would list it; products not on Product Consumption get no lead.
+     */
+    private function listLead(string $phone, string $deliveredOn, string $product, int $qty, User $cra): void
+    {
+        $catalogProduct = Product::where('is_tsd', false)->get()->first(fn (Product $item) => str_contains(strtolower($product), strtolower($item->name)) || strtolower((string) $item->keywords) === strtolower($product));
+        if (! $catalogProduct?->consumption_days) {
+            return;
+        }
+        $runOut = CarbonImmutable::parse($deliveredOn)->addDays($qty * $catalogProduct->consumption_days - 1);
+        Lead::create([
+            'order_id' => 'L-'.$this->seq, 'customer_name' => 'Maria Santos '.$this->seq, 'phone_number' => $phone, 'product_name' => $catalogProduct->name,
+            'qty' => $qty, 'delivered_date' => $deliveredOn, 'consumption_days' => $catalogProduct->consumption_days,
+            'est_out_of_stock_date' => $runOut->toDateString(), 'listed_on' => $runOut->subDays(7)->toDateString(),
+            'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $cra->id,
+        ]);
     }
 
     /** Mark the customer's text of $day as sent at 10 AM that day. */
@@ -76,20 +97,18 @@ class SmsFollowUpsTest extends TestCase
         return $text;
     }
 
-    public function test_products_running_out_within_a_week_go_in_one_text_and_are_never_texted_twice(): void
+    public function test_a_lead_is_texted_once_even_when_it_is_listed_again(): void
     {
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);
-        $this->delivered('09170000001', '2026-11-15', 'Sinuxyl');
-
         $this->artisan('reminders:build');
 
         $text = RestockReminder::firstWhere('phone_key', $phoneKey);
-        $this->assertSame('Clear Sight 3.0 + Sinuxyl', $text->products);
-        $this->assertStringContainsString('Malapit na maubos ang Clear Sight 3.0 at Sinuxyl mo (~27–29 Nov)', app(RestockReminders::class)->messageFor($text));
-        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertSee('Runs out Nov 27 and Nov 29: one text for all');
+        $this->assertStringContainsString('Malapit na maubos ang Clear Sight 3.0 mo (~27 Nov)', app(RestockReminders::class)->messageFor($text));
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertSee('Out of stock Nov 27');
 
-        // Sinuxyl's own reminder day: already texted, so no second text.
+        // The backlog fill moves the untouched lead to a later lead day: already texted, so no second text.
         $this->sent($phoneKey, '2026-11-20');
+        Lead::whereKey($text->lead_ids)->update(['listed_on' => '2026-11-22']);
         $this->travelTo(CarbonImmutable::parse('2026-11-22 08:00', 'Asia/Manila'));
         $this->artisan('reminders:build');
         $second = RestockReminder::where('phone_key', $phoneKey)->whereDate('remind_on', '2026-11-22')->sole();

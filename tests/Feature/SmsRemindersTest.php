@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\CustomerClaim;
 use App\Models\DeliveredOrder;
 use App\Models\DoNotText;
+use App\Models\ExclusiveListLead;
+use App\Models\Lead;
 use App\Models\PancakeOrder;
 use App\Models\Product;
 use App\Models\RestockReminder;
@@ -13,6 +15,7 @@ use App\Models\Setting;
 use App\Models\SmsReply;
 use App\Models\SmsTemplate;
 use App\Models\User;
+use App\Services\ExclusiveLeads;
 use App\Services\RestockReminders;
 use App\Support\SmsSettings;
 use App\Support\WorkingDate;
@@ -84,9 +87,29 @@ class SmsRemindersTest extends TestCase
         $phoneKey = substr(preg_replace('/\D+/', '', $phone), -10);
         if ($cra) {
             CustomerClaim::firstOrCreate(['phone_key' => $phoneKey], ['user_id' => $cra->id, 'claimed_at' => now()]);
+            $this->listLead($phone, $deliveredOn, $product, $qty, $cra);
         }
 
         return $phoneKey;
+    }
+
+    /**
+     * A lead for the delivery on $cra's tracker list on its reminder day (run-out − 7, the lead day while no Working Date
+     * gap is set), as the tracker would list it; products not on Product Consumption get no lead.
+     */
+    private function listLead(string $phone, string $deliveredOn, string $product, int $qty, User $cra): void
+    {
+        $catalogProduct = Product::where('is_tsd', false)->get()->first(fn (Product $item) => str_contains(strtolower($product), strtolower($item->name)) || strtolower((string) $item->keywords) === strtolower($product));
+        if (! $catalogProduct?->consumption_days) {
+            return;
+        }
+        $runOut = CarbonImmutable::parse($deliveredOn)->addDays($qty * $catalogProduct->consumption_days - 1);
+        Lead::create([
+            'order_id' => 'L-'.$this->seq, 'customer_name' => 'Maria Santos '.$this->seq, 'phone_number' => $phone, 'product_name' => $catalogProduct->name,
+            'qty' => $qty, 'delivered_date' => $deliveredOn, 'consumption_days' => $catalogProduct->consumption_days,
+            'est_out_of_stock_date' => $runOut->toDateString(), 'listed_on' => $runOut->subDays(7)->toDateString(),
+            'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $cra->id,
+        ]);
     }
 
     private function turnOn(): void
@@ -94,25 +117,51 @@ class SmsRemindersTest extends TestCase
         Setting::put(SmsSettings::ENABLED, '1');
     }
 
-    public function test_customers_running_out_in_seven_real_days_are_listed_for_their_own_cra(): void
+    public function test_each_cras_tracker_list_for_the_lead_day_is_texted_by_that_cra(): void
     {
-        $due = $this->delivered('09170000001', cra: $this->anna);
-        $this->delivered('09170000002', '2026-11-12', cra: $this->anna);
-        $this->delivered('09170000003', '2026-11-14', cra: $this->anna);
-        $twoPacks = $this->delivered('09170000004', '2026-10-29', qty: 2, cra: $this->mika);
-        $this->delivered('09170000005', product: 'Haplunas Healing Eye Cream', cra: $this->anna);
-        // The Working Date runs a month behind: reminders still follow the real date.
-        Setting::put(WorkingDate::KEY, '2026-10-20');
-        Setting::put(WorkingDate::ANCHOR, '2026-11-20');
+        // The Working Date runs a month behind: Nov 20 works the Oct 20 lead day.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-21'));
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $rose = $this->cra('Rose', 'https://trigger.macrodroid.com/device-3/call');
+        $rose->forceFill(['exclusive_from' => '2026-10-01'])->save();
+
+        $annas = $this->lead('09170000001', $this->anna);
+        $annasSecond = $this->lead('09170000001', $this->anna, product: 'Sinuxyl');
+        $mikas = $this->lead('09170000002', $this->mika);
+        $this->lead('09170000003', null);
+        $this->lead('09170000004', $this->anna, '2026-10-21');
+        $this->lead('09170000005', $this->anna, landline: true);
+        $rosesLead = $this->lead('09170000006', $rose);
+        ExclusiveListLead::create(['user_id' => $rose->id, 'list_date' => '2026-10-20', 'lead_id' => $rosesLead->id, 'source' => ExclusiveLeads::HANDLED]);
+        // Assigned to Rose but not on her Exclusive Lead Tracker list for the day: not on any list.
+        $this->lead('09170000007', $rose);
 
         $this->artisan('reminders:build')->assertSuccessful();
 
         $reminders = RestockReminder::whereDate('remind_on', '2026-11-20')->get()->keyBy('phone_key');
-        $this->assertEqualsCanonicalizing([$due, $twoPacks], $reminders->keys()->all());
-        $this->assertSame($this->anna->id, $reminders[$due]->user_id);
-        $this->assertSame($this->mika->id, $reminders[$twoPacks]->user_id);
-        $this->assertSame('2026-11-27', $reminders[$due]->run_out_on->toDateString());
-        $this->assertSame(RestockReminder::PENDING, $reminders[$due]->status);
+        $this->assertEqualsCanonicalizing(['9170000001', '9170000002', '9170000006'], $reminders->keys()->all());
+        $this->assertSame($this->anna->id, $reminders['9170000001']->user_id);
+        $this->assertSame($this->mika->id, $reminders['9170000002']->user_id);
+        $this->assertSame($rose->id, $reminders['9170000006']->user_id);
+        // One text for both of Anna's leads of the customer.
+        $this->assertSame('Clear Sight 3.0 + Sinuxyl', $reminders['9170000001']->products);
+        $this->assertEqualsCanonicalizing([$annas->id, $annasSecond->id], $reminders['9170000001']->lead_ids);
+        $this->assertSame([$mikas->id], $reminders['9170000002']->lead_ids);
+        $this->assertSame(RestockReminder::PENDING, $reminders['9170000001']->status);
+    }
+
+    /**
+     * A lead on $cra's tracker list for $listedOn (none: unassigned).
+     */
+    private function lead(string $phone, ?User $cra, string $listedOn = '2026-10-20', string $product = 'Clear Sight 3.0', bool $landline = false): Lead
+    {
+        $this->seq++;
+
+        return Lead::create([
+            'order_id' => 'L-'.$this->seq, 'customer_name' => 'Juan Cruz '.$this->seq, 'phone_number' => $landline ? '028123456'.$this->seq : $phone,
+            'product_name' => $product, 'qty' => 1, 'delivered_date' => '2026-10-06', 'consumption_days' => 15,
+            'est_out_of_stock_date' => $listedOn, 'listed_on' => $listedOn, 'lead_type' => Lead::TYPE_CRD, 'assigned_to' => $cra?->id,
+        ]);
     }
 
     public function test_customers_who_restocked_the_same_product_or_opted_out_are_skipped(): void
@@ -216,14 +265,14 @@ class SmsRemindersTest extends TestCase
         $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
         $this->artisan('reminders:send');
         $this->turnOn();
-        // Between the 9–11 AM and 2–4 PM windows, and after the last one.
-        foreach (['11:00', '13:59', '16:00', '20:30'] as $time) {
+        // Between the 8:30–11 AM and 1:30–4 PM windows, and after the last one.
+        foreach (['11:00', '13:29', '16:00', '20:30'] as $time) {
             $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
             $this->artisan('reminders:send');
         }
         Http::assertNothingSent();
 
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 14:00', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 13:30', 'Asia/Manila'));
         $this->artisan('reminders:send');
         Http::assertSentCount(1);
     }
@@ -239,11 +288,11 @@ class SmsRemindersTest extends TestCase
         RestockReminder::firstWhere('phone_key', $leftOut)->update(['status' => RestockReminder::EXCLUDED]);
         Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
 
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 09:29', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 08:29', 'Asia/Manila'));
         $this->artisan('reminders:send');
         $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $ticked)->status);
 
-        $this->travelTo(CarbonImmutable::parse('2026-11-20 09:30', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 08:30', 'Asia/Manila'));
         $this->artisan('reminders:send');
 
         $this->assertNotNull(RestockReminder::firstWhere('phone_key', $ticked)->handed_at);
@@ -577,7 +626,7 @@ class SmsRemindersTest extends TestCase
         Http::assertSentCount(1);
     }
 
-    public function test_customers_not_texted_on_their_day_carry_over_until_their_product_runs_out(): void
+    public function test_customers_not_texted_on_their_day_carry_over_and_go_first_the_next_day(): void
     {
         $this->turnOn();
         $this->anna->forceFill(['sms_auto_send' => true])->save();
@@ -585,27 +634,79 @@ class SmsRemindersTest extends TestCase
         $reordered = $this->delivered('09170000002', cra: $this->anna);
         $this->artisan('reminders:build');
 
-        // Two days later (Nov 22): Nov 20's customers not texted are still on the list; one has reordered since.
-        $this->travelTo(CarbonImmutable::parse('2026-11-22 08:00', 'Asia/Manila'));
+        // A week later (Nov 27, after the product's out-of-stock day): Nov 20's customers not texted are still on the
+        // list; one has reordered since. Today's own list has a new customer.
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 08:00', 'Asia/Manila'));
         $this->delivered('09170000002', '2026-11-21');
+        $todays = $this->delivered('09170000003', '2026-11-20', cra: $this->anna);
         $this->artisan('reminders:build');
 
         $this->assertSame(RestockReminder::SKIPPED, RestockReminder::firstWhere('phone_key', $reordered)->status);
         $carried = RestockReminder::firstWhere('phone_key', $waiting);
         $this->assertSame(RestockReminder::PENDING, $carried->status);
         $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
-            ->assertSee($carried->customer_name)->assertSee('From Nov 20 · runs out Nov 27');
+            ->assertSee($carried->customer_name)->assertSee('Carried over from Nov 20');
 
-        // Automatic sending picks it up today.
+        // Automatic sending: the carried-over customer goes before today's.
         Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
-        $this->travelTo(CarbonImmutable::parse('2026-11-22 09:30', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 08:30', 'Asia/Manila'));
         $this->artisan('reminders:send');
         $this->assertNotNull($carried->fresh()->handed_at);
+        $this->assertNull(RestockReminder::firstWhere('phone_key', $todays)->handed_at);
+    }
 
-        // After the product runs out it's no longer on the list.
-        $carried->update(['status' => RestockReminder::PENDING, 'handed_at' => null]);
-        $this->travelTo(CarbonImmutable::parse('2026-11-28 08:00', 'Asia/Manila'));
-        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertDontSee($carried->customer_name);
+    public function test_each_window_sends_half_list_texts_and_half_follow_ups_and_a_kind_with_none_waiting_leaves_its_half(): void
+    {
+        $this->turnOn();
+        // A 4-text daily cap over the two windows: 2 a window, 1 list text and 1 follow-up.
+        Setting::put(SmsSettings::DAILY_CAP, '4');
+        $this->anna->forceFill(['sms_marked_ready_by' => $this->owner()->id])->save();
+        foreach (range(1, 3) as $n) {
+            $this->delivered('0917000000'.$n, cra: $this->anna);
+        }
+        $this->artisan('reminders:build');
+        $followUp = RestockReminder::create(['phone_key' => '9170000009', 'phone_number' => '09170000009', 'customer_name' => 'Follow Up', 'products' => 'Clear Sight 3.0',
+            'run_out_on' => '2026-11-27', 'remind_on' => '2026-11-20', 'user_id' => $this->anna->id, 'kind' => RestockReminder::FOLLOW_UP, 'follow_up_number' => 1, 'customer_type' => 'first',
+            'status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        RestockReminder::where('kind', RestockReminder::REMINDER)->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $sentKinds = fn () => RestockReminder::where('status', RestockReminder::SENT)->orderBy('sent_at')->orderBy('id')->pluck('kind')->all();
+
+        foreach (['08:30', '08:31', '08:32'] as $time) {
+            $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
+            $this->artisan('reminders:send');
+        }
+        // Morning: one list text and the follow-up, then the window is full.
+        $this->assertEqualsCanonicalizing([RestockReminder::REMINDER, RestockReminder::FOLLOW_UP], $sentKinds());
+        $this->assertSame(RestockReminder::SENT, $followUp->fresh()->status);
+
+        // Afternoon: no follow-up waiting, so list texts take both slots.
+        foreach (['13:30', '13:31', '13:32'] as $time) {
+            $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
+            $this->artisan('reminders:send');
+        }
+        $this->assertSame(4, RestockReminder::where('status', RestockReminder::SENT)->count());
+        $this->assertSame(0, RestockReminder::where('status', RestockReminder::QUEUED)->count());
+    }
+
+    public function test_a_tracker_row_shows_its_text_and_the_reply(): void
+    {
+        $this->turnOn();
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $text = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $lead = Lead::findOrFail($text->lead_ids[0]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 09:00', 'Asia/Manila'));
+
+        $badges = fn () => app(RestockReminders::class)->badgesFor([$lead]);
+        $this->assertSame('To be texted', $badges()[$lead->id]['label']);
+        $text->update(['status' => RestockReminder::SENT, 'sent_at' => now()]);
+        $this->assertSame('Texted Nov 20', $badges()[$lead->id]['label']);
+        SmsReply::create(['user_id' => $this->anna->id, 'restock_reminder_id' => $text->id, 'phone_key' => $phoneKey, 'phone_number' => '09170000001',
+            'body' => 'Yes', 'kind' => SmsReply::YES, 'received_at' => now()]);
+        $this->assertSame('Replied YES', $badges()[$lead->id]['label']);
+
+        $this->actingAs($this->anna)->get(route('segmentation.index', ['date' => '2026-11-20']))->assertOk()->assertSee('Replied YES');
     }
 
     public function test_a_phone_marked_ready_by_hand_sends_without_the_confirm_step(): void
@@ -688,5 +789,26 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($this->owner())->put(route('settings.sms-reminders.schedule', $this->anna), ['auto_send' => 1, 'use_default' => 1])->assertSessionHasNoErrors();
         $this->assertNull($this->anna->fresh()->sms_schedule);
         $this->assertFalse(SmsSettings::scheduleFor($this->anna->fresh())['custom']);
+    }
+
+    public function test_a_customer_whose_product_already_ran_out_gets_the_general_text_not_the_cras_template(): void
+    {
+        $this->turnOn();
+        SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Mine', 'body' => 'Malapit na maubos ang {product} mo (~{run_out_date}).']);
+        // The Working Date a month behind: Nov 20 texts Oct 20's list, which ran out a month ago.
+        WorkingDate::startTomorrow(CarbonImmutable::parse('2026-10-21'));
+        $this->listLead('09170000001', '2026-10-06', 'Clear Sight 3.0', 1, $this->anna);
+        Lead::query()->update(['listed_on' => '2026-10-20']);
+        $this->artisan('reminders:build');
+        $text = RestockReminder::sole();
+        $reminders = app(RestockReminders::class);
+
+        $this->assertNull($reminders->templateFor($text));
+        $this->assertStringContainsString('baka ubos na po', $reminders->messageFor($text));
+        $this->assertStringNotContainsString('Malapit', $reminders->messageFor($text));
+
+        $this->actingAs($this->owner())->put(route('settings.sms-reminders.update'), ['enabled' => 1, 'send_time' => '08:30', 'daily_cap' => 300,
+            'windows' => [['from' => '08:30', 'until' => '11:00']], 'overdue_body' => 'Hi {first_name}, restock na po ng {product}?'])->assertSessionHasNoErrors();
+        $this->assertStringStartsWith('Hi Maria, restock na po ng Clear Sight 3.0?', $reminders->messageFor($text));
     }
 }

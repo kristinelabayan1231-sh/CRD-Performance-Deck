@@ -11,7 +11,7 @@
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">SMS Reminders <span class="text-sm font-normal text-muted">· Templates</span></h1>
-                <p class="text-sm text-muted">{{ $isOwn ? 'Your own texts: no one else sees or changes them.' : ($owner ? $owner->displayName()."'s own texts." : 'No CRA yet.') }} Reminders: each customer gets the closest fit (product + customer type, then product, then customer type, then "Any"); with no template, the built-in default is sent. Follow-ups are only for the Text button.</p>
+                <p class="text-sm text-muted">{{ $isOwn ? 'Your own texts: no one else sees or changes them.' : ($owner ? $owner->displayName()."'s own texts." : 'No CRA yet.') }} Reminders: each customer gets the closest fit (product + customer type, then product, then customer type, then "Any"); with no template, the built-in default is sent. A customer whose product already ran out (most of the tracker list, which runs about a month behind) gets the general text from Settings → SMS Reminders instead. Follow-ups are only for the Text button.</p>
             </div>
             @include('sms-reminders._tabs')
         </header>

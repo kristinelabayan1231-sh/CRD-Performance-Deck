@@ -83,9 +83,13 @@
                     @php($highValueFlags = rescue(fn () => app(\App\Services\HighValueCustomers::class)->flagsForNumbers(
                         collect($leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads)
                             ->map(fn ($lead) => \App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number))->unique()->values()->all()), [], false))
+                    {{-- Each row's SMS Reminders text (to be texted, texted, replied), looked up once for the section --}}
+                    @php($smsBadges = rescue(fn () => app(\App\Services\RestockReminders::class)->badgesFor(
+                        $leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads), [], false))
                     @foreach ($leads as $lead)
                         @include('segmentation._row', ['lead' => $lead, 'backlogRow' => $backlogRows ?? false,
-                            'highValue' => $highValueFlags[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null])
+                            'highValue' => $highValueFlags[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null,
+                            'smsBadge' => $smsBadges[$lead->id] ?? null])
                     @endforeach
                 </tbody>
             </table>
