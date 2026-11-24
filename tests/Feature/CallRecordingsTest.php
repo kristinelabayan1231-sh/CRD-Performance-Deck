@@ -309,6 +309,20 @@ class CallRecordingsTest extends TestCase
         Http::assertSent(fn (Request $request) => ($request['name'] ?? null) === '2026-10-23 1355 regina 09930353215.m4a');
     }
 
+    public function test_optional_details_the_phone_did_not_fill_in_are_left_out_instead_of_refusing_the_upload(): void
+    {
+        $this->fakeDrive();
+        $lead = $this->lead('09171234567', $this->regina, 'Ana Cruz');
+
+        $this->upload($this->regina->issueRecordingToken(), [
+            'direction' => '{call_direction}', 'duration' => '{call_duration}',
+            'called_at' => '{lv=called_at}', 'lead' => '{lv=lead}', 'filename' => '09171234567 2026-11-24 18-43-59.wav',
+        ], $this->wav(2))->assertCreated()->assertJson(['matched' => true]);
+
+        $recording = CallRecording::sole();
+        $this->assertSame([null, 2, $lead->id], [$recording->direction, $recording->duration_seconds, $recording->lead_id]);
+    }
+
     public function test_a_shared_phone_saves_calls_in_the_sharers_hours_under_the_sharer(): void
     {
         $this->fakeDrive();

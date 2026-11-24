@@ -6,6 +6,7 @@ use App\Models\MonthlyCostRow;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\McPayroll;
 use App\Support\MonthlyCost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -82,8 +83,25 @@ class MonthlyCostTest extends TestCase
         ])->assertRedirect()->assertSessionHas('status', 'Row saved.');
         $this->assertSame(['Junior AI Engineer', '30000.00'], [$row->fresh()->position, $row->fresh()->salary]);
 
-        $this->actingAs($this->supervisor)->delete(route('monthly-cost.destroy', $row))->assertRedirect();
-        $this->assertModelMissing($row);
+        $this->actingAs($this->supervisor)->delete(route('monthly-cost.destroy', $row))->assertRedirect()
+            ->assertSessionHas('status', 'Row removed. It still counts on the days before today.');
+        $this->assertSoftDeleted($row);
+        $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))->assertViewHas('rows', fn ($rows) => $rows->isEmpty());
+    }
+
+    public function test_a_disabled_cras_own_row_stays_listed_but_leaves_the_totals_and_the_api(): void
+    {
+        $cra = User::create(['email' => 'rose@example.com', 'display_name' => 'Rose-An', 'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        MonthlyCostRow::factory()->fixed(19500)->create(['name' => 'Regina']);
+        MonthlyCostRow::factory()->fixed(15600)->create(['name' => 'Rose-An Orbaneja', 'user_id' => $cra->id]);
+        $cra->update(['is_active' => false]);
+
+        $this->actingAs($this->supervisor)->get(route('monthly-cost.index'))->assertOk()
+            ->assertSeeText('Rose-An Orbaneja')
+            ->assertSeeText('not counted from then')
+            ->assertViewHas('totals', fn (array $totals) => $totals['team'] === 19500.0 && $totals['people'] === 1);
+        $team = collect(app(McPayroll::class)->record()->roster)->where('group', McPayroll::GROUP_TEAM);
+        $this->assertSame(['Regina'], $team->pluck('name')->all());
     }
 
     public function test_a_row_needs_a_position_and_a_salary(): void

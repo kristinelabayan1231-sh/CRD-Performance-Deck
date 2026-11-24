@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CvrOrderEntry;
+use App\Models\MonthlyCostRow;
 use App\Models\PancakeOrder;
 use App\Models\PancakePage;
 use App\Models\PcReportEntry;
@@ -15,6 +16,7 @@ use App\Services\DailyIncomeStatement;
 use App\Services\DailyIsConflicts;
 use App\Services\LeadGenerator;
 use App\Services\MonthlyMni;
+use App\Support\MonthlyCost;
 use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -144,6 +146,31 @@ class DailyIncomeStatementTest extends TestCase
         $this->assertEqualsWithDelta($mni['salaries'] / 24 / 3, $salaries('2026-10-16'), 0.001);
         // PC Report doesn't list it on an earlier day either.
         $this->actingAs($supervisor)->get(route('pc-report.index', ['date' => '2026-10-15']))->assertDontSee('Ginseng');
+    }
+
+    public function test_a_crd_mc_row_removed_or_a_disabled_cras_own_row_counts_only_on_the_days_before(): void
+    {
+        $regina = $this->user('Regina', Role::CRA, 'CRD Rej Vergara');
+        $roseAn = $this->user('Rose-An', Role::CRA, 'CRD Rose-An');
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']]]);
+        MonthlyCostRow::factory()->fixed(19500)->create(['user_id' => $regina->id]);
+        MonthlyCostRow::factory()->fixed(15600)->create(['user_id' => $roseAn->id]);
+        $manager = MonthlyCostRow::factory()->fixed(60000)->create(['position' => 'Customer Retention Manager']);
+        $salaries = fn (string $date) => app(DailyIncomeStatement::class)->day(LeadGenerator::crasOn(CarbonImmutable::parse($date)), CarbonImmutable::parse($date))['department']['total']['salaries'];
+        $shared = collect(app(MonthlyCost::class)->shared())->sum('amount');
+
+        // Rose-An is disabled on Oct 14 and the Manager's row is removed on Oct 16 (today).
+        $this->travelTo(CarbonImmutable::parse('2026-10-14 09:00', 'Asia/Manila'));
+        $roseAn->update(['is_active' => false]);
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 10:00', 'Asia/Manila'));
+        $manager->delete();
+
+        // Before she was disabled: every row; her share goes to the others from her disable day, her own row drops out.
+        $this->assertEqualsWithDelta((19500 + 15600 + 60000 + $shared) / 24, $salaries('2026-10-13'), 0.01);
+        $this->assertEqualsWithDelta((19500 + 60000 + $shared) / 24, $salaries('2026-10-14'), 0.01);
+        $this->assertEqualsWithDelta((19500 + 60000 + $shared) / 24, $salaries('2026-10-15'), 0.01);
+        // The removed row stops counting from the day it was removed.
+        $this->assertEqualsWithDelta((19500 + $shared) / 24, $salaries('2026-10-16'), 0.01);
     }
 
     public function test_product_cards_follow_the_set_order_with_full_names_whatever_order_settings_saved_them_in(): void
