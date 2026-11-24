@@ -11,8 +11,11 @@ use Carbon\CarbonImmutable;
 use finfo;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
@@ -34,14 +37,9 @@ class CallRecordingUploadController extends Controller
         }
 
         $details = $request->validate([
-            'number' => ['required', 'string', 'max:40'],
-            'direction' => ['nullable', Rule::in(array_keys(CallRecording::DIRECTIONS))],
-            'duration' => ['nullable', 'integer', 'min:0', 'max:86400'],
-            'called_at' => ['nullable', 'date'],
+            'number' => ['nullable', 'string', 'max:40'],
             'filename' => ['nullable', 'string', 'max:255'],
-            // The lead the tracker's Call button dialled, sent back by the phone.
-            'lead' => ['nullable', 'integer'],
-        ]);
+        ]) + $this->optionalDetails($request);
 
         $filename = isset($details['filename']) ? basename($details['filename']) : null;
 
@@ -57,13 +55,25 @@ class CallRecordingUploadController extends Controller
         $mimeType = (new finfo(FILEINFO_MIME_TYPE))->buffer($contents) ?: '';
 
         if ($contents === '' || strlen($contents) > self::MAX_BYTES || ! $this->isAudio($mimeType)) {
+            Log::warning('Call recording upload refused: the body is not a recording.', [
+                'cra' => $phoneOwner->id, 'bytes' => strlen($contents), 'mime' => $mimeType,
+                'content_type' => $request->header('Content-Type'), 'content_length' => $request->header('Content-Length'),
+                'query' => $request->query(),
+            ]);
+
             return response()->json(['message' => 'The body must be the recording itself (an audio file up to 50 MB).'], 422);
         }
 
         $calledAt = isset($details['called_at']) ? CarbonImmutable::parse($details['called_at'], config('segmentation.timezone')) : CarbonImmutable::now();
         $cra = $phoneOwner->phoneCraAt($calledAt);
-        $number = $this->callNumber($details['number'], $filename);
+        $number = $this->callNumber($details['number'] ?? '', $filename);
         $phoneKey = CallRecording::phoneKey($number);
+
+        if ($phoneKey === '') {
+            Log::warning('Call recording upload refused: no number.', ['cra' => $phoneOwner->id, 'query' => $request->query()]);
+
+            throw ValidationException::withMessages(['number' => 'Send the call number, or a file name that starts with it.']);
+        }
 
         try {
             $fileId = $drive->upload($contents, $this->driveName($cra, $calledAt, $phoneKey, $filename), $mimeType);
@@ -91,6 +101,29 @@ class CallRecordingUploadController extends Controller
         ]);
 
         return response()->json(['message' => 'Saved.', 'id' => $recording->id, 'matched' => $recording->lead_id !== null], 201);
+    }
+
+    /**
+     * The optional call details that are valid. One MacroDroid didn't fill in (e.g. "{lv=lead}" or an empty duration)
+     * is left out rather than turning the whole upload away with a 422, so the recording is still saved.
+     *
+     * @return array{direction?: string, duration?: int|string, called_at?: string, lead?: int|string}
+     */
+    private function optionalDetails(Request $request): array
+    {
+        $rules = [
+            'direction' => [Rule::in(array_keys(CallRecording::DIRECTIONS))],
+            'duration' => ['integer', 'min:0', 'max:86400'],
+            'called_at' => ['date'],
+            // The lead the tracker's Call button dialled, sent back by the phone.
+            'lead' => ['integer'],
+        ];
+
+        return collect($rules)
+            ->filter(fn (array $fieldRules, string $field): bool => filled($request->query($field))
+                && Validator::make([$field => $request->query($field)], [$field => $fieldRules])->passes())
+            ->map(fn (array $fieldRules, string $field): mixed => $request->query($field))
+            ->all();
     }
 
     /**
