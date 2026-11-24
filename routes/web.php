@@ -164,6 +164,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
 
     Route::prefix('cra-schedule')->name('cra-schedule.')->middleware('can:on_duty.view')->group(function () {
         Route::get('/', [CraScheduleController::class, 'index'])->name('index');
+        Route::get('/peek', [CraScheduleController::class, 'peek'])->name('peek');
         Route::put('/', [CraScheduleController::class, 'update'])->middleware('can:on_duty.manage')->name('update');
     });
 

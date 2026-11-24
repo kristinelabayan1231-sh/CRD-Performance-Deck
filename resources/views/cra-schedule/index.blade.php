@@ -1,7 +1,6 @@
 @php
     use App\Models\DutySchedule;
 
-    $offColors = [DutySchedule::REST => 'bg-sky/20 text-sky-800', DutySchedule::LEAVE => 'bg-coral/20 text-coral-700'];
     $names = $cras->keyBy('id');
     $dayKey = $day->toDateString();
 @endphp
@@ -56,15 +55,16 @@
                             @foreach ($dayOff as $craId => $type)
                                 @php($isPlanned = isset($planned[$key][$craId]))
                                 <span title="{{ $names[$craId]->displayName() }}: {{ DutySchedule::TYPES[$type] }}{{ $isPlanned ? '' : ' (no log-in)' }}"
-                                      @class(['truncate rounded px-1.5 py-0.5 text-[0.625rem] leading-tight font-semibold', $offColors[$type], 'border border-dashed border-coral' => ! $isPlanned])>{{ $names[$craId]->displayName() }}</span>
+                                      @class(['truncate rounded px-1.5 py-0.5 text-[0.625rem] leading-tight font-semibold', DutySchedule::LOOKS[$type]['tag'], 'border border-dashed border-coral-700/70' => ! $isPlanned])>{{ $names[$craId]->displayName() }}</span>
                             @endforeach
                         </a>
                     @endfor
                 </div>
                 <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
-                    <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded bg-sky/20"></span>Rest Day</span>
-                    <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded bg-coral/20"></span>Absent / Leave</span>
-                    <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-dashed border-coral bg-coral/20"></span>Absent, not planned (didn't log in)</span>
+                    @foreach (DutySchedule::TYPES as $value => $label)
+                        <span class="flex items-center gap-1.5"><span aria-hidden="true" @class(['size-3 rounded', DutySchedule::LOOKS[$value]['tag']])></span>{{ $label }}</span>
+                    @endforeach
+                    <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-3 rounded border border-dashed border-coral-700/70 bg-[#e4dfe9]"></span>Absent, not planned (didn't log in)</span>
                     <span class="flex items-center gap-1.5"><span aria-hidden="true" class="size-1.5 rounded-full bg-teal"></span>CRAs logged in on duty</span>
                 </div>
             </section>
@@ -120,12 +120,13 @@
         <section aria-labelledby="totals-title" class="overflow-hidden rounded-xl bg-white shadow-sm">
             <h2 id="totals-title" class="border-b border-line px-4 py-3 font-semibold">{{ $month->format('F') }} per CRA</h2>
             <div class="overflow-x-auto">
-                <table class="w-full min-w-[30rem] text-left text-sm">
+                <table class="w-full min-w-[44rem] text-left text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
                             <th class="px-4 py-2.5 font-semibold">CRA</th>
-                            <th class="px-4 py-2.5 text-right font-semibold">Rest days</th>
-                            <th class="px-4 py-2.5 text-right font-semibold">Absent / Leave</th>
+                            @foreach (DutySchedule::TYPES as $value => $label)
+                                <th class="px-4 py-2.5 text-right font-semibold">{{ DutySchedule::LOOKS[$value]['short'] }}</th>
+                            @endforeach
                             <th class="px-4 py-2.5 text-right font-semibold">Logged in on duty</th>
                         </tr>
                     </thead>
@@ -133,8 +134,9 @@
                         @foreach ($cras as $cra)
                             <tr>
                                 <td class="px-4 py-2.5 font-medium"><span class="flex items-center gap-2"><x-avatar :user="$cra" class="size-6" />{{ $cra->displayName() }}</span></td>
-                                <td class="px-4 py-2.5 text-right tabular-nums">{{ $totals[$cra->id]['rest'] }}</td>
-                                <td class="px-4 py-2.5 text-right tabular-nums">{{ $totals[$cra->id]['leave'] }}</td>
+                                @foreach (DutySchedule::TYPES as $value => $label)
+                                    <td @class(['px-4 py-2.5 text-right tabular-nums', 'text-muted' => $totals[$cra->id][$value] === 0])>{{ $totals[$cra->id][$value] }}</td>
+                                @endforeach
                                 <td class="px-4 py-2.5 text-right tabular-nums">{{ $totals[$cra->id]['duty'] }}</td>
                             </tr>
                         @endforeach
