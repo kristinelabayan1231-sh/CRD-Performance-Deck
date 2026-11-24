@@ -67,6 +67,7 @@ use App\Http\Controllers\SmsFollowUpController;
 use App\Http\Controllers\SmsReminderController;
 use App\Http\Controllers\SmsReminderSettingController;
 use App\Http\Controllers\SmsReplyController;
+use App\Http\Controllers\SmsScheduleController;
 use App\Http\Controllers\SmsTemplateController;
 use App\Http\Controllers\SpielController;
 use App\Http\Controllers\UserAccessController;
@@ -178,6 +179,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
         Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
+        Route::get('/schedule', [SmsScheduleController::class, 'index'])->name('schedule.index');
+        Route::put('/schedule', [SmsScheduleController::class, 'update'])->name('schedule.update');
         // Replies moved into Conversations; old links (and the YES alert) still land there.
         Route::get('/replies', fn (Request $request) => redirect()->route('sms-reminders.conversations.index', array_filter([
             'show' => $request->query('show') === 'reorder' ? 'reorder' : 'reply', 'cra' => $request->query('cra'),
@@ -398,6 +401,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
             Route::put('/', [SmsReminderSettingController::class, 'update'])->name('update');
             Route::post('/test', [SmsReminderSettingController::class, 'test'])->middleware('throttle:10,1')->name('test');
             Route::patch('/phones/{user}', [SmsReminderSettingController::class, 'ready'])->name('ready');
+            Route::put('/schedules/{user}', [SmsReminderSettingController::class, 'schedule'])->name('schedule');
         });
 
         Route::prefix('product-qty')->name('product-qty.')->middleware('can:product_qty.manage')->group(function () {

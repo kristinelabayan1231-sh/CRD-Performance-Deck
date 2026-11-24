@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\SmsScheduleRequest;
 use App\Models\Setting;
 use App\Models\SmsReply;
 use App\Models\User;
@@ -14,8 +15,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Settings → SMS Reminders: on/off, the daily automatic send time, the daily cap per phone, each CRA phone's
- * readiness, and a test text through a CRA's phone.
+ * Settings → SMS Reminders: on/off, the default automatic send time and windows, the daily cap per phone, each CRA
+ * phone's readiness and schedule (the same one she sets in SMS Reminders → Schedule), and a test text through a CRA's phone.
  */
 class SmsReminderSettingController extends Controller
 {
@@ -25,11 +26,12 @@ class SmsReminderSettingController extends Controller
             'enabled' => SmsSettings::enabled(),
             'sendTime' => SmsSettings::sendTime(),
             'dailyCap' => SmsSettings::dailyCap(),
-            'cras' => LeadGenerator::cras()->map(fn (User $cra) => ['cra' => $cra, 'link' => SmsSender::linkFor($cra), 'hasToken' => (bool) $cra->recording_token]),
+            'cras' => LeadGenerator::cras()->map(fn (User $cra) => ['cra' => $cra, 'link' => SmsSender::linkFor($cra), 'hasToken' => (bool) $cra->recording_token,
+                'schedule' => SmsSettings::scheduleFor($cra), 'scheduleLabel' => SmsSettings::scheduleLabel($cra)]),
+            'default' => SmsSettings::scheduleFor(null),
             'replyUrl' => route('api.sms-replies.store'),
             'sentUrl' => route('api.sms-sent.store'),
             'windows' => SmsSettings::windows(),
-            'windowsLabel' => SmsSettings::windowsLabel(),
         ]);
     }
 
@@ -83,6 +85,17 @@ class SmsReminderSettingController extends Controller
         return $result === SmsSender::SENT
             ? back()->with('status', "Test text handed to {$cra->displayName()}'s phone. Once the phone confirms it went out, the phone shows as ready below; check it arrived, then reply YES and look for it in SMS Reminders → Replies.")
             : back()->withErrors(['test' => SmsSender::explain($result)]);
+    }
+
+    /**
+     * A CRA's schedule for automatic texts, as she sets it in SMS Reminders → Schedule.
+     */
+    public function schedule(SmsScheduleRequest $request, User $user): RedirectResponse
+    {
+        abort_unless(LeadGenerator::cras()->contains('id', $user->id), 404);
+        $user->forceFill($request->schedule())->save();
+
+        return back()->with('status', SmsScheduleController::savedMessage($user));
     }
 
     /**

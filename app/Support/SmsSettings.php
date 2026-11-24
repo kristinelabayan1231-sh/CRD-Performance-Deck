@@ -4,11 +4,12 @@ namespace App\Support;
 
 use App\Models\RestockReminder;
 use App\Models\Setting;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 
 /**
- * Settings → SMS Reminders: whether texts go out at all, the daily automatic send time, the windows texts go out in,
- * and the most texts a CRA's phone sends a day.
+ * Settings → SMS Reminders: whether texts go out at all, the default automatic send time and windows texts go out in
+ * (a CRA can set her own in SMS Reminders → Schedule), and the most texts a CRA's phone sends a day.
  */
 class SmsSettings
 {
@@ -58,11 +59,83 @@ class SmsSettings
         return is_array($saved) && $saved !== [] ? $saved : config('sms_reminders.sending_windows');
     }
 
-    public static function withinSendingHours(?CarbonImmutable $at = null): bool
+    /** Days of the week (ISO, Monday = 1) the default schedule sends on: every day. */
+    public const EVERY_DAY = [1, 2, 3, 4, 5, 6, 7];
+
+    /**
+     * A CRA's schedule for automatic texts: her own (SMS Reminders → Schedule), or the default from Settings when she
+     * hasn't set one (custom false).
+     *
+     * @return array{custom: bool, send_time: string, windows: list<array{from: string, until: string}>, days: list<int>}
+     */
+    public static function scheduleFor(?User $cra): array
+    {
+        $own = $cra?->sms_schedule;
+
+        if (is_array($own) && filled($own['send_time'] ?? null) && ! empty($own['windows']) && ! empty($own['days'])) {
+            return ['custom' => true, 'send_time' => $own['send_time'], 'windows' => array_values($own['windows']), 'days' => array_map('intval', $own['days'])];
+        }
+
+        return ['custom' => false, 'send_time' => self::sendTime(), 'windows' => self::windows(), 'days' => self::EVERY_DAY];
+    }
+
+    /**
+     * Texts go out only in the sending windows: the CRA's own when given, else the default ones.
+     */
+    public static function withinSendingHours(?CarbonImmutable $at = null, ?User $cra = null): bool
     {
         $time = ($at ?? self::now())->format('H:i');
+        $windows = $cra ? self::scheduleFor($cra)['windows'] : self::windows();
 
-        return collect(self::windows())->contains(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+        return collect($windows)->contains(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+    }
+
+    /**
+     * Whether a CRA's ticked customers are queued automatically now: on one of her days, from her send time.
+     */
+    public static function autoSendsNow(User $cra, ?CarbonImmutable $at = null): bool
+    {
+        $at ??= self::now();
+        $schedule = self::scheduleFor($cra);
+
+        return in_array($at->dayOfWeekIso, $schedule['days'], true) && $at->format('H:i') >= $schedule['send_time'];
+    }
+
+    /**
+     * "Mon–Sat · from 9:30 AM · 9:00–11:00 AM and 2:00–4:00 PM".
+     */
+    public static function scheduleLabel(?User $cra): string
+    {
+        $schedule = self::scheduleFor($cra);
+
+        return self::daysLabel($schedule['days']).' · from '.self::timeLabel($schedule['send_time']).' · '.self::windowsLabel($schedule['windows']);
+    }
+
+    /**
+     * "Every day", "Mon–Sat", "Mon, Wed, Fri".
+     *
+     * @param  list<int>  $days
+     */
+    public static function daysLabel(array $days): string
+    {
+        sort($days);
+        $names = [1 => 'Mon', 2 => 'Tue', 3 => 'Wed', 4 => 'Thu', 5 => 'Fri', 6 => 'Sat', 7 => 'Sun'];
+
+        if ($days === self::EVERY_DAY) {
+            return 'Every day';
+        }
+
+        $isRun = count($days) > 2 && end($days) - reset($days) === count($days) - 1;
+
+        return $isRun ? $names[reset($days)].'–'.$names[end($days)] : collect($days)->map(fn (int $day) => $names[$day])->join(', ');
+    }
+
+    /**
+     * "9:30 AM".
+     */
+    public static function timeLabel(string $time): string
+    {
+        return CarbonImmutable::createFromFormat('H:i', $time)->format('g:i A');
     }
 
     /**
@@ -89,12 +162,12 @@ class SmsSettings
     }
 
     /**
-     * "9:00–11:00 AM and 2:00–4:00 PM".
+     * "9:00 AM–11:00 AM and 2:00 PM–4:00 PM": the given windows, else the default ones.
+     *
+     * @param  list<array{from: string, until: string}>|null  $windows
      */
-    public static function windowsLabel(): string
+    public static function windowsLabel(?array $windows = null): string
     {
-        $format = fn (string $time) => CarbonImmutable::createFromFormat('H:i', $time)->format('g:i A');
-
-        return collect(self::windows())->map(fn (array $window) => $format($window['from']).'–'.$format($window['until']))->join(', ', ' and ');
+        return collect($windows ?? self::windows())->map(fn (array $window) => self::timeLabel($window['from']).'–'.self::timeLabel($window['until']))->join(', ', ' and ');
     }
 }

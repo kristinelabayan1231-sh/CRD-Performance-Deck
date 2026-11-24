@@ -95,7 +95,8 @@
                                     @class(['relative h-6 w-11 shrink-0 rounded-full transition', 'bg-brand-600' => $cra->sms_auto_send, 'bg-line' => ! $cra->sms_auto_send])>
                                 <span @class(['absolute top-0.5 size-5 rounded-full bg-white shadow transition-all', 'left-[1.375rem]' => $cra->sms_auto_send, 'left-0.5' => ! $cra->sms_auto_send])></span>
                             </button>
-                            <span>{{ $cra->sms_auto_send ? 'Sends automatically every day at '.\Carbon\Carbon::createFromFormat('H:i', $sendTime)->format('g:i A') : 'Automatic sending off' }}</span>
+                            <span>{{ $cra->sms_auto_send ? 'Sends automatically: '.\App\Support\SmsSettings::scheduleLabel($cra) : 'Automatic sending off' }}</span>
+                            <a href="{{ route('sms-reminders.schedule.index', $canViewAll ? ['cra' => $cra->id] : []) }}" class="font-semibold text-brand-600 hover:underline">Change schedule</a>
                         </form>
                         @if ($cra && ! \App\Services\SmsSender::linkFor($cra))
                             <p class="text-xs text-coral-700">{{ $cra->displayName() }}'s phone link isn't set in Settings → Call Recordings.</p>

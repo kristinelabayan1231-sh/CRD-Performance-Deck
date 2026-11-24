@@ -87,9 +87,9 @@ $modules = [
         'call_recordings.manage' => 'Connect the Google Drive that keeps the recordings and create each CRA phone\'s upload token',
     ],
     'SMS Reminders' => [
-        'sms_reminders.view' => 'View own customers due a restock text, leave customers out, send them now, turn on own automatic sending, and keep own SMS templates and name in texts',
+        'sms_reminders.view' => 'View own customers due a restock text, leave customers out, send them now, set own automatic sending schedule (days, send time, windows), and keep own SMS templates and name in texts',
         'sms_reminders.view_all' => 'View and send every CRA\'s restock texts and replies, and see or edit any CRA\'s templates',
-        'sms_reminders.manage' => 'Settings → SMS Reminders (on/off, send time, daily cap, test text)',
+        'sms_reminders.manage' => 'Settings → SMS Reminders (on/off, default schedule, each CRA\'s schedule, daily cap, test text)',
     ],
     'On Duty' => [
         'on_duty.view' => 'See who is on duty and off today (the list behind the sidebar\'s "CRA on duty") and every CRA\'s schedule (CRA Schedule)',

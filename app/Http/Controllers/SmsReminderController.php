@@ -90,7 +90,6 @@ class SmsReminderController extends Controller
             'replies' => SmsReply::whereNull('handled_at')->where('kind', '!=', SmsReply::STOP)
                 ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))->count(),
             'enabled' => SmsSettings::enabled(),
-            'sendTime' => SmsSettings::sendTime(),
             // Ready once the phone link is set and the phone has confirmed a text went out.
             'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null && $craForActions->sms_confirmed_at !== null : null,
             'daysBefore' => RestockReminders::daysBefore(),
@@ -205,7 +204,7 @@ class SmsReminderController extends Controller
         $cra->forceFill(['sms_auto_send' => (bool) $data['on']])->save();
 
         return back()->with('status', $data['on']
-            ? "Automatic sending on: {$cra->displayName()}'s ticked customers are texted every day at ".SmsSettings::sendTime().'.'
+            ? "Automatic sending on: {$cra->displayName()}'s ticked customers are texted ".SmsSettings::scheduleLabel($cra).'.'
             : "Automatic sending off for {$cra->displayName()}: texts go out only with Send now.");
     }
 
