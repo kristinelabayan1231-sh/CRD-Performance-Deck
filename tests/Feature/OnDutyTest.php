@@ -75,11 +75,24 @@ class OnDutyTest extends TestCase
         $this->assertSame(['2026-10-09'], DutySchedule::where('user_id', $this->lhea->id)->get()->map(fn (DutySchedule $day) => $day->date->toDateString())->all());
     }
 
+    public function test_a_cra_files_a_whole_week_of_vacation_leave_but_cannot_set_themselves_absent(): void
+    {
+        $week = ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14', '2026-10-15', '2026-10-16', '2026-10-17'];
+
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => $week, 'type' => DutySchedule::VACATION])
+            ->assertSessionHas('status', 'My schedule saved: 7 days, Oct 11 to Oct 17, set as Vacation Leave.');
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-20'], 'type' => DutySchedule::LEAVE])
+            ->assertSessionHasErrors('type');
+
+        $this->assertSame(array_fill_keys($week, DutySchedule::VACATION), DutySchedule::where('user_id', $this->lhea->id)->orderBy('date')->get()
+            ->mapWithKeys(fn (DutySchedule $day) => [$day->date->toDateString() => $day->type])->all());
+    }
+
     public function test_past_days_and_days_after_the_month_after_next_cannot_be_set(): void
     {
-        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-08'], 'type' => DutySchedule::LEAVE])
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2026-10-08'], 'type' => DutySchedule::SICK])
             ->assertSessionHasErrors(['dates.0' => 'Past days are locked: ask your supervisor to change one.']);
-        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2027-01-01'], 'type' => DutySchedule::LEAVE])
+        $this->actingAs($this->lhea)->put(route('segmentation.schedule'), ['dates' => ['2027-01-01'], 'type' => DutySchedule::VACATION])
             ->assertSessionHasErrors(['dates.0' => 'You can plan up to December 2026.']);
 
         $this->assertSame(0, DutySchedule::count());

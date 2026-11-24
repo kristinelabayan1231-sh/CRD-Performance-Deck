@@ -21,8 +21,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * SMS Reminders: a reminder day's customers due a restock text (their product runs out 7 days later, by the real
- * date), for one CRA or all. The CRA unticks customers to leave them out, presses Send now or lets automatic sending
+ * SMS Reminders: a real day's texts to the customers on the CRAs' tracker lists for its lead day (RestockReminders),
+ * for one CRA or all. The CRA unticks customers to leave them out, presses Send now or lets automatic sending
  * queue them at the send time; reminders:send then sends one a minute from the CRA's phone.
  */
 class SmsReminderController extends Controller
@@ -40,7 +40,7 @@ class SmsReminderController extends Controller
         $cras = LeadGenerator::cras();
         $craId = $this->craScope($user, $filters['cra'] ?? null);
 
-        // The day's customers, and those from earlier days still to send (carried over until their product runs out).
+        // The day's customers, and those from earlier days still to send (carried over until sent).
         $base = RestockReminder::shownOn($day)
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId));
         $counts = (clone $base)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
@@ -92,7 +92,7 @@ class SmsReminderController extends Controller
             'enabled' => SmsSettings::enabled(),
             // Ready once the phone link is set and the phone has confirmed a text went out.
             'phoneReady' => $craForActions ? SmsSender::linkFor($craForActions) !== null && $craForActions->sms_confirmed_at !== null : null,
-            'daysBefore' => RestockReminders::daysBefore(),
+            'leadDay' => WorkingDate::leadDayFor($day),
             // The Text button's template choices, each row's CRA's own: follow-ups first, then reminders.
             'textTemplates' => SmsTemplate::where('is_active', true)->whereIn('user_id', $rows->getCollection()->pluck('user_id')->filter()->unique())
                 ->orderByRaw('case when purpose = ? then 0 else 1 end', [SmsTemplate::FOLLOW_UP])->orderBy('name')

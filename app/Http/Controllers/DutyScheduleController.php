@@ -14,8 +14,9 @@ use Illuminate\Validation\Rule;
 class DutyScheduleController extends Controller
 {
     /**
-     * A CRA sets the dates picked in My schedule (on-duty pop-up) as Absent / Leave or Rest Day, or clears them back to
-     * on duty. Only today and later, up to the last month the calendar shows; past days are locked.
+     * A CRA sets the dates picked in My schedule (on-duty pop-up), one by one or a whole week or month at once, as a
+     * Rest Day or a leave (Vacation, Sick, Personal, Emergency), or clears them back to on duty. Only today and later, up
+     * to the last month the calendar shows; past days are locked.
      */
     public function __invoke(Request $request): RedirectResponse
     {
@@ -26,7 +27,7 @@ class DutyScheduleController extends Controller
         $data = $request->validate([
             'dates' => ['required', 'array', 'max:100'],
             'dates.*' => ['date_format:Y-m-d', 'after_or_equal:'.$today->toDateString(), 'before_or_equal:'.OnDuty::scheduleUntil()->toDateString()],
-            'type' => ['required', Rule::in([...array_keys(DutySchedule::TYPES), 'clear'])],
+            'type' => ['required', Rule::in([...array_keys(DutySchedule::PLANNABLE), 'clear'])],
         ], [
             'dates.required' => 'Pick at least one date on the calendar.',
             'dates.*.after_or_equal' => 'Past days are locked: ask your supervisor to change one.',
@@ -45,7 +46,10 @@ class DutyScheduleController extends Controller
             );
         }
 
-        $label = $dates->map(fn (string $date) => CarbonImmutable::parse($date)->format('M j'))->join(', ', ' and ');
+        $short = fn (string $date) => CarbonImmutable::parse($date)->format('M j');
+        $label = $dates->count() > 4
+            ? $dates->count().' days, '.$short($dates->first()).' to '.$short($dates->last()).','
+            : $dates->map($short)->join(', ', ' and ');
         $as = $data['type'] === 'clear' ? 'back to on duty' : 'as '.DutySchedule::TYPES[$data['type']];
 
         return back()->with('status', "My schedule saved: {$label} set {$as}.")->with('schedule_open', true);

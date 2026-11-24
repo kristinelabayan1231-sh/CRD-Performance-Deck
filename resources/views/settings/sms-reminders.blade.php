@@ -12,7 +12,7 @@
         @csrf @method('PUT')
         <div>
             <h2 class="text-base font-semibold">Restock texts</h2>
-            <p class="text-sm text-muted">Every morning at 6:30 the app lists the customers whose product runs out in {{ config('segmentation.replenishment_days_before') }} days. Their texts go out from their own CRA's phone (MacroDroid), one a minute, only in the sending windows; what's left after the last window waits for the next day. Below is the default schedule; each CRA can set her own in SMS Reminders → Schedule, or you can set it for her under CRA phones.</p>
+            <p class="text-sm text-muted">Every morning at 6:30 (and again at 8:40) the app lists the customers on each CRA's tracker list for the day, one text each. Texts go out from the CRA's own phone (MacroDroid), one a minute, only in the sending windows; the daily limit is shared between the windows, each half list texts and half follow-ups (a kind with nothing waiting leaves its half to the other). What isn't sent carries over to the next day and goes first. Below is the default schedule; each CRA can set her own in SMS Reminders → Schedule, or you can set it for her under CRA phones.</p>
         </div>
         <label class="flex items-center gap-2.5 text-sm font-semibold">
             <input type="hidden" name="enabled" value="0">
@@ -29,6 +29,11 @@
                 <input type="number" name="daily_cap" value="{{ $dailyCap }}" min="1" max="1000" required class="{{ $control }} w-36 font-normal">
             </label>
         </div>
+        <label class="flex flex-col gap-1.5 text-sm font-semibold">
+            Text for customers whose product already ran out
+            <span class="text-xs font-normal text-muted">Every CRA's list text uses this instead of their own reminder template when the out-of-stock date has passed (the tracker runs about a month behind, leftovers more), so no "malapit na maubos" or old date. Follow-ups keep the CRA's templates. Can use {{ implode(', ', array_diff(array_keys(config('sms_reminders.placeholders')), ['{run_out_date}'])) }}. Leave blank for the built-in text.</span>
+            <textarea name="overdue_body" rows="3" maxlength="480" class="rounded-lg border border-line bg-white px-3 py-2 text-sm font-normal focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">{{ old('schedule_for') ? $overdueBody : old('overdue_body', $overdueBody) }}</textarea>
+        </label>
         <fieldset class="flex flex-wrap items-end gap-4">
             <legend class="mb-1.5 text-sm font-semibold">Default sending windows</legend>
             @foreach (['Morning', 'Afternoon'] as $index => $name)
@@ -44,7 +49,7 @@
             @endforeach
             <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Save</button>
         </fieldset>
-        <p class="text-xs text-muted">The default send time, windows and every day apply to CRAs who turned on automatic sending and haven't set their own schedule; their texts start in the next window from then. The daily limit applies to every phone. One text a minute means a 2-hour window sends up to 120 per phone. Keep the daily limit low (about 200) so the telco doesn't flag a SIM as spam. Leave the afternoon times blank for one window only.</p>
+        <p class="text-xs text-muted">The default send time, windows and every day apply to CRAs who turned on automatic sending and haven't set their own schedule; their texts start in the next window from then. The daily limit applies to every phone. One text a minute means a 2½-hour window sends up to 150 per phone, so make each window long enough for its share of the daily limit (300 over two windows = 150 each). Don't raise the limit far past 300: the telco may flag a SIM as spam. Leave the afternoon times blank for one window only.</p>
     </form>
 
     <section class="mb-4 overflow-hidden rounded-xl bg-white shadow-sm">

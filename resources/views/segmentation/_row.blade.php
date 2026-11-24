@@ -35,6 +35,10 @@
             @elseif ($isHighAov)
                 <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
             @endif
+            {{-- Its SMS Reminders text: to be texted, texted (no reply yet), replied YES or STOP --}}
+            @if ($smsBadge ?? null)
+                <span title="{{ $smsBadge['title'] }}" class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap {{ $smsBadge['classes'] }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3"><path stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></svg>{{ $smsBadge['label'] }}</span>
+            @endif
             {{-- Hover: the customer's order history (order date · product), loaded on first hover (segmentation.js) --}}
             <button type="button" data-orders-open data-orders-url="{{ route('segmentation.orders', $lead) }}" aria-label="Order history of {{ $lead->customer_name }}"
                     class="rounded p-0.5 text-muted/60 transition hover:text-brand-600">

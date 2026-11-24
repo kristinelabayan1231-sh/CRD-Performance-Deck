@@ -207,6 +207,11 @@
         Loading…
     </div>
 
+    {{-- Supervisors and managers: the floating CRA schedule, on every page but the CRA Schedule itself --}}
+    @if ($user->can('on_duty.view') && ! request()->routeIs('cra-schedule.*'))
+        <x-schedule-peek />
+    @endif
+
     {{-- A CRA's on-duty pop-up (log in for today + My schedule): opens by itself until they log in, and after saving the schedule --}}
     @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && $user->role?->slug === \App\Models\Role::CRA)
         <x-on-duty-prompt :open="\App\Support\OnDuty::needsLogin($user) || session('schedule_open') || $errors->has('dates') || $errors->has('dates.*')" />

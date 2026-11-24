@@ -19,6 +19,9 @@ class SmsSettings
 
     public const DAILY_CAP = 'sms_reminders.daily_cap';
 
+    /** The general text for customers whose product already ran out (RestockReminders::isOverdue). */
+    public const OVERDUE_BODY = 'sms_reminders.overdue_body';
+
     /** JSON list of {from, until} (HH:MM, Manila). */
     public const WINDOWS = 'sms_reminders.windows';
 
@@ -32,6 +35,11 @@ class SmsSettings
     public static function sendTime(): string
     {
         return (string) Setting::value(self::SEND_TIME, config('sms_reminders.send_time'));
+    }
+
+    public static function overdueBody(): string
+    {
+        return (string) (Setting::value(self::OVERDUE_BODY) ?: config('sms_reminders.overdue_body'));
     }
 
     public static function dailyCap(): int
@@ -88,6 +96,42 @@ class SmsSettings
         $windows = $cra ? self::scheduleFor($cra)['windows'] : self::windows();
 
         return collect($windows)->contains(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+    }
+
+    /**
+     * The sending window (the CRA's own or the default) $at is in, or null outside them.
+     *
+     * @return array{from: string, until: string}|null
+     */
+    public static function currentWindow(CarbonImmutable $at, ?User $cra = null): ?array
+    {
+        $time = $at->format('H:i');
+        $windows = $cra ? self::scheduleFor($cra)['windows'] : self::windows();
+
+        return collect($windows)->first(fn (array $window) => $time >= $window['from'] && $time < $window['until']);
+    }
+
+    /**
+     * Texts a phone sends in one window: the daily cap shared between the CRA's windows (300 over two = 150 each), half
+     * for list texts and half for follow-ups (sharePerWindow).
+     */
+    public static function perWindow(?User $cra = null): int
+    {
+        $windows = $cra ? self::scheduleFor($cra)['windows'] : self::windows();
+
+        return intdiv(self::dailyCap(), max(1, count($windows)));
+    }
+
+    /**
+     * Each kind's share of a window: list texts (reminder) get the odd one over.
+     *
+     * @return array{reminder: int, follow_up: int}
+     */
+    public static function sharePerWindow(?User $cra = null): array
+    {
+        $perWindow = self::perWindow($cra);
+
+        return [RestockReminder::REMINDER => $perWindow - intdiv($perWindow, 2), RestockReminder::FOLLOW_UP => intdiv($perWindow, 2)];
     }
 
     /**

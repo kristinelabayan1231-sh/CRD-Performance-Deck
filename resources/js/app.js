@@ -17,6 +17,7 @@ import { initProductPerformance } from './product-performance';
 import { initProductTargetMarket } from './product-target-market';
 import { initReportSummaryShot } from './report-summary-shot';
 import { initResultsFlip } from './results-flip';
+import { initSchedulePeek } from './schedule-peek';
 import { initSegmentation } from './segmentation';
 import { initSpiels } from './spiels';
 import { initTabs } from './tabs';
@@ -30,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTooltips();
     initSegmentation();
     initDutySchedule();
+    initSchedulePeek();
     initSpiels();
     initPoster();
     initPresentationBoard();

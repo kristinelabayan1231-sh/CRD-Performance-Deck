@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * One customer's text for one day, for their own CRA: a restock reminder (their product runs out
- * replenishment_days_before days later; products running out within a week go in the same text, covers) or a follow-up
+ * One customer's text for one day, for their CRA: a reminder for their leads on the CRA's tracker list that day
+ * (lead_ids; their products in one text, covers) or a follow-up
  * (1 to 3, 7 days after the last text while they haven't reordered; automatic, or scheduled by the CRA). Pending →
  * (ticked) queued at the send time or on Send now → sent from the CRA's phone; or left out by the CRA (excluded), or
  * skipped by the app (opted out, reordered, already texted), or failed.
@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'phone_key', 'phone_number', 'customer_name', 'product_id', 'products', 'customer_type', 'run_out_on', 'remind_on',
     'user_id', 'status', 'excluded_reason', 'status_updated_by', 'sms_template_id', 'message', 'attempts',
-    'next_attempt_at', 'queued_at', 'handed_at', 'sent_at', 'error', 'kind', 'follow_up_number', 'covers', 'scheduled_by',
+    'next_attempt_at', 'queued_at', 'handed_at', 'sent_at', 'error', 'kind', 'follow_up_number', 'covers', 'lead_ids', 'scheduled_by',
     'note', 'no_reorder_reason', 'reordered_at', 'no_response_at', 'resolved_at',
 ])]
 class RestockReminder extends Model
@@ -45,9 +45,6 @@ class RestockReminder extends Model
 
     /** Days after the last text a follow-up goes out. */
     public const FOLLOW_UP_DAYS = 7;
-
-    /** A follow-up not sent on its day stays on the list this many days. */
-    public const FOLLOW_UP_CARRY_DAYS = 6;
 
     /** Statuses that mean the customer was (or will be) texted, or the CRA chose not to: a run-out they cover isn't texted again. */
     public const COVERING = [self::PENDING, self::QUEUED, self::SENT, self::EXCLUDED];
@@ -81,6 +78,7 @@ class RestockReminder extends Model
             'handed_at' => 'datetime',
             'sent_at' => 'datetime',
             'covers' => 'array',
+            'lead_ids' => 'array',
             'follow_up_number' => 'integer',
             'reordered_at' => 'datetime',
             'no_response_at' => 'datetime',
@@ -89,16 +87,13 @@ class RestockReminder extends Model
     }
 
     /**
-     * Still to send on $day: not sent yet (pending or queued), from $day or an earlier day. A reminder missed on its day
-     * (no phone yet, no CRA, sending off) carries over until the product runs out; a follow-up for FOLLOW_UP_CARRY_DAYS.
+     * Still to send on $day: not sent yet (pending or queued), from $day or an earlier day. A text not sent on its day
+     * (the phone's daily cap, no phone yet, sending off) carries over to the next days until it goes out or is skipped.
      */
     public function scopeToSendOn(Builder $query, CarbonImmutable $day): Builder
     {
         return $query->whereIn('status', [self::PENDING, self::QUEUED])
-            ->whereDate('remind_on', '<=', $day->toDateString())
-            ->where(fn (Builder $q) => $q
-                ->where(fn (Builder $q) => $q->where('kind', '!=', self::FOLLOW_UP)->whereDate('run_out_on', '>=', $day->toDateString()))
-                ->orWhere(fn (Builder $q) => $q->where('kind', self::FOLLOW_UP)->whereDate('remind_on', '>=', $day->subDays(self::FOLLOW_UP_CARRY_DAYS)->toDateString())));
+            ->whereDate('remind_on', '<=', $day->toDateString());
     }
 
     /**
@@ -123,7 +118,7 @@ class RestockReminder extends Model
     }
 
     /**
-     * What the text is for: [label, detail], e.g. ["Follow-up 1 of 3", "Automatic"] or ["Reminder", "Runs out Dec 1 and Dec 2"].
+     * What the text is for: [label, detail], e.g. ["Follow-up 1 of 3", "Automatic"] or ["Tracker list", "Out of stock Oct 1 and Oct 2"].
      *
      * @return array{0: string, 1: string}
      */
@@ -137,7 +132,7 @@ class RestockReminder extends Model
 
         $days = collect($this->coveredItems())->pluck('run_out_on')->unique()->map(fn (string $day) => CarbonImmutable::parse($day)->format('M j'));
 
-        return ['Reminder', 'Runs out '.$days->join(', ', ' and ').($days->count() > 1 ? ': one text for all' : '')];
+        return ['Tracker list', 'Out of stock '.$days->join(', ', ' and ').($days->count() > 1 ? ': one text for all' : '')];
     }
 
     /**

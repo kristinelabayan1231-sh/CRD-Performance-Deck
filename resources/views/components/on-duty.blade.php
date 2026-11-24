@@ -33,7 +33,7 @@
                         <div class="flex items-center gap-2 py-1 text-sm">
                             <x-avatar :user="$cras[$craId]" class="size-6" />
                             <span class="min-w-0 flex-1 truncate">{{ $cras[$craId]->displayName() }}</span>
-                            <x-day-off-label :rest="$type === \App\Models\DutySchedule::REST ? 1 : 0" :leave="$type === \App\Models\DutySchedule::LEAVE ? 1 : 0" :counts="false" />
+                            <span @class(['inline-block rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap', \App\Models\DutySchedule::LOOKS[$type]['tag']])>{{ \App\Models\DutySchedule::TYPES[$type] }}</span>
                         </div>
                     @endforeach
                 @endif

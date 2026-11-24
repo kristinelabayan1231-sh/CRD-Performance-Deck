@@ -41,11 +41,15 @@ class CraScheduleController extends Controller
             ->groupBy(fn (DutySchedule $row) => $row->date->toDateString())
             ->map(fn ($rows) => $rows->pluck('type', 'user_id'));
 
-        $totals = $cras->mapWithKeys(fn (User $cra) => [$cra->id => [
-            'rest' => collect($off)->filter(fn (array $day) => ($day[$cra->id] ?? null) === DutySchedule::REST)->count(),
-            'leave' => collect($off)->filter(fn (array $day) => ($day[$cra->id] ?? null) === DutySchedule::LEAVE)->count(),
-            'duty' => $logins->filter(fn ($day) => $day->contains('user_id', $cra->id))->count(),
-        ]]);
+        // Each CRA's days of every type (Rest Day, each leave, Absent) and days logged in.
+        $totals = $cras->mapWithKeys(function (User $cra) use ($off, $logins) {
+            $types = collect($off)->map(fn (array $day) => $day[$cra->id] ?? null)->filter()->countBy();
+
+            return [$cra->id => [
+                ...collect(DutySchedule::TYPES)->map(fn ($label, string $type) => $types[$type] ?? 0)->all(),
+                'duty' => $logins->filter(fn ($day) => $day->contains('user_id', $cra->id))->count(),
+            ]];
+        });
 
         $dayKey = $day->toDateString();
         $dayLogins = DutyLogin::whereDate('date', $day)->get()->keyBy('user_id');
@@ -72,7 +76,60 @@ class CraScheduleController extends Controller
     }
 
     /**
-     * Set each CRA's day: Absent / Leave, Rest Day, or on duty (no day off). Logging in still counts as on duty.
+     * The floating schedule (any page, on_duty.view): every CRA's week or month at a glance, loaded when it opens.
+     */
+    public function peek(Request $request): View
+    {
+        $filters = $request->validate([
+            'view' => ['nullable', Rule::in(['week', 'month'])],
+            'date' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+
+        $today = WorkingDate::realToday();
+        $view = $filters['view'] ?? 'week';
+        $date = isset($filters['date']) ? CarbonImmutable::parse($filters['date']) : $today;
+        [$from, $to, $previous, $next] = $view === 'week'
+            ? [$date->startOfWeek(CarbonImmutable::SUNDAY), $date->endOfWeek(CarbonImmutable::SATURDAY)->startOfDay(), $date->startOfWeek(CarbonImmutable::SUNDAY)->subWeek(), $date->startOfWeek(CarbonImmutable::SUNDAY)->addWeek()]
+            : [$date->startOfMonth(), $date->endOfMonth()->startOfDay(), $date->startOfMonth()->subMonth(), $date->startOfMonth()->addMonth()];
+
+        $cras = LeadGenerator::cras();
+        $ids = $cras->pluck('id');
+        $off = DutyGoals::offDays($cras, $from, $to);
+        $logins = DutyLogin::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->whereIn('user_id', $ids)->get()
+            ->mapWithKeys(fn (DutyLogin $login) => [$login->date->toDateString().'|'.$login->user_id => $login->logged_in_at->timezone(config('segmentation.timezone'))->format('g:i A')]);
+        $planned = DutySchedule::whereDate('date', '>=', $from)->whereDate('date', '<=', $to)->whereIn('user_id', $ids)->get()
+            ->mapWithKeys(fn (DutySchedule $row) => [$row->date->toDateString().'|'.$row->user_id => true]);
+        $days = collect(range(0, $from->diffInDays($to)))->map(fn (int $i) => $from->addDays($i));
+
+        return view('cra-schedule._peek', [
+            'view' => $view,
+            'today' => $today,
+            'from' => $from,
+            'to' => $to,
+            'previous' => $previous,
+            'next' => $next,
+            'days' => $days,
+            'rows' => $cras->map(fn (User $cra) => [
+                'cra' => $cra,
+                'days' => $days->mapWithKeys(function (CarbonImmutable $day) use ($cra, $off, $logins, $planned) {
+                    $key = $day->toDateString();
+
+                    return [$key => [
+                        'type' => $off[$key][$cra->id] ?? null,
+                        'planned' => isset($planned[$key.'|'.$cra->id]),
+                        'login' => $logins[$key.'|'.$cra->id] ?? null,
+                    ]];
+                }),
+            ]),
+            'dayTotals' => $days->mapWithKeys(fn (CarbonImmutable $day) => [$day->toDateString() => [
+                'duty' => $logins->keys()->filter(fn (string $key) => str_starts_with($key, $day->toDateString().'|'))->count(),
+                'off' => count($off[$day->toDateString()] ?? []),
+            ]]),
+        ]);
+    }
+
+    /**
+     * Set each CRA's day: Rest Day, a leave, Absent, or on duty (no day off). Logging in still counts as on duty.
      */
     public function update(Request $request): RedirectResponse
     {

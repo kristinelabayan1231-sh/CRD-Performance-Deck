@@ -13,7 +13,7 @@
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
                 <h1 class="text-xl font-semibold">SMS Reminders</h1>
-                <p class="text-sm text-muted">Customers whose product runs out on <span class="font-semibold text-ink">{{ $day->addDays($daysBefore)->format('D, M j') }}</span>, texted {{ $daysBefore }} days before from their CRA's own phone, plus earlier days' customers not texted yet whose product hasn't run out.</p>
+                <p class="text-sm text-muted">The customers on each CRA's tracker list for <span class="font-semibold text-ink">{{ $leadDay->format('D, M j') }}</span> (Segmentation and Exclusive Lead Tracker), one text each from their CRA's own phone, so fewer need a call. Texts not sent on their day carry over and go first; each window sends half list texts, half follow-ups.</p>
             </div>
             @include('sms-reminders._tabs', ['openReplies' => $replies])
         </header>
@@ -232,7 +232,7 @@
                                     <td class="px-4 py-3">
                                         <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap {{ $reminder->statusClasses() }}">{{ $reminder->statusLabel() }}</span>
                                         @if ($reminder->isCarriedOverTo($day))
-                                            <p class="mt-1 text-xs text-muted">From {{ $reminder->remind_on->format('M j') }} · runs out {{ $reminder->run_out_on->format('M j') }}</p>
+                                            <p class="mt-1 text-xs text-muted">Carried over from {{ $reminder->remind_on->format('M j') }}</p>
                                         @endif
                                         @if ($reminder->sent_at)
                                             <p class="mt-1 text-xs text-muted">{{ $reminder->sent_at->timezone($tz)->format('g:i A') }}</p>

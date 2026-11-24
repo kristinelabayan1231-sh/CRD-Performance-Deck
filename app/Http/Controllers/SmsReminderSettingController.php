@@ -26,6 +26,7 @@ class SmsReminderSettingController extends Controller
             'enabled' => SmsSettings::enabled(),
             'sendTime' => SmsSettings::sendTime(),
             'dailyCap' => SmsSettings::dailyCap(),
+            'overdueBody' => SmsSettings::overdueBody(),
             'cras' => LeadGenerator::cras()->map(fn (User $cra) => ['cra' => $cra, 'link' => SmsSender::linkFor($cra), 'hasToken' => (bool) $cra->recording_token,
                 'schedule' => SmsSettings::scheduleFor($cra), 'scheduleLabel' => SmsSettings::scheduleLabel($cra)]),
             'default' => SmsSettings::scheduleFor(null),
@@ -45,6 +46,7 @@ class SmsReminderSettingController extends Controller
             'enabled' => ['sometimes', 'boolean'],
             'send_time' => ['required', 'date_format:H:i'],
             'daily_cap' => ['required', 'integer', 'min:1', 'max:1000'],
+            'overdue_body' => ['nullable', 'string', 'max:480'],
             'windows.0.from' => ['required', 'date_format:H:i'],
             'windows.0.until' => ['required', 'date_format:H:i', 'after:windows.0.from'],
             'windows.1.from' => ['nullable', 'required_with:windows.1.until', 'date_format:H:i', 'after_or_equal:windows.0.until'],
@@ -60,6 +62,10 @@ class SmsReminderSettingController extends Controller
         Setting::put(SmsSettings::SEND_TIME, $data['send_time'], $request->user());
         Setting::put(SmsSettings::DAILY_CAP, (string) $data['daily_cap'], $request->user());
         Setting::put(SmsSettings::WINDOWS, json_encode($windows), $request->user());
+        if ($request->has('overdue_body')) {
+            // Blank goes back to the built-in text.
+            Setting::put(SmsSettings::OVERDUE_BODY, trim((string) ($data['overdue_body'] ?? '')) ?: null, $request->user());
+        }
 
         return back()->with('status', 'SMS Reminders saved.');
     }

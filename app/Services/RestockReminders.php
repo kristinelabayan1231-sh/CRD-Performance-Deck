@@ -7,111 +7,112 @@ use App\Models\DeliveredOrder;
 use App\Models\DoNotText;
 use App\Models\Lead;
 use App\Models\PancakeOrder;
-use App\Models\Product;
 use App\Models\RestockReminder;
+use App\Models\SmsReply;
 use App\Models\SmsTemplate;
 use App\Models\User;
+use App\Support\NicheRules;
+use App\Support\SmsSettings;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Closure;
 use Illuminate\Support\Collection;
 use Throwable;
 
 /**
- * Who gets a restock text on a reminder day, and what it says. A customer is due when a delivered order (Shecom or
- * Pancake POS) runs out replenishment_days_before days later: delivered date + qty × consumption days − 1, days from
- * Settings → Product Consumption, as for leads. Always by the real date: the Working Date runs behind, and texts go
- * to customers in real time. TSD upsell products never match, so TSD-only orders never get a text.
+ * Who gets a restock text on a reminder day, and what it says. The texts are the CRAs' own tracker lists: on a real day,
+ * every lead on each CRA's Segmentation Tracker or Exclusive Lead Tracker list for its lead day (WorkingDate), one text a
+ * customer, from the CRA whose list it is, so a text can take the place of a call. A lead is texted once; customers who
+ * reordered the product since or opted out are skipped. Texts not sent on their day (the phone's daily cap, no phone
+ * yet, sending off) carry over to the next days until they go out.
  */
 class RestockReminders
 {
-    /** How far back a delivery can still run out on the day (qty × consumption days). */
+    /** How far back a reorder of the product is looked for. */
     private const LOOKBACK_DAYS = 400;
-
-    /** A customer's products running out within this many days of the first go in one text. */
-    public const COMBINE_DAYS = 7;
 
     /** @var Collection<int, SmsTemplate>|null */
     private ?Collection $templates = null;
 
-    public function __construct(private ProductCatalog $catalog, private CustomerOwners $owners) {}
-
-    public static function daysBefore(): int
-    {
-        return (int) config('segmentation.replenishment_days_before');
-    }
+    public function __construct(private ProductCatalog $catalog) {}
 
     /**
-     * Saves $remindOn's reminders: one per customer (merged numbers once), for their own CRA, for customers with a product
-     * running out on $remindOn + daysBefore(). Their other products running out within COMBINE_DAYS go in the same text
-     * (covers), as do earlier days' reminders not sent yet, so a customer gets one text; a product and run-out already
-     * texted (or left out by the CRA) is never texted again, and products they restocked (same product delivered or
-     * ordered since) are left out. Ones already left out, queued or sent stay as they are; a pending one whose customer
-     * has since reordered, opted out or was already texted is skipped.
+     * Saves $remindOn's reminders: one per customer (merged numbers once) on a CRA's tracker list for $remindOn's lead day,
+     * for that CRA, covering their leads on it. A lead already in an earlier text (or left out by the CRA) isn't texted
+     * again, nor a product reordered (same product delivered or ordered after the lead's delivery); earlier days' texts
+     * still to send are combined into today's, so a customer gets one text. Ones already left out, queued or sent stay as
+     * they are; a pending one whose customer has since reordered, opted out or was already texted is skipped.
      *
      * @return array{due: int, skipped: int}
      */
     public function build(CarbonImmutable $remindOn): array
     {
-        $runOut = $remindOn->addDays(self::daysBefore());
-        [$due, $latestDelivery, $deliveries] = $this->runningOut($runOut, $runOut->addDays(self::COMBINE_DAYS - 1));
+        $leads = $this->listedLeads(WorkingDate::leadDayFor($remindOn))
+            ->filter(fn (Lead $lead) => self::isMobile(LeadGenerator::normalizePhone((string) $lead->phone_number)));
 
-        // One customer per main number (Customer Database merge); only customers with a product running out on $runOut.
-        $primaryOf = $this->primaries(array_keys($due));
-        $customers = [];
-        foreach ($due as $phoneKey => $orders) {
-            $primary = $primaryOf[$phoneKey];
-            $customers[$primary] = [...($customers[$primary] ?? []), ...$orders];
-        }
-        $customers = array_filter($customers, fn (array $orders) => collect($orders)->contains('run_out', $runOut->toDateString()));
-        $members = $this->members(array_keys($customers));
+        // One customer per main number (Customer Database merge).
+        $phoneOf = $leads->mapWithKeys(fn (Lead $lead) => [$lead->id => LeadGenerator::normalizePhone((string) $lead->phone_number)]);
+        $primaryOf = $this->primaries($phoneOf->unique()->values()->all());
+        $customers = $leads->groupBy(fn (Lead $lead) => $primaryOf[$phoneOf[$lead->id]])->all();
+        $members = $this->members(array_map('strval', array_keys($customers)));
 
         $allNumbers = array_values(array_unique(array_merge(...array_values($members ?: [[]]))));
-        $orderedSince = $this->lastPancakeOrder($allNumbers, $runOut->subDays(self::LOOKBACK_DAYS));
+        $since = $remindOn->subDays(self::LOOKBACK_DAYS);
+        $orderedSince = $this->lastPancakeOrder($allNumbers, $since);
+        $deliveredSince = $this->latestDeliveries($allNumbers, $since);
         $optedOut = DoNotText::whereIn('phone_key', $allNumbers)->pluck('phone_key')->flip();
-        $owners = $this->owners->for(array_keys($customers));
-        $types = $this->customerTypes(array_keys($customers), $members, $deliveries);
-        [$coveredOn, $carried] = $this->earlierTexts(array_keys($customers), $remindOn);
+        $types = $this->customerTypes(array_map('strval', array_keys($customers)), $members, $this->deliveryCounts($allNumbers));
+        [$textedOn, $carried] = $this->earlierTexts(array_map('strval', array_keys($customers)), $remindOn);
 
         $saved = [];
         $skipped = 0;
-        foreach ($customers as $primary => $orders) {
+        foreach ($customers as $primary => $customerLeads) {
+            $primary = (string) $primary;
             $numbers = $members[$primary] ?? [$primary];
-            // A product counts as restocked when the same product was delivered or ordered (Pancake POS, not canceled)
-            // after the delivery that runs out; another product doesn't count. Only products not restocked are texted.
-            $stillDue = collect($orders)->reject(fn (array $order) => collect($numbers)->contains(
-                fn (string $number) => ($latestDelivery[$number][$order['product']->id] ?? '') > $order['delivered']
-                    || ($orderedSince[$number][$order['product']->id] ?? '') > $order['delivered']));
-            $textedOn = fn (array $order) => $coveredOn[$primary.'|'.$order['product']->id.'|'.$order['run_out']] ?? null;
-            $toText = $stillDue->reject(fn (array $order) => $textedOn($order) !== null);
-            $todays = fn (Collection $list) => $list->where('run_out', $runOut->toDateString());
+            $productOf = fn (Lead $lead) => $this->catalog->match((string) $lead->product_name, $lead->delivered_date?->toDateString());
+            // A lead's product counts as restocked when the same product was delivered or ordered (Pancake POS, not
+            // canceled) after the lead's delivery; another product doesn't count.
+            $stillDue = $customerLeads->reject(function (Lead $lead) use ($numbers, $productOf, $orderedSince, $deliveredSince) {
+                $product = $productOf($lead);
+                $delivered = $lead->delivered_date?->toDateString() ?? '';
+
+                return $product && collect($numbers)->contains(fn (string $number) => ($deliveredSince[$number][$product->id] ?? '') > $delivered
+                    || ($orderedSince[$number][$product->id] ?? '') > $delivered);
+            });
+            $toText = $stillDue->reject(fn (Lead $lead) => isset($textedOn[$lead->id]));
             $opted = collect($numbers)->contains(fn (string $number) => isset($optedOut[$number]));
-            $first = collect($orders)->sortByDesc('delivered')->first();
+            $first = $customerLeads->sortByDesc('delivered_date')->first();
 
             $reason = match (true) {
                 $opted => 'Opted out',
-                $todays($stillDue)->isEmpty() => 'Already reordered',
-                $todays($toText)->isEmpty() => 'Already texted on '.CarbonImmutable::parse($textedOn($todays($stillDue)->first()))->format('M j'),
+                $stillDue->isEmpty() => 'Already reordered',
+                $toText->isEmpty() => 'Already texted on '.CarbonImmutable::parse($textedOn[$stillDue->first()->id])->format('M j'),
                 default => null,
             };
 
-            // Every product and run-out the text is for: earliest run-out of each product, and earlier unsent reminders.
-            $covers = ($reason ? $todays(collect($orders)) : $toText)->sortBy('run_out')->unique(fn (array $order) => $order['product']->id)
-                ->map(fn (array $order) => ['product_id' => $order['product']->id, 'name' => $order['product']->name, 'run_out_on' => $order['run_out']])->values();
+            $forLeads = $reason ? $customerLeads : $toText;
+            $covers = $forLeads->map(fn (Lead $lead) => ['product_id' => $productOf($lead)?->id, 'name' => $productOf($lead)?->name ?? (string) $lead->product_name,
+                'run_out_on' => $lead->est_out_of_stock_date->toDateString()])->sortBy('run_out_on')->unique('name')->values();
+            $leadIds = $forLeads->pluck('id')->all();
             if (! $reason) {
                 foreach ($carried[$primary] ?? [] as $earlier) {
                     $covers = $covers->concat($earlier->coveredItems());
+                    $leadIds = [...$leadIds, ...($earlier->lead_ids ?? [])];
                 }
-                $covers = $covers->sortBy('run_out_on')->unique('product_id')->values();
+                $covers = $covers->sortBy('run_out_on')->unique('name')->values();
             }
 
             $attributes = [
-                'phone_number' => $first['phone'],
-                'customer_name' => $first['name'],
+                'phone_number' => $first->phone_number,
+                'customer_name' => $first->customer_name,
                 'product_id' => $covers->first()['product_id'],
                 'products' => $covers->pluck('name')->implode(' + '),
                 'covers' => $covers->all(),
+                'lead_ids' => array_values(array_unique($leadIds)),
                 'customer_type' => $types[$primary],
                 'run_out_on' => $covers->min('run_out_on'),
-                'user_id' => $owners[$primary] ?? null,
+                // The CRA whose list the customer is on.
+                'user_id' => $first->assigned_to,
             ];
             $skipped += $reason ? 1 : 0;
             $saved[] = $primary;
@@ -124,8 +125,9 @@ class RestockReminders
             } elseif (in_array($reminder->status, [RestockReminder::PENDING, RestockReminder::SKIPPED], true)) {
                 // A follow-up due the same day becomes this text, keeping its products and its place in the follow-ups.
                 if ($reminder->isFollowUp() && $reminder->status === RestockReminder::PENDING) {
-                    $attributes['covers'] = collect($attributes['covers'])->concat($reminder->coveredItems())->sortBy('run_out_on')->unique('product_id')->values()->all();
+                    $attributes['covers'] = collect($attributes['covers'])->concat($reminder->coveredItems())->sortBy('run_out_on')->unique('name')->values()->all();
                     $attributes['products'] = collect($attributes['covers'])->pluck('name')->implode(' + ');
+                    $attributes['lead_ids'] = array_values(array_unique([...$attributes['lead_ids'], ...($reminder->lead_ids ?? [])]));
                 }
                 $reminder->update([...$attributes, ...$status, 'kind' => RestockReminder::REMINDER]);
             }
@@ -136,10 +138,10 @@ class RestockReminders
             }
         }
 
-        // Pending reminders no longer due (e.g. a product's consumption days changed) are skipped.
+        // Pending reminders no longer on a list (e.g. the lead moved to another day or was taken off) are skipped.
         RestockReminder::whereDate('remind_on', $remindOn->toDateString())->where('status', RestockReminder::PENDING)
             ->where('kind', RestockReminder::REMINDER)->whereNotIn('phone_key', $saved ?: [''])
-            ->update(['status' => RestockReminder::SKIPPED, 'error' => 'Not due any more']);
+            ->update(['status' => RestockReminder::SKIPPED, 'error' => 'Not on a list any more']);
 
         $this->refreshCarriedOver($remindOn, $saved);
 
@@ -147,42 +149,97 @@ class RestockReminders
     }
 
     /**
-     * These customers' texts from before $remindOn: the day each product and run-out was texted or left out
-     * ("main number|product id|Y-m-d" => remind day), and their reminders still to send on $remindOn (combined into it).
+     * The SMS badge of each tracker row: its text's latest state (to be texted, sending, texted on a day, failed) or the
+     * customer's reply to it (YES, STOP). Rows with no text are left out.
+     *
+     * @param  iterable<Lead>  $leads
+     * @return array<int, array{label: string, classes: string, title: string}> lead id => badge
+     */
+    public function badgesFor(iterable $leads): array
+    {
+        $leads = collect($leads);
+        if ($leads->isEmpty()) {
+            return [];
+        }
+
+        $primaries = array_values(array_unique($this->primaries($leads->map(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))->unique()->values()->all())));
+        $wanted = $leads->pluck('id')->flip();
+        $texts = RestockReminder::whereIn('phone_key', $primaries)->whereNotNull('lead_ids')
+            ->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::SENT, RestockReminder::FAILED])
+            ->orderBy('remind_on')->orderBy('id')->get(['id', 'lead_ids', 'status', 'sent_at']);
+        $replies = SmsReply::whereIn('restock_reminder_id', $texts->modelKeys())->whereIn('kind', [SmsReply::YES, SmsReply::STOP])
+            ->orderBy('id')->pluck('kind', 'restock_reminder_id');
+        $tz = config('segmentation.timezone');
+
+        $badges = [];
+        foreach ($texts as $text) {
+            $badge = match (true) {
+                ($replies[$text->id] ?? null) === SmsReply::YES => ['Replied YES', 'bg-[#d4edbc] text-[#11734b]', 'Replied YES to the text: wants to reorder'],
+                ($replies[$text->id] ?? null) === SmsReply::STOP => ['Replied STOP', 'bg-[#fde0e0] text-[#a3271f]', 'Asked not to be texted again'],
+                $text->status === RestockReminder::SENT => ['Texted '.$text->sent_at?->timezone($tz)->format('M j'), 'bg-[#dde9f7] text-[#1a4f8c]', 'Texted '.$text->sent_at?->timezone($tz)->format('M j, g:i A').', no reply yet'],
+                $text->status === RestockReminder::FAILED => ['Text failed', 'bg-[#fde0e0] text-[#a3271f]', 'The text didn\'t go out'],
+                $text->status === RestockReminder::QUEUED => ['Sending text', 'bg-[#fbeccd] text-[#7a4d00]', 'Queued on the CRA\'s phone'],
+                default => ['To be texted', 'bg-[#fbeccd] text-[#7a4d00]', 'On SMS Reminders, not sent yet'],
+            };
+            foreach ($text->lead_ids ?? [] as $leadId) {
+                if (isset($wanted[$leadId])) {
+                    $badges[$leadId] = ['label' => $badge[0], 'classes' => $badge[1], 'title' => $badge[2]];
+                }
+            }
+        }
+
+        return $badges;
+    }
+
+    /**
+     * Every lead on an active CRA's tracker list for $leadDay: the Segmentation Tracker's (assigned, listed that day) and
+     * each exclusive CRA's Exclusive Lead Tracker list for the day.
+     *
+     * @return Collection<int, Lead>
+     */
+    public function listedLeads(CarbonImmutable $leadDay): Collection
+    {
+        $columns = ['id', 'order_id', 'assigned_to', 'customer_name', 'phone_number', 'product_name', 'delivered_date', 'est_out_of_stock_date', 'listed_on'];
+        $active = LeadGenerator::cras()->keyBy('id');
+        $exclusive = app(ExclusiveLeads::class);
+
+        return Lead::inSegmentationTracker()->whereDate('listed_on', $leadDay->toDateString())->whereIn('assigned_to', $active->keys())
+            ->orderBy('id')->get($columns)
+            ->concat($active->filter(fn (User $cra) => $cra->isExclusiveOn($leadDay))
+                ->flatMap(fn (User $cra) => $exclusive->leadsFor($cra, $leadDay)->orderBy('id')->get($columns)))
+            ->unique('id')->values();
+    }
+
+    /**
+     * These customers' texts from before $remindOn: the day each lead was texted or left out (lead id => remind day),
+     * and their reminders still to send on $remindOn (combined into it).
      *
      * @param  list<string>  $primaries
-     * @return array{0: array<string, string>, 1: array<string, list<RestockReminder>>}
+     * @return array{0: array<int, string>, 1: array<string, list<RestockReminder>>}
      */
     private function earlierTexts(array $primaries, CarbonImmutable $remindOn): array
     {
-        $coveredOn = [];
+        $textedOn = [];
         $carried = [];
 
         foreach (array_chunk($primaries, 1000) as $chunk) {
             RestockReminder::whereIn('phone_key', $chunk)->whereDate('remind_on', '<', $remindOn->toDateString())
                 ->whereIn('status', RestockReminder::COVERING)
-                ->get(['id', 'phone_key', 'product_id', 'products', 'covers', 'run_out_on', 'remind_on', 'status', 'kind'])
-                ->each(function (RestockReminder $reminder) use (&$coveredOn, &$carried, $remindOn) {
-                    foreach ($reminder->coveredItems() as $item) {
-                        $key = $reminder->phone_key.'|'.$item['product_id'].'|'.$item['run_out_on'];
-                        $coveredOn[$key] = min($coveredOn[$key] ?? '9999', $reminder->remind_on->toDateString());
-                    }
-                    if ($reminder->status === RestockReminder::PENDING && ! $reminder->isFollowUp() && $reminder->run_out_on->gte($remindOn)) {
+                ->get(['id', 'phone_key', 'product_id', 'products', 'covers', 'lead_ids', 'run_out_on', 'remind_on', 'status', 'kind'])
+                ->each(function (RestockReminder $reminder) use (&$textedOn, &$carried) {
+                    if ($reminder->status === RestockReminder::PENDING && ! $reminder->isFollowUp()) {
+                        // Still to send: combined into today's text rather than counted as texted.
                         $carried[$reminder->phone_key][] = $reminder;
+
+                        return;
+                    }
+                    foreach ($reminder->lead_ids ?? [] as $leadId) {
+                        $textedOn[$leadId] = min($textedOn[$leadId] ?? '9999', $reminder->remind_on->toDateString());
                     }
                 });
         }
 
-        // A reminder still to send doesn't keep today's text from covering the same products again: it is combined into it.
-        foreach ($carried as $primary => $reminders) {
-            foreach ($reminders as $reminder) {
-                foreach ($reminder->coveredItems() as $item) {
-                    unset($coveredOn[$primary.'|'.$item['product_id'].'|'.$item['run_out_on']]);
-                }
-            }
-        }
-
-        return [$coveredOn, $carried];
+        return [$textedOn, $carried];
     }
 
     /**
@@ -208,7 +265,7 @@ class RestockReminders
         $waiting = RestockReminder::whereIn('phone_key', $texted->pluck('phone_key'))->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])
             ->whereDate('remind_on', '>', $day->toDateString())->pluck('phone_key')->flip();
         $optedOut = DoNotText::whereIn('phone_key', $texted->pluck('phone_key'))->pluck('phone_key')->flip();
-        $owners = $this->owners->for($texted->pluck('phone_key')->all());
+        $craFor = $this->craPicker($texted->pluck('phone_key')->all(), $day->addDays(RestockReminder::FOLLOW_UP_DAYS));
         $counts = ['follow_ups' => 0, 'no_response' => 0];
 
         foreach ($texted as $text) {
@@ -233,7 +290,7 @@ class RestockReminders
                 'remind_on' => $on,
                 'kind' => RestockReminder::FOLLOW_UP,
                 'follow_up_number' => $text->follow_up_number + 1,
-                'user_id' => $owners[$text->phone_key] ?? $text->user_id,
+                'user_id' => $craFor($text->phone_key, $text->coveredItems()[0]['name'] ?? null, $text->user_id),
                 'status' => RestockReminder::PENDING,
             ]);
             $counts['follow_ups']++;
@@ -301,7 +358,7 @@ class RestockReminders
     {
         $carried = RestockReminder::toSendOn($remindOn)->where('status', RestockReminder::PENDING)
             ->where(fn ($q) => $q->whereDate('remind_on', '<', $remindOn->toDateString())->orWhere('kind', RestockReminder::FOLLOW_UP))
-            ->get(['id', 'phone_key', 'product_id', 'covers', 'products', 'run_out_on', 'remind_on', 'user_id', 'kind']);
+            ->get(['id', 'phone_key', 'product_id', 'covers', 'lead_ids', 'products', 'run_out_on', 'remind_on', 'user_id', 'kind']);
 
         if ($carried->isEmpty()) {
             return;
@@ -315,7 +372,12 @@ class RestockReminders
         $since = $carried->map($afterOf)->min();
         $ordered = $this->lastPancakeOrder($allNumbers, $since);
         $delivered = $this->latestDeliveries($allNumbers, $since);
-        $owners = $this->owners->for($carried->pluck('phone_key')->unique()->values()->all());
+        $craFor = $this->craPicker($carried->pluck('phone_key')->unique()->values()->all(), $remindOn);
+        // A list text stays with the CRA whose list its lead is on now (moved with the lead).
+        $active = LeadGenerator::cras()->pluck('id')->flip();
+        $leadOwners = Lead::whereIn('id', $carried->flatMap(fn (RestockReminder $reminder) => $reminder->lead_ids ?? [])->unique()->values())->pluck('assigned_to', 'id');
+        $listCra = fn (RestockReminder $reminder) => collect($reminder->lead_ids ?? [])->map(fn (int $id) => $leadOwners[$id] ?? null)
+            ->first(fn (?int $craId) => $craId !== null && isset($active[$craId]));
         $onToday = array_flip($today);
 
         foreach ($carried as $reminder) {
@@ -332,8 +394,51 @@ class RestockReminders
 
             $reminder->update($reason
                 ? ['status' => RestockReminder::SKIPPED, 'error' => $reason]
-                : ['user_id' => $owners[$reminder->phone_key] ?? null]);
+                : ['user_id' => $listCra($reminder) ?? $craFor($reminder->phone_key, $reminder->coveredItems()[0]['name'] ?? null, $reminder->user_id)]);
         }
+    }
+
+    /**
+     * Who texts each customer, the way the Segmentation Tracker hands out leads (LeadGenerator::assign()): the customer's
+     * own CRA (High AOV / VIP, then the CRA who handled the most of their orders, then the exclusive CRA of their FSA,
+     * within niches: LeadGenerator::ownerFor()); else the CRA they already have on a reminder, so a rebuild doesn't move
+     * them; else (when $share) the tracker CRA with the fewest texts on $day whose niche has the product, ties to the
+     * earliest. The returned picker counts each customer it hands out, so the split stays even.
+     *
+     * @param  list<string>  $primaries  the customers' main numbers
+     * @return Closure(string $primary, ?string $product, ?int $current, bool $share = true): ?int
+     */
+    public function craPicker(array $primaries, CarbonImmutable $day): Closure
+    {
+        $active = LeadGenerator::cras()->pluck('id')->flip();
+        $owners = app(LeadGenerator::class)->ownersFor($primaries);
+        $niches = NicheRules::current();
+        // Oldest account first: ties go to the earliest CRA, as on the tracker.
+        $splitCras = LeadGenerator::segmentationCras()->sortBy('id')->pluck('id');
+        // Texts on $day that a rebuild leaves alone (left out, queued or sent) already count towards each CRA's share.
+        $counted = RestockReminder::whereDate('remind_on', $day->toDateString())->whereNotIn('status', [RestockReminder::PENDING, RestockReminder::SKIPPED])
+            ->whereIn('user_id', $splitCras)->selectRaw('user_id, count(*) as total')->groupBy('user_id')->pluck('total', 'user_id');
+        $load = $splitCras->mapWithKeys(fn (int $craId) => [$craId => (int) ($counted[$craId] ?? 0)])->all();
+
+        return function (string $primary, ?string $product, ?int $current, bool $share = true) use ($active, $owners, $niches, &$load): ?int {
+            $owner = LeadGenerator::ownerFor($owners, $primary, $product, $niches);
+            $craId = match (true) {
+                $owner !== null && isset($active[$owner]) => $owner,
+                $current !== null && isset($active[$current]) => $current,
+                default => null,
+            };
+
+            if ($craId === null && $share) {
+                $open = array_filter($load, fn (int $total, int $id) => $niches->allows($id, $product), ARRAY_FILTER_USE_BOTH);
+                $craId = $open === [] ? null : array_search(min($open), $open, true);
+            }
+
+            if ($craId !== null && $share && array_key_exists($craId, $load)) {
+                $load[$craId]++;
+            }
+
+            return $craId;
+        };
     }
 
     /**
@@ -372,6 +477,11 @@ class RestockReminders
     {
         $this->templates ??= SmsTemplate::where('is_active', true)->orderByDesc('id')->get();
 
+        // A product that already ran out gets the general text (messageFor), not a reminder template.
+        if (self::isOverdue($reminder)) {
+            return null;
+        }
+
         // A follow-up the CRA scheduled with a template of theirs uses it.
         if ($reminder->isFollowUp() && $reminder->sms_template_id && $reminder->status !== RestockReminder::SENT) {
             $picked = $this->templates->firstWhere('id', $reminder->sms_template_id);
@@ -392,11 +502,27 @@ class RestockReminders
     }
 
     /**
-     * The text the customer gets: their template (or the default) filled in, with the opt-out line.
+     * Whether a list text's product already ran out before today (real date): the tracker lists run about a month behind,
+     * leftovers more, so "malapit na maubos" and the date would be wrong. Such texts get the general text
+     * (Settings → SMS Reminders) instead of a reminder template. Follow-ups keep their own templates.
+     */
+    public static function isOverdue(RestockReminder $reminder): bool
+    {
+        return ! $reminder->isFollowUp() && $reminder->run_out_on !== null
+            && $reminder->run_out_on->toDateString() < WorkingDate::realToday()->toDateString();
+    }
+
+    /**
+     * The text the customer gets: their template (or the default, or the general text for a product that already ran
+     * out) filled in, with the opt-out line.
      */
     public function messageFor(RestockReminder $reminder, ?User $cra = null): string
     {
-        $default = $reminder->isFollowUp() ? config('sms_reminders.follow_up_body') : config('sms_reminders.default_body');
+        $default = match (true) {
+            $reminder->isFollowUp() => config('sms_reminders.follow_up_body'),
+            self::isOverdue($reminder) => SmsSettings::overdueBody(),
+            default => config('sms_reminders.default_body'),
+        };
 
         return $this->fill($this->templateFor($reminder)?->body ?? $default, $reminder, $cra ?? $reminder->cra);
     }
@@ -415,52 +541,24 @@ class RestockReminders
     }
 
     /**
-     * Delivered orders running out on $runOut to $until (with their run-out day), by number; plus each number's latest
-     * delivery of each product (reorders) and delivery count (customer type) in the window.
+     * Delivered orders on record per number (a customer with 2+ is a repeat customer, customerTypes()).
      *
-     * @return array{0: array<string, list<array{delivered: string, product: Product, phone: string, name: ?string, run_out: string}>>, 1: array<string, array<int, string>>, 2: array<string, int>}
+     * @param  list<string>  $phoneKeys
+     * @return array<string, int>
      */
-    private function runningOut(CarbonImmutable $runOut, CarbonImmutable $until): array
+    private function deliveryCounts(array $phoneKeys): array
     {
-        $due = [];
-        $latest = [];
-        $count = [];
+        $formats = collect($phoneKeys)->flatMap(fn (string $key) => [$key, '0'.$key, '63'.$key, '+63'.$key])->all();
+        $counts = [];
+        foreach (array_chunk($formats, 1000) as $chunk) {
+            DeliveredOrder::whereIn('phone_number', $chunk)->toBase()->get(['phone_number'])
+                ->each(function (object $order) use (&$counts) {
+                    $key = LeadGenerator::normalizePhone((string) $order->phone_number);
+                    $counts[$key] = ($counts[$key] ?? 0) + 1;
+                });
+        }
 
-        DeliveredOrder::query()
-            ->whereBetween('delivered_date', [$runOut->subDays(self::LOOKBACK_DAYS)->toDateString(), $runOut->toDateString()])
-            ->select(['id', 'order_id', 'customer_name', 'phone_number', 'product_raw', 'qty', 'delivered_date', 'consumption_days_per_unit'])
-            ->orderBy('id')
-            ->lazy(2000)
-            ->each(function (DeliveredOrder $order) use ($runOut, $until, &$due, &$latest, &$count) {
-                $phoneKey = LeadGenerator::normalizePhone((string) $order->phone_number);
-
-                if (! self::isMobile($phoneKey)) {
-                    return;
-                }
-
-                $delivered = $order->delivered_date->toDateString();
-                $count[$phoneKey] = ($count[$phoneKey] ?? 0) + 1;
-                $product = $this->catalog->match((string) $order->product_raw, $delivered);
-
-                if (! $product) {
-                    return;
-                }
-
-                $latest[$phoneKey][$product->id] = max($latest[$phoneKey][$product->id] ?? '', $delivered);
-                $days = $product->consumption_days ?: $order->consumption_days_per_unit;
-
-                if (! $days) {
-                    return;
-                }
-
-                // The delivery day is day 1.
-                $runsOut = $order->delivered_date->addDays(max(1, (int) $order->qty) * $days - 1)->toDateString();
-                if ($runsOut >= $runOut->toDateString() && $runsOut <= $until->toDateString()) {
-                    $due[$phoneKey][] = ['delivered' => $delivered, 'product' => $product, 'phone' => $order->phone_number, 'name' => $order->customer_name, 'run_out' => $runsOut];
-                }
-            });
-
-        return [$due, $latest, $count];
+        return $counts;
     }
 
     public static function isMobile(string $phoneKey): bool
