@@ -351,6 +351,148 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::EXCLUDED, RestockReminder::firstWhere('phone_key', $leftOut)->status);
     }
 
+    public function test_untick_all_keeps_carried_over_customers_on_the_list_and_tick_all_brings_them_back(): void
+    {
+        $carried = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $this->travelTo(CarbonImmutable::parse('2026-11-21 07:30', 'Asia/Manila'));
+        $todays = $this->delivered('09170000002', '2026-11-14', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $carriedReminder = RestockReminder::firstWhere('phone_key', $carried);
+
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-21', 'include' => 0])->assertSessionHas('status');
+
+        $this->assertSame(RestockReminder::EXCLUDED, $carriedReminder->fresh()->status);
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
+            ->assertSee($carriedReminder->customer_name)->assertViewHas('counts', fn (array $counts) => $counts['excluded'] === 2);
+
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-21', 'include' => 1]);
+        $this->assertSame(RestockReminder::PENDING, $carriedReminder->fresh()->status);
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $todays)->status);
+
+        // Left out on an earlier day: off the list the day after.
+        $this->actingAs($this->anna)->patch(route('sms-reminders.update', $carriedReminder), ['include' => 0]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-22 07:30', 'Asia/Manila'));
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
+            ->assertViewHas('rows', fn ($rows) => ! $rows->getCollection()->contains($carriedReminder));
+    }
+
+    public function test_the_list_shows_20_a_page_and_a_page_is_unticked_on_its_own(): void
+    {
+        foreach (range(1, 22) as $number) {
+            $this->delivered('0917000'.str_pad((string) $number, 4, '0', STR_PAD_LEFT), cra: $this->anna);
+        }
+        $mikas = $this->delivered('09180000001', cra: $this->mika);
+        $this->artisan('reminders:build');
+
+        $page = $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->viewData('rows');
+        $this->assertCount(20, $page->items());
+        $this->assertCount(22, $this->actingAs($this->anna)->get(route('sms-reminders.index', ['per_page' => 50]))->viewData('rows')->items());
+        $this->actingAs($this->anna)->get(route('sms-reminders.index', ['per_page' => 7]))->assertSessionHasErrors('per_page');
+
+        // Another CRA's customer sent along stays as it is.
+        $ids = [...$page->getCollection()->pluck('id'), RestockReminder::firstWhere('phone_key', $mikas)->id];
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-20', 'include' => 0, 'ids' => $ids])->assertSessionHasNoErrors();
+
+        $this->assertSame(20, RestockReminder::where('status', RestockReminder::EXCLUDED)->count());
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $mikas)->status);
+    }
+
+    public function test_send_now_can_send_only_the_first_few_and_keeps_the_others_ticked(): void
+    {
+        $this->turnOn();
+        $carried = $this->delivered('09170000003', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $this->travelTo(CarbonImmutable::parse('2026-11-21 07:30', 'Asia/Manila'));
+        $this->delivered('09170000001', '2026-11-14', cra: $this->anna);
+        $this->delivered('09170000002', '2026-11-14', cra: $this->anna);
+        $this->artisan('reminders:build');
+
+        $this->actingAs($this->anna)->post(route('sms-reminders.send-now'), ['limit' => 0])->assertSessionHasErrors('limit');
+        $this->actingAs($this->anna)->post(route('sms-reminders.send-now'), ['limit' => 2])->assertSessionHasNoErrors();
+
+        $this->assertSame(RestockReminder::QUEUED, RestockReminder::firstWhere('phone_key', $carried)->status);
+        $this->assertSame(2, RestockReminder::where('status', RestockReminder::QUEUED)->count());
+        $this->assertSame(1, RestockReminder::where('status', RestockReminder::PENDING)->count());
+    }
+
+    public function test_a_cra_sets_her_own_daily_limit_and_her_phone_stops_there(): void
+    {
+        $this->turnOn();
+        $this->actingAs($this->anna)->put(route('sms-reminders.daily-limit'), ['daily_limit' => 301])->assertSessionHasErrors('daily_limit');
+        // A CRA's cra is ignored: she only changes her own.
+        $this->actingAs($this->anna)->put(route('sms-reminders.daily-limit'), ['cra' => $this->mika->id, 'daily_limit' => 1])->assertSessionHasNoErrors();
+        $this->assertSame(1, SmsSettings::dailyLimitFor($this->anna->fresh()));
+        $this->assertSame(300, SmsSettings::dailyLimitFor($this->mika->fresh()));
+        $this->assertFalse(SmsSettings::scheduleFor($this->anna->fresh())['custom']);
+
+        foreach (['09170000001', '09170000002'] as $phone) {
+            $this->delivered($phone, cra: $this->anna);
+        }
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+
+        // One goes out in the morning; the afternoon window sends no more.
+        foreach (['10:00', '10:01', '14:30'] as $time) {
+            $this->travelTo(CarbonImmutable::parse("2026-11-20 {$time}", 'Asia/Manila'));
+            $this->artisan('reminders:send');
+        }
+        $this->assertSame(1, RestockReminder::whereNotNull('handed_at')->count());
+
+        // The next day's limit starts over.
+        RestockReminder::whereNotNull('handed_at')->update(['status' => RestockReminder::SENT, 'sent_at' => now()]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-21 10:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertSame(2, RestockReminder::whereNotNull('handed_at')->count());
+
+        // Blank = the default again; the schedule form keeps or changes the limit with the schedule.
+        $this->actingAs($this->anna)->put(route('sms-reminders.daily-limit'), ['daily_limit' => ''])->assertSessionHasNoErrors();
+        $this->assertNull($this->anna->fresh()->sms_schedule);
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), ['auto_send' => 1, 'use_default' => 1, 'daily_limit' => 40])->assertSessionHasNoErrors();
+        $this->assertSame(40, SmsSettings::dailyLimitFor($this->anna->fresh()));
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertSee('of 40 sent today');
+
+        // The team's limit lowered below hers wins.
+        Setting::put(SmsSettings::DAILY_CAP, '25');
+        $this->assertSame(25, SmsSettings::dailyLimitFor($this->anna->fresh()));
+    }
+
+    public function test_a_window_turned_off_sends_nothing_and_leaves_the_whole_limit_to_the_other(): void
+    {
+        $this->turnOn();
+        $this->actingAs($this->anna)->put(route('sms-reminders.daily-limit'), ['daily_limit' => 40]);
+        $this->assertSame(20, SmsSettings::perWindow($this->anna->fresh()));
+
+        // A CRA's cra is ignored: she only changes her own.
+        $this->actingAs($this->anna)->put(route('sms-reminders.window'), ['cra' => $this->mika->id, 'window' => 0, 'on' => 0])->assertSessionHasNoErrors();
+        $this->assertSame(40, SmsSettings::perWindow($this->anna->fresh()));
+        $this->assertSame(40, SmsSettings::dailyLimitFor($this->anna->fresh()));
+        $this->assertSame(150, SmsSettings::perWindow($this->mika->fresh()));
+        $this->actingAs($this->anna)->put(route('sms-reminders.window'), ['window' => 1, 'on' => 0])->assertSessionHasErrors('send');
+
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertNull(RestockReminder::firstWhere('phone_key', $phoneKey)->handed_at);
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 14:30', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        $this->assertNotNull(RestockReminder::firstWhere('phone_key', $phoneKey)->handed_at);
+
+        // The schedule form changes it too, and keeps at least one window on.
+        $form = ['auto_send' => 1, 'use_default' => 1, 'daily_limit' => 40];
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), [...$form, 'windows_on' => ['']])->assertSessionHasErrors('windows_on');
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), [...$form, 'windows_on' => ['', '0']])->assertSessionHasNoErrors();
+        $this->assertSame([1], SmsSettings::scheduleFor($this->anna->fresh())['windows_off']);
+        $this->actingAs($this->anna)->put(route('sms-reminders.window'), ['window' => 1, 'on' => 1])->assertSessionHasNoErrors();
+        $this->assertSame(['daily_limit' => 40], $this->anna->fresh()->sms_schedule);
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk();
+        $this->actingAs($this->anna)->get(route('sms-reminders.schedule.index'))->assertOk()->assertSee('Second window');
+    }
+
     public function test_a_reply_to_a_test_text_is_saved_for_a_day_without_opting_the_tester_out(): void
     {
         $token = $this->anna->issueRecordingToken();

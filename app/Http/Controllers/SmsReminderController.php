@@ -27,6 +27,9 @@ use Illuminate\View\View;
  */
 class SmsReminderController extends Controller
 {
+    /** How many customers a page can show; the first is the default. */
+    private const PER_PAGE = [20, 50, 100];
+
     public function index(Request $request, RestockReminders $reminders): View
     {
         $user = $request->user();
@@ -35,7 +38,9 @@ class SmsReminderController extends Controller
             'date' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'integer'],
             'status' => ['nullable', Rule::in(['send', 'follow', 'sent', 'out'])],
+            'per_page' => ['nullable', 'integer', Rule::in(self::PER_PAGE)],
         ]);
+        $perPage = (int) ($filters['per_page'] ?? self::PER_PAGE[0]);
         $day = CarbonImmutable::parse($filters['date'] ?? $today->toDateString());
         $cras = LeadGenerator::cras();
         $craId = $this->craScope($user, $filters['cra'] ?? null);
@@ -52,8 +57,9 @@ class SmsReminderController extends Controller
             ->when(($filters['status'] ?? null) === 'out', fn (Builder $query) => $query->whereIn('status', [RestockReminder::EXCLUDED, RestockReminder::SKIPPED, RestockReminder::FAILED]))
             ->with(['cra', 'scheduler'])->withCount('manualMessages')->withMax('manualMessages', 'sent_at')
             ->orderByRaw("case status when 'queued' then 0 when 'pending' then 1 when 'failed' then 2 when 'sent' then 3 when 'excluded' then 4 else 5 end")
-            ->orderBy('customer_name')
-            ->paginate(100)->withQueryString();
+            // The same order Send now takes them in when it sends only some: earlier days' first.
+            ->orderBy('remind_on')->orderBy('customer_name')->orderBy('id')
+            ->paginate($perPage)->withQueryString();
 
         // Each customer's last text before this day.
         $lastTexted = RestockReminder::whereIn('phone_key', $rows->getCollection()->pluck('phone_key'))->where('status', RestockReminder::SENT)
@@ -75,7 +81,11 @@ class SmsReminderController extends Controller
             'cras' => $cras,
             'craId' => $craId,
             'cra' => $craForActions,
+            // The CRA's phone today, against her daily limit.
+            'sentToday' => $craForActions ? SmsSettings::sentToday($craForActions->id) : 0,
             'rows' => $rows,
+            'perPage' => $perPage,
+            'perPageOptions' => self::PER_PAGE,
             'lastTexted' => $lastTexted,
             'counts' => [
                 'toSend' => (int) (($counts[RestockReminder::PENDING] ?? 0) + ($counts[RestockReminder::QUEUED] ?? 0)),
@@ -135,7 +145,7 @@ class SmsReminderController extends Controller
     }
 
     /**
-     * Tick or untick every customer of the day (and CRA) not yet sent.
+     * Tick or untick every customer of the day (and CRA) not yet sent, or only those of the page shown (ids).
      */
     public function bulk(Request $request): RedirectResponse
     {
@@ -143,12 +153,15 @@ class SmsReminderController extends Controller
             'date' => ['required', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'integer'],
             'include' => ['required', 'boolean'],
+            'ids' => ['nullable', 'array', 'max:'.max(self::PER_PAGE)],
+            'ids.*' => ['integer'],
         ]);
         $craId = $this->craScope($request->user(), $data['cra'] ?? null);
         $include = (bool) $data['include'];
 
         $changed = RestockReminder::shownOn(CarbonImmutable::parse($data['date']))
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))
+            ->when($data['ids'] ?? null, fn (Builder $query, array $ids) => $query->whereIn('id', $ids))
             ->whereIn('status', $include ? [RestockReminder::EXCLUDED] : [RestockReminder::PENDING, RestockReminder::QUEUED])
             ->update([
                 'status' => $include ? RestockReminder::PENDING : RestockReminder::EXCLUDED,
@@ -157,14 +170,16 @@ class SmsReminderController extends Controller
                 'queued_at' => null,
             ]);
 
-        return back()->with('status', $include ? "{$changed} customers ticked." : "{$changed} customers left out.");
+        return back()->with('status', $include ? "{$changed} customers ticked." : "{$changed} customers left out. They stay under Left out today; Tick all brings them back.");
     }
 
     /**
-     * Queue a CRA's ticked customers still to send today (earlier days' included) now instead of waiting for the automatic send time.
+     * Queue a CRA's ticked customers still to send today (earlier days' included) now instead of waiting for the automatic
+     * send time: all of them, or the first few on the list (limit). The others stay ticked.
      */
     public function sendNow(Request $request): RedirectResponse
     {
+        $data = $request->validate(['limit' => ['nullable', 'integer', 'min:1']], [], ['limit' => 'number of customers']);
         $craId = $this->craScope($request->user(), $request->integer('cra') ?: null);
 
         if (! $craId) {
@@ -179,12 +194,19 @@ class SmsReminderController extends Controller
             return back()->withErrors(['send' => SmsSender::explain(SmsSender::NOT_READY)]);
         }
 
-        $queued = RestockReminder::toSendOn(WorkingDate::realToday())->where('user_id', $craId)
-            ->where('status', RestockReminder::PENDING)
+        $toSend = RestockReminder::toSendOn(WorkingDate::realToday())->where('user_id', $craId)
+            ->where('status', RestockReminder::PENDING);
+        $ids = isset($data['limit'])
+            ? (clone $toSend)->orderBy('remind_on')->orderBy('customer_name')->orderBy('id')->limit((int) $data['limit'])->pluck('id')
+            : null;
+
+        $queued = $toSend->when($ids !== null, fn (Builder $query) => $query->whereIn('id', $ids))
             ->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
 
+        $left = max(0, SmsSettings::dailyLimitFor(User::find($craId)) - SmsSettings::sentToday($craId));
+
         return back()->with('status', $queued
-            ? "{$queued} texts queued: one goes out every minute from the phone (about {$queued} min)."
+            ? "{$queued} texts queued: one goes out every minute from the phone (about {$queued} min).".($queued > $left ? " Only {$left} more can go out today (daily limit); the others wait for the next sending day." : '')
             : 'No ticked customers left to send today.');
     }
 
@@ -206,6 +228,53 @@ class SmsReminderController extends Controller
         return back()->with('status', $data['on']
             ? "Automatic sending on: {$cra->displayName()}'s ticked customers are texted ".SmsSettings::scheduleLabel($cra).'.'
             : "Automatic sending off for {$cra->displayName()}: texts go out only with Send now.");
+    }
+
+    /**
+     * The most texts a CRA's phone sends a day, set by the CRA (or someone who sees every CRA's); blank = the default.
+     */
+    public function dailyLimit(Request $request): RedirectResponse
+    {
+        $cap = SmsSettings::dailyCap();
+        $data = $request->validate(['cra' => ['nullable', 'integer'], 'daily_limit' => ['nullable', 'integer', 'min:1', 'max:'.$cap]], [
+            'daily_limit.max' => "The most texts a phone can send a day is {$cap} (Settings → SMS Reminders).",
+        ], ['daily_limit' => 'daily limit']);
+        $cra = LeadGenerator::cras()->firstWhere('id', $this->craScope($request->user(), $data['cra'] ?? null));
+
+        if (! $cra) {
+            return back()->withErrors(['send' => 'Pick a CRA first.']);
+        }
+
+        $limit = isset($data['daily_limit']) ? (int) $data['daily_limit'] : null;
+        $cra->forceFill(['sms_schedule' => SmsSettings::withDailyLimit($cra->sms_schedule, $limit)])->save();
+
+        return back()->with('status', "{$cra->displayName()}'s daily limit: ".SmsSettings::dailyLimitFor($cra).' texts'.($limit === null ? ' (the default).' : '.'));
+    }
+
+    /**
+     * Turn one of a CRA's sending windows on or off; the whole daily limit goes out in the ones left on.
+     */
+    public function window(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['cra' => ['nullable', 'integer'], 'window' => ['required', 'integer', 'between:0,1'], 'on' => ['required', 'boolean']]);
+        $cra = LeadGenerator::cras()->firstWhere('id', $this->craScope($request->user(), $data['cra'] ?? null));
+
+        if (! $cra) {
+            return back()->withErrors(['send' => 'Pick a CRA first.']);
+        }
+
+        $schedule = SmsSettings::scheduleFor($cra);
+        $off = $data['on']
+            ? array_diff($schedule['windows_off'], [(int) $data['window']])
+            : array_unique([...$schedule['windows_off'], (int) $data['window']]);
+
+        if (count(array_intersect($off, array_keys($schedule['all_windows']))) >= count($schedule['all_windows'])) {
+            return back()->withErrors(['send' => 'Keep at least one window on, or turn off automatic sending.']);
+        }
+
+        $cra->forceFill(['sms_schedule' => SmsSettings::withWindowsOff($cra->sms_schedule, array_values($off))])->save();
+
+        return back()->with('status', "{$cra->displayName()}'s texts go out ".SmsSettings::windowsLabel(SmsSettings::scheduleFor($cra)['windows']).'.');
     }
 
     /**

@@ -47,9 +47,9 @@ class SendRestockSms extends Command
 
         // A disabled CRA's phone never sends; their texts go to the customer's new CRA (DisabledCraHandover).
         foreach (User::whereIn('id', $craIds)->where('is_active', true)->get() as $cra) {
-            // Each phone only in its CRA's sending windows (her own or the default ones), up to the daily cap.
+            // Each phone only in its CRA's sending windows (her own or the default ones), up to her daily limit.
             $window = SmsSettings::currentWindow($now, $cra);
-            if (! $window || SmsSettings::sentToday($cra->id) >= SmsSettings::dailyCap()) {
+            if (! $window || SmsSettings::sentToday($cra->id) >= SmsSettings::dailyLimitFor($cra)) {
                 continue;
             }
 

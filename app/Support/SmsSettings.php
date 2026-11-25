@@ -42,9 +42,42 @@ class SmsSettings
         return (string) (Setting::value(self::OVERDUE_BODY) ?: config('sms_reminders.overdue_body'));
     }
 
+    /** The most texts any CRA's phone sends a day (Settings → SMS Reminders). */
     public static function dailyCap(): int
     {
         return (int) Setting::value(self::DAILY_CAP, config('sms_reminders.daily_cap'));
+    }
+
+    /**
+     * The daily limit the CRA set for her own phone (Today's texts, Schedule), or null when she follows the default.
+     */
+    public static function ownDailyLimit(?User $cra): ?int
+    {
+        $own = $cra?->sms_schedule['daily_limit'] ?? null;
+
+        return $own === null ? null : (int) $own;
+    }
+
+    /**
+     * The most texts the CRA's phone sends a day: her own limit, never above the default.
+     */
+    public static function dailyLimitFor(?User $cra): int
+    {
+        return min(self::ownDailyLimit($cra) ?? self::dailyCap(), self::dailyCap());
+    }
+
+    /**
+     * The CRA's saved schedule with $limit as her daily limit (null = the default), to save on users.sms_schedule.
+     *
+     * @param  array<string, mixed>|null  $schedule
+     * @return array<string, mixed>|null
+     */
+    public static function withDailyLimit(?array $schedule, ?int $limit): ?array
+    {
+        unset($schedule['daily_limit']);
+        $schedule = $limit === null ? ($schedule ?? []) : [...($schedule ?? []), 'daily_limit' => $limit];
+
+        return $schedule === [] ? null : $schedule;
     }
 
     /**
@@ -72,19 +105,53 @@ class SmsSettings
 
     /**
      * A CRA's schedule for automatic texts: her own (SMS Reminders → Schedule), or the default from Settings when she
-     * hasn't set one (custom false).
+     * hasn't set one (custom false). windows are the ones texts go out in; all_windows has those she turned off too.
      *
-     * @return array{custom: bool, send_time: string, windows: list<array{from: string, until: string}>, days: list<int>}
+     * @return array{custom: bool, send_time: string, windows: list<array{from: string, until: string}>, all_windows: list<array{from: string, until: string}>, windows_off: list<int>, days: list<int>}
      */
     public static function scheduleFor(?User $cra): array
     {
         $own = $cra?->sms_schedule;
+        $custom = is_array($own) && filled($own['send_time'] ?? null) && ! empty($own['windows']) && ! empty($own['days']);
+        $all = $custom ? array_values($own['windows']) : self::windows();
+        $off = self::windowsOff($cra, count($all));
 
-        if (is_array($own) && filled($own['send_time'] ?? null) && ! empty($own['windows']) && ! empty($own['days'])) {
-            return ['custom' => true, 'send_time' => $own['send_time'], 'windows' => array_values($own['windows']), 'days' => array_map('intval', $own['days'])];
-        }
+        return [
+            'custom' => $custom,
+            'send_time' => $custom ? $own['send_time'] : self::sendTime(),
+            'windows' => array_values(array_diff_key($all, array_flip($off))),
+            'all_windows' => $all,
+            'windows_off' => $off,
+            'days' => $custom ? array_map('intval', $own['days']) : self::EVERY_DAY,
+        ];
+    }
 
-        return ['custom' => false, 'send_time' => self::sendTime(), 'windows' => self::windows(), 'days' => self::EVERY_DAY];
+    /**
+     * Which of the CRA's $count windows she turned off (0 = first). Never all of them: with none left on (e.g. the default
+     * went down to one window) they all count.
+     *
+     * @return list<int>
+     */
+    private static function windowsOff(?User $cra, int $count): array
+    {
+        $off = array_values(array_intersect(array_map('intval', (array) ($cra?->sms_schedule['windows_off'] ?? [])), range(0, max(0, $count - 1))));
+
+        return count($off) < $count ? $off : [];
+    }
+
+    /**
+     * The CRA's saved schedule with these windows turned off, to save on users.sms_schedule.
+     *
+     * @param  array<string, mixed>|null  $schedule
+     * @param  list<int>  $off
+     * @return array<string, mixed>|null
+     */
+    public static function withWindowsOff(?array $schedule, array $off): ?array
+    {
+        unset($schedule['windows_off']);
+        $schedule = $off === [] ? ($schedule ?? []) : [...($schedule ?? []), 'windows_off' => array_values($off)];
+
+        return $schedule === [] ? null : $schedule;
     }
 
     /**
@@ -112,14 +179,14 @@ class SmsSettings
     }
 
     /**
-     * Texts a phone sends in one window: the daily cap shared between the CRA's windows (300 over two = 150 each), half
-     * for list texts and half for follow-ups (sharePerWindow).
+     * Texts a phone sends in one window: the CRA's daily limit shared between her windows (300 over two = 150 each, 25 =
+     * 13; the day's total still stops at the limit; a window turned off leaves the whole limit to the other), half for list texts and half for follow-ups (sharePerWindow).
      */
     public static function perWindow(?User $cra = null): int
     {
         $windows = $cra ? self::scheduleFor($cra)['windows'] : self::windows();
 
-        return intdiv(self::dailyCap(), max(1, count($windows)));
+        return (int) ceil(self::dailyLimitFor($cra) / max(1, count($windows)));
     }
 
     /**

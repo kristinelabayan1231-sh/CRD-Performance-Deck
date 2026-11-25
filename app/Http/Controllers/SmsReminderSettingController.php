@@ -99,7 +99,7 @@ class SmsReminderSettingController extends Controller
     public function schedule(SmsScheduleRequest $request, User $user): RedirectResponse
     {
         abort_unless(LeadGenerator::cras()->contains('id', $user->id), 404);
-        $user->forceFill($request->schedule())->save();
+        $user->forceFill($request->schedule($user))->save();
 
         return back()->with('status', SmsScheduleController::savedMessage($user));
     }

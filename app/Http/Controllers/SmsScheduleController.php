@@ -35,7 +35,7 @@ class SmsScheduleController extends Controller
     {
         $cra = $this->cra($request);
         abort_unless($cra, 404);
-        $cra->forceFill($request->schedule())->save();
+        $cra->forceFill($request->schedule($cra))->save();
 
         return redirect()->route('sms-reminders.schedule.index', $cra->is($request->user()) ? [] : ['cra' => $cra->id])
             ->with('status', self::savedMessage($cra));
