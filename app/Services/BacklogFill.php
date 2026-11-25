@@ -7,6 +7,7 @@ use App\Models\ExclusiveReservedLead;
 use App\Models\Lead;
 use App\Models\LeadMove;
 use App\Models\User;
+use App\Support\BackgroundArtisan;
 use App\Support\NicheRules;
 use App\Support\OnDuty;
 use Carbon\CarbonImmutable;
@@ -179,8 +180,23 @@ class BacklogFill
         });
 
         $markFilled();
+        $this->addToTextList($day, array_keys(array_filter($moved)));
 
         return $moved;
+    }
+
+    /**
+     * The day's text list (Today's texts) was built before the CRAs logged in and were topped up: build theirs again in its
+     * own process, so the leads just added are texted like the rest of their list.
+     *
+     * @param  list<int>  $craIds
+     */
+    private function addToTextList(CarbonImmutable $day, array $craIds): void
+    {
+        if ($craIds !== [] && $day->isSameDay(Lead::today())) {
+            sort($craIds);
+            BackgroundArtisan::start('reminders:build', ['--cra='.implode(',', $craIds)], 'reminders-build-'.$day->toDateString().'-'.implode('-', $craIds), 60);
+        }
     }
 
     /**

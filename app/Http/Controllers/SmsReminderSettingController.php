@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SmsScheduleRequest;
+use App\Models\RestockReminder;
 use App\Models\Setting;
 use App\Models\SmsReply;
 use App\Models\User;
@@ -99,7 +100,11 @@ class SmsReminderSettingController extends Controller
     public function schedule(SmsScheduleRequest $request, User $user): RedirectResponse
     {
         abort_unless(LeadGenerator::cras()->contains('id', $user->id), 404);
+        $wasOn = $user->sms_auto_send;
         $user->forceFill($request->schedule($user))->save();
+        if ($wasOn && ! $user->sms_auto_send) {
+            RestockReminder::stopQueueOf($user->id);
+        }
 
         return back()->with('status', SmsScheduleController::savedMessage($user));
     }

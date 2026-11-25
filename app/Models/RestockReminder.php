@@ -52,7 +52,7 @@ class RestockReminder extends Model
     /** Status => [label, badge classes]. */
     public const STATUSES = [
         self::PENDING => ['Will be texted', 'bg-[#fbeccd] text-[#7a4d00]'],
-        self::QUEUED => ['Sending…', 'bg-[#dde9f7] text-[#1a4f8c]'],
+        self::QUEUED => ['Queued', 'bg-[#dde9f7] text-[#1a4f8c]'],
         self::SENT => ['Sent', 'bg-[#d4edbc] text-[#11734b]'],
         self::EXCLUDED => ['Left out', 'bg-[#e6e6e6] text-[#3d3d3d]'],
         self::SKIPPED => ['Skipped', 'bg-[#e6e6e6] text-[#3d3d3d]'],
@@ -60,11 +60,14 @@ class RestockReminder extends Model
     ];
 
     /** Reasons a CRA can pick when leaving a customer out. */
+    /** The reason of a customer unticked with no other reason. */
+    public const UNTICKED = 'Other';
+
     public const EXCLUDE_REASONS = [
         'Talked to them already',
         'Already ordered',
         'Asked not to be texted',
-        'Other',
+        self::UNTICKED,
     ];
 
     protected function casts(): array
@@ -176,25 +179,29 @@ class RestockReminder extends Model
     }
 
     /**
-     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or left out on
-     * $day, so unticking a carried-over customer doesn't take them off the list.
+     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or unticked,
+     * which stay until the CRA ticks them or they reorder or opt out (RestockReminders::refreshCarriedOver).
      */
     public function scopeShownOn(Builder $query, CarbonImmutable $day): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereDate('remind_on', $day->toDateString())
             ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString()))
-            ->orWhere(fn (Builder $q) => $q->leftOutOn($day)->whereDate('remind_on', '<', $day->toDateString())));
+            ->orWhere(fn (Builder $q) => $q->unticked()->whereDate('remind_on', '<', $day->toDateString())));
     }
 
     /**
-     * Left out by the CRA on $day.
+     * Unticked by the CRA: not texted until ticked again. Left out for a reason of their own (talked to, ordered, asked not
+     * to be texted) isn't unticked.
      */
-    public function scopeLeftOutOn(Builder $query, CarbonImmutable $day): Builder
+    public function scopeUnticked(Builder $query): Builder
     {
-        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
-
         return $query->where('status', self::EXCLUDED)
-            ->whereBetween('updated_at', [$start->utc(), $start->endOfDay()->utc()]);
+            ->where(fn (Builder $q) => $q->whereNull('excluded_reason')->orWhere('excluded_reason', self::UNTICKED));
+    }
+
+    public function isUnticked(): bool
+    {
+        return $this->status === self::EXCLUDED && in_array($this->excluded_reason, [null, self::UNTICKED], true);
     }
 
     /**
@@ -236,8 +243,22 @@ class RestockReminder extends Model
         return in_array($this->status, [self::PENDING, self::QUEUED, self::EXCLUDED], true);
     }
 
+    /**
+     * Take a CRA's queued texts not yet handed to their phone off the queue: ticked again, sent only when queued again.
+     */
+    public static function stopQueueOf(int $craId): int
+    {
+        return self::where('user_id', $craId)->where('status', self::QUEUED)->whereNull('handed_at')
+            ->update(['status' => self::PENDING, 'queued_at' => null]);
+    }
+
     public function statusLabel(): string
     {
+        // Queued until the phone takes it, then sending until the phone confirms it.
+        if ($this->status === self::QUEUED && $this->handed_at) {
+            return 'Sending…';
+        }
+
         return self::STATUSES[$this->status][0] ?? $this->status;
     }
 
