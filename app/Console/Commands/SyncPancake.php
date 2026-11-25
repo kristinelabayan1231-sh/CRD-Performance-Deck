@@ -48,8 +48,9 @@ class SyncPancake extends Command
         }
 
         if ($this->option('sales')) {
-            $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$sync->syncSales($from, $to)} orders updated.");
-            $this->info("Shecom product costs {$from->toDateString()} to {$to->toDateString()}: {$sync->syncProductCosts($from, $to)} orders updated.");
+            $saved = $sync->syncShecom($from, $to);
+            $this->info("Shecom sales {$from->toDateString()} to {$to->toDateString()}: {$saved['sales']} orders updated.");
+            $this->info("Shecom product costs {$from->toDateString()} to {$to->toDateString()}: {$saved['costs']} orders updated.");
 
             return self::SUCCESS;
         }

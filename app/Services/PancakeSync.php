@@ -86,9 +86,8 @@ class PancakeSync
         });
 
         // Gross sales without the child (TSD) row; Pancake's totals stay in use if Shecom is down.
-        $sales = rescue(fn () => $this->syncSales($day, $day), 0);
-        // The Daily I.S. Product Cost, as Shecom's sales report has it per order.
-        rescue(fn () => $this->syncProductCosts($day, $day));
+        // The Daily I.S. Product Cost comes with it, as Shecom's sales report has it per order.
+        $sales = rescue(fn () => $this->syncShecom($day, $day)['sales'], 0);
 
         // The header's flagged orders, looked up one by one (seconds), so a fixed tag clears without waiting on the list below.
         if ($day->isSameDay(WorkingDate::realToday())) {
@@ -405,10 +404,7 @@ class PancakeSync
 
         // Shecom lists an order under its changed date too, which the day's sales refresh doesn't read.
         collect($movedOrders)->map(fn (array $moved) => $moved[0]->ordered_on)->unique(fn (CarbonImmutable $day) => $day->toDateString())
-            ->each(function (CarbonImmutable $day) {
-                rescue(fn () => $this->syncSales($day, $day));
-                rescue(fn () => $this->syncProductCosts($day, $day));
-            });
+            ->each(fn (CarbonImmutable $day) => rescue(fn () => $this->syncShecom($day, $day)));
 
         return $updated;
     }
@@ -429,36 +425,41 @@ class PancakeSync
     }
 
     /**
-     * Save Shecom's sales on the orders dated $from–$to. Shecom's order id is
-     * Pancake's display_id, which pancake_order_id holds.
+     * Save Shecom's sales and product cost on the orders dated $from–$to. Shecom's order id is Pancake's display_id,
+     * which pancake_order_id holds. An order with a child (TSD) row takes the CRA's own row for both: Shecom's sales
+     * feed has one row per order and sometimes sends the child's. If the product costs fail, the sales are still saved.
      *
-     * @return int orders given a Shecom amount
+     * @return array{sales: int, costs: int} orders given a Shecom amount / product cost
      */
-    public function syncSales(CarbonImmutable $from, CarbonImmutable $to): int
+    public function syncShecom(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $sales = collect($this->shecom->sales($from, $to));
+        $amounts = rescue(fn () => $this->shecom->orderAmounts($from, $to), ['costs' => [], 'mother_sales' => []]);
+        $costs = $this->saveAmounts('shecom_product_cost', $amounts['costs']);
 
-        // One update per distinct amount; a day has only a few dozen.
-        return $sales->keys()->groupBy(fn (string $id) => (string) $sales[$id])
-            ->sum(fn ($ids, string $amount) => $ids->chunk(1000)->sum(
-                fn ($chunk) => PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update(['shecom_sales' => $amount])
-            ));
+        $sales = $this->shecom->sales($from, $to);
+        $sales = array_replace($sales, array_intersect_key($amounts['mother_sales'], $sales));
+
+        return ['sales' => $this->saveAmounts('shecom_sales', $sales), 'costs' => $costs];
     }
 
     /**
-     * Save Shecom's product cost on the orders dated $from–$to (Shecom's order id is pancake_order_id).
+     * One update per distinct amount; a day has only a few dozen. A null amount clears the saved one.
      *
-     * @return int orders given a Shecom product cost
+     * @param  array<string, float|null>  $amounts  by order number
+     * @return int orders given an amount
      */
-    public function syncProductCosts(CarbonImmutable $from, CarbonImmutable $to): int
+    private function saveAmounts(string $column, array $amounts): int
     {
-        $costs = collect($this->shecom->orderProductCosts($from, $to));
+        $saved = 0;
 
-        // One update per distinct cost; a day has only a few dozen.
-        return $costs->keys()->groupBy(fn (string $id) => (string) $costs[$id])
-            ->sum(fn ($ids, string $cost) => $ids->chunk(1000)->sum(
-                fn ($chunk) => PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update(['shecom_product_cost' => $cost])
-            ));
+        foreach (collect($amounts)->keys()->groupBy(fn (string $id) => $amounts[$id] === null ? '' : (string) $amounts[$id]) as $amount => $ids) {
+            foreach ($ids->chunk(1000) as $chunk) {
+                $updated = PancakeOrder::whereIn('pancake_order_id', $chunk->values())->update([$column => $amount === '' ? null : $amount]);
+                $saved += $amount === '' ? 0 : $updated;
+            }
+        }
+
+        return $saved;
     }
 
     /**
