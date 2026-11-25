@@ -179,14 +179,14 @@ class RestockReminder extends Model
     }
 
     /**
-     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or unticked,
-     * which stay until the CRA ticks them or they reorder or opt out (RestockReminders::refreshCarriedOver).
+     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn), unticked or
+     * failed, which stay until the CRA ticks them or they reorder or opt out (RestockReminders::refreshCarriedOver).
      */
     public function scopeShownOn(Builder $query, CarbonImmutable $day): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereDate('remind_on', $day->toDateString())
             ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString()))
-            ->orWhere(fn (Builder $q) => $q->unticked()->whereDate('remind_on', '<', $day->toDateString())));
+            ->orWhere(fn (Builder $q) => $q->held()->whereDate('remind_on', '<', $day->toDateString())));
     }
 
     /**
@@ -197,6 +197,30 @@ class RestockReminder extends Model
     {
         return $query->where('status', self::EXCLUDED)
             ->where(fn (Builder $q) => $q->whereNull('excluded_reason')->orWhere('excluded_reason', self::UNTICKED));
+    }
+
+    /**
+     * Waiting for the CRA to tick them: unticked, or failed on the phone. A failed one may have gone out anyway (the phone
+     * just didn't confirm it), so it's never sent again by itself.
+     */
+    public function scopeHeld(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->unticked()->orWhere('status', self::FAILED));
+    }
+
+    public function isHeld(): bool
+    {
+        return $this->isUnticked() || $this->status === self::FAILED;
+    }
+
+    /**
+     * What ticking sets: to be texted, a failed try forgotten.
+     *
+     * @return array<string, mixed>
+     */
+    public static function ticked(): array
+    {
+        return ['status' => self::PENDING, 'excluded_reason' => null, 'queued_at' => null, 'handed_at' => null, 'next_attempt_at' => null, 'attempts' => 0, 'error' => null];
     }
 
     public function isUnticked(): bool
@@ -231,16 +255,16 @@ class RestockReminder extends Model
     }
 
     /**
-     * Reminders the CRA can still leave out or put back: not yet sent, skipped or failed.
+     * Reminders the CRA can still leave out or put back: not yet sent or skipped.
      */
     public function scopeChangeable(Builder $query): void
     {
-        $query->whereIn('status', [self::PENDING, self::QUEUED, self::EXCLUDED]);
+        $query->whereIn('status', [self::PENDING, self::QUEUED, self::EXCLUDED, self::FAILED]);
     }
 
     public function isChangeable(): bool
     {
-        return in_array($this->status, [self::PENDING, self::QUEUED, self::EXCLUDED], true);
+        return in_array($this->status, [self::PENDING, self::QUEUED, self::EXCLUDED, self::FAILED], true);
     }
 
     /**
