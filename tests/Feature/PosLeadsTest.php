@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\LeadGenerator;
 use App\Services\PosLeads;
+use App\Services\SegmentationStats;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -213,5 +214,65 @@ class PosLeadsTest extends TestCase
 
         // Lhea (the earlier account) gets it on the tie, as though her POS lead weren't there.
         $this->assertSame($this->lhea->id, Lead::firstWhere('order_id', 'NEW1')->assigned_to);
+    }
+
+    public function test_the_sellers_own_carried_over_lead_counts_on_the_day_it_was_sold(): void
+    {
+        $own = $this->trackerLead('9174444401', '2026-10-09');
+        $alreadyCatered = $this->trackerLead('9174444402', '2026-10-09');
+        $alreadyCatered->forceFill(['status' => 'active'])->save();
+        $othersLead = $this->trackerLead('9174444403', '2026-10-09');
+        $othersLead->update(['assigned_to' => User::create(['email' => 'rej@example.com', 'role_id' => $this->lhea->role_id, 'is_active' => true])->id]);
+        foreach ([1, 2, 3] as $i) {
+            $this->order("600{$i}", "917444440{$i}");
+        }
+
+        app(PosLeads::class)->record($this->today);
+        app(PosLeads::class)->record($this->today);
+
+        $this->assertSame('2026-10-16', $own->fresh()->listed_on->toDateString());
+        $this->assertSame('2026-10-09', $alreadyCatered->fresh()->listed_on->toDateString());
+        $this->assertSame('2026-10-09', $othersLead->fresh()->listed_on->toDateString());
+        $this->assertDatabaseCount('lead_moves', 1);
+    }
+
+    public function test_orders_outside_the_cras_list_are_added_to_their_day_as_catered(): void
+    {
+        config(['segmentation.outside_orders_from' => '2026-10-16']);
+        $rowse = User::create(['email' => 'rowse@example.com', 'role_id' => $this->lhea->role_id, 'is_active' => true]);
+        $others = $this->trackerLead('9175555501', '2026-10-09');
+        $others->update(['assigned_to' => $rowse->id]);
+        $unassigned = $this->trackerLead('9175555502', '2026-08-12');
+        $unassigned->update(['assigned_to' => null]);
+        $boughtBefore = $this->trackerLead('9175555503', '2026-09-18');
+        $boughtBefore->update(['repeat_purchase' => 'yes', 'repeat_purchase_on' => '2026-10-01', 'status' => 'active']);
+        $this->trackerLead('9175555504', '2026-10-16');   // on today's list
+        $this->trackerLead('9175555505', '2026-10-09');   // carried over
+        foreach (range(1, 5) as $i) {
+            $this->order("700{$i}", "917555550{$i}");
+        }
+
+        app(PosLeads::class)->record($this->today);
+        app(PosLeads::class)->record($this->today);
+
+        // Each order Lhea made is one catered lead of Lhea's day, and Rowse's own lead stays where it was.
+        $day = Lead::where('assigned_to', $this->lhea->id)->whereDate('listed_on', '2026-10-16')->processed();
+        $this->assertSame(5, $day->count());
+        $this->assertSame(['POS-7001', 'POS-7002', 'POS-7003'], $day->where('order_id', 'like', 'POS-%')->orderBy('order_id')->pluck('order_id')->all());
+        $this->assertSame(['2026-10-09', $rowse->id], [$others->fresh()->listed_on->toDateString(), $others->fresh()->assigned_to]);
+        $this->assertNull($unassigned->fresh()->assigned_to);
+        $this->assertSame('2026-10-01', $boughtBefore->fresh()->repeat_purchase_on->toDateString());
+        // The customer counts once in Retained / Repeat.
+        $stats = app(SegmentationStats::class);
+        $this->assertSame(5, collect(['retained', 'repeat'])->sum(fn ($segment) => $stats->repeatPurchases(collect([$this->lhea, $rowse]), $segment, $this->today, $this->today)->count()));
+    }
+
+    public function test_days_before_the_rule_keep_their_figures(): void
+    {
+        config(['segmentation.outside_orders_from' => '2026-10-17']);
+        $this->trackerLead('9175555506', '2026-08-12')->update(['assigned_to' => null]);
+        $this->order('7006', '9175555506');
+
+        $this->assertSame(['added' => 0, 'marked' => 1], app(PosLeads::class)->record($this->today));
     }
 }

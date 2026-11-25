@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-25 · Segmentation Tracker + reports · A carried-over lead counts on the day it was catered (by hand or by the CRA's own POS sale); its old day keeps its figures. Uncatering it returns it to its old day; it doesn't use up the daily 100 or cause a text. From Nov 26 orders, a CRA's sale outside their list (another CRA's or an unassigned lead, or their own already catered) is added to their day as catered · shots: 04-daily-table
+
 
 - 2026-11-25 · Daily I.S. + sales modules · An order with a CRA's mother item and another department's child item (e.g. a Telesales upsell) always takes the CRA's own item for sales and Product Cost, even when Shecom's sales feed sends the child's · shots: none
 

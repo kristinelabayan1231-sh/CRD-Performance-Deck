@@ -357,6 +357,50 @@ class Lead extends Model
         $this->forceFill(['assigned_to' => $to->id, 'assigned_at' => now(), 'listed_on' => $day->toDateString()])->save();
     }
 
+    /**
+     * A carried-over lead counts on the day it is catered: one from an earlier day just catered is listed on $day, while
+     * its old day keeps counting it as not catered (LeadMove), so that day's figures never change. One uncatered again
+     * goes back to its old day. A lead catered already stays on the day it was first catered. Exclusive CRAs' leads follow
+     * their own lists. Call it before save().
+     */
+    public function countOnDayCatered(CarbonImmutable $day): void
+    {
+        $wasCatered = $this->getOriginal('status') !== null || $this->getOriginal('contact_date') !== null || $this->getOriginal('processed_at') !== null;
+
+        if ($wasCatered === $this->isProcessed()) {
+            return;
+        }
+
+        if ($wasCatered) {
+            $move = LeadMove::where('lead_id', $this->id)->where('carried', true)->whereDate('moved_to', $this->listed_on)->latest('id')->first();
+            if ($move !== null) {
+                $this->listed_on = $move->listed_on;
+                $move->delete();
+            }
+
+            return;
+        }
+
+        if ($this->assigned_to === null || ! $this->listed_on->lessThan($day) || str_starts_with($this->order_id, self::POS_PREFIX)
+            || $this->assignee?->isExclusiveOn($day)) {
+            return;
+        }
+
+        LeadMove::create(['lead_id' => $this->id, 'assigned_to' => $this->assigned_to, 'listed_on' => $this->listed_on->toDateString(),
+            'moved_to' => $day->toDateString(), 'carried' => true]);
+        $this->listed_on = $day;
+    }
+
+    /**
+     * The leads given on their day, without the ones from earlier days listed there because they were catered that day
+     * (countOnDayCatered()): those don't use up the day's leads.
+     */
+    public function scopeWithoutCarriedIn(Builder $query): Builder
+    {
+        return $query->whereNotExists(fn ($q) => $q->from('lead_moves')->whereColumn('lead_moves.lead_id', 'leads.id')
+            ->whereColumn('lead_moves.moved_to', 'leads.listed_on')->where('lead_moves.carried', true));
+    }
+
     public function notesAuthor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'notes_updated_by');

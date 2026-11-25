@@ -214,4 +214,40 @@ class BacklogFillTest extends TestCase
         $lead->fresh()->update(['est_out_of_stock_date' => '2026-09-12']);
         $this->assertSame('2026-09-19', $lead->fresh()->listed_on->toDateString());
     }
+
+    public function test_a_carried_over_lead_counts_on_the_day_it_was_catered_and_its_old_day_keeps_its_figures(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-09-19 10:00', 'Asia/Manila'));
+        $catered = $this->lead('2026-09-18', $this->july, ['status' => 'active']);
+        $carried = $this->lead('2026-09-18', $this->july);
+        $this->lead('2026-09-18', $this->july);
+        $yesterday = fn () => app(SegmentationStats::class)->range(collect([$this->july]), CarbonImmutable::parse('2026-09-18'), CarbonImmutable::parse('2026-09-18'));
+        $before = $yesterday();
+
+        $this->actingAs($this->july)->patchJson(route('segmentation.update', $carried), ['status' => 'active'])->assertOk();
+        $this->patchJson(route('segmentation.update', $catered), ['status' => 'pjr_drop_call'])->assertOk();
+
+        $this->assertSame('2026-09-19', $carried->fresh()->listed_on->toDateString());
+        $this->assertSame('2026-09-18', $catered->fresh()->listed_on->toDateString());
+        $this->assertEquals($before, $yesterday());
+        // It doesn't use up the day's leads, or get a text as one of them.
+        $this->assertSame(0, Lead::whereDate('listed_on', '2026-09-19')->withoutCarriedIn()->count());
+
+        // Uncatered: back on its old day, as before.
+        $this->patchJson(route('segmentation.update', $carried), ['processed' => false])->assertOk();
+        $this->assertSame('2026-09-18', $carried->fresh()->listed_on->toDateString());
+        $this->assertSame(0, LeadMove::count());
+    }
+
+    public function test_a_carried_in_lead_does_not_use_up_the_daily_fill(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-09-19 10:00', 'Asia/Manila'));
+        $carried = $this->lead('2026-09-18', $this->july);
+        $this->actingAs($this->july)->patchJson(route('segmentation.update', $carried), ['processed' => true])->assertOk();
+        foreach (range(1, 6) as $i) {
+            $this->lead('2026-06-01');
+        }
+
+        $this->assertSame([$this->july->id => 5], $this->fill($this->july));
+    }
 }

@@ -27,6 +27,10 @@ return [
     // were already working stay as they were.
     'reclaim_from' => '2026-10-08',
 
+    // First order day (real date) a CRA's own sale outside their day's list is added to it as catered (PosLeads). Earlier
+    // days keep the figures they had.
+    'outside_orders_from' => '2026-11-26',
+
     // Pancake POS order tag ids that make an order a CRD conversion (Conversion
     // Breakdown): "CRD - BROADCAST" and "CRD - SEGMENTATION". An order with
     // both tags counts as segmentation.

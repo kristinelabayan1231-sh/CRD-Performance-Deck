@@ -16,10 +16,14 @@ use Illuminate\Support\Collection;
  * dashboard's Retained and Repeat tiles count it:
  *
  * - Customer already in the tracker: their latest lead (by lead day, up to the order day) gets Repeat
- *   Purchase = Yes and moves to Catered, unless it is Yes already.
+ *   Purchase = Yes and moves to Catered, unless it is Yes already. The seller's own lead from an earlier day counts as
+ *   catered on the order day's lead day (Lead::countOnDayCatered()).
  * - Customer not in the tracker: a catered lead for that CRA on the lead day paired with the order day (Settings →
  *   Working Date), with Repeat Purchase = Yes on the order day; CRD Lead when they had an earlier CRA-handled order,
  *   else FSD Lead. On the paired lead day it shows in the tracker the CRAs are working and counts in the dashboard's leads.
+ *
+ * A sale outside the CRA's list that day (another CRA's or an unassigned lead, or their own catered earlier) is added to their
+ * day as a catered lead too, from segmentation.outside_orders_from on.
  *
  * Only orders sold from a CRA's own Pancake account (User Access), with a product from the Product
  * Consumption list, not canceled or deleted. An order the CVR Tracker counts for another CRA (also one made under an
@@ -67,8 +71,17 @@ class PosLeads
             if ($leads === null) {
                 $this->addLead($order, $craFor($order), $catalog);
                 $result['added']++;
-            } elseif ($this->markBought($leads, $order)) {
-                $result['marked']++;
+
+                continue;
+            }
+
+            $marked = $this->markBought($leads, $order, $craFor($order));
+            $result['marked'] += (int) ($marked !== null);
+
+            if ($this->isOutsideTheDaysList($leads, $order, $craFor($order))) {
+                // The same type as the lead just marked, so the customer counts once, as Retained or as Repeat.
+                $this->addLead($order, $craFor($order), $catalog, $marked?->lead_type);
+                $result['added']++;
             }
         }
 
@@ -99,18 +112,18 @@ class PosLeads
 
     /**
      * Repeat Purchase = Yes on the order day for the customer's latest lead up to that day (else their
-     * earliest later one); false when that lead is Yes already.
+     * earliest later one); null when that lead is Yes already.
      *
      * @param  Collection<int, Lead>  $leads
      */
-    private function markBought(Collection $leads, PancakeOrder $order): bool
+    private function markBought(Collection $leads, PancakeOrder $order, User $cra): ?Lead
     {
         $day = $order->ordered_on;
         $lead = $leads->filter(fn (Lead $lead) => $lead->listed_on->lessThanOrEqualTo($day))->sortByDesc('listed_on')->first()
             ?? $leads->sortBy('listed_on')->first();
 
         if ($lead->repeat_purchase === 'yes') {
-            return false;
+            return null;
         }
 
         $lead->forceFill([
@@ -118,12 +131,33 @@ class PosLeads
             'repeat_purchase_on' => $day->toDateString(),
             // Off the Pending list: the customer bought.
             ...($lead->isProcessed() ? [] : ['processed_at' => now()]),
-        ])->save();
+        ]);
+        // Their own lead from an earlier day counts as catered on the day they sold it.
+        if ($lead->assigned_to === $cra->id) {
+            $lead->countOnDayCatered(WorkingDate::leadDayFor($day));
+        }
+        $lead->save();
 
-        return true;
+        return $lead;
     }
 
-    private function addLead(PancakeOrder $order, User $cra, ProductCatalog $catalog): void
+    /**
+     * The customer was bought from outside the CRA's list: no catered lead of theirs is on the order's lead day (it is
+     * another CRA's, unassigned, or theirs catered on an earlier day). Who made the order decides, not who has the lead. An exclusive CRA's days follow their own lists.
+     *
+     * @param  Collection<int, Lead>  $leads
+     */
+    private function isOutsideTheDaysList(Collection $leads, PancakeOrder $order, User $cra): bool
+    {
+        $leadDay = WorkingDate::leadDayFor($order->ordered_on);
+
+        return $order->ordered_on->toDateString() >= config('segmentation.outside_orders_from')
+            && ! $cra->isExclusiveOn($leadDay)
+            && ! $leads->contains(fn (Lead $lead) => $lead->order_id === Lead::POS_PREFIX.$order->pancake_order_id
+                || ($lead->assigned_to === $cra->id && $lead->listed_on->isSameDay($leadDay) && $lead->isProcessed()));
+    }
+
+    private function addLead(PancakeOrder $order, User $cra, ProductCatalog $catalog, ?string $leadType = null): void
     {
         $items = collect($order->items ?? []);
         $names = $items->pluck('name')->filter()->values();
@@ -142,7 +176,7 @@ class PosLeads
             'delivered_date' => $day,
             'consumption_days' => (int) $product?->consumption_days,
             'est_out_of_stock_date' => WorkingDate::leadDayFor($order->ordered_on)->toDateString(),
-            'lead_type' => $this->customers->hasCraOrderBefore($order->phone_key, $orderedAt) ? Lead::TYPE_CRD : Lead::TYPE_FSD,
+            'lead_type' => $leadType ?? ($this->customers->hasCraOrderBefore($order->phone_key, $orderedAt) ? Lead::TYPE_CRD : Lead::TYPE_FSD),
             'assigned_to' => $cra->id,
             'assigned_at' => $orderedAt,
             'status' => 'active',
@@ -152,7 +186,7 @@ class PosLeads
             'repeat_purchase_on' => $day,
             'contact_date' => $day,
             'feedback' => 'purchased',
-            'notes' => "Added from Pancake POS order #{$order->pancake_order_id} (customer wasn't in the tracker).",
+            'notes' => "Added from Pancake POS order #{$order->pancake_order_id} (outside the day's list).",
             'notes_updated_at' => $orderedAt,
         ]);
     }

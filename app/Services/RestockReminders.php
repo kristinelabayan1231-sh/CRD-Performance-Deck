@@ -203,7 +203,7 @@ class RestockReminders
         $active = LeadGenerator::cras()->keyBy('id');
         $exclusive = app(ExclusiveLeads::class);
 
-        return Lead::inSegmentationTracker()->whereDate('listed_on', $leadDay->toDateString())->whereIn('assigned_to', $active->keys())
+        return Lead::inSegmentationTracker()->withoutCarriedIn()->whereDate('listed_on', $leadDay->toDateString())->whereIn('assigned_to', $active->keys())
             ->orderBy('id')->get($columns)
             ->concat($active->filter(fn (User $cra) => $cra->isExclusiveOn($leadDay))
                 ->flatMap(fn (User $cra) => $exclusive->leadsFor($cra, $leadDay)->orderBy('id')->get($columns)))
