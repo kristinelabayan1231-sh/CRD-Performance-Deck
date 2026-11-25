@@ -180,6 +180,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
         Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
+        Route::put('/window', [SmsReminderController::class, 'window'])->name('window');
+        Route::put('/daily-limit', [SmsReminderController::class, 'dailyLimit'])->name('daily-limit');
         Route::get('/schedule', [SmsScheduleController::class, 'index'])->name('schedule.index');
         Route::put('/schedule', [SmsScheduleController::class, 'update'])->name('schedule.update');
         // Replies moved into Conversations; old links (and the YES alert) still land there.

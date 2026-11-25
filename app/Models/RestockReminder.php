@@ -176,12 +176,25 @@ class RestockReminder extends Model
     }
 
     /**
-     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn).
+     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or left out on
+     * $day, so unticking a carried-over customer doesn't take them off the list.
      */
     public function scopeShownOn(Builder $query, CarbonImmutable $day): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereDate('remind_on', $day->toDateString())
-            ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString())));
+            ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString()))
+            ->orWhere(fn (Builder $q) => $q->leftOutOn($day)->whereDate('remind_on', '<', $day->toDateString())));
+    }
+
+    /**
+     * Left out by the CRA on $day.
+     */
+    public function scopeLeftOutOn(Builder $query, CarbonImmutable $day): Builder
+    {
+        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
+
+        return $query->where('status', self::EXCLUDED)
+            ->whereBetween('updated_at', [$start->utc(), $start->endOfDay()->utc()]);
     }
 
     /**

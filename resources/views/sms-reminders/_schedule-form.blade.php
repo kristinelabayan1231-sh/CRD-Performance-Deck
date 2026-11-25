@@ -14,7 +14,8 @@
     $useDefault = $isThisForm ? (bool) old('use_default') : ! $schedule['custom'];
     $autoSend = $isThisForm ? (bool) old('auto_send') : $cra->sms_auto_send;
     $days = $isThisForm ? array_map('intval', (array) old('days', [])) : $schedule['days'];
-    $windows = $isThisForm ? old('windows', []) : $schedule['windows'];
+    $windows = $isThisForm ? old('windows', []) : $schedule['all_windows'];
+    $windowsOn = $isThisForm ? array_map('intval', array_filter((array) old('windows_on', []), 'is_numeric')) : array_values(array_diff([0, 1], $schedule['windows_off']));
     $sendTime = $isThisForm ? old('send_time') : $schedule['send_time'];
     $you = $isOwn ?? false;
 @endphp
@@ -74,6 +75,25 @@
         </div>
         <p class="text-xs text-muted">On the days picked, the ticked customers are queued from the start time and go out one a minute, only inside the windows ({{ SmsSettings::timeLabel($hours['from']) }}–{{ SmsSettings::timeLabel($hours['until']) }}); what's left after the last window waits for the next sending day. Leave the second window blank for one window only.</p>
     </div>
+
+    <fieldset class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+        <legend class="sr-only">Windows to send in</legend>
+        <span class="font-semibold">Send in</span>
+        <input type="hidden" name="windows_on[]" value="">
+        @foreach (['First window', 'Second window'] as $index => $name)
+            <label class="flex items-center gap-2">
+                <input type="checkbox" name="windows_on[]" value="{{ $index }}" @checked(in_array($index, $windowsOn, true)) class="size-4.5 rounded accent-brand-600">
+                {{ $name }}
+            </label>
+        @endforeach
+        <span class="text-muted">A window turned off leaves the whole day's texts to the other.</span>
+    </fieldset>
+
+    <label class="flex flex-wrap items-center gap-2.5 text-sm font-semibold">
+        Most texts a day
+        <input type="number" name="daily_limit" min="1" max="{{ SmsSettings::dailyCap() }}" value="{{ $isThisForm ? old('daily_limit') : SmsSettings::ownDailyLimit($cra) }}" placeholder="{{ SmsSettings::dailyCap() }}" class="{{ $field }} w-28 font-normal tabular-nums">
+        <span class="font-normal text-muted">up to {{ SmsSettings::dailyCap() }}; blank = {{ SmsSettings::dailyCap() }}. What's over waits for the next sending day.</span>
+    </label>
 
     <button type="submit" class="h-10 rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">Save schedule</button>
 </form>
