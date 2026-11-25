@@ -7,6 +7,10 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-25 · Segmentation Tracker + reports · A carried-over lead counts on the day it was catered (by hand or by the CRA's own POS sale); its old day keeps its figures. Uncatering it returns it to its old day; it doesn't use up the daily 100 or cause a text. From Nov 26 orders, a CRA's sale outside their list (another CRA's or an unassigned lead, or their own already catered) is added to their day as catered · shots: 04-daily-table
+
+
+- 2026-11-25 · Daily I.S. + sales modules · An order with a CRA's mother item and another department's child item (e.g. a Telesales upsell) always takes the CRA's own item for sales and Product Cost, even when Shecom's sales feed sends the child's · shots: none
 
 - 2026-11-24 · Floating CRA schedule (every page, "See who is on duty": Supervisors, Team Leads, admins) · A "CRA schedule" button at the bottom right of every page (not on the CRA Schedule page itself) opens a floating panel over the page: Week view (each CRA per day: log-in time, Rest Day / leave / Absent tag, Working ahead, Not in yet today; per-day on duty / off counts) or Month view (each day a colored letter R/V/S/P/E/A, teal dot = logged in); previous/next, Today, legend, "Open CRA Schedule →"; × or Esc closes; remembers Week/Month. Absent is now grey with a dashed coral border when the CRA didn't log in · shots: schedule-peek (new), cra-schedule
 

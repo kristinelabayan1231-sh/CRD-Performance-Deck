@@ -349,7 +349,7 @@ class SegmentationController extends Controller
     private function perCraBreakdown(array $filters, CarbonImmutable $from, CarbonImmutable $to, $cras): array
     {
         // Assigned leads only: POS sales added to the tracker aren't part of a CRA's share.
-        $rows = Lead::whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to)->withoutPosSales()
+        $rows = Lead::whereDate('listed_on', '>=', $from)->whereDate('listed_on', '<=', $to)->withoutPosSales()->withoutCarriedIn()
             ->when($filters['type'] ?? null, fn (Builder $q, $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, $product) => $q->where('product_name', $product))
             ->whereIn('assigned_to', $cras->pluck('id'))
@@ -490,6 +490,7 @@ class SegmentationController extends Controller
             }
         }
 
+        $lead->countOnDayCatered(Lead::today());
         $lead->save();
 
         if ($request->expectsJson()) {

@@ -19,6 +19,9 @@ class ShecomClient
     /** Held while the full retention report is read and worked on. */
     public const REPORT_LOCK = 'shecom-report';
 
+    /** The department of a CRA's row in Shecom's orders report. */
+    private const RETENTION_DEPT = 'retention';
+
     /**
      * Run $work (which reads the full retention report) once no other process is: the web service, the scheduler's
      * lead sync and the logistics refresh share one small instance, and two reports at once run it out of memory.
@@ -238,11 +241,13 @@ class ShecomClient
 
     /**
      * Each order's product cost for orders dated $from–$to, by order id (Pancake's display id), as Shecom's sales
-     * report counts it per CRA and product.
+     * report counts it per CRA and product, and the CRA's own sale of each order with a child row. Such an order has a
+     * Retention row (the mother item) and another department's (the child, e.g. a Telesales upsell); only the Retention
+     * row is the CRA's. Its cost is null while Shecom has none for it, so the child's isn't taken instead.
      *
-     * @return array<string, float> order id => product cost
+     * @return array{costs: array<string, float|null>, mother_sales: array<string, float>}
      */
-    public function orderProductCosts(CarbonImmutable $from, CarbonImmutable $to): array
+    public function orderAmounts(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $key = config('services.shecom.product_cost_key');
 
@@ -263,10 +268,30 @@ class ShecomClient
             throw new RuntimeException("Orders API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
         }
 
-        return collect($response->json('rows') ?? [])
-            ->filter(fn (array $row) => ($row['orderId'] ?? '') !== '' && is_numeric($row['productCost'] ?? null))
-            ->mapWithKeys(fn (array $row) => [(string) $row['orderId'] => (float) $row['productCost']])
-            ->all();
+        $costs = [];
+        $motherSales = [];
+
+        foreach (collect($response->json('rows') ?? [])->filter(fn (array $row) => ($row['orderId'] ?? '') !== '')->groupBy('orderId') as $id => $rows) {
+            $mother = $rows->count() > 1 ? $rows->firstWhere('dept', self::RETENTION_DEPT) : null;
+
+            if ($mother !== null && $rows->contains(fn (array $row) => ($row['dept'] ?? null) !== self::RETENTION_DEPT)) {
+                $costs[$id] = is_numeric($mother['productCost'] ?? null) ? (float) $mother['productCost'] : null;
+
+                if (is_numeric($mother['totalSales'] ?? null)) {
+                    $motherSales[$id] = (float) $mother['totalSales'];
+                }
+
+                continue;
+            }
+
+            $row = $rows->last(fn (array $row) => is_numeric($row['productCost'] ?? null));
+
+            if ($row !== null) {
+                $costs[$id] = (float) $row['productCost'];
+            }
+        }
+
+        return ['costs' => $costs, 'mother_sales' => $motherSales];
     }
 
     /**

@@ -79,7 +79,7 @@ class BacklogFill
         $cras = $cras->reject(fn (User $cra) => $cra->isExclusiveOn($day) || Cache::has(self::filledKey($day, $cra->id)))->values();
         $markFilled = fn () => $cras->each(fn (User $cra) => Cache::put(self::filledKey($day, $cra->id), true, now()->addDays(3)));
         $max = (int) config('segmentation.max_leads_per_cra');
-        $listed = Lead::whereDate('listed_on', $day)->whereIn('assigned_to', $cras->pluck('id'))->withoutPosSales()
+        $listed = Lead::whereDate('listed_on', $day)->whereIn('assigned_to', $cras->pluck('id'))->withoutPosSales()->withoutCarriedIn()
             ->selectRaw('assigned_to, count(*) as total')->groupBy('assigned_to')->pluck('total', 'assigned_to');
         $room = $cras->mapWithKeys(fn (User $cra) => [$cra->id => max(0, $max - (int) ($listed[$cra->id] ?? 0))])->filter()->all();
         $moved = array_fill_keys(array_keys($room), 0);

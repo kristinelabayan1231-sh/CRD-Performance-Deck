@@ -9,10 +9,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A lead the backlog fill (BacklogFill) moved off a CRA's lead day while untouched. Day totals add these
+ * A lead the backlog fill (BacklogFill) moved off a CRA's lead day while untouched, or one catered on a later day (carried). Day totals add these
  * back as listed but not catered, so a day's total stays what the CRA was given that day.
  */
-#[Fillable(['lead_id', 'assigned_to', 'listed_on', 'moved_to'])]
+#[Fillable(['lead_id', 'assigned_to', 'listed_on', 'moved_to', 'carried'])]
 class LeadMove extends Model
 {
     protected function casts(): array
@@ -20,6 +20,7 @@ class LeadMove extends Model
         return [
             'listed_on' => 'immutable_date',
             'moved_to' => 'immutable_date',
+            'carried' => 'boolean',
         ];
     }
 
