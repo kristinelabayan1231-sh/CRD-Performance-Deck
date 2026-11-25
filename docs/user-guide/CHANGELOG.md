@@ -9,6 +9,8 @@ never needs to re-read the whole PDF. Newest first.
 
 - 2026-11-26 · Segmentation Tracker → Today's texts · Unticked customers stay on the list, unticked, on later days too until the CRA ticks them (or they reorder or opt out); they're never texted by themselves; 20 / 50 / 100 per page (20 first), Tick page / Untick page, Untick all asks first; How many beside Send now sends only the first few, the others stay ticked · shots: none
 
+- 2026-11-26 · Segmentation Tracker → Today's texts · The text list follows the tracker list: leads added when a CRA logs in (the top-up to 100) join it; queued texts are checked again each morning (reordered, opted out, or now another CRA's) · shots: none
+
 - 2026-11-26 · Segmentation Tracker → Today's texts · Turning Sends automatically off also stops the queued texts (they stay ticked), and a Stop button stops them any time; "Sending…" shows as Queued until the phone takes the text; Tick all / Untick all need a CRA picked · shots: none
 
 - 2026-11-26 · Segmentation Tracker → Today's texts + Text settings → Schedule · Each CRA sets her own Daily limit of texts (up to the most in Settings → SMS Reminders, blank = that); today's sent of the limit shows beside it. Each sending window turns off on its own; the other then takes the whole day's texts · shots: none

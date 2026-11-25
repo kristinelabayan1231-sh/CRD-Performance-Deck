@@ -443,6 +443,41 @@ class SmsRemindersTest extends TestCase
         $this->assertSame([RestockReminder::PENDING, RestockReminder::QUEUED], array_map($statusOf, [$annas, $mikas]));
     }
 
+    public function test_leads_the_backlog_fill_adds_after_the_morning_build_join_that_cras_text_list_only(): void
+    {
+        $early = $this->delivered('09170000001', cra: $this->anna);
+        $mikas = $this->delivered('09170000003', cra: $this->mika);
+        $this->artisan('reminders:build');
+        RestockReminder::where('phone_key', $mikas)->update(['status' => RestockReminder::PENDING]);
+        $late = $this->delivered('09170000002', cra: $this->anna);
+        $this->delivered('09170000004', cra: $this->mika);
+
+        $this->artisan('reminders:build', ['--cra' => (string) $this->anna->id])->assertSuccessful();
+
+        $this->assertEqualsCanonicalizing([$early, $late], RestockReminder::where('user_id', $this->anna->id)->where('status', RestockReminder::PENDING)->pluck('phone_key')->all());
+        // The other CRA's list is as it was.
+        $this->assertSame([$mikas], RestockReminder::where('user_id', $this->mika->id)->pluck('phone_key')->all());
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $mikas)->status);
+    }
+
+    public function test_a_queued_text_not_sent_is_checked_again_each_morning(): void
+    {
+        $reordered = $this->delivered('09170000001', cra: $this->anna);
+        $moved = $this->delivered('09170000002', cra: $this->anna);
+        $still = $this->delivered('09170000003', cra: $this->anna);
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 06:30', 'Asia/Manila'));
+        $this->delivered('09170000001', '2026-11-21');
+        Lead::whereIn('id', RestockReminder::firstWhere('phone_key', $moved)->lead_ids)->update(['assigned_to' => $this->mika->id]);
+        $this->artisan('reminders:build');
+
+        $this->assertSame(RestockReminder::SKIPPED, RestockReminder::firstWhere('phone_key', $reordered)->status);
+        $this->assertSame([RestockReminder::PENDING, $this->mika->id], array_values(RestockReminder::firstWhere('phone_key', $moved)->only(['status', 'user_id'])));
+        $this->assertSame([RestockReminder::QUEUED, $this->anna->id], array_values(RestockReminder::firstWhere('phone_key', $still)->only(['status', 'user_id'])));
+    }
+
     public function test_untick_all_needs_one_cra(): void
     {
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);

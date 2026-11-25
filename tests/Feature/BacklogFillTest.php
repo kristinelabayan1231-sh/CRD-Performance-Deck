@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Lead;
 use App\Models\LeadMove;
+use App\Models\Product;
+use App\Models\RestockReminder;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\BacklogFill;
@@ -50,6 +52,19 @@ class BacklogFillTest extends TestCase
     private function fill(User ...$cras): array
     {
         return app(BacklogFill::class)->fill($this->day, collect($cras));
+    }
+
+    public function test_the_leads_added_for_today_join_the_cras_text_list(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-09-19 09:15', 'Asia/Manila'));
+        Product::create(['name' => 'Pterygium', 'consumption_days' => 15]);
+        $added = $this->lead('2026-09-01', $this->july, ['phone_number' => '9170000001']);
+
+        $this->assertSame([$this->july->id => 1], $this->fill($this->july));
+        $this->runBackgroundCommands();
+
+        $this->assertSame([$added->id], RestockReminder::sole()->lead_ids);
+        $this->assertSame($this->july->id, RestockReminder::sole()->user_id);
     }
 
     public function test_own_leads_first_then_untouched_backlog_and_an_even_pool_share(): void
