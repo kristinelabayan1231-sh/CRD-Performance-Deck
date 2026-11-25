@@ -50,7 +50,7 @@
             <div class="flex flex-col gap-1.5">
                 <span class="text-xs font-semibold tracking-wide text-muted uppercase">Show</span>
                 <div class="flex gap-1.5">
-                    @foreach (['' => 'All · '.$counts['all'], 'send' => 'To send · '.$counts['toSend'], 'follow' => 'Follow-ups · '.$counts['followUps'], 'sent' => 'Sent · '.$counts['sent'], 'out' => 'Left out · '.($counts['excluded'] + $counts['skipped'] + $counts['failed'])] as $value => $name)
+                    @foreach (['' => 'All · '.$counts['all'], 'send' => 'To send · '.$counts['toSend'], 'follow' => 'Follow-ups · '.$counts['followUps'], 'sent' => 'Sent · '.$counts['sent'], 'out' => 'Left out · '.($counts['excluded'] + $counts['skipped']), ...($counts['failed'] ? ['failed' => 'Failed · '.$counts['failed']] : [])] as $value => $name)
                         <a href="{{ request()->fullUrlWithQuery(['status' => $value ?: null, 'page' => null]) }}"
                            @class(['grid h-9 place-items-center rounded-lg border px-3 text-xs font-semibold tabular-nums', 'border-brand-500 bg-brand-50 text-brand-700' => ($status ?? '') === $value, 'border-line bg-white text-muted hover:border-brand-400 hover:text-brand-600' => ($status ?? '') !== $value])>{{ $name }}</a>
                     @endforeach
@@ -288,6 +288,9 @@
                                     </td>
                                     <td class="px-4 py-3">
                                         <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap {{ $reminder->statusClasses() }}">{{ $reminder->statusLabel() }}</span>
+                                        @if ($reminder->status === RestockReminder::FAILED)
+                                            <p class="mt-1 text-xs text-coral-700">It may have gone out: check the phone before ticking it again.</p>
+                                        @endif
                                         @if ($reminder->isCarriedOverTo($day))
                                             <p class="mt-1 text-xs text-muted">Carried over from {{ $reminder->remind_on->format('M j') }}</p>
                                         @endif

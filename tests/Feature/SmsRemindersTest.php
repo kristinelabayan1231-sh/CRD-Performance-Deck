@@ -478,6 +478,39 @@ class SmsRemindersTest extends TestCase
         $this->assertSame([RestockReminder::QUEUED, $this->anna->id], array_values(RestockReminder::firstWhere('phone_key', $still)->only(['status', 'user_id'])));
     }
 
+    public function test_a_failed_text_stays_on_the_list_unticked_until_the_cra_ticks_it(): void
+    {
+        $this->turnOn();
+        $this->anna->forceFill(['sms_auto_send' => true])->save();
+        $failed = $this->delivered('09170000001', cra: $this->anna);
+        $reordered = $this->delivered('09170000002', cra: $this->anna);
+        $this->artisan('reminders:build');
+        RestockReminder::query()->update(['status' => RestockReminder::FAILED, 'error' => 'No confirm', 'handed_at' => now(), 'attempts' => 3]);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 07:30', 'Asia/Manila'));
+        $this->delivered('09170000002', '2026-11-21');
+        $this->artisan('reminders:build');
+        $this->assertSame(RestockReminder::SKIPPED, RestockReminder::firstWhere('phone_key', $reordered)->status);
+
+        $reminder = RestockReminder::firstWhere('phone_key', $failed);
+        $this->actingAs($this->anna)->get(route('sms-reminders.index', ['status' => 'failed']))->assertOk()
+            ->assertSee($reminder->customer_name)->assertSee('Failed · 1')->assertSee('It may have gone out');
+
+        // Never sent again by itself, nor with Tick all.
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-23', 'include' => 1]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-23 10:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        Http::assertNothingSent();
+        $this->assertSame(RestockReminder::FAILED, $reminder->fresh()->status);
+
+        // Ticked by the CRA (or with its page): a new try.
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-23', 'include' => 1, 'ids' => [$reminder->id]]);
+        $this->assertSame([RestockReminder::PENDING, 0, null, null], array_values($reminder->fresh()->only(['status', 'attempts', 'error', 'handed_at'])));
+        $this->artisan('reminders:send');
+        $this->assertNotNull($reminder->fresh()->handed_at);
+    }
+
     public function test_untick_all_needs_one_cra(): void
     {
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);

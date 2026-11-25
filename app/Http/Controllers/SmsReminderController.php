@@ -37,7 +37,7 @@ class SmsReminderController extends Controller
         $filters = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
             'cra' => ['nullable', 'integer'],
-            'status' => ['nullable', Rule::in(['send', 'follow', 'sent', 'out'])],
+            'status' => ['nullable', Rule::in(['send', 'follow', 'sent', 'out', 'failed'])],
             'per_page' => ['nullable', 'integer', Rule::in(self::PER_PAGE)],
         ]);
         $perPage = (int) ($filters['per_page'] ?? self::PER_PAGE[0]);
@@ -54,7 +54,8 @@ class SmsReminderController extends Controller
             ->when(($filters['status'] ?? null) === 'send', fn (Builder $query) => $query->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED]))
             ->when(($filters['status'] ?? null) === 'follow', fn (Builder $query) => $query->where('kind', RestockReminder::FOLLOW_UP))
             ->when(($filters['status'] ?? null) === 'sent', fn (Builder $query) => $query->where('status', RestockReminder::SENT))
-            ->when(($filters['status'] ?? null) === 'out', fn (Builder $query) => $query->whereIn('status', [RestockReminder::EXCLUDED, RestockReminder::SKIPPED, RestockReminder::FAILED]))
+            ->when(($filters['status'] ?? null) === 'out', fn (Builder $query) => $query->whereIn('status', [RestockReminder::EXCLUDED, RestockReminder::SKIPPED]))
+            ->when(($filters['status'] ?? null) === 'failed', fn (Builder $query) => $query->where('status', RestockReminder::FAILED))
             ->with(['cra', 'scheduler'])->withCount('manualMessages')->withMax('manualMessages', 'sent_at')
             ->orderByRaw("case status when 'queued' then 0 when 'pending' then 1 when 'failed' then 2 when 'sent' then 3 when 'excluded' then 4 else 5 end")
             // The same order Send now takes them in when it sends only some: earlier days' first.
@@ -131,10 +132,8 @@ class SmsReminderController extends Controller
         $include = (bool) $data['include'];
         $reason = $include ? null : ($data['reason'] ?? RestockReminder::UNTICKED);
         $restockReminder->update([
-            'status' => $include ? RestockReminder::PENDING : RestockReminder::EXCLUDED,
-            'excluded_reason' => $reason,
+            ...($include ? RestockReminder::ticked() : ['status' => RestockReminder::EXCLUDED, 'excluded_reason' => $reason, 'queued_at' => null]),
             'status_updated_by' => $request->user()->id,
-            'queued_at' => null,
         ]);
 
         if ($reason === 'Asked not to be texted') {
@@ -145,7 +144,8 @@ class SmsReminderController extends Controller
     }
 
     /**
-     * Tick or untick every customer of the day (and CRA) not yet sent, or only those of the page shown (ids).
+     * Tick or untick every customer of the day (and CRA) not yet sent, or only those of the page shown (ids). Failed ones are
+     * ticked only with their page, where the CRA sees them.
      */
     public function bulk(Request $request): RedirectResponse
     {
@@ -166,12 +166,10 @@ class SmsReminderController extends Controller
         $changed = RestockReminder::shownOn(CarbonImmutable::parse($data['date']))
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))
             ->when($data['ids'] ?? null, fn (Builder $query, array $ids) => $query->whereIn('id', $ids))
-            ->whereIn('status', $include ? [RestockReminder::EXCLUDED] : [RestockReminder::PENDING, RestockReminder::QUEUED])
+            ->whereIn('status', $include ? [RestockReminder::EXCLUDED, ...(empty($data['ids']) ? [] : [RestockReminder::FAILED])] : [RestockReminder::PENDING, RestockReminder::QUEUED])
             ->update([
-                'status' => $include ? RestockReminder::PENDING : RestockReminder::EXCLUDED,
-                'excluded_reason' => $include ? null : RestockReminder::UNTICKED,
+                ...($include ? RestockReminder::ticked() : ['status' => RestockReminder::EXCLUDED, 'excluded_reason' => RestockReminder::UNTICKED, 'queued_at' => null]),
                 'status_updated_by' => $request->user()->id,
-                'queued_at' => null,
             ]);
 
         return back()->with('status', $include ? "{$changed} customers ticked." : "{$changed} customers unticked. They stay on the list until they're ticked again.");
