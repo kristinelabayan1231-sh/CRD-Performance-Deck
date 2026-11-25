@@ -60,11 +60,14 @@ class RestockReminder extends Model
     ];
 
     /** Reasons a CRA can pick when leaving a customer out. */
+    /** The reason of a customer unticked with no other reason. */
+    public const UNTICKED = 'Other';
+
     public const EXCLUDE_REASONS = [
         'Talked to them already',
         'Already ordered',
         'Asked not to be texted',
-        'Other',
+        self::UNTICKED,
     ];
 
     protected function casts(): array
@@ -176,25 +179,29 @@ class RestockReminder extends Model
     }
 
     /**
-     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or left out on
-     * $day, so unticking a carried-over customer doesn't take them off the list.
+     * A reminder day's list: its own customers, and from earlier days those still to send (scopeToSendOn) or unticked,
+     * which stay until the CRA ticks them or they reorder or opt out (RestockReminders::refreshCarriedOver).
      */
     public function scopeShownOn(Builder $query, CarbonImmutable $day): Builder
     {
         return $query->where(fn (Builder $q) => $q->whereDate('remind_on', $day->toDateString())
             ->orWhere(fn (Builder $q) => $q->toSendOn($day)->whereDate('remind_on', '<', $day->toDateString()))
-            ->orWhere(fn (Builder $q) => $q->leftOutOn($day)->whereDate('remind_on', '<', $day->toDateString())));
+            ->orWhere(fn (Builder $q) => $q->unticked()->whereDate('remind_on', '<', $day->toDateString())));
     }
 
     /**
-     * Left out by the CRA on $day.
+     * Unticked by the CRA: not texted until ticked again. Left out for a reason of their own (talked to, ordered, asked not
+     * to be texted) isn't unticked.
      */
-    public function scopeLeftOutOn(Builder $query, CarbonImmutable $day): Builder
+    public function scopeUnticked(Builder $query): Builder
     {
-        $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
-
         return $query->where('status', self::EXCLUDED)
-            ->whereBetween('updated_at', [$start->utc(), $start->endOfDay()->utc()]);
+            ->where(fn (Builder $q) => $q->whereNull('excluded_reason')->orWhere('excluded_reason', self::UNTICKED));
+    }
+
+    public function isUnticked(): bool
+    {
+        return $this->status === self::EXCLUDED && in_array($this->excluded_reason, [null, self::UNTICKED], true);
     }
 
     /**

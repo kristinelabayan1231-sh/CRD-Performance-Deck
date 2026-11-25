@@ -370,11 +370,43 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::PENDING, $carriedReminder->fresh()->status);
         $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $todays)->status);
 
-        // Left out on an earlier day: off the list the day after.
+        // Still on the list, unticked, on later days, and ticked from there.
         $this->actingAs($this->anna)->patch(route('sms-reminders.update', $carriedReminder), ['include' => 0]);
-        $this->travelTo(CarbonImmutable::parse('2026-11-22 07:30', 'Asia/Manila'));
+        $this->travelTo(CarbonImmutable::parse('2026-11-24 07:30', 'Asia/Manila'));
+        $this->artisan('reminders:build');
+        $this->assertSame(RestockReminder::EXCLUDED, $carriedReminder->fresh()->status);
         $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()
-            ->assertViewHas('rows', fn ($rows) => ! $rows->getCollection()->contains($carriedReminder));
+            ->assertViewHas('rows', fn ($rows) => $rows->getCollection()->contains($carriedReminder));
+        $this->actingAs($this->anna)->patch(route('sms-reminders.update', $carriedReminder), ['include' => 1]);
+        $this->assertSame(RestockReminder::PENDING, $carriedReminder->fresh()->status);
+    }
+
+    public function test_an_unticked_customer_is_never_texted_by_itself_and_leaves_the_list_once_they_reorder(): void
+    {
+        $this->turnOn();
+        $this->anna->forceFill(['sms_auto_send' => true])->save();
+        $reordered = $this->delivered('09170000001', cra: $this->anna);
+        $again = $this->delivered('09170000002', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $this->actingAs($this->anna)->post(route('sms-reminders.bulk'), ['date' => '2026-11-20', 'include' => 0]);
+
+        // Next week one has reordered, and the other is on the list again with another product: one text, still unticked.
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 08:00', 'Asia/Manila'));
+        $this->delivered('09170000001', '2026-11-21');
+        Product::create(['name' => 'Sinuxyl', 'consumption_days' => 15]);
+        $this->delivered('09170000002', '2026-11-20', 'Sinuxyl', cra: $this->anna);
+        $this->artisan('reminders:build');
+
+        $this->assertSame([RestockReminder::SKIPPED], RestockReminder::where('phone_key', $reordered)->pluck('status')->all());
+        $this->assertSame([RestockReminder::SKIPPED, RestockReminder::EXCLUDED], RestockReminder::where('phone_key', $again)->orderBy('remind_on')->pluck('status')->all());
+        $latest = RestockReminder::where('phone_key', $again)->latest('remind_on')->first();
+        $this->assertEqualsCanonicalizing(['Clear Sight 3.0', 'Sinuxyl'], collect($latest->covers)->pluck('name')->all());
+
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->travelTo(CarbonImmutable::parse('2026-11-27 10:00', 'Asia/Manila'));
+        $this->artisan('reminders:send');
+        Http::assertNothingSent();
+        $this->assertSame(RestockReminder::EXCLUDED, $latest->fresh()->status);
     }
 
     public function test_the_list_shows_20_a_page_and_a_page_is_unticked_on_its_own(): void

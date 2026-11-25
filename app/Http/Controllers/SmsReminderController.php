@@ -129,7 +129,7 @@ class SmsReminderController extends Controller
         }
 
         $include = (bool) $data['include'];
-        $reason = $include ? null : ($data['reason'] ?? 'Other');
+        $reason = $include ? null : ($data['reason'] ?? RestockReminder::UNTICKED);
         $restockReminder->update([
             'status' => $include ? RestockReminder::PENDING : RestockReminder::EXCLUDED,
             'excluded_reason' => $reason,
@@ -165,12 +165,12 @@ class SmsReminderController extends Controller
             ->whereIn('status', $include ? [RestockReminder::EXCLUDED] : [RestockReminder::PENDING, RestockReminder::QUEUED])
             ->update([
                 'status' => $include ? RestockReminder::PENDING : RestockReminder::EXCLUDED,
-                'excluded_reason' => $include ? null : 'Other',
+                'excluded_reason' => $include ? null : RestockReminder::UNTICKED,
                 'status_updated_by' => $request->user()->id,
                 'queued_at' => null,
             ]);
 
-        return back()->with('status', $include ? "{$changed} customers ticked." : "{$changed} customers left out. They stay under Left out today; Tick all brings them back.");
+        return back()->with('status', $include ? "{$changed} customers ticked." : "{$changed} customers unticked. They stay on the list until they're ticked again.");
     }
 
     /**

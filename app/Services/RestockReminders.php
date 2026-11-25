@@ -40,7 +40,8 @@ class RestockReminders
      * Saves $remindOn's reminders: one per customer (merged numbers once) on a CRA's tracker list for $remindOn's lead day,
      * for that CRA, covering their leads on it. A lead already in an earlier text (or left out by the CRA) isn't texted
      * again, nor a product reordered (same product delivered or ordered after the lead's delivery); earlier days' texts
-     * still to send are combined into today's, so a customer gets one text. Ones already left out, queued or sent stay as
+     * still to send are combined into today's, so a customer gets one text (unticked when the CRA unticked the earlier one:
+     * they say when it goes). Ones already left out, queued or sent stay as
      * they are; a pending one whose customer has since reordered, opted out or was already texted is skipped.
      *
      * @return array{due: int, skipped: int}
@@ -118,7 +119,12 @@ class RestockReminders
             $saved[] = $primary;
 
             $reminder = RestockReminder::where('phone_key', $primary)->whereDate('remind_on', $remindOn->toDateString())->first();
-            $status = ['status' => $reason ? RestockReminder::SKIPPED : RestockReminder::PENDING, 'error' => $reason];
+            $unticked = ! $reason && collect($carried[$primary] ?? [])->contains(fn (RestockReminder $earlier) => $earlier->isUnticked());
+            $status = match (true) {
+                $reason !== null => ['status' => RestockReminder::SKIPPED, 'error' => $reason],
+                $unticked => ['status' => RestockReminder::EXCLUDED, 'excluded_reason' => RestockReminder::UNTICKED, 'error' => null],
+                default => ['status' => RestockReminder::PENDING, 'error' => null],
+            };
 
             if (! $reminder) {
                 RestockReminder::create([...$attributes, ...$status, 'phone_key' => $primary, 'remind_on' => $remindOn->toDateString()]);
@@ -212,7 +218,7 @@ class RestockReminders
 
     /**
      * These customers' texts from before $remindOn: the day each lead was texted or left out (lead id => remind day),
-     * and their reminders still to send on $remindOn (combined into it).
+     * and their reminders still to send on $remindOn, or unticked (combined into it).
      *
      * @param  list<string>  $primaries
      * @return array{0: array<int, string>, 1: array<string, list<RestockReminder>>}
@@ -225,9 +231,9 @@ class RestockReminders
         foreach (array_chunk($primaries, 1000) as $chunk) {
             RestockReminder::whereIn('phone_key', $chunk)->whereDate('remind_on', '<', $remindOn->toDateString())
                 ->whereIn('status', RestockReminder::COVERING)
-                ->get(['id', 'phone_key', 'product_id', 'products', 'covers', 'lead_ids', 'run_out_on', 'remind_on', 'status', 'kind'])
+                ->get(['id', 'phone_key', 'product_id', 'products', 'covers', 'lead_ids', 'run_out_on', 'remind_on', 'status', 'excluded_reason', 'kind'])
                 ->each(function (RestockReminder $reminder) use (&$textedOn, &$carried) {
-                    if ($reminder->status === RestockReminder::PENDING && ! $reminder->isFollowUp()) {
+                    if (($reminder->status === RestockReminder::PENDING || $reminder->isUnticked()) && ! $reminder->isFollowUp()) {
                         // Still to send: combined into today's text rather than counted as texted.
                         $carried[$reminder->phone_key][] = $reminder;
 
@@ -347,8 +353,8 @@ class RestockReminders
     }
 
     /**
-     * Earlier days' texts still to send on $remindOn and follow-ups due on it (RestockReminder::scopeToSendOn) are checked
-     * again: skipped when the customer has since reordered the product (for a follow-up: since the text before it),
+     * Earlier days' texts still to send on $remindOn or unticked, and follow-ups due on it (RestockReminder::scopeToSendOn),
+     * are checked again: skipped when the customer has since reordered the product (for a follow-up: since the text before it),
      * opted out or is on $remindOn's own list (one text a customer), and otherwise given the customer's CRA now (none
      * when nobody has them).
      *
@@ -356,7 +362,8 @@ class RestockReminders
      */
     private function refreshCarriedOver(CarbonImmutable $remindOn, array $today): void
     {
-        $carried = RestockReminder::toSendOn($remindOn)->where('status', RestockReminder::PENDING)
+        $carried = RestockReminder::whereDate('remind_on', '<=', $remindOn->toDateString())
+            ->where(fn ($q) => $q->where('status', RestockReminder::PENDING)->orWhere(fn ($q) => $q->unticked()))
             ->where(fn ($q) => $q->whereDate('remind_on', '<', $remindOn->toDateString())->orWhere('kind', RestockReminder::FOLLOW_UP))
             ->get(['id', 'phone_key', 'product_id', 'covers', 'lead_ids', 'products', 'run_out_on', 'remind_on', 'user_id', 'kind']);
 

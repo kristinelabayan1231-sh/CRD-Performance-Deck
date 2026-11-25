@@ -7,7 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
-- 2026-11-26 · Segmentation Tracker → Today's texts · Unticked customers carried over from earlier days stay on the day's list under Left out (Tick all brings them back); 20 / 50 / 100 per page (20 first), Tick page / Untick page, Untick all asks first; How many beside Send now sends only the first few, the others stay ticked · shots: none
+- 2026-11-26 · Segmentation Tracker → Today's texts · Unticked customers stay on the list, unticked, on later days too until the CRA ticks them (or they reorder or opt out); they're never texted by themselves; 20 / 50 / 100 per page (20 first), Tick page / Untick page, Untick all asks first; How many beside Send now sends only the first few, the others stay ticked · shots: none
 
 - 2026-11-26 · Segmentation Tracker → Today's texts + Text settings → Schedule · Each CRA sets her own Daily limit of texts (up to the most in Settings → SMS Reminders, blank = that); today's sent of the limit shows beside it. Each sending window turns off on its own; the other then takes the whole day's texts · shots: none
 

@@ -164,7 +164,7 @@
                     @foreach ([[1, 'Tick page', true], [0, 'Untick page', true], [1, 'Tick all', false], [0, 'Untick all', false]] as [$include, $label, $onlyPage])
                         @continue($onlyPage && $pageIds->isEmpty())
                         <form method="POST" action="{{ route('sms-reminders.bulk') }}"
-                              @if (! $include && ! $onlyPage) onsubmit="return confirm(@js('Leave out all '.number_format($toChange[0]).' customers, earlier days\' included? To text only some, use How many beside Send now instead.'))" @endif>
+                              @if (! $include && ! $onlyPage) onsubmit="return confirm(@js('Untick all '.number_format($toChange[0]).' customers, earlier days\' included? They stay on the list until ticked again. To text only some, use How many beside Send now instead.'))" @endif>
                             @csrf
                             @foreach ($onlyPage ? $pageIds : [] as $id)
                                 <input type="hidden" name="ids[]" value="{{ $id }}">
@@ -181,7 +181,7 @@
             @if ($rows->isEmpty())
                 <p class="px-4 py-10 text-center text-sm text-muted">No customers due a reminder on this day{{ $status ? ' with this filter' : '' }}. The list is built every morning at 6:30.</p>
             @else
-                <p class="border-b border-line px-4 py-2 text-xs text-muted">Untick a customer to leave them out of the text; they stay on the call list.</p>
+                <p class="border-b border-line px-4 py-2 text-xs text-muted">Untick a customer to hold their text: they stay on this list, and the call list, until you tick them again.</p>
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[62rem] text-sm">
                         <thead class="bg-canvas/60 text-xs whitespace-nowrap text-muted">
