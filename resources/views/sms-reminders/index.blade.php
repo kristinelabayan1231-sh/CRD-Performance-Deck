@@ -77,7 +77,7 @@
                     <p class="mt-1 text-sm font-semibold">customers to text{{ $counts['followUps'] ? ' · '.$counts['followUps'].' of them follow-ups' : '' }}</p>
                 </div>
                 <dl class="grid gap-1 text-sm text-muted">
-                    <div><dt class="inline">Sent:</dt> <dd class="inline font-semibold text-ink tabular-nums">{{ $counts['sent'] }}</dd>@if ($counts['queued']) · <span class="font-semibold text-[#1a4f8c]">{{ $counts['queued'] }} sending now</span>@endif</div>
+                    <div><dt class="inline">Sent:</dt> <dd class="inline font-semibold text-ink tabular-nums">{{ $counts['sent'] }}</dd>@if ($counts['queued']) · <span class="font-semibold text-[#1a4f8c]">{{ number_format($counts['queued']) }} queued</span>@endif</div>
                     <div><dt class="inline">Left out by the CRA:</dt> <dd class="inline font-semibold text-ink tabular-nums">{{ $counts['excluded'] }}</dd></div>
                     <div><dt class="inline">Left out by the app (reordered, opted out):</dt> <dd class="inline font-semibold text-ink tabular-nums">{{ $counts['skipped'] }}</dd>@if ($counts['failed']) · <span class="font-semibold text-coral-700">{{ $counts['failed'] }} failed</span>@endif</div>
                 </dl>
@@ -102,7 +102,14 @@
                                 Send now
                             </button>
                         </form>
-                        <form method="POST" action="{{ route('sms-reminders.auto-send') }}" class="flex items-center gap-2 text-sm">
+                        @if ($counts['queued'])
+                    <form method="POST" action="{{ route('sms-reminders.stop') }}">
+                        @csrf
+                        <input type="hidden" name="cra" value="{{ $cra->id }}">
+                        <button type="submit" class="h-9 rounded-lg border border-coral bg-coral/10 px-3 text-xs font-semibold text-coral-700 hover:bg-coral/20">Stop {{ number_format($counts['queued']) }} queued texts</button>
+                    </form>
+                @endif
+                <form method="POST" action="{{ route('sms-reminders.auto-send') }}" class="flex items-center gap-2 text-sm">
                             @csrf @method('PUT')
                             <input type="hidden" name="cra" value="{{ $cra->id }}">
                             <input type="hidden" name="on" value="{{ $cra->sms_auto_send ? 0 : 1 }}">
@@ -162,7 +169,7 @@
                     @php($toChange = [1 => $counts['excluded'], 0 => $counts['toSend']])
                     @php($pageIds = $rows->hasPages() ? $rows->getCollection()->filter->isChangeable()->pluck('id') : collect())
                     @foreach ([[1, 'Tick page', true], [0, 'Untick page', true], [1, 'Tick all', false], [0, 'Untick all', false]] as [$include, $label, $onlyPage])
-                        @continue($onlyPage && $pageIds->isEmpty())
+                        @continue($onlyPage ? $pageIds->isEmpty() : ! $craId)
                         <form method="POST" action="{{ route('sms-reminders.bulk') }}"
                               @if (! $include && ! $onlyPage) onsubmit="return confirm(@js('Untick all '.number_format($toChange[0]).' customers, earlier days\' included? They stay on the list until ticked again. To text only some, use How many beside Send now instead.'))" @endif>
                             @csrf

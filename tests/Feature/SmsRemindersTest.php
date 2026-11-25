@@ -409,6 +409,53 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::EXCLUDED, $latest->fresh()->status);
     }
 
+    public function test_turning_automatic_sending_off_or_stop_takes_queued_texts_off_the_queue(): void
+    {
+        $this->turnOn();
+        $annas = $this->delivered('09170000001', cra: $this->anna);
+        $handed = $this->delivered('09170000002', cra: $this->anna);
+        $mikas = $this->delivered('09170000003', cra: $this->mika);
+        $this->artisan('reminders:build');
+        $queue = fn () => RestockReminder::query()->update(['status' => RestockReminder::QUEUED, 'queued_at' => now()]);
+        $statusOf = fn (string $phoneKey) => RestockReminder::firstWhere('phone_key', $phoneKey)->status;
+        $queue();
+        RestockReminder::where('phone_key', $handed)->update(['handed_at' => now()]);
+        $this->anna->forceFill(['sms_auto_send' => true])->save();
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertSee('Stop 2 queued texts');
+
+        // Off: what the phone hasn't taken is ticked again; another CRA's queue is untouched.
+        $this->actingAs($this->anna)->put(route('sms-reminders.auto-send'), ['on' => 0])->assertSessionHasNoErrors();
+        $this->assertSame([RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::QUEUED], array_map($statusOf, [$annas, $handed, $mikas]));
+        $this->artisan('reminders:send');
+        $this->assertSame(RestockReminder::PENDING, $statusOf($annas));
+
+        // Off from the schedule form too, but saving it while already off leaves a Send now alone.
+        $queue();
+        $this->actingAs($this->anna->refresh())->put(route('sms-reminders.schedule.update'), ['auto_send' => 0, 'use_default' => 1]);
+        $this->assertSame(RestockReminder::QUEUED, $statusOf($annas));
+        $this->anna->forceFill(['sms_auto_send' => true])->save();
+        $this->actingAs($this->anna)->put(route('sms-reminders.schedule.update'), ['auto_send' => 0, 'use_default' => 1]);
+        $this->assertSame(RestockReminder::PENDING, $statusOf($annas));
+
+        // Stop: only their own, whoever's cra is sent.
+        $queue();
+        $this->actingAs($this->anna)->post(route('sms-reminders.stop'), ['cra' => $this->mika->id])->assertSessionHasNoErrors();
+        $this->assertSame([RestockReminder::PENDING, RestockReminder::QUEUED], array_map($statusOf, [$annas, $mikas]));
+    }
+
+    public function test_untick_all_needs_one_cra(): void
+    {
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+
+        $this->actingAs($this->supervisor())->get(route('sms-reminders.index'))->assertOk()->assertDontSee('Untick all');
+        $this->post(route('sms-reminders.bulk'), ['date' => '2026-11-20', 'include' => 0])->assertSessionHasErrors('send');
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $phoneKey)->status);
+
+        $this->post(route('sms-reminders.bulk'), ['date' => '2026-11-20', 'include' => 0, 'cra' => $this->anna->id])->assertSessionHasNoErrors();
+        $this->assertSame(RestockReminder::EXCLUDED, RestockReminder::firstWhere('phone_key', $phoneKey)->status);
+    }
+
     public function test_the_list_shows_20_a_page_and_a_page_is_unticked_on_its_own(): void
     {
         foreach (range(1, 22) as $number) {

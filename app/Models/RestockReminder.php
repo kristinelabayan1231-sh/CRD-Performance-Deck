@@ -52,7 +52,7 @@ class RestockReminder extends Model
     /** Status => [label, badge classes]. */
     public const STATUSES = [
         self::PENDING => ['Will be texted', 'bg-[#fbeccd] text-[#7a4d00]'],
-        self::QUEUED => ['Sending…', 'bg-[#dde9f7] text-[#1a4f8c]'],
+        self::QUEUED => ['Queued', 'bg-[#dde9f7] text-[#1a4f8c]'],
         self::SENT => ['Sent', 'bg-[#d4edbc] text-[#11734b]'],
         self::EXCLUDED => ['Left out', 'bg-[#e6e6e6] text-[#3d3d3d]'],
         self::SKIPPED => ['Skipped', 'bg-[#e6e6e6] text-[#3d3d3d]'],
@@ -243,8 +243,22 @@ class RestockReminder extends Model
         return in_array($this->status, [self::PENDING, self::QUEUED, self::EXCLUDED], true);
     }
 
+    /**
+     * Take a CRA's queued texts not yet handed to their phone off the queue: ticked again, sent only when queued again.
+     */
+    public static function stopQueueOf(int $craId): int
+    {
+        return self::where('user_id', $craId)->where('status', self::QUEUED)->whereNull('handed_at')
+            ->update(['status' => self::PENDING, 'queued_at' => null]);
+    }
+
     public function statusLabel(): string
     {
+        // Queued until the phone takes it, then sending until the phone confirms it.
+        if ($this->status === self::QUEUED && $this->handed_at) {
+            return 'Sending…';
+        }
+
         return self::STATUSES[$this->status][0] ?? $this->status;
     }
 

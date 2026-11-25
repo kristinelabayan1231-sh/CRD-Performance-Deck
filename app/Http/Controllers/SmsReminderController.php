@@ -159,6 +159,10 @@ class SmsReminderController extends Controller
         $craId = $this->craScope($request->user(), $data['cra'] ?? null);
         $include = (bool) $data['include'];
 
+        if (! $craId && empty($data['ids'])) {
+            return back()->withErrors(['send' => 'Pick a CRA first: Tick all and Untick all are for one CRA.']);
+        }
+
         $changed = RestockReminder::shownOn(CarbonImmutable::parse($data['date']))
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))
             ->when($data['ids'] ?? null, fn (Builder $query, array $ids) => $query->whereIn('id', $ids))
@@ -224,10 +228,28 @@ class SmsReminderController extends Controller
         }
 
         $cra->forceFill(['sms_auto_send' => (bool) $data['on']])->save();
+        $stopped = $data['on'] ? 0 : RestockReminder::stopQueueOf($cra->id);
 
         return back()->with('status', $data['on']
             ? "Automatic sending on: {$cra->displayName()}'s ticked customers are texted ".SmsSettings::scheduleLabel($cra).'.'
-            : "Automatic sending off for {$cra->displayName()}: texts go out only with Send now.");
+            : "Automatic sending off for {$cra->displayName()}: texts go out only with Send now.".($stopped ? " {$stopped} queued texts stopped; they stay ticked." : ''));
+    }
+
+    /**
+     * Stop a CRA's queued texts (automatic or Send now): they stay ticked and go out only when queued again.
+     */
+    public function stop(Request $request): RedirectResponse
+    {
+        $cra = LeadGenerator::cras()->firstWhere('id', $this->craScope($request->user(), $request->integer('cra') ?: null));
+
+        if (! $cra) {
+            return back()->withErrors(['send' => 'Pick a CRA first.']);
+        }
+
+        $cra->forceFill(['sms_auto_send' => false])->save();
+        $stopped = RestockReminder::stopQueueOf($cra->id);
+
+        return back()->with('status', "{$stopped} queued texts stopped for {$cra->displayName()}; they stay ticked. Automatic sending is off.");
     }
 
     /**

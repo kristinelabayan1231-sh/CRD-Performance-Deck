@@ -179,6 +179,7 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::post('/reminders/{restockReminder}/text', [SmsReminderController::class, 'text'])->middleware('throttle:30,1')->name('text');
         Route::post('/bulk', [SmsReminderController::class, 'bulk'])->name('bulk');
         Route::post('/send-now', [SmsReminderController::class, 'sendNow'])->middleware('throttle:10,1')->name('send-now');
+        Route::post('/stop', [SmsReminderController::class, 'stop'])->name('stop');
         Route::put('/auto-send', [SmsReminderController::class, 'autoSend'])->name('auto-send');
         Route::put('/window', [SmsReminderController::class, 'window'])->name('window');
         Route::put('/daily-limit', [SmsReminderController::class, 'dailyLimit'])->name('daily-limit');
