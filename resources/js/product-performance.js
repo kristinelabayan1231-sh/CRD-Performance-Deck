@@ -438,8 +438,7 @@ function initSlider() {
 
 /**
  * Main vs upsell (Products tab): the headline, a bar or the From upsell tile opens the breakdown popup with that one's
- * figures (worked out in the page), and the product list sorts by sales or by upsold %, with Others after the products
- * and TSD sold alone last by sales, first by upsold %.
+ * figures (worked out in the page).
  */
 function initUpsell() {
     const dialog = document.querySelector('[data-pp-upsell-dialog]');
@@ -460,36 +459,4 @@ function initUpsell() {
             if (event.target === dialog) dialog.close();
         });
     }
-
-    const list = document.querySelector('[data-pp-upsell-list]');
-    const rows = list?.querySelector('[data-pp-upsell-rows]');
-    if (!rows) return;
-
-    const buttons = list.querySelectorAll('[data-pp-upsell-sort]');
-    buttons.forEach((button) => button.addEventListener('click', () => {
-        const by = button.dataset.ppUpsellSort;
-        buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
-        list.dataset.sort = by;
-
-        [...rows.querySelectorAll('[data-pp-upsell-row]')]
-            .sort((a, b) => (Number(b.dataset[by]) - Number(a.dataset[by])) || (Number(b.dataset.sales) - Number(a.dataset.sales)))
-            .forEach((row, index) => {
-                const rank = row.querySelector('[data-pp-upsell-rank]');
-                rank.textContent = index + 1;
-                const top = index < 3;
-                rank.classList.toggle('bg-brand-600', top);
-                rank.classList.toggle('text-white', top);
-                rank.classList.toggle('bg-brand-50', !top);
-                rank.classList.toggle('text-brand-700', !top);
-                rows.append(row);
-            });
-
-        const others = rows.querySelector('[data-pp-upsell-others]');
-        if (others) rows.append(others);
-        const tsd = rows.querySelector('[data-pp-upsell-tsd]');
-        if (tsd) {
-            if (by === 'upsell') rows.prepend(tsd);
-            else rows.append(tsd);
-        }
-    }));
 }

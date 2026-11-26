@@ -1,7 +1,7 @@
 {{--
     Products tab: main vs upsell, from the Presentation Board's Top products figures (UpsellBreakdown). Main = the
-    products' own sales; Upsell = what was upsold on their orders plus the TSD products' own sales. The bars, the
-    popup and the list's sort are in resources/js/product-performance.js.
+    products' own sales; Upsell = what was upsold on their orders plus the TSD products' own sales. The popup is in
+    resources/js/product-performance.js.
 --}}
 @php
     $split = $upsell['split'];
@@ -28,8 +28,6 @@
     $unitName = $upsell['unit'];
     $products = collect($upsell['products']);
     $peak = max(1, $products->max(fn (array $product) => $product['sales'] + $product['upsold_value']) ?? 1);
-    $badge = 'grid size-6 place-items-center rounded-md text-xs font-bold';
-    $columns = 'grid grid-cols-[2rem_minmax(9rem,1.1fr)_minmax(11rem,2fr)_6rem_7.5rem_6rem_4.5rem] items-center gap-3';
 @endphp
 
 {{-- Upsell's amber in Light and Dark: as variables, so the generated dark theme (which turns yellows into slate) leaves it. --}}
@@ -143,69 +141,105 @@
     </div>
 </dialog>
 
-{{-- The products: by sales, or by upsold % (the bar becomes main vs upsold with the average) --}}
-<section class="group grid gap-3 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="pp-upsell-products-title" data-pp-upsell-list data-sort="sales">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-            <h2 id="pp-upsell-products-title" class="font-semibold">Products · main vs upsell</h2>
-            <p class="text-sm text-muted group-data-[sort=upsell]:hidden">Biggest sellers first · purple = the product's own sales, amber = what was upsold on its orders · click a product for its breakdown</p>
-            <p class="hidden text-sm text-muted group-data-[sort=upsell]:block">Highest upsold % first · each bar is the product's main vs upsold, the black line is the average {{ $rateText($average) }} · click a product for its breakdown</p>
-        </div>
-        <div class="flex rounded-lg border border-line bg-white p-0.5" role="group" aria-label="Sort products">
-            @foreach (['sales' => 'By sales', 'upsell' => 'By upsell %'] as $by => $byLabel)
-                <button type="button" data-pp-upsell-sort="{{ $by }}" aria-pressed="{{ $by === 'sales' ? 'true' : 'false' }}"
-                        class="h-8 rounded-md px-3 text-sm font-semibold text-muted hover:text-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $byLabel }}</button>
-            @endforeach
+{{-- The products side by side: by main sales on the left, by upsold % on the right; each opens into its breakdown --}}
+@php
+    $upsoldRate = fn (array $product) => \App\Support\UpsellBreakdown::rates((float) $product['sales'], (float) $product['upsold_value'])['upsold'];
+    $previousPlaces = $upsell['previous_places'];
+    $tsdProducts = $split['tsd_products'];
+    $tsdRow = $tsdProducts ? [
+        'name' => 'TSD sold alone', 'tsd' => true, 'sales' => 0.0, 'upsold_value' => $split['tsd'],
+        'orders' => array_sum(array_column($tsdProducts, 'orders')),
+        'upsold' => array_map(fn (array $product) => ['name' => $product['name'], 'value' => $product['value'], 'orders' => $product['orders'], 'qty' => $product['qty']], $tsdProducts),
+    ] : null;
+    $columns = [
+        ['key' => 'sales', 'title' => 'By sales', 'note' => 'biggest main sales first',
+            'rows' => [...$products->sortByDesc('sales')->values()->all(), ...($tsdRow ? [$tsdRow] : [])]],
+        ['key' => 'upsell', 'title' => 'By upsell %', 'note' => 'highest upsold % first · line = average '.$rateText($average),
+            'rows' => [...($tsdRow ? [$tsdRow] : []), ...$products->sort(fn (array $a, array $b) => [$upsoldRate($b), $b['sales']] <=> [$upsoldRate($a), $a['sales']])->values()->all()]],
+    ];
+@endphp
+<section class="grid gap-3 rounded-xl bg-white p-5 shadow-sm" aria-labelledby="pp-upsell-products-title">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+        <h2 id="pp-upsell-products-title" class="font-semibold">Products · by sales vs by upsell %</h2>
+        <div class="flex flex-wrap gap-3.5 text-xs text-muted">
+            <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-brand-700" aria-hidden="true"></span>Main: the product's own sales</span>
+            <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-(--pp-upsell)" aria-hidden="true"></span>Upsold on its orders</span>
+            <span>▲ / ▼ = places since {{ $previousLabel }} · click a product for its breakdown</span>
         </div>
     </div>
 
-    @if ($products->isEmpty() && ! $split['tsd_products'])
+    @if ($products->isEmpty() && ! $tsdRow)
         <p class="py-8 text-center text-sm text-muted">No product sales in these dates on the Presentation Board yet.</p>
     @else
-        <div class="overflow-x-auto">
-            <div class="grid min-w-[54rem] gap-1.5 text-sm tabular-nums">
-                <div class="{{ $columns }} px-3 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">
-                    <span>#</span><span>Product</span>
-                    <span><span class="group-data-[sort=upsell]:hidden">Own sales + upsold on its orders</span><span class="hidden group-data-[sort=upsell]:inline">Main vs upsold · line = average</span></span>
-                    <span class="text-right">Main sales</span><span class="text-right">Main · Upsold %</span><span class="text-right">Upsold</span><span class="text-right">Orders</span>
-                </div>
-                <div class="grid gap-1.5" data-pp-upsell-rows>
-                    @foreach ($products as $index => $product)
+        <div class="grid items-start gap-4 xl:grid-cols-2">
+            @foreach ($columns as $column)
+                <div class="grid gap-1.5 rounded-xl border border-line p-3.5 text-sm tabular-nums" data-pp-upsell-column="{{ $column['key'] }}">
+                    <div class="flex items-baseline justify-between gap-2 border-b border-line pb-1.5">
+                        <h3 class="text-sm font-bold">{{ $column['title'] }}</h3>
+                        <span class="text-xs text-muted">{{ $column['note'] }}</span>
+                    </div>
+                    @php $place = 0; @endphp
+                    @foreach ($column['rows'] as $product)
                         @php
-                            $rate = \App\Support\UpsellBreakdown::rates((float) $product['sales'], (float) $product['upsold_value']);
+                            $isTsd = $product['tsd'] ?? false;
+                            $place += $isTsd ? 0 : 1;
                             $onItsOrders = $product['sales'] + $product['upsold_value'];
-                            $itemPeak = max(1, collect($product['upsold'])->max('value') ?? 1);
+                            $rate = \App\Support\UpsellBreakdown::rates((float) $product['sales'], (float) $product['upsold_value']);
+                            $was = $isTsd ? null : ($previousPlaces[$column['key']][$product['name']] ?? null);
+                            $counts = $column['key'] === 'sales' || $product['upsold_value'] > 0;
                             $aboveAverage = $rate['upsold'] > 0 && $rate['upsold'] >= $average;
+                            $itemPeak = max(1, collect($product['upsold'])->max('value') ?? 1);
                         @endphp
-                        <details class="rounded-lg border border-line open:border-brand-200" data-pp-upsell-row data-sales="{{ round($product['sales'], 2) }}" data-upsell="{{ round($rate['upsold'], 6) }}">
-                            <summary class="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
-                                <span class="{{ $columns }}">
-                                    <span data-pp-upsell-rank @class([$badge, 'bg-brand-600 text-white' => $index < 3, 'bg-brand-50 text-brand-700' => $index >= 3])>{{ $index + 1 }}</span>
-                                    <span class="min-w-0"><span class="block font-bold">{{ $product['name'] }}</span><span class="block text-xs text-muted">{{ $share($product['sales'], $split['main']) }} of main sales</span></span>
-                                    <span class="group-data-[sort=upsell]:hidden">
-                                        <span class="flex h-3.5 overflow-hidden rounded bg-brand-50" aria-hidden="true"><span class="bg-brand-700" style="width: {{ round($product['sales'] / $peak * 100, 2) }}%"></span><span class="bg-(--pp-upsell)" style="width: {{ round($product['upsold_value'] / $peak * 100, 2) }}%"></span></span>
+                        <details @class(['rounded-lg border', 'border-line open:border-brand-200' => ! $isTsd, 'border-dashed border-(--pp-upsell) bg-(--pp-upsell-bg)' => $isTsd]) data-pp-upsell-row>
+                            <summary class="grid cursor-pointer list-none gap-1.5 px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                                <span class="grid grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-2">
+                                    @if ($isTsd)
+                                        <span class="grid size-6 place-items-center text-xs font-bold text-muted">—</span>
+                                    @else
+                                        <span @class(['grid size-6 place-items-center rounded-md text-xs font-bold', 'bg-brand-600 text-white' => $place <= 3, 'bg-brand-50 text-brand-700' => $place > 3])>{{ $place }}</span>
+                                    @endif
+                                    <span class="min-w-0">
+                                        <span class="font-bold">{{ $product['name'] }}</span>
+                                        @if (! $isTsd)
+                                            @if (! $counts)
+                                                <span class="text-xs font-bold text-muted">–</span>
+                                            @elseif ($was === null)
+                                                <span class="text-xs font-bold text-muted">New</span>
+                                            @elseif ($was > $place)
+                                                <span class="text-xs font-bold text-teal-700">▲ {{ $was - $place }}</span>
+                                            @elseif ($was < $place)
+                                                <span class="text-xs font-bold text-coral-700">▼ {{ $place - $was }}</span>
+                                            @else
+                                                <span class="text-xs font-bold text-muted">=</span>
+                                            @endif
+                                        @endif
+                                        <span class="block text-xs text-muted">{{ $isTsd ? 'No main product · counts as Upsell' : $share($product['sales'], $split['main']).' of main sales' }}</span>
                                     </span>
-                                    <span class="relative hidden h-5 rounded-md bg-brand-50 group-data-[sort=upsell]:block" aria-hidden="true">
-                                        <span class="flex h-5 overflow-hidden rounded-md"><span class="bg-brand-700" style="width: {{ round($rate['main'] * 100, 2) }}%"></span><span class="bg-(--pp-upsell)" style="width: {{ round($rate['upsold'] * 100, 2) }}%"></span></span>
+                                    @if ($column['key'] === 'sales')
+                                        <span class="text-right"><strong class="block text-[0.9375rem]">{{ $short($isTsd ? $product['upsold_value'] : $product['sales']) }}</strong><span class="text-xs text-muted">{{ $isTsd ? 'all upsell' : 'main sales' }}</span></span>
+                                    @else
+                                        <span @class(['rounded-full border px-2.5 py-0.5 text-[0.9375rem] font-bold text-ink', 'border-(--pp-upsell) bg-(--pp-upsell-bg)' => $aboveAverage || $isTsd, 'border-line bg-white' => ! $aboveAverage && ! $isTsd])>{{ $rateText($rate['upsold']) }}</span>
+                                    @endif
+                                </span>
+                                @if ($column['key'] === 'sales')
+                                    <span class="ml-8 flex h-2.5 overflow-hidden rounded bg-brand-50" aria-hidden="true"><span class="bg-brand-700" style="width: {{ round($product['sales'] / $peak * 100, 2) }}%"></span><span class="bg-(--pp-upsell)" style="width: {{ min(100, round($product['upsold_value'] / $peak * 100, 2)) }}%"></span></span>
+                                @else
+                                    <span class="relative ml-8 h-2.5 rounded bg-brand-50" aria-hidden="true">
+                                        <span class="flex h-2.5 overflow-hidden rounded"><span class="bg-brand-700" style="width: {{ round($rate['main'] * 100, 2) }}%"></span><span class="bg-(--pp-upsell)" style="width: {{ round($rate['upsold'] * 100, 2) }}%"></span></span>
                                         <span class="absolute -inset-y-1 w-0.5 bg-ink" style="right: {{ round($average * 100, 2) }}%"></span>
                                     </span>
-                                    <span class="text-right font-bold">{{ $short($product['sales']) }}</span>
-                                    <span class="flex flex-col items-end gap-0.5 text-xs font-bold group-data-[sort=upsell]:hidden">
-                                        <span class="text-brand-700">{{ $rateText($rate['main']) }} main</span><span class="text-(--pp-upsell-text)">{{ $rateText($rate['upsold']) }} upsold</span>
-                                    </span>
-                                    <span class="hidden flex-col items-end gap-1 group-data-[sort=upsell]:flex">
-                                        <span @class(['rounded-full border px-2.5 py-0.5 text-sm font-bold text-ink', 'border-(--pp-upsell) bg-(--pp-upsell-bg)' => $aboveAverage, 'border-line bg-white' => ! $aboveAverage])>{{ $rateText($rate['upsold']) }}</span>
-                                        <span class="text-xs font-bold text-brand-700">{{ $rateText($rate['main']) }} main</span>
-                                    </span>
-                                    <span class="text-right font-bold text-(--pp-upsell-text)">{{ $product['upsold_value'] > 0 ? '+'.$short($product['upsold_value']) : '—' }}</span>
-                                    <span class="text-right">{{ number_format($product['orders']) }}</span>
+                                @endif
+                                <span class="ml-8 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted">
+                                    <span><strong class="text-brand-700">{{ $rateText($rate['main']) }}</strong> main · {{ $short($product['sales']) }}</span>
+                                    <span><strong class="text-(--pp-upsell-text)">{{ $rateText($rate['upsold']) }}</strong> upsold · {{ $short($product['upsold_value']) }}</span>
+                                    <span>{{ number_format($product['orders']) }} {{ Str::plural('order', $product['orders']) }}</span>
                                 </span>
                             </summary>
-                            <div class="grid gap-5 px-3 pt-1 pb-4 pl-14 text-sm sm:grid-cols-2">
-                                <div class="grid content-start gap-2">
-                                    <h3 class="text-[0.6875rem] font-bold tracking-wide text-muted uppercase">Upsold on {{ $product['name'] }} orders</h3>
+                            <div class="grid gap-3 px-2.5 pt-1 pb-3 pl-10">
+                                <div class="grid content-start gap-1.5">
+                                    <h4 class="text-[0.6875rem] font-bold tracking-wide text-muted uppercase">{{ $isTsd ? 'TSD products' : 'Upsold on '.$product['name'].' orders' }}</h4>
                                     @forelse ($product['upsold'] as $item)
-                                        <div class="grid grid-cols-[minmax(7rem,10rem)_minmax(0,1fr)_5rem_3.5rem] items-center gap-x-2">
+                                        <div class="grid grid-cols-[minmax(6rem,10rem)_minmax(0,1fr)_4.5rem_3.25rem] items-center gap-x-2">
                                             <span class="font-semibold">{{ $item['name'] }}</span>
                                             <span class="h-2 rounded-full bg-brand-50" aria-hidden="true"><span class="block h-2 rounded-full bg-(--pp-upsell)" style="width: {{ round($item['value'] / $itemPeak * 100, 2) }}%"></span></span>
                                             <span class="text-right font-bold">{{ $short($item['value']) }}</span>
@@ -215,63 +249,29 @@
                                     @empty
                                         <p class="text-muted">Nothing upsold on its orders in these dates.</p>
                                     @endforelse
+                                    @if ($isTsd)
+                                        <p class="text-xs text-muted">The TSD products' own sales. Next to a CRD product Shecom leaves a TSD add-on out of gross, so this is mostly TSD bought with no main product; each counts 100% as Upsell.</p>
+                                    @endif
                                 </div>
-                                <div class="grid content-start gap-2">
-                                    <h3 class="text-[0.6875rem] font-bold tracking-wide text-muted uppercase">On its orders</h3>
-                                    <div class="grid grid-cols-[minmax(0,1fr)_7rem_4rem] gap-2 border-b border-line py-1.5"><span>{{ $product['name'] }} (main)</span><strong class="text-right">{{ $peso($product['sales']) }}</strong><strong class="text-right text-brand-700">{{ $rateText($rate['main']) }}</strong></div>
-                                    <div class="grid grid-cols-[minmax(0,1fr)_7rem_4rem] gap-2 border-b border-line py-1.5"><span>Upsold</span><strong class="text-right">{{ $peso($product['upsold_value']) }}</strong><strong class="text-right text-(--pp-upsell-text)">{{ $rateText($rate['upsold']) }}</strong></div>
-                                    <div class="grid grid-cols-[minmax(0,1fr)_7rem_4rem] gap-2 py-1.5"><span>Total on its orders</span><strong class="text-right">{{ $peso($onItsOrders) }}</strong><strong class="text-right">100%</strong></div>
+                                <div class="grid content-start gap-1">
+                                    <h4 class="text-[0.6875rem] font-bold tracking-wide text-muted uppercase">On its orders</h4>
+                                    <div class="grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem] gap-2 border-b border-line py-1"><span>{{ $isTsd ? 'Main (none)' : $product['name'].' (main)' }}</span><strong class="text-right">{{ $peso($product['sales']) }}</strong><strong class="text-right text-brand-700">{{ $rateText($rate['main']) }}</strong></div>
+                                    <div class="grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem] gap-2 border-b border-line py-1"><span>Upsold</span><strong class="text-right">{{ $peso($product['upsold_value']) }}</strong><strong class="text-right text-(--pp-upsell-text)">{{ $rateText($rate['upsold']) }}</strong></div>
+                                    <div class="grid grid-cols-[minmax(0,1fr)_6.5rem_3.5rem] gap-2 py-1"><span>Total on its orders</span><strong class="text-right">{{ $peso($onItsOrders) }}</strong><strong class="text-right">100%</strong></div>
                                 </div>
                             </div>
                         </details>
                     @endforeach
-
-                    @if ($upsell['others'])
+                    @if ($column['key'] === 'sales' && $upsell['others'])
                         {{-- Items not in Product Consumption: counted as main --}}
-                        <div class="rounded-lg border border-dashed border-line px-3 py-2.5" data-pp-upsell-others>
-                            <span class="{{ $columns }}">
-                                <span></span>
-                                <span class="min-w-0"><span class="block font-bold">Others</span><span class="block text-xs text-muted">Items not in Product Consumption · main</span></span>
-                                <span></span>
-                                <span class="text-right font-bold">{{ $short($upsell['others']['sales']) }}</span>
-                                <span></span><span></span>
-                                <span class="text-right">{{ number_format($upsell['others']['orders']) }}</span>
-                            </span>
+                        <div class="flex items-center justify-between gap-2 rounded-lg border border-dashed border-line px-2.5 py-2 pl-10">
+                            <span><span class="font-bold">Others</span><span class="block text-xs text-muted">Items not in Product Consumption · main</span></span>
+                            <span class="text-right"><strong class="block">{{ $short($upsell['others']['sales']) }}</strong><span class="text-xs text-muted">{{ number_format($upsell['others']['orders']) }} {{ Str::plural('order', $upsell['others']['orders']) }}</span></span>
                         </div>
                     @endif
-
-                    @if ($split['tsd_products'])
-                        @php $tsdPeak = max(1, collect($split['tsd_products'])->max('value')); @endphp
-                        <details class="rounded-lg border border-dashed border-(--pp-upsell) bg-(--pp-upsell-bg)" data-pp-upsell-tsd>
-                            <summary class="cursor-pointer list-none px-3 py-2.5 [&::-webkit-details-marker]:hidden">
-                                <span class="{{ $columns }}">
-                                    <span class="{{ $badge }} text-muted">—</span>
-                                    <span class="min-w-0"><span class="block font-bold">TSD sold alone</span><span class="block text-xs text-muted">No main product · counts as Upsell</span></span>
-                                    <span><span class="flex h-3.5 overflow-hidden rounded bg-brand-50" aria-hidden="true"><span class="bg-(--pp-upsell)" style="width: {{ min(100, round($split['tsd'] / $peak * 100, 2)) }}%"></span></span></span>
-                                    <span class="text-right font-bold">₱0</span>
-                                    <span class="flex flex-col items-end gap-0.5 text-xs font-bold"><span class="text-brand-700">0.0% main</span><span class="text-(--pp-upsell-text)">100% upsold</span></span>
-                                    <span class="text-right font-bold text-(--pp-upsell-text)">{{ $short($split['tsd']) }}</span>
-                                    <span class="text-right">{{ number_format(array_sum(array_column($split['tsd_products'], 'orders'))) }}</span>
-                                </span>
-                            </summary>
-                            <div class="grid gap-2 px-3 pt-1 pb-4 pl-14 text-sm">
-                                <h3 class="text-[0.6875rem] font-bold tracking-wide text-muted uppercase">TSD products</h3>
-                                @foreach ($split['tsd_products'] as $tsdProduct)
-                                    <div class="grid grid-cols-[minmax(7rem,12rem)_minmax(0,1fr)_6rem_3.5rem] items-center gap-x-2">
-                                        <span class="font-semibold">{{ $tsdProduct['name'] }}</span>
-                                        <span class="h-2 rounded-full bg-white" aria-hidden="true"><span class="block h-2 rounded-full bg-(--pp-upsell)" style="width: {{ round($tsdProduct['value'] / $tsdPeak * 100, 2) }}%"></span></span>
-                                        <span class="text-right font-bold">{{ $peso($tsdProduct['value']) }}</span>
-                                        <span class="text-right text-muted">{{ $share($tsdProduct['value'], $split['tsd']) }}</span>
-                                        <span class="col-start-2 col-end-5 text-xs text-muted">{{ number_format($tsdProduct['orders']) }} {{ Str::plural('order', $tsdProduct['orders']) }} · {{ number_format($tsdProduct['qty']) }} qty</span>
-                                    </div>
-                                @endforeach
-                                <p class="text-xs text-muted">The TSD products' own sales. Next to a CRD product Shecom leaves a TSD add-on out of gross, so this is mostly TSD bought with no main product; each counts 100% as Upsell.</p>
-                            </div>
-                        </details>
-                    @endif
                 </div>
-            </div>
+            @endforeach
         </div>
     @endif
-    <p class="text-xs leading-relaxed text-muted">Upsell = a TSD product (with a main product or bought alone) or a product new to the customer added to an order with one they've bought before, valued at its Pancake price. Main % = the product's own sales ÷ everything on its orders; Upsold % = what was upsold on its orders ÷ the same, so the two add up to 100%. Same figures as the Presentation Board's Top products, refreshed every {{ \App\Services\PresentationBoard::EVERY_HOURS }} hours.</p>
+    <p class="text-xs leading-relaxed text-muted">Upsell = a TSD product (with a main product or bought alone) or a product new to the customer added to an order with one they've bought before, valued at its Pancake price. Main % = the product's own sales ÷ everything on its orders; Upsold % = what was upsold on its orders ÷ the same, so the two add up to 100%. On the right only products with something upsold on their orders move up or down. Same figures as the Presentation Board's Top products, refreshed every {{ \App\Services\PresentationBoard::EVERY_HOURS }} hours.</p>
 </section>

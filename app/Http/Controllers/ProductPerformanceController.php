@@ -93,8 +93,10 @@ class ProductPerformanceController extends Controller
         [$from, $to] = OrderPeriod::resolve($period, $filters, $today);
         ['scope' => $scope, 'source' => $scopeSource, 'only' => $only] = $this->tab($tab);
 
+        $built = $productPerformance->build($this->sellers(), $from, $to, $today, $only);
+
         return view('product-performance.index', [
-            ...$productPerformance->build($this->sellers(), $from, $to, $today, $only),
+            ...$built,
             'tab' => $tab,
             'scope' => $scope,
             'scopeSource' => $scopeSource,
@@ -103,7 +105,7 @@ class ProductPerformanceController extends Controller
             'to' => $to,
             'today' => $today,
             'label' => OrderPeriod::label($from, $to),
-            'upsell' => $board ? $this->upsell($board, $period, $from, $to) : null,
+            'upsell' => $board ? $this->upsell($board, $period, $from, $to, $built['previousFrom'], $built['previousTo']) : null,
             // A card opens the product in Order Database → Product Report, which shows every CRD account only to these.
             'canOpenReport' => $request->user()->can('order_database.view_all'),
         ]);
@@ -111,16 +113,17 @@ class ProductPerformanceController extends Controller
 
     /**
      * Products tab: main vs upsell for the dates shown, and for the days, weeks or months around them, from the
-     * Presentation Board's Top products figures split by UpsellBreakdown. Null before its first snapshot or outside its
-     * year.
+     * Presentation Board's Top products figures split by UpsellBreakdown; previous_places = each product's place by
+     * main sales and by upsold % in the period before, for the places up or down. Null before its first snapshot or
+     * outside its year.
      *
-     * @return array{split: array<string, mixed>, products: list<array<string, mixed>>, others: ?array<string, mixed>, slots: list<array<string, mixed>>, unit: string}|null
+     * @return array{split: array<string, mixed>, products: list<array<string, mixed>>, others: ?array<string, mixed>, slots: list<array<string, mixed>>, unit: string, previous_places: array{sales: array<string, int>, upsell: array<string, int>}}|null
      */
-    private function upsell(PresentationBoard $board, string $period, CarbonImmutable $from, CarbonImmutable $to): ?array
+    private function upsell(PresentationBoard $board, string $period, CarbonImmutable $from, CarbonImmutable $to, CarbonImmutable $previousFrom, CarbonImmutable $previousTo): ?array
     {
         $key = "product-performance.upsell.{$period}.{$from->toDateString()}.{$to->toDateString()}";
 
-        return Cache::remember($key, self::UPSELL_CACHE_SECONDS, function () use ($board, $period, $from, $to) {
+        return Cache::remember($key, self::UPSELL_CACHE_SECONDS, function () use ($board, $period, $from, $to, $previousFrom, $previousTo) {
             $snapshot = $board->snapshot();
             $first = $snapshot ? array_key_first($snapshot['days']) : null;
             if (! $snapshot || $to->toDateString() < $first || $from->toDateString() > $snapshot['today']) {
@@ -145,6 +148,7 @@ class ProductPerformanceController extends Controller
                 'others' => collect($top['products'])->firstWhere('name', PresentationBoard::OTHERS),
                 'slots' => $slots,
                 'unit' => $unit,
+                'previous_places' => UpsellBreakdown::places(UpsellBreakdown::listed($board->products($snapshot, $previousFrom->toDateString(), $previousTo->toDateString())['products'], $tsdNames)),
             ];
         });
     }

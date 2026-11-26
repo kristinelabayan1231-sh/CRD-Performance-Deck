@@ -63,6 +63,25 @@ class UpsellBreakdown
     }
 
     /**
+     * The products ranked two ways: by main sales (largest first), and by upsold % among those with something upsold
+     * on their orders (highest first, bigger sales first on a tie).
+     *
+     * @param  list<array<string, mixed>>  $products
+     * @return array{sales: array<string, int>, upsell: array<string, int>} name => place
+     */
+    public static function places(array $products): array
+    {
+        $rate = fn (array $product) => self::rates((float) $product['sales'], (float) $product['upsold_value'])['upsold'];
+        $placed = fn ($sorted) => $sorted->values()->mapWithKeys(fn (array $product, int $index) => [$product['name'] => $index + 1])->all();
+
+        return [
+            'sales' => $placed(collect($products)->filter(fn (array $product) => $product['sales'] > 0)->sortByDesc('sales')),
+            'upsell' => $placed(collect($products)->filter(fn (array $product) => $product['upsold_value'] > 0)
+                ->sort(fn (array $a, array $b) => [$rate($b), $b['sales']] <=> [$rate($a), $a['sales']])),
+        ];
+    }
+
+    /**
      * The products to list beside the TSD row: every product but the TSD ones and Others.
      *
      * @param  list<array<string, mixed>>  $products

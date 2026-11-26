@@ -931,6 +931,10 @@
                         return $figures && $figures['sales'] + ($figures['upsold'] ?? 0) > 0 ? \App\Support\UpsellBreakdown::rates($figures['sales'], $figures['upsold'] ?? 0)['upsold'] : null;
                     }, $months);
                     $donutTotal = array_sum(array_column($donutParts, 1));
+                    // By upsell %: upsell % are rates that don't add up, so the ring is the dates' main vs upsell and the legend
+                    // follows the ranking below (the same order presentation-board.js sorts the rows in).
+                    $upsellRanked = $listed->sort(fn (array $a, array $b) => [$rates($b)['upsold'], $b['sales']] <=> [$rates($a)['upsold'], $a['sales']])->values();
+                    $upsellParts = [['Main', $split['main'], $crd, $peso($split['main'])], ['Upsell', $split['upsell'], $upsell, $peso($split['upsell'])]];
                 @endphp
                 <header class="flex flex-wrap items-center justify-between gap-2" style="{{ $head }}">
                     <h2 id="products-title" style="{{ $h2 }}">Top products</h2>
@@ -994,12 +998,25 @@
                     </dialog>
                 @endif
                 @if ($donutTotal > 0)
-                    <div class="flex flex-wrap items-center gap-4" style="padding: 12px 16px 0">
+                    <div class="pb-by-sales flex flex-wrap items-center gap-4" style="padding: 12px 16px 0">
                         {!! $donut($donutParts, $millions($donutTotal), 'sales', 'Donut: each top product\'s share of these dates\' product sales') !!}
                         <ul class="grid gap-x-4 gap-y-1.5" style="flex: 1 1 260px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); font-size: 12px">
                             @foreach ($donutParts as [$name, $value, $color])
                                 <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; flex: none; background: {{ $color }}"></span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere">{{ $name }}</span><strong>{{ number_format($value / $donutTotal * 100, 1) }}%</strong></li>
                             @endforeach
+                        </ul>
+                    </div>
+                @endif
+                @if ($split['total'] > 0)
+                    <div class="pb-by-upsell flex flex-wrap items-center gap-4" style="padding: 12px 16px 0">
+                        {!! $donut($upsellParts, $splitRate($split['upsell']), 'upsell', 'Donut: main vs upsell of these dates; the legend ranks the products by upsell %') !!}
+                        <ul class="grid gap-x-4 gap-y-1.5" style="flex: 1 1 260px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); font-size: 12px">
+                            @foreach ($upsellRanked->take(6) as $index => $product)
+                                <li class="flex items-center gap-1.5"><span style="display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; {{ $medal($index + 1) }}">{{ $index + 1 }}</span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere">{{ $product['name'] }}</span><strong>{{ $rateText($rates($product)['upsold']) }}</strong></li>
+                            @endforeach
+                            @if ($upsellRanked->count() > 6)
+                                <li class="flex items-center gap-1.5" style="{{ $muted }}">Next {{ $upsellRanked->count() - 6 }} {{ Str::plural('product', $upsellRanked->count() - 6) }} in the list below</li>
+                            @endif
                         </ul>
                     </div>
                 @endif
