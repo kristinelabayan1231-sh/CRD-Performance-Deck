@@ -17,10 +17,9 @@ class ShecomProductCostSyncTest extends TestCase
 
     public function test_the_sales_sync_saves_each_orders_product_cost_from_shecoms_orders(): void
     {
-        config(['services.shecom.product_cost_key' => 'test-key', 'services.shecom.sales_key' => 'sales-key']);
+        config(['services.shecom.product_cost_key' => 'test-key']);
         PancakeOrder::create(['pancake_order_id' => '1389472', 'ordered_on' => '2026-11-09', 'seller_name' => 'CRD REJ', 'customer_name' => 'Buyer', 'status' => 1, 'total_price' => 500, 'tags' => [], 'non_crd' => false]);
         Http::fake([
-            '*/management/sales*' => Http::response(['orders' => []]),
             '*/orders*' => Http::response(['rows' => [
                 ['orderId' => '1389472', 'productCost' => 35],
                 ['orderId' => '1389473', 'productCost' => null],
@@ -37,46 +36,33 @@ class ShecomProductCostSyncTest extends TestCase
 
     public function test_an_order_with_a_child_row_takes_the_cras_own_row_for_sales_and_product_cost(): void
     {
-        config(['services.shecom.product_cost_key' => 'test-key', 'services.shecom.sales_key' => 'sales-key']);
-        foreach (['1396802', '1387809', '1389472'] as $number) {
-            PancakeOrder::create(['pancake_order_id' => $number, 'ordered_on' => '2026-11-24', 'seller_name' => 'CRD LHEI', 'customer_name' => 'Buyer', 'status' => 1, 'total_price' => 1500, 'tags' => [], 'non_crd' => false])
-                ->forceFill(['shecom_product_cost' => 30])->save();
+        config(['services.shecom.product_cost_key' => 'test-key']);
+        foreach (['1397406', '1387809', '1397341', '1384416'] as $number) {
+            PancakeOrder::create(['pancake_order_id' => $number, 'ordered_on' => '2026-11-25', 'seller_name' => 'CRD LHEI', 'customer_name' => 'Buyer', 'status' => 1, 'total_price' => 1499, 'tags' => [], 'non_crd' => false])
+                ->forceFill(['shecom_product_cost' => 30, 'shecom_sales' => 1000])->save();
         }
         Http::fake([
-            '*/management/sales*' => Http::response(['orders' => [
-                // Shecom sent the child's sale for this one.
-                ['order_id' => '1396802', 'sales' => '500'],
-                ['order_id' => '1387809', 'sales' => '1100'],
-                ['order_id' => '1389472', 'sales' => '749'],
-            ]]),
             '*/orders*' => Http::response(['rows' => [
-                ['orderId' => '1396802', 'dept' => 'retention', 'totalSales' => 1000, 'productCost' => 140],
-                ['orderId' => '1396802', 'dept' => 'telesales', 'totalSales' => 500, 'productCost' => 35],
-                ['orderId' => '1387809', 'dept' => 'telesales', 'totalSales' => 500, 'productCost' => 30],
-                ['orderId' => '1387809', 'dept' => 'retention', 'totalSales' => 1100, 'productCost' => null],
-                // No child row: the sales feed's amount stays, and a missing cost keeps the saved one.
-                ['orderId' => '1389472', 'dept' => 'retention', 'totalSales' => 800, 'productCost' => null],
+                // Pancake's 1,499 includes the Telesales child's 499: only the CRA's Retention row counts.
+                ['orderId' => '1397406', 'dept' => 'telesales', 'totalSales' => 499, 'productCost' => 35, 'status' => 'Shipped'],
+                ['orderId' => '1397406', 'dept' => 'retention', 'totalSales' => 1000, 'productCost' => 140, 'status' => 'Shipped'],
+                ['orderId' => '1387809', 'dept' => 'telesales', 'totalSales' => 500, 'productCost' => 30, 'status' => 'Shipped'],
+                ['orderId' => '1387809', 'dept' => 'retention', 'totalSales' => 1100, 'productCost' => null, 'status' => 'Shipped'],
+                // No child row: its amount is taken as Logistics has it, and a missing cost keeps the saved one.
+                ['orderId' => '1397341', 'dept' => 'retention', 'totalSales' => 1100, 'productCost' => null, 'status' => 'Shipped'],
+                // A removed order's row doesn't change what's saved.
+                ['orderId' => '1384416', 'dept' => 'retention', 'totalSales' => 999, 'productCost' => 90, 'status' => 'removed'],
             ]]),
         ]);
 
-        $this->artisan('pancake:sync', ['--date' => '2026-11-24', '--sales' => true])->assertSuccessful();
+        $this->artisan('pancake:sync', ['--date' => '2026-11-25', '--sales' => true])->assertSuccessful();
 
         $saved = PancakeOrder::get()->keyBy('pancake_order_id')->map(fn (PancakeOrder $order) => [$order->shecom_sales, $order->shecom_product_cost]);
-        $this->assertSame(['1000.00', '140.00'], $saved['1396802']);
+        $this->assertSame(['1000.00', '140.00'], $saved['1397406']);
         // The mother has no cost yet: the child's cost saved before is cleared, so the item's own cost is used.
         $this->assertSame(['1100.00', null], $saved['1387809']);
-        $this->assertSame(['749.00', '30.00'], $saved['1389472']);
-    }
-
-    public function test_the_sales_are_still_saved_when_the_product_costs_fail(): void
-    {
-        config(['services.shecom.product_cost_key' => null, 'services.shecom.sales_key' => 'sales-key']);
-        PancakeOrder::create(['pancake_order_id' => '1396802', 'ordered_on' => '2026-11-24', 'seller_name' => 'CRD LHEI', 'customer_name' => 'Buyer', 'status' => 1, 'total_price' => 1500, 'tags' => [], 'non_crd' => false]);
-        Http::fake(['*/management/sales*' => Http::response(['orders' => [['order_id' => '1396802', 'sales' => '1000']]])]);
-
-        $this->artisan('pancake:sync', ['--date' => '2026-11-24', '--sales' => true])->assertSuccessful();
-
-        $this->assertSame('1000.00', PancakeOrder::sole()->shecom_sales);
+        $this->assertSame(['1100.00', '30.00'], $saved['1397341']);
+        $this->assertSame(['1000.00', '30.00'], $saved['1384416']);
     }
 
     public function test_the_sync_keeps_each_cost_from_its_effective_day_and_skips_items_without_one(): void

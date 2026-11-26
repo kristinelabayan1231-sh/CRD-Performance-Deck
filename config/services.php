@@ -44,9 +44,7 @@ return [
     'shecom' => [
         'url' => env('SHECOM_API_URL', 'https://gm-shecom.up.railway.app/api'),
         'key' => env('SHECOM_API_KEY'),
-        // A separate key for the sales endpoint (per-order sales without the child TSD row).
-        'sales_key' => env('SHECOM_SALES_API_KEY'),
-        // GM Logistics dashboard's external API: product costs for the Daily I.S.
+        // GM Logistics dashboard's external API (Shecom v2): each order's sales and product cost, and product costs.
         'external_url' => env('SHECOM_EXTERNAL_API_URL', 'https://gm-logisticsdashboard.up.railway.app/api/external/v1'),
         'product_cost_key' => env('SHECOM_PRODUCT_COST_API_KEY'),
         // Memory for reading the retention report (about 150 MB decoded; 171 MB at its peak on Nov 13, 2026). Kept well
