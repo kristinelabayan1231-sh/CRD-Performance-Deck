@@ -46,12 +46,10 @@
 @endphp
 
 <x-layouts.app title="Segmentation Summary">
-    <div class="mb-4">@include('product-performance._tabs')</div>
-
-    <h1 class="mb-4 text-xl font-semibold">Product Performance <span class="text-sm font-normal text-muted">· Segmentation Tracker leads, {{ $period }}@if ($leadDays) <span title="The leads handled on these days come from these lead days (est. out of stock).">(lead days {{ $leadDays }})</span>@endif</span></h1>
+    <h1 class="mb-4 text-xl font-semibold">Segmentation Summary <span class="text-sm font-normal text-muted">· Segmentation Tracker leads, {{ $period }}@if ($leadDays) <span title="The leads handled on these days come from these lead days (est. out of stock).">(lead days {{ $leadDays }})</span>@endif</span></h1>
 
     {{-- Filters: CRA, type, product on the left; month and day on the right --}}
-    <form method="GET" action="{{ route('product-performance.segmentation-summary') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
+    <form method="GET" action="{{ route('segmentation-summary.index') }}" class="mb-4 flex flex-wrap items-end gap-3 rounded-xl bg-white p-4 shadow-sm">
         @if ($canViewAll)
             <label class="text-xs font-medium text-muted">
                 <span class="mb-1 block">CRA</span>
@@ -92,7 +90,7 @@
                 <input type="date" name="date" value="{{ $filters['date'] ?? '' }}" onchange="this.form.submit()" class="{{ $field }} text-ink">
             </label>
             @if (array_filter(\Illuminate\Support\Arr::except($filters, ['month', 'cra'])) || ($canViewAll && $filters['cra'] !== 'all'))
-                <a href="{{ route('product-performance.segmentation-summary') }}" class="grid h-9 place-items-center rounded-lg border border-line px-3 text-sm font-medium hover:border-brand-400 hover:text-brand-600">Reset</a>
+                <a href="{{ route('segmentation-summary.index') }}" class="grid h-9 place-items-center rounded-lg border border-line px-3 text-sm font-medium hover:border-brand-400 hover:text-brand-600">Reset</a>
             @endif
         </div>
         <noscript><button type="submit" class="h-9 rounded-lg bg-brand-600 px-3 text-sm font-semibold text-white">Apply</button></noscript>
@@ -134,11 +132,11 @@
                     <div class="grid perspective-[1200px]">
                     <div data-flip-inner class="grid transition-transform duration-500 transform-3d motion-reduce:transition-none data-flipped:rotate-y-180">
                     <div data-flip-face="front" class="col-start-1 row-start-1 backface-hidden">
-                    @include('product-performance._feedback-donut', ['slices' => $pickSlices, 'total' => $pickTotal, 'centerLabel' => 'choices ticked',
+                    @include('segmentation-summary._feedback-donut', ['slices' => $pickSlices, 'total' => $pickTotal, 'centerLabel' => 'choices ticked',
                         'ariaLabel' => "Customer's feedback, every choice ticked, {$period}", 'flipKeys' => $flipKeys])
                     </div>
                     @foreach ($flipKeys as $flipKey)
-                        @include('product-performance._feedback-reasons', [
+                        @include('segmentation-summary._feedback-reasons', [
                             'key' => $flipKey,
                             'title' => $flipKey === 'no_verbal_conv' ? 'Why no verbal conversation' : 'Why customers said '.($flipKey === 'other' ? 'Other' : $pickSlices[$flipKey]['label']),
                             'color' => $pickSlices[$flipKey]['color'],
@@ -149,7 +147,7 @@
                     </div>
                     <div class="relative min-h-48">
                         <div class="lg:absolute lg:inset-0">
-                            @include('product-performance._feedback-by-product', ['byProduct' => $summary['feedback_picks_by_product'], 'slices' => $pickSlices, 'noun' => 'choices'])
+                            @include('segmentation-summary._feedback-by-product', ['byProduct' => $summary['feedback_picks_by_product'], 'slices' => $pickSlices, 'noun' => 'choices'])
                         </div>
                     </div>
                     </div>

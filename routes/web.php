@@ -127,8 +127,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/', [SegmentationController::class, 'index'])->name('index');
         Route::get('/summary', [SegmentationController::class, 'summary'])->name('summary');
         Route::get('/weekly', [WeeklySegmentationController::class, 'index'])->name('weekly');
-        // Summary moved to Product Performance → Segmentation Summary; old links still land there.
-        Route::redirect('/overview', '/product-performance/segmentation-summary');
+        // Summary moved to Segmentation → Segmentation Summary; old links still land there.
+        Route::redirect('/overview', '/segmentation-summary');
         Route::get('/repeat-purchases', [RepeatPurchaseController::class, 'index'])->name('repeat-purchases');
         Route::post('/backlog/transfer', [BacklogTransferController::class, 'store'])->middleware('can:segmentation.transfer')->name('transfer');
         Route::patch('/leads/{lead}', [SegmentationController::class, 'update'])->name('update');
@@ -232,6 +232,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/product-report', [OrderDatabaseController::class, 'productReport'])->name('product-report');
     });
 
+    // Segmentation → Segmentation Summary: the tracker's leads added up; Product Performance's access, as before it moved.
+    Route::get('/segmentation-summary', [SegmentationSummaryController::class, 'index'])->middleware('can:product_performance.view')->name('segmentation-summary.index');
     Route::get('/presentation-board', PresentationBoardController::class)->middleware('can:presentation_board.view')->name('presentation-board.index');
     Route::get('/presentation-board/customers', PresentationBoardCustomersController::class)->middleware('can:presentation_board.view')->name('presentation-board.customers');
     Route::get('/report-summary', [ReportSummaryController::class, 'index'])->middleware('can:report_summary.view')->name('report-summary.index');
@@ -245,7 +247,8 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         Route::get('/tsd', [ProductPerformanceController::class, 'tsd'])->name('tsd');
         Route::get('/testing', [ProductPerformanceController::class, 'testing'])->name('testing');
         Route::get('/trend', [ProductPerformanceController::class, 'trend'])->name('trend');
-        Route::get('/segmentation-summary', [SegmentationSummaryController::class, 'index'])->name('segmentation-summary');
+        // Moved to Segmentation → Segmentation Summary; old links (with their filters) still land there.
+        Route::get('/segmentation-summary', fn (Request $request) => redirect()->route('segmentation-summary.index', $request->query()));
     });
     Route::prefix('product-target-market')->name('product-target-market.')->middleware('can:product_target_market.view')->group(function () {
         Route::get('/', [ProductTargetMarketController::class, 'index'])->name('index');

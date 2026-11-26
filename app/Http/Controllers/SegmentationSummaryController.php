@@ -17,7 +17,7 @@ use Illuminate\View\View;
 class SegmentationSummaryController extends Controller
 {
     /**
-     * Product Performance → Segmentation Summary: the Segmentation Tracker's leads worked in one month (or on a single
+     * Segmentation → Segmentation Summary: the Segmentation Tracker's leads worked in one month (or on a single
      * day), for every CRA or one. The filter goes by the real date, like the other reports: real day $d shows the leads of
      * lead day WorkingDate::leadDayFor($d), the ones handled that day. Someone without view-all sees only their own leads.
      */
@@ -61,7 +61,7 @@ class SegmentationSummaryController extends Controller
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('lead_type', $type))
             ->when($filters['product'] ?? null, fn (Builder $q, string $product) => $q->where('product_name', $product));
 
-        return view('product-performance.segmentation-summary', [
+        return view('segmentation-summary.index', [
             'summary' => $summary->for($scope, $cras, LeadMove::departed($leadFrom, $leadTo,
                 ctype_digit($filters['cra']) ? [(int) $filters['cra']] : null, $filters['type'] ?? null, $filters['product'] ?? null)),
             'filters' => $filters,

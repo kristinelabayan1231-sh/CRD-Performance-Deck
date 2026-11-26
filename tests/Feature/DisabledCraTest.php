@@ -151,7 +151,7 @@ class DisabledCraTest extends TestCase
         $roseAn = $this->user('Rose-An');
         $roseAn->update(['is_active' => false]);
         $sup = $this->user('Sup', Role::CRA_SUPERVISOR);
-        $listed = fn (array $query) => $this->actingAs($sup)->get(route('product-performance.segmentation-summary', $query))
+        $listed = fn (array $query) => $this->actingAs($sup)->get(route('segmentation-summary.index', $query))
             ->assertOk()->viewData('cras')->pluck('id');
 
         $this->assertContains($roseAn->id, $listed(['month' => '2026-09']));

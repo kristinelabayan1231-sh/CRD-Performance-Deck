@@ -196,8 +196,7 @@ class ProductPerformanceTest extends TestCase
         $this->actingAs($this->owner)->get(route('product-performance.tsd', $dates))
             ->assertOk()
             ->assertSee('href="'.e($testingUrl).'"', false)
-            ->assertSee('action="'.route('product-performance.tsd').'"', false)
-            ->assertSee('href="'.route('product-performance.segmentation-summary').'"', false);
+            ->assertSee('action="'.route('product-performance.tsd').'"', false);
     }
 
     public function test_trend_groups_sales_orders_and_rts_by_day_week_and_month_from_the_first_order(): void
