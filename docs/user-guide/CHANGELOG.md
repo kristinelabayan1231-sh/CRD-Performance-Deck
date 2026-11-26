@@ -7,6 +7,7 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-26 · Daily I.S. + every sales module · Each order's sales now come from the Logistics dashboard (Shecom v2) orders, the CRA's own Retention row, so totals match Logistics' Retention sales report; an order with a Telesales child row no longer takes Pancake's total with the child included. Settings → Connections shows "Shecom orders API (Logistics)" instead of "Shecom sales API" · shots: none
 - 2026-11-26 · Segmentation Tracker → Today's texts · Unticked customers stay on the list, unticked, on later days too until the CRA ticks them (or they reorder or opt out); they're never texted by themselves; 20 / 50 / 100 per page (20 first), Tick page / Untick page, Untick all asks first; How many beside Send now sends only the first few, the others stay ticked · shots: none
 
 - 2026-11-26 · Segmentation Tracker → Today's texts · Failed texts stay on the list on later days under a Failed filter, unticked; the CRA ticks them (or their page) to send again; Tick all leaves them · shots: none

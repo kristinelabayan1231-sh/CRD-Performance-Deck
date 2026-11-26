@@ -53,7 +53,7 @@ class ConversionBreakdownTest extends TestCase
     /** Whether the fake POS order search refuses every lookup. */
     private bool $searchDown = false;
 
-    /** Orders the fake Shecom sales API returns; null makes it fail. */
+    /** Orders the fake Shecom (Logistics) orders API returns, each as one Retention row; null makes it fail. */
     private ?array $sales = [];
 
     protected function setUp(): void
@@ -62,7 +62,7 @@ class ConversionBreakdownTest extends TestCase
 
         config([
             'services.shecom.key' => 'test-key',
-            'services.shecom.sales_key' => 'sales-key',
+            'services.shecom.product_cost_key' => 'orders-key',
             'services.pancake.key' => 'pos-key',
             'services.pancake.shop_id' => '1',
         ]);
@@ -83,9 +83,11 @@ class ConversionBreakdownTest extends TestCase
                 str_contains($request->url(), 'customer_engagements') => $this->engagementsDown
                     ? Http::response(['success' => false], 500)
                     : Http::response(['success' => true, 'users_engagements' => $this->engagements]),
-                str_contains($request->url(), 'management/sales') => $this->sales === null
+                str_contains($request->url(), 'external/v1/orders') => $this->sales === null
                     ? Http::response(['error' => 'down'], 500)
-                    : Http::response(['count' => count($this->sales), 'orders' => $this->sales]),
+                    : Http::response(['rows' => array_map(fn (array $order) => [
+                        'orderId' => $order['order_id'], 'dept' => 'retention', 'totalSales' => (float) $order['sales'], 'status' => 'Delivered', 'productCost' => null,
+                    ], $this->sales)]),
                 default => Http::response(['count' => 0, 'stock_outs' => []]),
             };
         });
@@ -313,9 +315,9 @@ class ConversionBreakdownTest extends TestCase
         $day = app(ConversionBreakdown::class)->days(collect([$lhea]), Lead::today(), Lead::today())[$lhea->id]['2026-10-01'];
         $this->assertEqualsWithDelta(999.0, $day['sc_gross'], 0.001);
         $this->assertEqualsWithDelta(799.0, $day['bc_gross'], 0.001);
-        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales')
-            && $request['date_from'] === '2026-10-01' && $request['date_to'] === '2026-10-01'
-            && $request->hasHeader('Authorization', 'Bearer sales-key'));
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'external/v1/orders')
+            && $request['from'] === '2026-10-01' && $request['to'] === '2026-10-01'
+            && $request->hasHeader('Authorization', 'Bearer orders-key'));
     }
 
     public function test_pancake_totals_stay_when_shecom_sales_are_down(): void
@@ -420,7 +422,7 @@ class ConversionBreakdownTest extends TestCase
         $this->assertSame('2026-09-30', $saved->ordered_on->toDateString());
         $this->assertSame('2026-09-30 07:37:00', $saved->ordered_at->format('Y-m-d H:i:s'));
         $this->assertEqualsWithDelta(749.0, (float) $saved->shecom_sales, 0.001);
-        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales') && $request['date_from'] === '2026-09-30');
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'external/v1/orders') && $request['from'] === '2026-09-30');
     }
 
     public function test_a_changed_sales_date_counts_near_midnight_on_the_manila_day(): void
@@ -472,8 +474,8 @@ class ConversionBreakdownTest extends TestCase
         $this->artisan('pancake:sync --sales --last=14')->assertSuccessful();
 
         $this->assertEqualsWithDelta(499.0, (float) PancakeOrder::sole()->shecom_sales, 0.001);
-        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'management/sales')
-            && $request['date_from'] === '2026-09-27' && $request['date_to'] === '2026-10-10');
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'external/v1/orders')
+            && $request['from'] === '2026-09-27' && $request['to'] === '2026-10-10');
     }
 
     public function test_header_lists_order_issues_and_a_cra_sees_only_their_own(): void

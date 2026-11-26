@@ -22,6 +22,9 @@ class ShecomClient
     /** The department of a CRA's row in Shecom's orders report. */
     private const RETENTION_DEPT = 'retention';
 
+    /** The status of a removed order's rows on the Logistics dashboard. */
+    private const REMOVED = 'removed';
+
     /**
      * Run $work (which reads the full retention report) once no other process is: the web service, the scheduler's
      * lead sync and the logistics refresh share one small instance, and two reports at once run it out of memory.
@@ -181,39 +184,6 @@ class ShecomClient
     }
 
     /**
-     * Each order's sales for orders dated $from–$to, by order id. Shecom leaves
-     * out the child row (TSD only), so this is the CRA's own sale.
-     *
-     * @return array<string, float> order id => sales
-     */
-    public function sales(CarbonImmutable $from, CarbonImmutable $to): array
-    {
-        $key = config('services.shecom.sales_key');
-
-        if (! $key) {
-            throw new RuntimeException('SHECOM_SALES_API_KEY is not set in .env.');
-        }
-
-        $response = Http::withToken($key)
-            ->acceptJson()
-            ->timeout(120)
-            ->retry(2, 2000, throw: false)
-            ->get(rtrim(config('services.shecom.url'), '/').'/management/sales', [
-                'date_from' => $from->toDateString(),
-                'date_to' => $to->toDateString(),
-            ]);
-
-        if ($response->failed()) {
-            throw new RuntimeException("Sales API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
-        }
-
-        return collect($response->json('orders') ?? [])
-            ->filter(fn (array $order) => ($order['order_id'] ?? '') !== '' && is_numeric($order['sales'] ?? null))
-            ->mapWithKeys(fn (array $order) => [(string) $order['order_id'] => (float) $order['sales']])
-            ->all();
-    }
-
-    /**
      * Each Pancake item's current cost (null where Shecom has none yet) and the day it took effect.
      *
      * @return list<array{product: string, currentCost: int|float|null, currentEffectiveFrom: ?string}>
@@ -240,14 +210,15 @@ class ShecomClient
     }
 
     /**
-     * Each order's product cost for orders dated $from–$to, by order id (Pancake's display id), as Shecom's sales
-     * report counts it per CRA and product, and the CRA's own sale of each order with a child row. Such an order has a
-     * Retention row (the mother item) and another department's (the child, e.g. a Telesales upsell); only the Retention
-     * row is the CRA's. Its cost is null while Shecom has none for it, so the child's isn't taken instead.
+     * Each order dated $from–$to on the GM Logistics dashboard (Shecom v2's external /orders API), by order id (Pancake's
+     * display id): its sale, its product cost and whether it is still listed. An order with a child row has a Retention
+     * row (the mother item, the CRA's) and another department's (the child, e.g. a Telesales upsell); only the Retention
+     * row counts for sales and cost, as in Logistics' Retention sales report. Its cost is null while Shecom has none for
+     * it, so the child's isn't taken instead. A removed order's rows don't count: it isn't listed and has no sale.
      *
-     * @return array{costs: array<string, float|null>, mother_sales: array<string, float>}
+     * @return array{sales: array<string, float>, costs: array<string, float|null>, listed: array<string, true>}
      */
-    public function orderAmounts(CarbonImmutable $from, CarbonImmutable $to): array
+    public function orders(CarbonImmutable $from, CarbonImmutable $to): array
     {
         $key = config('services.shecom.product_cost_key');
 
@@ -268,30 +239,38 @@ class ShecomClient
             throw new RuntimeException("Orders API returned HTTP {$response->status()}: ".$response->json('error', 'unknown error'));
         }
 
+        $sales = [];
         $costs = [];
-        $motherSales = [];
+        $listed = [];
+        $rows = collect($response->json('rows') ?? [])
+            ->filter(fn (array $row) => ($row['orderId'] ?? '') !== '' && strcasecmp((string) ($row['status'] ?? ''), self::REMOVED) !== 0);
 
-        foreach (collect($response->json('rows') ?? [])->filter(fn (array $row) => ($row['orderId'] ?? '') !== '')->groupBy('orderId') as $id => $rows) {
-            $mother = $rows->count() > 1 ? $rows->firstWhere('dept', self::RETENTION_DEPT) : null;
+        foreach ($rows->groupBy(fn (array $row) => (string) $row['orderId']) as $id => $orderRows) {
+            $id = (string) $id;
+            $listed[$id] = true;
+            $mothers = $orderRows->where('dept', self::RETENTION_DEPT);
+            $hasChild = $mothers->isNotEmpty() && $orderRows->contains(fn (array $row) => ($row['dept'] ?? null) !== self::RETENTION_DEPT);
+            $own = $mothers->isNotEmpty() ? $mothers : $orderRows;
 
-            if ($mother !== null && $rows->contains(fn (array $row) => ($row['dept'] ?? null) !== self::RETENTION_DEPT)) {
+            if ($own->contains(fn (array $row) => is_numeric($row['totalSales'] ?? null))) {
+                $sales[$id] = (float) $own->sum(fn (array $row) => is_numeric($row['totalSales'] ?? null) ? (float) $row['totalSales'] : 0);
+            }
+
+            if ($hasChild) {
+                $mother = $mothers->last();
                 $costs[$id] = is_numeric($mother['productCost'] ?? null) ? (float) $mother['productCost'] : null;
-
-                if (is_numeric($mother['totalSales'] ?? null)) {
-                    $motherSales[$id] = (float) $mother['totalSales'];
-                }
 
                 continue;
             }
 
-            $row = $rows->last(fn (array $row) => is_numeric($row['productCost'] ?? null));
+            $row = $own->last(fn (array $row) => is_numeric($row['productCost'] ?? null));
 
             if ($row !== null) {
                 $costs[$id] = (float) $row['productCost'];
             }
         }
 
-        return ['costs' => $costs, 'mother_sales' => $motherSales];
+        return ['sales' => $sales, 'costs' => $costs, 'listed' => $listed];
     }
 
     /**

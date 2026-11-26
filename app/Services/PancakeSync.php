@@ -425,21 +425,17 @@ class PancakeSync
     }
 
     /**
-     * Save Shecom's sales and product cost on the orders dated $from–$to. Shecom's order id is Pancake's display_id,
-     * which pancake_order_id holds. An order with a child (TSD) row takes the CRA's own row for both: Shecom's sales
-     * feed has one row per order and sometimes sends the child's. If the product costs fail, the sales are still saved.
+     * Save Shecom's sales and product cost on the orders dated $from–$to, from the Logistics dashboard's orders (Shecom
+     * v2). Shecom's order id is Pancake's display_id, which pancake_order_id holds. An order with a child (TSD) row takes
+     * the CRA's own Retention row for both, so the child's sale stays out. An order Shecom doesn't list keeps Pancake's total.
      *
      * @return array{sales: int, costs: int} orders given a Shecom amount / product cost
      */
     public function syncShecom(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $amounts = rescue(fn () => $this->shecom->orderAmounts($from, $to), ['costs' => [], 'mother_sales' => []]);
-        $costs = $this->saveAmounts('shecom_product_cost', $amounts['costs']);
+        $orders = $this->shecom->orders($from, $to);
 
-        $sales = $this->shecom->sales($from, $to);
-        $sales = array_replace($sales, array_intersect_key($amounts['mother_sales'], $sales));
-
-        return ['sales' => $this->saveAmounts('shecom_sales', $sales), 'costs' => $costs];
+        return ['sales' => $this->saveAmounts('shecom_sales', $orders['sales']), 'costs' => $this->saveAmounts('shecom_product_cost', $orders['costs'])];
     }
 
     /**
@@ -472,7 +468,7 @@ class PancakeSync
      */
     public function markGoneOrders(CarbonImmutable $from, CarbonImmutable $to): array
     {
-        $listedInShecom = $this->shecom->sales($from, $to);
+        $listedInShecom = $this->shecom->orders($from, $to)['listed'];
 
         $saved = PancakeOrder::whereBetween('ordered_on', [$from->toDateString(), $to->toDateString()])
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', CraPerformance::DELETED))

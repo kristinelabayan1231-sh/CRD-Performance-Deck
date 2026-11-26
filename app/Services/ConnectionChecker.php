@@ -38,8 +38,8 @@ class ConnectionChecker
                     ? number_format((int) $match[1]).' stock-outs'
                     : 'connected';
             }),
-            // Gross sales per order (without the child TSD row), today's orders only.
-            $this->check('Shecom sales API', fn () => number_format(count($this->shecom->sales(WorkingDate::realToday(), WorkingDate::realToday()))).' orders today'),
+            // Sales and product cost per order (the CRA's own row, without the child TSD row), today's orders only.
+            $this->check('Shecom orders API (Logistics)', fn () => number_format(count($this->shecom->orders(WorkingDate::realToday(), WorkingDate::realToday())['listed'])).' orders today'),
             ...$this->pancakePos(),
             $this->pancakeChat(),
             // Some APIs only accept known addresses; this is the one the server calls out from.
