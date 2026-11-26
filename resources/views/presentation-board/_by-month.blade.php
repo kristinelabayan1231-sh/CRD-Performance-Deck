@@ -1,7 +1,10 @@
 {{-- Side by side by month for Top products and CRA performance: a row per item ($gridRows), a column per month
      ($gridColumns, the month before the range first when there is one) and Overall for the months picked. Each month's
-     chip compares it with the column before; a running month's sales at its full-month pace. Uses the board's helpers. --}}
+     chip compares it with the column before; a running month's sales at its full-month pace. Uses the board's helpers.
+     $gridMode 'upsell' (Top products' By upsell %): each month's upsell % and ₱ upsold, chips in points, Best = the
+     highest upsell %, Overall = the months' upsell %. --}}
 @php
+    $gridMode ??= 'sales';
     $gridCount = count($gridColumns) + 1;
     $gridStyle = 'display: grid; grid-template-columns: minmax(170px, 1.3fr) repeat('.$gridCount.', minmax(112px, 1fr)); column-gap: 6px; min-width: '.(190 + $gridCount * 118).'px';
     $gridOverall = array_sum(array_column($gridRows, 'overall'));
@@ -26,6 +29,31 @@
                 <span style="min-width: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere">{{ $gridRow['name'] }}</span>
             </div>
             @foreach ($gridColumns as $index => $column)
+                @if ($gridMode === 'upsell')
+                    @php
+                        $gridValue = $gridRow['values'][$column['key']] ?? ['rate' => null, 'upsold' => 0.0];
+                        $gridBefore = $index > 0 ? ($gridRow['values'][$gridColumns[$index - 1]['key']]['rate'] ?? null) : null;
+                        $gridChip = $gridValue['rate'] !== null && $gridBefore !== null ? $chip($gridValue['rate'], $gridBefore, true) : null;
+                        $gridBest = ! $column['before'] && $gridValue['rate'] !== null && $gridRow['best'] !== null && (float) $gridValue['rate'] === (float) $gridRow['best'];
+                    @endphp
+                    <div class="flex flex-col items-center justify-center gap-0.5 text-center" style="padding: 6px 4px; {{ $rowLine }}; background: {{ $gridBest ? 'var(--pb-best)' : ($column['before'] ? 'var(--pb-cell)' : 'transparent') }}">
+                        @if ($gridValue['rate'] !== null)
+                            <strong style="font-size: 14px">{{ number_format($gridValue['rate'] * 100, 1) }}%</strong>
+                            <span style="font-size: 11px; {{ $muted }}" title="{{ $peso($gridValue['upsold']) }}">{{ $pesoShort($gridValue['upsold']) }} upsold</span>
+                            <span class="flex flex-wrap justify-center gap-1">
+                                @if ($gridChip)
+                                    <span style="{{ $gridChip['style'] }}; font-size: 10px; padding: 1px 6px">{{ $gridChip['text'] }}</span>
+                                @endif
+                                @if ($gridBest)
+                                    <span style="padding: 1px 6px; border-radius: 999px; font-size: 10px; font-weight: 700; background: var(--pb-gold); color: var(--pb-gold-text)">★ Best</span>
+                                @endif
+                            </span>
+                        @else
+                            <span style="font-size: 12px; {{ $muted }}">No sales</span>
+                        @endif
+                    </div>
+                    @continue
+                @endif
                 @php
                     $gridValue = $gridRow['values'][$column['key']] ?? ['gross' => 0.0, 'orders' => 0];
                     $gridCompared = $column['open'] ? $paced($gridValue['gross']) : $gridValue['gross'];
@@ -51,9 +79,14 @@
                 </div>
             @endforeach
             <div class="flex flex-col items-center justify-center gap-0.5 text-center" style="padding: 6px 4px; {{ $rowLine }}; background: color-mix(in srgb, var(--pb-sales) 7%, transparent)">
-                <strong style="font-size: 14px" title="{{ $peso($gridRow['overall']) }}">{{ $pesoShort($gridRow['overall']) }}</strong>
-                <span style="font-size: 11px; {{ $muted }}">{{ $number($gridRow['overallOrders']) }} {{ Str::plural('order', $gridRow['overallOrders']) }}</span>
-                <span style="font-size: 10px; font-weight: 700; color: var(--pb-soft)">{{ $gridOverall > 0 ? number_format($gridRow['overall'] / $gridOverall * 100, 1).'% of these' : '' }}</span>
+                @if ($gridMode === 'upsell')
+                    <strong style="font-size: 14px">{{ number_format($gridRow['overall'] * 100, 1) }}%</strong>
+                    <span style="font-size: 11px; {{ $muted }}">{{ $pesoShort($gridRow['overallUpsold']) }} of {{ $pesoShort($gridRow['overallTotal']) }}</span>
+                @else
+                    <strong style="font-size: 14px" title="{{ $peso($gridRow['overall']) }}">{{ $pesoShort($gridRow['overall']) }}</strong>
+                    <span style="font-size: 11px; {{ $muted }}">{{ $number($gridRow['overallOrders']) }} {{ Str::plural('order', $gridRow['overallOrders']) }}</span>
+                    <span style="font-size: 10px; font-weight: 700; color: var(--pb-soft)">{{ $gridOverall > 0 ? number_format($gridRow['overall'] / $gridOverall * 100, 1).'% of these' : '' }}</span>
+                @endif
             </div>
         @endforeach
     </div>

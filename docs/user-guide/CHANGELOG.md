@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-26 · Presentation Board → Top products by month · By upsell % now switches the month-by-month table too: each month shows the product's upsell % and ₱ upsold, chips in points vs the month before, ★ Best = its highest upsell % month, Overall = the months' upsell %; the top 10 by upsell % · shots: none
+
 - 2026-11-26 · Product Performance → Products + Presentation Board → Top products · Product Performance's product list is now "Products · by sales vs by upsell %": the same products in two columns, by main sales and by upsold % (with the average line), each with Main % / Upsold %, places up or down vs the period before, and the same breakdown when clicked (the By sales / By upsell % switch is gone; the Ranking slide stays Gross sales and RTS). On the board, By upsell % shows the donut as main vs upsell and the legend ranks the products by upsell %, like the list below · shots: none
 
 - 2026-11-26 · Segmentation Summary + Sidebar + Product Performance · Segmentation Summary moved from Product Performance's tabs to its own page in the sidebar's Segmentation group (after Segmentation Tracker); same page and the same people can open it; old links land there · shots: none
