@@ -1183,11 +1183,39 @@ class ExclusiveLeads
         $end = $month->endOfMonth()->startOfDay();
         $firstDay = $cra->exclusive_from !== null ? $start->max(WorkingDate::realDayFor($cra->exclusive_from)) : $start;
 
-        $entries = ExclusiveListLead::where('user_id', $cra->id)
-            ->whereDate('list_date', '>=', WorkingDate::leadDayFor($start))->whereDate('list_date', '<=', WorkingDate::leadDayFor($end))
-            ->with('lead:id,assigned_to,listed_on,status,contact_date,processed_at')
-            ->get();
-        $byDay = $entries->groupBy(fn (ExclusiveListLead $entry) => $entry->list_date->toDateString());
+        // Counted in the database: a month of carried-over leftovers is tens of thousands of rows, too many to load.
+        $shownLeadDays = [];
+        for ($day = $start; $day->lessThanOrEqualTo($end); $day = $day->addDay()) {
+            $leadDay = WorkingDate::leadDayFor($day);
+            if (WorkingDate::realDayFor($leadDay, $start, $end)->isSameDay($day)) {
+                $shownLeadDays[] = $leadDay->toDateString();
+            }
+        }
+        $monthEntries = fn () => DB::table('exclusive_list_leads')->where('exclusive_list_leads.user_id', $cra->id)
+            ->whereDate('exclusive_list_leads.list_date', '>=', WorkingDate::leadDayFor($start))
+            ->whereDate('exclusive_list_leads.list_date', '<=', WorkingDate::leadDayFor($end));
+        $listDay = 'date(exclusive_list_leads.list_date)';
+
+        $sourceCounts = $monthEntries()->selectRaw("{$listDay} as list_day, source, count(*) as total")
+            ->groupByRaw("{$listDay}, source")->get();
+        $mixByDay = [];
+        foreach ($sourceCounts as $row) {
+            $mixByDay[(string) $row->list_day][$row->source] = (int) $row->total;
+        }
+        $workedByDay = $monthEntries()->join('leads', 'leads.id', '=', 'exclusive_list_leads.lead_id')
+            ->where('exclusive_list_leads.source', '!=', self::POS)
+            ->whereRaw("date(leads.listed_on) = {$listDay}")
+            ->where(fn ($q) => $q->whereNotNull('leads.status')->orWhereNotNull('leads.contact_date')->orWhereNotNull('leads.processed_at'))
+            ->selectRaw("{$listDay} as list_day, count(*) as total")->groupByRaw($listDay)
+            ->pluck('total', 'list_day')->map(fn ($total) => (int) $total);
+        // Her own leads, counted once on the first shown day they were on her list.
+        $firstSeenByDay = $shownLeadDays === [] ? collect() : DB::query()->fromSub(
+            $monthEntries()->join('leads', 'leads.id', '=', 'exclusive_list_leads.lead_id')
+                ->where('leads.assigned_to', $cra->id)->where('exclusive_list_leads.source', '!=', self::POS)
+                ->whereIn(DB::raw($listDay), $shownLeadDays)
+                ->selectRaw("exclusive_list_leads.lead_id, min({$listDay}) as first_day")->groupBy('exclusive_list_leads.lead_id'),
+            'firsts'
+        )->selectRaw('first_day, count(*) as total')->groupBy('first_day')->pluck('total', 'first_day')->map(fn ($total) => (int) $total);
 
         // Only days that have started: the customers on the day's list who bought or ordered that day.
         $today = WorkingDate::realToday();
@@ -1199,10 +1227,10 @@ class ExclusiveLeads
         $orderRates = [];
         $offDays = DutyGoals::offDays(LeadGenerator::cras(), $start, $end);
         $workingDays = 0;
-        $mixOf = fn (Collection $rows) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $rows->where('source', $source)->count()])->all();
+        $mixOf = fn (array $counts) => collect(self::PRIORITY)->mapWithKeys(fn (string $source) => [$source => $counts[$source] ?? 0])->all();
         $days = [];
         $target = $monthLimits['month_target'];
-        $seen = [];
+        $seen = 0;
         $held = 0;
         $leadToday = Lead::today();
 
@@ -1210,21 +1238,21 @@ class ExclusiveLeads
             $date = $day->toDateString();
             $leadDay = WorkingDate::leadDayFor($day);
             // A lead day two real days share (the gap grew) counts on the first of them.
-            $rows = WorkingDate::realDayFor($leadDay, $start, $end)->isSameDay($day) ? collect($byDay[$leadDay->toDateString()] ?? []) : collect();
+            $leadDate = $leadDay->toDateString();
+            $isShown = WorkingDate::realDayFor($leadDay, $start, $end)->isSameDay($day);
+            $mix = $isShown ? ($mixByDay[$leadDate] ?? []) : [];
             $quota = $day->lessThan($firstDay) ? 0 : self::quotaFor($leadDay);
-            $counted = $rows->where('source', '!=', self::POS);
-            $new = $counted->where('source', '!=', self::LEFTOVER);
-            foreach ($counted as $entry) {
-                if ($entry->lead?->assigned_to === $cra->id) {
-                    $seen[$entry->lead_id] = true;
-                }
-            }
+            $all = array_sum($mix);
+            $pos = $mix[self::POS] ?? 0;
+            $counted = $all - $pos;
+            $new = $counted - ($mix[self::LEFTOVER] ?? 0);
+            $seen += $isShown ? ($firstSeenByDay[$leadDate] ?? 0) : 0;
             // Past days are what was listed; from today, up to the quota until the month's target is reached.
             if (! $leadDay->lessThan($leadToday) && ! $day->lessThan($firstDay)) {
-                $quota = max(0, min($quota, $target - count($seen) - $held));
+                $quota = max(0, min($quota, $target - $seen - $held));
                 $held += $quota;
             }
-            $worked = $counted->filter(fn (ExclusiveListLead $entry) => $entry->lead?->isProcessed() && $entry->lead->listed_on->isSameDay($leadDay))->count();
+            $worked = $isShown ? ($workedByDay[$leadDate] ?? 0) : 0;
             $isBeforeTransfer = $day->lessThan($firstDay);
             $isDayOff = isset($offDays[$date][$cra->id]);
             $isWorkingDay = ! $isBeforeTransfer && ! $isDayOff;
@@ -1241,12 +1269,12 @@ class ExclusiveLeads
                 'quota' => $quota,
                 'is_history' => $leadDay->lessThan(self::buildFrom()),
                 'is_before_transfer' => $isBeforeTransfer,
-                'listed' => $counted->count(),
-                'new' => $new->count(),
+                'listed' => $counted,
+                'new' => $new,
                 'worked' => $worked,
-                'left' => $counted->count() - $worked,
-                'pos' => $rows->count() - $counted->count(),
-                'mix' => $mixOf($rows),
+                'left' => $counted - $worked,
+                'pos' => $pos,
+                'mix' => $mixOf($mix),
                 'repeat' => $daySales['repeat'],
                 'retained' => $daySales['retained'],
                 'repeat_goal' => (int) round($quota * $goalPercent / 100),
@@ -1258,8 +1286,13 @@ class ExclusiveLeads
             ];
         }
 
-        $counted = $entries->where('source', '!=', self::POS);
-        $planned = count($seen) + $held;
+        $monthMix = [];
+        foreach ($mixByDay as $dayMix) {
+            foreach ($dayMix as $source => $total) {
+                $monthMix[$source] = ($monthMix[$source] ?? 0) + $total;
+            }
+        }
+        $planned = $seen + $held;
         $monthSales = $sales['total'];
 
         return [
@@ -1275,14 +1308,14 @@ class ExclusiveLeads
             'limits' => ['daily_leads' => $monthLimits['daily_leads'], 'orders_rate_changed' => count(array_unique($orderRates)) > 1],
             'planned' => ['leads' => $planned, 'target' => $target, 'short_of_target' => max(0, $target - $planned)],
             'actual' => [
-                'listed' => $counted->count(),
-                'unique_leads' => count($seen),
+                'listed' => array_sum($monthMix) - ($monthMix[self::POS] ?? 0),
+                'unique_leads' => $seen,
                 'repeat' => $monthSales['repeat'],
                 'retained' => $monthSales['retained'],
                 'confirmed' => $monthSales['orders'],
                 'gross' => $monthSales['gross'],
                 'aov' => $monthSales['orders'] ? $monthSales['gross'] / $monthSales['orders'] : null,
-                'mix' => $mixOf($entries),
+                'mix' => $mixOf($monthMix),
             ],
             'days' => $days,
         ];
