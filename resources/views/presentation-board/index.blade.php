@@ -1275,14 +1275,45 @@
                         ]))
                         ->sortByDesc('overall')->take(10)->values()
                         ->map(fn (array $row, int $index) => [...$row, 'rank' => $index + 1])->all();
+                    // By upsell %: each month's upsell % (upsold ÷ everything on the product's orders), the top 10 by the months' upsell %.
+                    $upsellGrid = collect($rangeKeys)->flatMap(fn (string $key) => array_keys($productMonths[$key] ?? []))->unique()
+                        ->reject(fn (string $name) => $name === $othersName || in_array($name, $tsdNames, true))
+                        ->map(function (string $name) use ($gridColumns, $rangeKeys, $productMonths) {
+                            $values = [];
+                            foreach ($gridColumns as $column) {
+                                $figures = $productMonths[$column['key']][$name] ?? null;
+                                $sales = (float) ($figures['sales'] ?? 0);
+                                $upsold = (float) ($figures['upsold'] ?? 0);
+                                $values[$column['key']] = ['upsold' => $upsold, 'total' => $sales + $upsold, 'rate' => $sales + $upsold > 0 ? $upsold / ($sales + $upsold) : null];
+                            }
+                            $inRange = array_intersect_key($values, array_flip($rangeKeys));
+                            $upsold = array_sum(array_column($inRange, 'upsold'));
+                            $total = array_sum(array_column($inRange, 'total'));
+                            $rated = array_filter(array_column($inRange, 'rate'), fn (?float $rate) => $rate !== null && $rate > 0);
+
+                            return ['name' => $name, 'values' => $values, 'overall' => $total > 0 ? $upsold / $total : 0.0, 'overallUpsold' => $upsold, 'overallTotal' => $total, 'best' => count($rated) > 1 ? max($rated) : null];
+                        })
+                        ->filter(fn (array $row) => $row['overallUpsold'] > 0)
+                        ->sort(fn (array $a, array $b) => [$b['overall'], $b['overallTotal']] <=> [$a['overall'], $a['overallTotal']])->take(10)->values()
+                        ->map(fn (array $row, int $index) => [...$row, 'rank' => $index + 1])->all();
                 @endphp
                 @if (count($gridColumns) > 1 && $productGrid)
                     <div class="flex flex-col gap-2" style="padding: 12px 16px 16px; border-top: 1px solid var(--pb-line)">
                         <div class="flex flex-wrap items-baseline justify-between gap-2">
                             <h3 style="margin: 0; font-size: 14px; font-weight: 700">Top products by month, side by side</h3>
-                            <span style="font-size: 12px; {{ $muted }}">Top 10 by sales in the months picked · chips compare each month with the one before @if ($monthBefore)· {{ \Carbon\CarbonImmutable::parse($monthBefore.'-01')->format('M') }} shown for comparison @endif</span>
+                            <span class="pb-by-sales" style="font-size: 12px; {{ $muted }}">Top 10 by sales in the months picked · chips compare each month with the one before @if ($monthBefore)· {{ \Carbon\CarbonImmutable::parse($monthBefore.'-01')->format('M') }} shown for comparison @endif</span>
+                            <span class="pb-by-upsell" style="font-size: 12px; {{ $muted }}">Top 10 by upsell % in the months picked · chips: points up or down from the month before · ★ Best = the highest upsell % month</span>
                         </div>
-                        @include('presentation-board._by-month', ['gridRows' => $productGrid, 'gridFirst' => 'Product'])
+                        <div class="pb-by-sales">
+                            @include('presentation-board._by-month', ['gridRows' => $productGrid, 'gridFirst' => 'Product'])
+                        </div>
+                        <div class="pb-by-upsell" data-upsell-by-month>
+                            @if ($upsellGrid)
+                                @include('presentation-board._by-month', ['gridRows' => $upsellGrid, 'gridFirst' => 'Product', 'gridMode' => 'upsell'])
+                            @else
+                                <p style="margin: 0; padding: 12px 0; font-size: 13px; {{ $muted }}">Nothing was upsold on the products' orders in the months picked.</p>
+                            @endif
+                        </div>
                     </div>
                 @endif
             </section>

@@ -585,7 +585,10 @@ class PresentationBoardTest extends TestCase
             // Main % and Upsold % split everything on Sinuxyl's orders: 1,000 + 500.
             ->assertSeeInOrder(['66.7% main', '33.3% upsold'])
             ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '33.3%'])
-            ->assertSee("Value = the upsell's Pancake price. % = value ÷ everything on Sinuxyl orders (₱1,500).", false);
+            ->assertSee("Value = the upsell's Pancake price. % = value ÷ everything on Sinuxyl orders (₱1,500).", false)
+            // By upsell %, the month-by-month table shows each month's upsell %: July 0%, August 33.3% (+33.3 pts), Overall
+            // over the months picked (August; one month, so no Best).
+            ->assertSeeInOrder(['data-upsell-by-month', 'Sinuxyl', '0.0%', '33.3%', '₱500 upsold', '▲ +33.3 pts', '33.3%', '₱500 of ₱1,500'], false);
     }
 
     public function test_a_tsd_product_counts_as_upsell_in_its_own_row_also_bought_alone(): void
