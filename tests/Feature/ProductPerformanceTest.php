@@ -7,9 +7,11 @@ use App\Models\Product;
 use App\Models\Role;
 use App\Models\Setting;
 use App\Models\User;
+use App\Services\PresentationBoard;
 use App\Support\PancakeAccounts;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class ProductPerformanceTest extends TestCase
@@ -324,6 +326,58 @@ class ProductPerformanceTest extends TestCase
         $this->actingAs($this->owner)->get(route('product-performance.crd', ['period' => 'month', 'month' => '2026-09']))
             ->assertOk()
             ->assertSee('data-pp-trend="'.e(route('product-performance.trend', ['tab' => 'crd', 'to' => '2026-09-30'])).'"', false);
+    }
+
+    /**
+     * A Presentation Board snapshot with one day of Top products: Sinuxyl ₱1,000 with Lumicare ₱500 upsold on its
+     * orders, and the TSD product Haplunas ₱500 on its own.
+     */
+    private function boardSnapshot(): void
+    {
+        $days = [];
+        foreach (range(1, 10) as $day) {
+            $days[sprintf('2026-10-%02d', $day)] = ['gross' => 0, 'upsell_value' => 0, 'upsell_orders' => 0];
+        }
+        $row = fn (float $sales, int $orders) => ['sales' => $sales, 'value' => $sales, 'orders' => $orders, 'qty' => $orders, 'upsell_value' => 0, 'upsell_orders' => 0, 'upsell_qty' => 0];
+        Cache::forever(PresentationBoard::CACHE_KEY, [
+            'today' => '2026-10-10',
+            'days' => $days,
+            'product_days' => ['2026-10-05' => [
+                'products' => ['Sinuxyl' => $row(1000, 2), 'Haplunas' => $row(500, 1)],
+                'others' => [],
+                'upsold' => ['Sinuxyl' => ['Lumicare' => ['sales' => 0, 'value' => 500, 'orders' => 1, 'qty' => 1]]],
+            ]],
+        ]);
+    }
+
+    public function test_products_tab_splits_sales_into_main_and_upsell_with_tsd_products_as_upsell(): void
+    {
+        Product::create(['name' => 'Haplunas', 'srp' => 500, 'is_tsd' => true]);
+        $this->boardSnapshot();
+
+        // Main ₱1,000; upsell ₱500 upsold + ₱500 TSD; total ₱2,000.
+        $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
+            ->assertOk()
+            ->assertSeeInOrder(['From upsell', '50.0%', '₱1,000 upsell'])
+            ->assertSeeInOrder(['Main product vs Upsell', '50.0%', 'of sales came from Upsell', '₱1,000', 'main'])
+            // The popup's figures: ₱500 upsold on main products and ₱500 TSD, 25% each.
+            ->assertSee('"upsold":"\\u20b1500","upsoldShare":"25.0%","tsd":"\\u20b1500","tsdShare":"25.0%"', false)
+            // Sinuxyl: 1,000 of the 1,500 on its orders is main.
+            ->assertSeeInOrder(['Products · main vs upsell', 'Sinuxyl', '66.7% main', '33.3% upsold', 'Lumicare', 'TSD sold alone', 'Haplunas', '₱500']);
+    }
+
+    public function test_main_vs_upsell_is_only_on_the_products_tab_and_waits_for_the_boards_snapshot(): void
+    {
+        $this->actingAs($this->owner)->get(route('product-performance.index', ['period' => 'month']))
+            ->assertOk()
+            ->assertDontSee('Main product vs Upsell');
+
+        $this->boardSnapshot();
+        Cache::forget('product-performance.upsell.month.2026-10-01.2026-10-31');
+
+        $this->actingAs($this->owner)->get(route('product-performance.crd', ['period' => 'month']))
+            ->assertOk()
+            ->assertDontSee('Main product vs Upsell');
     }
 
     public function test_cra_without_the_permission_is_refused(): void

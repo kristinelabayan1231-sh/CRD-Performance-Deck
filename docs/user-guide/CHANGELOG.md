@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-26 · Presentation Board → Top products + Product Performance → Products · Main vs upsell: the board's summary line shows Main and Upsell with a Breakdown popup (Total, Main product, Upsell = added to a main product + TSD sold alone); every product shows Main % and Upsold % (they add up to 100%); By upsell % turns each bar into main vs upsold with the average line, % pills and upsold % by month; TSD products move to their own "TSD sold alone" row (always Upsell); By month adds Main % and Upsold % rows. Product Performance's Products tab gets a From upsell tile, a Main product vs Upsell section (the dates shown plus the days, weeks or months around them; click the headline or a bar for the popup) and the same product list · shots: none
+
 - 2026-11-26 · Daily I.S. + every sales module · Each order's sales now come from the Logistics dashboard (Shecom v2) orders, the CRA's own Retention row, so totals match Logistics' Retention sales report; an order with a Telesales child row no longer takes Pancake's total with the child included. Settings → Connections shows "Shecom orders API (Logistics)" instead of "Shecom sales API" · shots: none
 - 2026-11-26 · Segmentation Tracker → Today's texts · Unticked customers stay on the list, unticked, on later days too until the CRA ticks them (or they reorder or opt out); they're never texted by themselves; 20 / 50 / 100 per page (20 first), Tick page / Untick page, Untick all asks first; How many beside Send now sends only the first few, the others stay ticked · shots: none
 

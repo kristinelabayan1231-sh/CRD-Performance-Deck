@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\PancakeEngagement;
 use App\Models\Product;
+use App\Services\PresentationBoard;
 use App\Services\ProductPerformance;
 use App\Support\OrderPeriod;
 use App\Support\PancakeAccounts;
+use App\Support\UpsellBreakdown;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -30,9 +33,12 @@ class ProductPerformanceController extends Controller
 
     private const TABS = ['index', 'crd', 'tsd', 'testing'];
 
-    public function index(Request $request, ProductPerformance $productPerformance): View
+    /** Main vs upsell comes from the Presentation Board's snapshot, taken every two hours; its split is kept this long. */
+    private const UPSELL_CACHE_SECONDS = 600;
+
+    public function index(Request $request, ProductPerformance $productPerformance, PresentationBoard $board): View
     {
-        return $this->page($request, $productPerformance, 'index');
+        return $this->page($request, $productPerformance, 'index', $board);
     }
 
     public function crd(Request $request, ProductPerformance $productPerformance): View
@@ -72,7 +78,7 @@ class ProductPerformanceController extends Controller
         return response()->json($trends[$filters['tab']]);
     }
 
-    private function page(Request $request, ProductPerformance $productPerformance, string $tab): View
+    private function page(Request $request, ProductPerformance $productPerformance, string $tab, ?PresentationBoard $board = null): View
     {
         $today = WorkingDate::realToday();
         $filters = $request->validate([
@@ -97,9 +103,98 @@ class ProductPerformanceController extends Controller
             'to' => $to,
             'today' => $today,
             'label' => OrderPeriod::label($from, $to),
+            'upsell' => $board ? $this->upsell($board, $period, $from, $to) : null,
             // A card opens the product in Order Database → Product Report, which shows every CRD account only to these.
             'canOpenReport' => $request->user()->can('order_database.view_all'),
         ]);
+    }
+
+    /**
+     * Products tab: main vs upsell for the dates shown, and for the days, weeks or months around them, from the
+     * Presentation Board's Top products figures split by UpsellBreakdown. Null before its first snapshot or outside its
+     * year.
+     *
+     * @return array{split: array<string, mixed>, products: list<array<string, mixed>>, others: ?array<string, mixed>, slots: list<array<string, mixed>>, unit: string}|null
+     */
+    private function upsell(PresentationBoard $board, string $period, CarbonImmutable $from, CarbonImmutable $to): ?array
+    {
+        $key = "product-performance.upsell.{$period}.{$from->toDateString()}.{$to->toDateString()}";
+
+        return Cache::remember($key, self::UPSELL_CACHE_SECONDS, function () use ($board, $period, $from, $to) {
+            $snapshot = $board->snapshot();
+            $first = $snapshot ? array_key_first($snapshot['days']) : null;
+            if (! $snapshot || $to->toDateString() < $first || $from->toDateString() > $snapshot['today']) {
+                return null;
+            }
+
+            $tsdNames = Product::where('is_tsd', true)->pluck('name')->all();
+            $top = $board->products($snapshot, $from->toDateString(), $to->toDateString());
+            ['unit' => $unit, 'slots' => $slots] = $this->upsellSlots($period, $from, $to);
+            $slots = collect($slots)
+                ->filter(fn (array $slot) => $slot['to'] >= $first && $slot['from'] <= $snapshot['today'])
+                ->map(fn (array $slot) => [
+                    ...$slot,
+                    ...collect(UpsellBreakdown::totals($board->products($snapshot, $slot['from'], $slot['to']), $tsdNames))->except('tsd_products')->all(),
+                    'partial' => $slot['to'] > $snapshot['today'],
+                ])
+                ->values()->all();
+
+            return [
+                'split' => UpsellBreakdown::totals($top, $tsdNames),
+                'products' => UpsellBreakdown::listed($top['products'], $tsdNames),
+                'others' => collect($top['products'])->firstWhere('name', PresentationBoard::OTHERS),
+                'slots' => $slots,
+                'unit' => $unit,
+            ];
+        });
+    }
+
+    /**
+     * The bars of main vs upsell: a day shows the 14 days up to it, a week the 8 weeks up to it, a month the 6 months up
+     * to it; the last 3 months and a range show their own days, weeks or months by length. current = the dates shown.
+     *
+     * @return array{unit: string, slots: list<array{from: string, to: string, label: string, title: string, current: bool}>}
+     */
+    private function upsellSlots(string $period, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $days = $from->diffInDays($to) + 1;
+        $unit = match ($period) {
+            'day', 'week', 'month' => $period,
+            default => $days <= 31 ? 'day' : ($days <= 112 ? 'week' : 'month'),
+        };
+        $starts = match (true) {
+            $period === 'day' => collect(range(13, 0))->map(fn (int $back) => $from->subDays($back)),
+            $period === 'week' => collect(range(7, 0))->map(fn (int $back) => $from->subWeeks($back)),
+            $period === 'month' => collect(range(5, 0))->map(fn (int $back) => $from->startOfMonth()->subMonths($back)),
+            default => collect(CarbonPeriod::create(match ($unit) {
+                'day' => $from,
+                'week' => $from->startOfWeek(),
+                default => $from->startOfMonth(),
+            }, "1 {$unit}", $to))->map(fn ($start) => CarbonImmutable::parse($start)),
+        };
+        $inRange = ! in_array($period, ['day', 'week', 'month'], true);
+
+        return ['unit' => $unit, 'slots' => $starts->map(function (CarbonImmutable $start) use ($unit, $from, $to, $inRange) {
+            $end = match ($unit) {
+                'day' => $start,
+                'week' => $start->addDays(6),
+                default => $start->endOfMonth(),
+            };
+            // A range's first and last week or month keep to its days.
+            [$start, $end] = $inRange ? [$start->max($from), $end->min($to)] : [$start, $end];
+
+            return [
+                'from' => $start->toDateString(),
+                'to' => $end->toDateString(),
+                'label' => $start->format($unit === 'month' ? 'M' : 'M j'),
+                'title' => match ($unit) {
+                    'day' => $start->format('D, M j, Y'),
+                    'week' => OrderPeriod::label($start, $end),
+                    default => $start->format('F Y'),
+                },
+                'current' => ! $inRange && $start->equalTo($from),
+            ];
+        })->values()->all()];
     }
 
     /**

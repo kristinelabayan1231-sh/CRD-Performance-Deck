@@ -582,8 +582,26 @@ class PresentationBoardTest extends TestCase
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
             ->assertOk()
             ->assertSee('+₱500 upsold')
-            ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '50.0%'])
-            ->assertSee("Value = the upsell's Pancake price. % of sales = value ÷ Sinuxyl sales (₱1,000).", false);
+            // Main % and Upsold % split everything on Sinuxyl's orders: 1,000 + 500.
+            ->assertSeeInOrder(['66.7% main', '33.3% upsold'])
+            ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '33.3%'])
+            ->assertSee("Value = the upsell's Pancake price. % = value ÷ everything on Sinuxyl orders (₱1,500).", false);
+    }
+
+    public function test_a_tsd_product_counts_as_upsell_in_its_own_row_also_bought_alone(): void
+    {
+        Product::create(['name' => 'Haplunas', 'keywords' => 'Haplunas', 'consumption_days' => 30, 'srp' => 500, 'is_tsd' => true]);
+        $this->order('0971', '2026-08-03', ['Sinuxyl' => 1]);
+        // Bought with no main product: still an upsell.
+        $this->order('0972', '2026-08-04', ['Haplunas' => 1], total: 500);
+        app(PresentationBoard::class)->refresh();
+
+        $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
+            ->assertOk()
+            ->assertSeeInOrder(['Sales breakdown', 'Main product', '₱1,000', '66.7%', 'Upsell', '₱500', '33.3%', 'TSD sold alone', '₱500', 'Total', '₱1,500', '100%'])
+            // Listed in the TSD row, not ranked with the products.
+            ->assertSeeInOrder(['data-product-rows', 'Sinuxyl', 'TSD sold alone', 'Haplunas'], false)
+            ->assertSee('0.0% main');
     }
 
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void

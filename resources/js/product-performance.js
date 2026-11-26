@@ -3,6 +3,7 @@
 export function initProductPerformance() {
     initSlider();
     initTrend();
+    initUpsell();
     initSwitch('[data-pp-rank-by]', 'ppRankBy', (by) => {
         document.querySelectorAll('[data-pp-ranking]').forEach((body) => (body.hidden = body.dataset.ppRanking !== by));
     });
@@ -433,4 +434,62 @@ function initSlider() {
     panels.forEach((panel) => resized.observe(panel));
 
     go(0);
+}
+
+/**
+ * Main vs upsell (Products tab): the headline, a bar or the From upsell tile opens the breakdown popup with that one's
+ * figures (worked out in the page), and the product list sorts by sales or by upsold %, with Others after the products
+ * and TSD sold alone last by sales, first by upsold %.
+ */
+function initUpsell() {
+    const dialog = document.querySelector('[data-pp-upsell-dialog]');
+    if (dialog) {
+        const open = (figures) => {
+            dialog.querySelectorAll('[data-f]').forEach((field) => (field.textContent = figures[field.dataset.f] ?? ''));
+            dialog.querySelectorAll('[data-w]').forEach((part) => (part.style.width = `${figures.widths[Number(part.dataset.w)]}%`));
+            dialog.showModal();
+        };
+        document.querySelectorAll('[data-pp-upsell-open]').forEach((button) => {
+            button.addEventListener('click', () => open(JSON.parse(button.dataset.ppUpsell)));
+        });
+        // The tile opens the dates shown, the same as the headline.
+        document.querySelector('[data-pp-upsell-open-current]')?.addEventListener('click', () => {
+            document.querySelector('[data-pp-upsell-open]')?.click();
+        });
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
+        });
+    }
+
+    const list = document.querySelector('[data-pp-upsell-list]');
+    const rows = list?.querySelector('[data-pp-upsell-rows]');
+    if (!rows) return;
+
+    const buttons = list.querySelectorAll('[data-pp-upsell-sort]');
+    buttons.forEach((button) => button.addEventListener('click', () => {
+        const by = button.dataset.ppUpsellSort;
+        buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        list.dataset.sort = by;
+
+        [...rows.querySelectorAll('[data-pp-upsell-row]')]
+            .sort((a, b) => (Number(b.dataset[by]) - Number(a.dataset[by])) || (Number(b.dataset.sales) - Number(a.dataset.sales)))
+            .forEach((row, index) => {
+                const rank = row.querySelector('[data-pp-upsell-rank]');
+                rank.textContent = index + 1;
+                const top = index < 3;
+                rank.classList.toggle('bg-brand-600', top);
+                rank.classList.toggle('text-white', top);
+                rank.classList.toggle('bg-brand-50', !top);
+                rank.classList.toggle('text-brand-700', !top);
+                rows.append(row);
+            });
+
+        const others = rows.querySelector('[data-pp-upsell-others]');
+        if (others) rows.append(others);
+        const tsd = rows.querySelector('[data-pp-upsell-tsd]');
+        if (tsd) {
+            if (by === 'upsell') rows.prepend(tsd);
+            else rows.append(tsd);
+        }
+    }));
 }
