@@ -822,6 +822,21 @@ class SmsRemindersTest extends TestCase
         $this->assertSame($this->mika->id, $template->user_id);
     }
 
+    public function test_a_template_saves_for_a_product_but_never_for_a_tsd_add_on(): void
+    {
+        $supervisor = $this->supervisor();
+
+        $this->actingAs($supervisor)->post(route('sms-reminders.templates.store', ['cra' => $this->mika->id]), [
+            'name' => 'Clear Sight', 'purpose' => SmsTemplate::REMINDER, 'product_id' => $this->clearSight->id, 'body' => 'Hi {first_name}!',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame($this->clearSight->id, SmsTemplate::firstWhere('name', 'Clear Sight')->product_id);
+
+        $this->actingAs($supervisor)->post(route('sms-reminders.templates.store', ['cra' => $this->mika->id]), [
+            'name' => 'Haplunas', 'purpose' => SmsTemplate::REMINDER, 'product_id' => Product::firstWhere('name', 'Haplunas')->id, 'body' => 'Hi!',
+        ])->assertSessionHasErrors('product_id');
+    }
+
     public function test_a_cras_templates_are_her_own_and_saving_never_changes_another_cras(): void
     {
         $annas = SmsTemplate::create(['user_id' => $this->anna->id, 'name' => 'Annas spiel', 'body' => 'Hi from Anna.']);
