@@ -112,7 +112,7 @@ class SmsTemplateController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:100'],
             'purpose' => ['required', Rule::in(array_keys(SmsTemplate::PURPOSES))],
-            'product_id' => ['nullable', 'integer', Rule::exists('products', 'id')->where('is_tsd', false)],
+            'product_id' => ['nullable', 'integer', Rule::exists('products', 'id')->where(fn ($query) => $query->where('is_tsd', false))],
             'customer_type' => ['nullable', Rule::in(array_keys(config('sms_reminders.customer_types')))],
             'body' => ['required', 'string', 'max:480'],
             'is_active' => ['sometimes', 'boolean'],
