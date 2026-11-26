@@ -908,7 +908,7 @@ function initGreeting() {
     dialog.showModal();
 }
 
-// Product Performance → Segmentation Summary: a Customer's Feedback choice's slice or legend row flips the card to why
+// Segmentation → Segmentation Summary: a Customer's Feedback choice's slice or legend row flips the card to why
 // customers gave it; a reason's row shows only its notes; "Back to chart" flips it back.
 function initFlip() {
     const inner = document.querySelector('[data-flip-inner]');

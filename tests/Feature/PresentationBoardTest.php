@@ -601,7 +601,9 @@ class PresentationBoardTest extends TestCase
             ->assertSeeInOrder(['Sales breakdown', 'Main product', '₱1,000', '66.7%', 'Upsell', '₱500', '33.3%', 'TSD sold alone', '₱500', 'Total', '₱1,500', '100%'])
             // Listed in the TSD row, not ranked with the products.
             ->assertSeeInOrder(['data-product-rows', 'Sinuxyl', 'TSD sold alone', 'Haplunas'], false)
-            ->assertSee('0.0% main');
+            ->assertSee('0.0% main')
+            // By upsell %, the donut is main vs upsell and the legend ranks the products by upsell %.
+            ->assertSeeInOrder(['Donut: main vs upsell of these dates; the legend ranks the products by upsell %', '33.3%', 'Sinuxyl', '0.0%']);
     }
 
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void

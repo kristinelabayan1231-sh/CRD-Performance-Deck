@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
- * Product Performance → Segmentation Summary: the tracker's leads for a period added up (catered, converted,
+ * Segmentation → Segmentation Summary: the tracker's leads for a period added up (catered, converted,
  * Customer's Feedback, statuses, tags, contact hours, per CRA and per product).
  *
  * Catered = a status, a date of contact or marked catered. Converted = Repeat Purchase Yes, or No with

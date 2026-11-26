@@ -196,8 +196,7 @@ class ProductPerformanceTest extends TestCase
         $this->actingAs($this->owner)->get(route('product-performance.tsd', $dates))
             ->assertOk()
             ->assertSee('href="'.e($testingUrl).'"', false)
-            ->assertSee('action="'.route('product-performance.tsd').'"', false)
-            ->assertSee('href="'.route('product-performance.segmentation-summary').'"', false);
+            ->assertSee('action="'.route('product-performance.tsd').'"', false);
     }
 
     public function test_trend_groups_sales_orders_and_rts_by_day_week_and_month_from_the_first_order(): void
@@ -363,7 +362,15 @@ class ProductPerformanceTest extends TestCase
             // The popup's figures: ₱500 upsold on main products and ₱500 TSD, 25% each.
             ->assertSee('"upsold":"\\u20b1500","upsoldShare":"25.0%","tsd":"\\u20b1500","tsdShare":"25.0%"', false)
             // Sinuxyl: 1,000 of the 1,500 on its orders is main.
-            ->assertSeeInOrder(['Products · main vs upsell', 'Sinuxyl', '66.7% main', '33.3% upsold', 'Lumicare', 'TSD sold alone', 'Haplunas', '₱500']);
+            // Side by side: by sales (TSD sold alone last), then by upsell % (TSD sold alone first). Sinuxyl: 1,000 of
+            // the 1,500 on its orders is main; new, as nothing sold in the period before.
+            ->assertSeeInOrder([
+                'Products · by sales vs by upsell %',
+                'data-pp-upsell-column="sales"', 'Sinuxyl', 'New', '66.7%', 'main', '33.3%', 'upsold', 'Lumicare', 'TSD sold alone', 'Haplunas',
+                'data-pp-upsell-column="upsell"', 'TSD sold alone', 'Sinuxyl', '33.3%',
+            ], false)
+            // The Ranking slide keeps only Gross sales and RTS.
+            ->assertDontSee('data-pp-rank-by="upsell"', false);
     }
 
     public function test_main_vs_upsell_is_only_on_the_products_tab_and_waits_for_the_boards_snapshot(): void

@@ -54,9 +54,9 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'Sinuxyl');
         $this->lead($this->bea, 'Sinuxyl', [], '2026-09-20'); // other month
 
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index'))
             ->assertOk()
-            ->assertSeeInOrder(['Products', 'Segmentation Summary'])
+            ->assertSeeInOrder(['Segmentation Tracker', 'Segmentation Summary'])
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 8 && $s['catered'] === 7 && $s['pending'] === 1 && $s['converted'] === 1
                 && $s['feedback_picks']->sortKeys()->all() === ['blocked' => 1, 'no_verbal_conv' => 4, 'purchased' => 1, 'still_have_stocks' => 2]
                 && $s['feedback_picks_by_product']['Sinuxyl']->sortKeys()->all() === ['blocked' => 1, 'still_have_stocks' => 1]
@@ -78,7 +78,7 @@ class SegmentationSummaryTest extends TestCase
             ->assertDontSee('Insights');
 
         // Filters narrow it: one CRA and one product.
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id, 'product' => 'Sinuxyl']))
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index', ['cra' => $this->bea->id, 'product' => 'Sinuxyl']))
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 3 && $s['converted'] === 0);
     }
 
@@ -101,7 +101,7 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'Sinuxyl', ['status' => 'active', 'feedbacks' => ['no_budget', 'no_verbal_conv'], 'notes' => 'wrong number']);
 
         $noVerbal = fn (array $s) => $s['feedback_reasons']['no_verbal_conv'];
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk()
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index'))->assertOk()
             ->assertViewHas('summary', fn (array $s) => collect($noVerbal($s)['reasons'])->pluck('total', 'key')->sortKeys()->all() === [
                 'busy' => 2, 'cbr' => 1, 'ended' => 2, 'no_note' => 1, 'other' => 2, 'pjr' => 1, 'status_inactive' => 1, 'unattended' => 1, 'wrong_number' => 1,
             ] && collect($noVerbal($s)['reasons'])->firstWhere('key', 'status_inactive')['label'] === 'Inactive'
@@ -111,7 +111,7 @@ class SegmentationSummaryTest extends TestCase
             ->assertSeeInOrder(['Alice', 'Oct 3 · PJR/Inactive/CBR/Drop call', '“cx <mark', 'ended</mark> the call”'], false);
 
         // The filters apply: Bea's leads only.
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id]))
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index', ['cra' => $this->bea->id]))
             ->assertViewHas('summary', fn (array $s) => count($noVerbal($s)['notes']) === 10);
     }
 
@@ -125,7 +125,7 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'ineffective']);
         $this->lead($this->bea, 'CanPro', ['status' => 'active', 'feedback' => 'purchased', 'notes' => 'may stock pa pero nag order']);
 
-        $response = $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk();
+        $response = $this->actingAs($this->owner)->get(route('segmentation-summary.index'))->assertOk();
         $reasons = $response->viewData('summary')['feedback_reasons'];
         $totals = fn (string $choice) => collect($reasons[$choice]['reasons'])->pluck('total', 'key')->sortKeys()->all();
 
@@ -142,15 +142,21 @@ class SegmentationSummaryTest extends TestCase
             ->assertSee('“no <mark class="rounded-sm bg-amber-100 text-inherit">budget</mark>/ may <mark class="rounded-sm bg-amber-100 text-inherit">stock</mark> pa”', false);
     }
 
-    public function test_summary_moved_from_the_tracker_to_product_performance(): void
+    public function test_summary_is_a_segmentation_sub_module_and_old_links_land_there(): void
     {
-        $this->actingAs($this->owner)->get('/segmentation/overview')->assertRedirect('/product-performance/segmentation-summary');
-        $this->actingAs($this->owner)->get(route('segmentation.index'))->assertOk()
-            ->assertSee('Weekly Segmentation')->assertDontSee('href="'.url('/segmentation/overview').'"', false);
+        $this->actingAs($this->owner)->get('/segmentation/overview')->assertRedirect('/segmentation-summary');
+        // Product Performance's old tab keeps its filters.
+        $this->actingAs($this->owner)->get('/product-performance/segmentation-summary?month=2026-09')
+            ->assertRedirect(route('segmentation-summary.index', ['month' => '2026-09']));
+        $this->actingAs($this->owner)->get(route('product-performance.index'))->assertOk()
+            ->assertDontSee('href="'.url('/product-performance/segmentation-summary').'"', false);
 
-        // Supervisors open it from Product Performance.
+        // Supervisors open it from the sidebar's Segmentation group; CRAs (no Product Performance) still can't.
         $supervisor = User::create(['email' => 'sup@example.com', 'role_id' => Role::firstWhere('slug', Role::CRA_SUPERVISOR)->id, 'is_active' => true]);
-        $this->actingAs($supervisor)->get(route('product-performance.segmentation-summary'))->assertOk();
+        $this->actingAs($supervisor)->get(route('segmentation.index'))->assertOk()
+            ->assertSee('href="'.route('segmentation-summary.index').'"', false);
+        $this->actingAs($supervisor)->get(route('segmentation-summary.index'))->assertOk();
+        $this->actingAs($this->alice)->get(route('segmentation-summary.index'))->assertForbidden();
     }
 
     public function test_with_a_working_date_it_follows_the_real_date_and_shows_the_leads_handled_on_it(): void
@@ -161,12 +167,12 @@ class SegmentationSummaryTest extends TestCase
         $this->lead($this->alice, 'CanPro', [], '2026-09-05');
         $this->lead($this->alice, 'CanPro', [], '2026-10-03');  // lead day not worked yet
 
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary'))->assertOk()
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index'))->assertOk()
             ->assertViewHas('filters', fn (array $filters) => $filters['month'] === '2026-10')
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 2)
             ->assertSeeText('Oct 1–Oct 5, 2026 (lead days Sep 1–5)');
 
-        $this->actingAs($this->owner)->get(route('product-performance.segmentation-summary', ['date' => '2026-10-05']))
+        $this->actingAs($this->owner)->get(route('segmentation-summary.index', ['date' => '2026-10-05']))
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 1);
     }
 
@@ -178,7 +184,7 @@ class SegmentationSummaryTest extends TestCase
 
         // Product Performance access without the tracker's view-all.
         $this->alice->role->update(['permissions' => [...$this->alice->role->permissions, 'product_performance.view']]);
-        $this->actingAs($this->alice->fresh())->get(route('product-performance.segmentation-summary', ['cra' => $this->bea->id]))
+        $this->actingAs($this->alice->fresh())->get(route('segmentation-summary.index', ['cra' => $this->bea->id]))
             ->assertOk()
             ->assertViewHas('summary', fn (array $s) => $s['leads'] === 1)
             ->assertDontSee('All CRAs');
