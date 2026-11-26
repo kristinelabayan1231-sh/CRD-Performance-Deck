@@ -52,7 +52,9 @@ export function initPresentationBoard() {
 }
 
 /**
- * Top products: sort by sales or by upsell % (Others stays last), and a product with nothing to show doesn't open.
+ * Top products: sort by sales or by upsold % (the section's data-sort shows that view's bars, pills and lines; Others
+ * stays after the products, TSD sold alone goes last by sales and first by upsold %), a product with nothing to show
+ * doesn't open, and Breakdown opens the main vs upsell popup.
  */
 function initProductSort(board) {
     const rows = board.querySelector('[data-product-rows]');
@@ -60,6 +62,15 @@ function initProductSort(board) {
     if (!rows) {
         return;
     }
+
+    const dialog = board.querySelector('[data-upsell-dialog]');
+    board.querySelector('[data-upsell-open]')?.addEventListener('click', () => dialog?.showModal());
+    // A click on the backdrop closes it, like Esc.
+    dialog?.addEventListener('click', (event) => {
+        if (event.target === dialog) dialog.close();
+    });
+
+    const section = board.querySelector('[data-products-section]');
 
     rows.querySelectorAll('details[data-empty] > summary').forEach((summary) => {
         summary.addEventListener('click', (event) => event.preventDefault());
@@ -73,6 +84,7 @@ function initProductSort(board) {
 
         // The pressed look comes from the board's stylesheet ([data-product-sort][aria-pressed]), so it follows the theme.
         buttons.forEach((other) => other.setAttribute('aria-pressed', String(other === button)));
+        if (section) section.dataset.sort = by;
 
         [...rows.querySelectorAll('[data-product]')]
             .sort((a, b) => (Number(b.dataset[by]) - Number(a.dataset[by])) || (Number(b.dataset.sales) - Number(a.dataset.sales)))
@@ -82,6 +94,12 @@ function initProductSort(board) {
                 rank.dataset.place = index + 1;
                 rows.insertBefore(row, others);
             });
+
+        const tsd = rows.querySelector('[data-tsd]');
+        if (tsd) {
+            if (by === 'upsell') rows.prepend(tsd);
+            else rows.append(tsd);
+        }
     }));
 }
 

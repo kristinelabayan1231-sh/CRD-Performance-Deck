@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Product;
 use App\Models\User;
 use App\Services\ExclusiveLeads;
 use App\Services\PancakePageBackfill;
 use App\Services\PresentationBoard;
 use App\Services\PresentationBoardCras;
+use App\Support\UpsellBreakdown;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -51,6 +53,7 @@ class PresentationBoardController extends Controller
         $monthBefore = CarbonImmutable::parse($from.'-01')->subMonth()->format('Y-m');
         $monthBefore = isset($snapshot['months'][$monthBefore]) ? $monthBefore : null;
         $compareKeys = $monthBefore ? [$monthBefore, ...$monthKeys] : $monthKeys;
+        $tsdNames = Product::where('is_tsd', true)->pluck('name')->all();
 
         return view('presentation-board.index', [
             ...$figures,
@@ -61,6 +64,8 @@ class PresentationBoardController extends Controller
             'products' => $topProducts['products'],
             'others' => $topProducts['others'],
             'topProducts' => [...$topProducts, 'first_day' => $firstDay, 'last_day' => $lastDay, 'picked' => isset($filters['products_from']) || isset($filters['products_to'])],
+            'tsdNames' => $tsdNames,
+            'upsellSplit' => UpsellBreakdown::totals($topProducts, $tsdNames),
             'craPerformance' => $craSnapshot ? $cras->range($craSnapshot, $from, $to) : null,
             // The month range's products, as the other figures.
             'insights' => $board->insights($figures['months'], $figures['totals'], $figures['products']),
@@ -79,12 +84,12 @@ class PresentationBoardController extends Controller
      *
      * @param  array<string, mixed>  $snapshot
      * @param  list<string>  $months
-     * @return array<string, array<string, array{sales: float, orders: int}>> month => product name => figures
+     * @return array<string, array<string, array{sales: float, orders: int, upsold: float}>> month => product name => figures
      */
     private function productMonths(PresentationBoard $board, array $snapshot, array $months): array
     {
         return collect($months)->mapWithKeys(fn (string $month) => [$month => collect($board->products($snapshot, $month.'-01', CarbonImmutable::parse($month.'-01')->endOfMonth()->toDateString())['products'])
-            ->mapWithKeys(fn (array $product) => [$product['name'] => ['sales' => (float) $product['sales'], 'orders' => (int) $product['orders']]])
+            ->mapWithKeys(fn (array $product) => [$product['name'] => ['sales' => (float) $product['sales'], 'orders' => (int) $product['orders'], 'upsold' => (float) $product['upsold_value']]])
             ->all()])->all();
     }
 

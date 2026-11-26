@@ -151,7 +151,7 @@
             $tile = 'grid gap-0.5 rounded-xl bg-white px-4 py-3.5 shadow-sm';
             $tileLabel = 'text-[0.6875rem] font-semibold tracking-wide text-muted uppercase';
         @endphp
-        <section class="grid grid-cols-2 gap-3 tabular-nums lg:grid-cols-4" aria-label="Summary">
+        <section @class(['grid grid-cols-2 gap-3 tabular-nums', 'lg:grid-cols-4' => ! $upsell, 'lg:grid-cols-5' => $upsell]) aria-label="Summary">
             <div class="{{ $tile }}">
                 <p class="{{ $tileLabel }}">Gross sales</p>
                 <p class="text-2xl font-bold">{{ $peso($total['sales']) }}</p>
@@ -178,7 +178,19 @@
                 <p class="text-2xl font-bold">{{ $percent($rts['rate']) }}</p>
                 <p class="text-xs text-muted">{{ number_format($rts['rts']) }} returned of {{ number_format($rts['finished']) }} delivered or returned</p>
             </div>
+            @if ($upsell)
+                {{-- Opens the main vs upsell popup (_upsell) --}}
+                <button type="button" data-pp-upsell-open-current aria-haspopup="dialog" class="{{ $tile }} border border-(--pp-upsell) text-left hover:bg-(--pp-upsell-bg)">
+                    <span class="{{ $tileLabel }}">From upsell</span>
+                    <span class="text-2xl font-bold">{{ $upsell['split']['total'] > 0 ? number_format($upsell['split']['upsell'] / $upsell['split']['total'] * 100, 1).'%' : '—' }}</span>
+                    <span class="text-xs font-semibold text-(--pp-upsell-text)">{{ $peso($upsell['split']['upsell']) }} upsell · see breakdown ›</span>
+                </button>
+            @endif
         </section>
+
+        @if ($upsell)
+            @include('product-performance._upsell')
+        @endif
 
         {{-- The past days, weeks and months as lines, for presenting; loaded after the page opens (resources/js/product-performance.js) --}}
         @php
