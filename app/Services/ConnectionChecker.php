@@ -48,19 +48,19 @@ class ConnectionChecker
     }
 
     /**
-     * Orders from the POS with each credential that is set: the access token is what syncs use when present.
+     * Orders from the POS with each credential that is set: the API key is what syncs use when present.
      *
      * @return list<array{name: string, ok: bool, details: string, seconds: float}>
      */
     private function pancakePos(): array
     {
         $credentials = array_filter([
-            'access token (used for syncs)' => ['access_token' => config('services.pancake.access_token')],
-            'API key'.(config('services.pancake.access_token') ? ' (fallback)' : ' (used for syncs)') => ['api_key' => config('services.pancake.key')],
+            'API key (used for syncs)' => ['api_key' => config('services.pancake.key')],
+            'access token'.(config('services.pancake.key') ? ' (fallback)' : ' (used for syncs)') => ['access_token' => config('services.pancake.access_token')],
         ], fn (array $auth) => reset($auth));
 
         if (empty($credentials)) {
-            return [['name' => 'Pancake POS orders', 'ok' => false, 'details' => 'Neither PANCAKE_ACCESS_TOKEN nor PANCAKE_API_KEY is set', 'seconds' => 0.0]];
+            return [['name' => 'Pancake POS orders', 'ok' => false, 'details' => 'Neither PANCAKE_API_KEY nor PANCAKE_ACCESS_TOKEN is set', 'seconds' => 0.0]];
         }
 
         if (! config('services.pancake.shop_id')) {

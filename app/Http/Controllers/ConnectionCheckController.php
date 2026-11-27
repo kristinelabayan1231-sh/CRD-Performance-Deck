@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ConnectionChecker;
+use App\Services\PancakeClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
@@ -15,7 +16,7 @@ class ConnectionCheckController extends Controller
             'results' => session('connection_results'),
             // Sessions are stored as JSON, so the time comes back as a string.
             'checkedAt' => session('connection_checked_at') ? CarbonImmutable::parse(session('connection_checked_at')) : null,
-            'usesAccessToken' => (bool) config('services.pancake.access_token'),
+            'usesAccessToken' => array_key_exists('access_token', PancakeClient::posAuth()),
         ]);
     }
 

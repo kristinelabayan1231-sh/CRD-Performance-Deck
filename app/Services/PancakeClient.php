@@ -350,6 +350,19 @@ class PancakeClient
     }
 
     /**
+     * The POS credential: the shop's API key, else a user access token. A user token stops working when that user
+     * logs out everywhere or changes their password; the shop's key doesn't, so it comes first.
+     *
+     * @return array{api_key: ?string}|array{access_token: ?string}
+     */
+    public static function posAuth(): array
+    {
+        return config('services.pancake.key')
+            ? ['api_key' => config('services.pancake.key')]
+            : ['access_token' => config('services.pancake.access_token')];
+    }
+
+    /**
      * The POS orders URL with the shop's credentials, $query and the $fields to return.
      *
      * @param  array<string, mixed>  $query
@@ -358,12 +371,10 @@ class PancakeClient
     private function posOrdersUrl(array $query, array $fields): string
     {
         $shop = config('services.pancake.shop_id');
-        $auth = config('services.pancake.access_token')
-            ? ['access_token' => config('services.pancake.access_token')]
-            : ['api_key' => config('services.pancake.key')];
+        $auth = self::posAuth();
 
         if (! reset($auth) || ! $shop) {
-            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set.');
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_API_KEY or PANCAKE_ACCESS_TOKEN must be set.');
         }
 
         return rtrim(config('services.pancake.pos_url'), '/')."/shops/{$shop}/orders?".http_build_query([...$auth, ...$query])
@@ -441,9 +452,9 @@ class PancakeClient
                     continue;
                 }
 
-                // The search also matches phone numbers and notes; keep the order with this number. With an
-                // access token the number is display_id; with the API key there is no display_id and id
-                // (= system_id) is the number.
+                // The search also matches phone numbers and notes; keep the order with this number. With the
+                // API key there is no display_id and id (= system_id) is the number; with an access token the
+                // number is display_id.
                 $order = collect($response->json('data') ?? [])
                     ->map(fn (array $order) => [...$order, 'display_id' => $order['display_id'] ?? $order['system_id'] ?? $order['id'] ?? null])
                     ->first(fn (array $order) => (string) ($order['display_id'] ?? '') === $number);
@@ -583,12 +594,10 @@ class PancakeClient
     public function orderNumbersOnPage(string $pageId, CarbonImmutable $month): array
     {
         $shop = config('services.pancake.shop_id');
-        $auth = config('services.pancake.access_token')
-            ? ['access_token' => config('services.pancake.access_token')]
-            : ['api_key' => config('services.pancake.key')];
+        $auth = self::posAuth();
 
         if (! reset($auth) || ! $shop) {
-            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set in .env.');
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_API_KEY or PANCAKE_ACCESS_TOKEN must be set in .env.');
         }
 
         $start = CarbonImmutable::parse($month->format('Y-m').'-01', config('segmentation.timezone'));
@@ -636,13 +645,10 @@ class PancakeClient
     public function orders(CarbonImmutable $day, ?CarbonImmutable $since = null): array
     {
         $shop = config('services.pancake.shop_id');
-        // A user access token works when the shop's API keys are refused; otherwise the API key.
-        $auth = config('services.pancake.access_token')
-            ? ['access_token' => config('services.pancake.access_token')]
-            : ['api_key' => config('services.pancake.key')];
+        $auth = self::posAuth();
 
         if (! reset($auth) || ! $shop) {
-            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_ACCESS_TOKEN or PANCAKE_API_KEY must be set in .env.');
+            throw new RuntimeException('PANCAKE_SHOP_ID and either PANCAKE_API_KEY or PANCAKE_ACCESS_TOKEN must be set in .env.');
         }
 
         $start = CarbonImmutable::parse($day->toDateString(), config('segmentation.timezone'));
