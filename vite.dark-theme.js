@@ -1,7 +1,7 @@
 // Vite plugin: writes build/assets/theme-dark.css, the dark theme, from the app's own compiled CSS (Tailwind utilities)
 // and the colours written straight on the Blade views' SVG (chart grids, labels). Light surfaces become dark tints of
-// the same hue on a purple-slate base, dark text becomes light, saturated fills (buttons, tiles) stay, yellows go
-// slate. Loaded after app.css; applies under <html data-theme="dark"> (resources/js/theme.js).
+// the same hue on a neutral near-black base, dark text becomes light, saturated fills (tiles) stay, black buttons turn
+// gold, yellow tints go warm dark gold. Loaded after app.css; applies under <html data-theme="dark"> (resources/js/theme.js).
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -20,14 +20,18 @@ function bladeMarkup(dir = VIEWS) {
 
 const BASE = `/* CRD Deck dark theme, generated from the app's colour utilities (vite.dark-theme.js). */
 html[data-theme="dark"]{color-scheme:dark}
-html[data-theme="dark"] body{background:#211f2d;color:#f1eef8}
-html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color:#f1eef8}
-html[data-theme="dark"] dialog{background:#2d2a3e;color:#f1eef8}
+html[data-theme="dark"] body{background:#0f0f0f;color:#f4efe3}
+html[data-theme="dark"] input,html[data-theme="dark"] select,html[data-theme="dark"] textarea{color:#f4efe3}
+html[data-theme="dark"] dialog{background:#1a1a1a;color:#f4efe3}
 /* Row and list separators (divide-*). */
-html[data-theme="dark"] [class*="divide-"] > :not(:last-child){border-color:#433e5a}
+html[data-theme="dark"] [class*="divide-"] > :not(:last-child){border-color:#2c2c2c}
 /* Raised cards: a soft dark shadow and a faint top light, like the light theme's white cards on the canvas. */
-html[data-theme="dark"] .shadow-sm,html[data-theme="dark"] .shadow{box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 18px rgba(8,4,20,.35)!important}
-html[data-theme="dark"] .shadow-xl,html[data-theme="dark"] .shadow-2xl,html[data-theme="dark"] .shadow-lg{box-shadow:0 18px 40px rgba(8,4,20,.55)!important}
+html[data-theme="dark"] .shadow-sm,html[data-theme="dark"] .shadow{box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 6px 18px rgba(0,0,0,.45)!important}
+html[data-theme="dark"] .shadow-xl,html[data-theme="dark"] .shadow-2xl,html[data-theme="dark"] .shadow-lg{box-shadow:0 18px 40px rgba(0,0,0,.6)!important}
+/* Black buttons (bg-brand-600) turn gold with black text, like the light theme's black on the canvas. */
+html[data-theme="dark"] .bg-brand-600,html[data-theme="dark"] .aria-pressed\\:bg-brand-600[aria-pressed="true"],html[data-theme="dark"] .peer:checked ~ .peer-checked\\:bg-brand-600{background-color:#ffc21a!important;color:#111111!important}
+html[data-theme="dark"] .bg-brand-600 *,html[data-theme="dark"] .aria-pressed\\:bg-brand-600[aria-pressed="true"] *{color:#111111}
+html[data-theme="dark"] .hover\\:bg-brand-700:hover,html[data-theme="dark"] .bg-brand-700{background-color:#e0a800!important;color:#111111!important}
 `;
 
 /**
@@ -89,8 +93,8 @@ export function darkThemeCss(css, markup) {
     }
 
     // Named surfaces of the deck, picked by hand.
-    const SURFACE = { white: '#2d2a3e', canvas: '#211f2d', 'brand-50': '#3a3157', 'brand-100': '#463a6c', 'brand-200': '#5a4a88', line: '#433e5a' };
-    const TEXT = { ink: '#f1eef8', muted: '#bdb6cf', 'brand-700': '#c39bff', 'brand-600': '#b98aff', 'teal-700': '#3fd1b9', 'coral-700': '#ff9a9d' };
+    const SURFACE = { white: '#1a1a1a', canvas: '#0f0f0f', 'brand-50': '#221d10', 'brand-100': '#2b2512', 'brand-200': '#3b3116', line: '#2c2c2c', ink: '#f4efe3' };
+    const TEXT = { ink: '#f4efe3', muted: '#b0b0ab', 'brand-700': '#ffd95c', 'brand-600': '#f4efe3', 'gold-text': '#ffd95c', 'teal-700': '#5eead4', 'coral-700': '#ff9a8a' };
     const withAlpha = (hex, a) => (a >= 0.999 ? hex : `color-mix(in oklab, ${hex} ${Math.round(a * 100)}%, transparent)`);
 
     // Yellows / ambers (note boxes, input boxes): olive in the dark, so they become a raised neutral slate instead.
@@ -98,24 +102,24 @@ export function darkThemeCss(css, markup) {
     function darkSurface(c) {
       if (c.name && SURFACE[c.name]) return withAlpha(SURFACE[c.name], c.alpha);
       if (lum(c.rgb) < 0.55) return null; // saturated or dark fill: keep
-      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#3a3652', c.alpha);
+      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#2b2512', c.alpha);
       const [h, s] = rgbToHsl(c.rgb);
       // Near-greys stay purple-slate like the panels; real tints keep their colour, a step lighter than the panel.
-      return withAlpha(s < 0.12 ? '#34304a' : hslToHex([h, Math.min(s, 0.6) * 0.75, 0.27]), c.alpha);
+      return withAlpha(s < 0.12 ? '#222222' : hslToHex([h, Math.min(s, 0.6) * 0.75, 0.2]), c.alpha);
     }
     function darkBorder(c) {
-      if (c.name && (c.name === 'line' || c.name === 'white')) return withAlpha('#433e5a', c.alpha);
+      if (c.name && (c.name === 'line' || c.name === 'white')) return withAlpha('#2c2c2c', c.alpha);
       if (c.name && SURFACE[c.name]) return withAlpha(SURFACE[c.name], c.alpha);
       // Yellow outlines (note boxes, input boxes) go slate too, however strong.
-      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#57516f', c.alpha);
+      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#5a4a1c', c.alpha);
       if (lum(c.rgb) < 0.5) return null;
       const [h, s] = rgbToHsl(c.rgb);
-      return withAlpha(s < 0.12 ? '#433e5a' : hslToHex([h, Math.min(s, 0.6) * 0.7, 0.38]), c.alpha);
+      return withAlpha(s < 0.12 ? '#333333' : hslToHex([h, Math.min(s, 0.6) * 0.7, 0.34]), c.alpha);
     }
     function darkText(c) {
       if (c.name && TEXT[c.name]) return withAlpha(TEXT[c.name], c.alpha);
       if (lum(c.rgb) > 0.3) return null; // already light
-      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#efe8d2', c.alpha);
+      if (isYellow(rgbToHsl(c.rgb))) return withAlpha('#ffd95c', c.alpha);
       const [h, s, l] = rgbToHsl(c.rgb);
       return withAlpha(hslToHex([h, s < 0.12 ? s : Math.min(s, 0.75), clamp(0.62 + (0.5 - Math.min(l, 0.5)) * 0.55, 0.62, 0.9)]), c.alpha);
     }
@@ -171,7 +175,7 @@ export function darkThemeCss(css, markup) {
         const [prop, hex] = key.split('|');
         const c = { rgb: hexToRgb(hex), alpha: 1 };
         // Near-grey light strokes/fills (chart grids, donut tracks) are lines: the dark theme's line colour.
-        const out = lum(c.rgb) > 0.6 ? (rgbToHsl(c.rgb)[1] < 0.35 ? '#4a4562' : darkBorder(c)) : darkText(c);
+        const out = lum(c.rgb) > 0.6 ? (rgbToHsl(c.rgb)[1] < 0.35 ? '#3a3a3a' : darkBorder(c)) : darkText(c);
         if (out) {
             lines.push(`html[data-theme="dark"] [${prop}="${hex}"]{${prop}:${out}}`);
         }

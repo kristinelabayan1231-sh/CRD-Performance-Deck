@@ -12,7 +12,7 @@
 <x-panel {{ $attributes }} title="Segmentation Tracker" icon="users" title-id="seg-dash-title">
     <x-slot:badges>
         {{-- Lead days (the tracker's working date, e.g. a month behind); the rest of the dashboard is by the real date. --}}
-        <span @class(['rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm', 'border border-[#e0b400]/60 bg-[#fff6d6] text-[#473821]' => \App\Support\WorkingDate::lagDays() > 0, 'bg-white text-brand-700' => \App\Support\WorkingDate::lagDays() === 0])
+        <span @class(['rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm', 'border border-brand-200 bg-brand-100 text-ink' => \App\Support\WorkingDate::lagDays() > 0, 'bg-white text-ink' => \App\Support\WorkingDate::lagDays() === 0])
               title="Leads by lead day. Sales and conversion elsewhere on the dashboard are by the real date.">
             Lead {{ str_contains($p['label'], '–') ? 'days' : 'day' }} {{ $p['label'] }}
         </span>
@@ -29,30 +29,29 @@
 
             {{-- KPI cards --}}
             @php($kpiIcons = ['<path stroke-linecap="round" stroke-linejoin="round" d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm13 9v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M20 6 9 17l-5-5"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6M10 20h.01M17 20h.01"/>', '<path stroke-linecap="round" stroke-linejoin="round" d="M12 2v20M4.9 4.9l14.2 14.2M2 12h20M4.9 19.1 19.1 4.9"/>'])
-            @php($kpiGradients = ['from-brand-600 to-brand-700', 'from-[#0e8f7c] to-[#0b7d6c]', 'from-[#1f8fb8] to-[#1a7fa6]', 'from-[#e05a5f] to-[#d1494e]'])
+            @php($kpiIcon = ['text-ink', 'text-teal-700', 'text-violet', 'text-coral-700'])
             <div class="grid grid-cols-2 gap-3 lg:col-span-3">
                 @foreach ($p['kpis'] as $i => $kpi)
-                    <div class="relative min-w-0 overflow-hidden rounded-xl bg-gradient-to-br {{ $kpiGradients[$i] }} p-3 text-white shadow-sm">
-                        <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
-                        <p class="relative flex items-center gap-1.5 text-xs font-medium text-white">
-                            <svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">{!! $kpiIcons[$i] !!}</svg>
+                    <div class="relative min-w-0 overflow-hidden rounded-2xl border border-line bg-white p-3 text-ink">
+                        <p class="relative flex items-center gap-1.5 text-xs font-medium text-muted">
+                            <svg class="size-4 shrink-0 {{ $kpiIcon[$i] }}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">{!! $kpiIcons[$i] !!}</svg>
                             <span class="truncate">{{ $kpi['label'] }}</span>
                         </p>
                         <p class="relative flex flex-wrap items-baseline gap-x-1.5">
                             @php($noPurchases = $kpi['label'] === 'Converted' && ($p['no_tracker_purchases'] ?? false))
-                            <span class="text-2xl font-bold tabular-nums">{{ $noPurchases ? '—' : $kpi['value'] }}</span>
+                            <span class="font-display text-2xl font-bold tabular-nums">{{ $noPurchases ? '—' : $kpi['value'] }}</span>
                             @if ($kpi['count'] && ! $noPurchases)
-                                <span class="text-sm font-semibold tabular-nums text-white/90" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>
+                                <span class="text-sm font-semibold tabular-nums text-muted" title="{{ $kpi['label'] }}: {{ $kpi['count'] }} leads">{{ $kpi['count'] }}</span>
                             @endif
                         </p>
                         @if ($noPurchases)
-                            <p class="relative mt-1 border-t border-white/30 pt-1 text-[0.625rem] leading-snug text-white/90">No tracker data</p>
+                            <p class="relative mt-1 border-t border-line pt-1 text-[0.625rem] leading-snug text-muted">No tracker data</p>
                         @elseif ($kpi['label'] === 'Converted')
                             {{-- The tiles above, added up: Converted = Retained + Repeat out of FSD + CRD leads --}}
                             @php($c = $p['counts'])
-                            <p class="relative mt-1 grid gap-0.5 border-t border-white/30 pt-1 text-[0.625rem] leading-snug text-white/90" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
-                                <span>Retained <span class="font-semibold text-white tabular-nums">{{ number_format($c['retained']) }}/{{ number_format($c['fsd']) }} · {{ number_format($p['retained'], 1) }}%</span></span>
-                                <span>Repeat <span class="font-semibold text-white tabular-nums">{{ number_format($c['repeat']) }}/{{ number_format($c['crd']) }} · {{ number_format($p['repeat'], 1) }}%</span></span>
+                            <p class="relative mt-1 grid gap-0.5 border-t border-line pt-1 text-[0.625rem] leading-snug text-muted" title="Same as the Retained and Repeat customers tiles; Converted is both added up">
+                                <span>Retained <span class="font-semibold text-ink tabular-nums">{{ number_format($c['retained']) }}/{{ number_format($c['fsd']) }} · {{ number_format($p['retained'], 1) }}%</span></span>
+                                <span>Repeat <span class="font-semibold text-ink tabular-nums">{{ number_format($c['repeat']) }}/{{ number_format($c['crd']) }} · {{ number_format($p['repeat'], 1) }}%</span></span>
                             </p>
                         @endif
                     </div>

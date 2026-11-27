@@ -1,14 +1,10 @@
 @props(['title', 'accent' => 'brand', 'icon' => null, 'titleId' => null, 'bodyClass' => 'p-4', 'tinted' => true])
 
 @php
-    // Header band, icon chip and tinted body per accent; the tint lets white tiles inside stand out.
-    $accents = [
-        'brand' => ['header' => 'from-brand-100 to-brand-50 border-brand-200', 'chip' => 'from-brand-500 to-brand-700', 'body' => 'bg-brand-50/50'],
-        'teal' => ['header' => 'from-[#d3f3ec] to-[#ecfaf6] border-[#b9e8de]', 'chip' => 'from-[#0e8f7c] to-[#0b6b5d]', 'body' => 'bg-[#f2fbf8]'],
-        'sky' => ['header' => 'from-[#d4eef8] to-[#ebf7fc] border-[#bfe3f1]', 'chip' => 'from-[#1f8fb8] to-[#156c8c]', 'body' => 'bg-[#f2f9fc]'],
-        'coral' => ['header' => 'from-[#fde0e0] to-[#fff0f0] border-[#f8c9ca]', 'chip' => 'from-[#e05a5f] to-[#c4484c]', 'body' => 'bg-[#fff7f7]'],
-        'amber' => ['header' => 'from-[#fdecc0] to-[#fff7e0] border-[#f3dc9a]', 'chip' => 'from-[#d99a0b] to-[#a8740a]', 'body' => 'bg-[#fffaf0]'],
-    ];
+    // One quiet look for every accent (black + gold palette): a white card, a plain header over a hairline, a gold-soft
+    // icon chip. The accent stays in the API so the pages that pass one keep working.
+    $neutral = ['header' => 'from-white to-white border-line', 'chip' => 'from-brand-100 to-brand-100', 'body' => 'bg-white'];
+    $accents = ['brand' => $neutral, 'teal' => $neutral, 'sky' => $neutral, 'coral' => $neutral, 'amber' => $neutral];
     $style = $accents[$accent] ?? $accents['brand'];
     $icons = [
         'target' => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
@@ -28,17 +24,17 @@
     ];
 @endphp
 
-{{-- A page section: coloured header band (icon, title, badges, actions) over a tinted body. --}}
+{{-- A page section: a header (icon, title, badges, actions) over the body, on a white card. --}}
 <section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white shadow-sm']) }} @if ($titleId) aria-labelledby="{{ $titleId }}" @endif>
     {{-- Header above the body (z-20) so pop-overs opened from it, like the "i" info, aren't clipped --}}
     <header class="relative z-20 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-t-2xl border-b bg-gradient-to-r px-4 py-2.5 {{ $style['header'] }}">
         <div class="flex min-w-0 flex-wrap items-center gap-2.5">
             @if ($icon)
-                <span aria-hidden="true" class="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br text-white shadow-sm {{ $style['chip'] }}">
+                <span aria-hidden="true" class="grid size-8 shrink-0 place-items-center rounded-full bg-gradient-to-br text-ink {{ $style['chip'] }}">
                     <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">{!! $icons[$icon] ?? '' !!}</svg>
                 </span>
             @endif
-            <h2 @if ($titleId) id="{{ $titleId }}" @endif class="text-base font-bold text-ink">{{ $title }}</h2>
+            <h2 @if ($titleId) id="{{ $titleId }}" @endif class="text-[1.0625rem] font-bold text-ink">{{ $title }}</h2>
             {{ $badges ?? '' }}
         </div>
         @isset($actions)

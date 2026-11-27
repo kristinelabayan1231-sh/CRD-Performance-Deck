@@ -57,7 +57,7 @@ class PresentationBoardController extends Controller
 
         return view('presentation-board.index', [
             ...$figures,
-            'productMonths' => $this->productMonths($board, $snapshot, $compareKeys),
+            'productMonths' => $this->productMonths($board, $snapshot, $compareKeys, $tsdNames),
             'craMonths' => $craSnapshot ? $this->craMonths($cras, $craSnapshot, $compareKeys) : [],
             'monthBefore' => $monthBefore,
             'exclusive' => $craSnapshot ? $this->exclusive($exclusive, $craSnapshot, $monthKeys) : [],
@@ -80,16 +80,23 @@ class PresentationBoardController extends Controller
     }
 
     /**
-     * Each month's top products, for the product trend lines: the same products() a month at a time.
+     * Each month's top products, for the product trend lines: the same products() a month at a time. tsd = what of
+     * upsold was TSD products (the Top products' main vs TSD).
      *
      * @param  array<string, mixed>  $snapshot
      * @param  list<string>  $months
-     * @return array<string, array<string, array{sales: float, orders: int, upsold: float}>> month => product name => figures
+     * @param  list<string>  $tsdNames
+     * @return array<string, array<string, array{sales: float, orders: int, upsold: float, tsd: float}>> month => product name => figures
      */
-    private function productMonths(PresentationBoard $board, array $snapshot, array $months): array
+    private function productMonths(PresentationBoard $board, array $snapshot, array $months, array $tsdNames = []): array
     {
         return collect($months)->mapWithKeys(fn (string $month) => [$month => collect($board->products($snapshot, $month.'-01', CarbonImmutable::parse($month.'-01')->endOfMonth()->toDateString())['products'])
-            ->mapWithKeys(fn (array $product) => [$product['name'] => ['sales' => (float) $product['sales'], 'orders' => (int) $product['orders'], 'upsold' => (float) $product['upsold_value']]])
+            ->mapWithKeys(fn (array $product) => [$product['name'] => [
+                'sales' => (float) $product['sales'],
+                'orders' => (int) $product['orders'],
+                'upsold' => (float) $product['upsold_value'],
+                'tsd' => (float) collect($product['upsold'] ?? [])->filter(fn (array $item) => in_array($item['name'], $tsdNames, true))->sum('value'),
+            ]])
             ->all()])->all();
     }
 

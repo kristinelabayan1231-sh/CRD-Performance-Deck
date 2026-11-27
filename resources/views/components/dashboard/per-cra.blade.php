@@ -18,7 +18,7 @@
     <x-slot:badges>
         <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-teal-700 shadow-sm">{{ $range->label() }}</span>
         @if ($leadsFrom = \App\Support\WorkingDate::leadDaysLabel($range->from, $range->to))
-            <span class="rounded-full bg-[#fff6d6] px-2 py-0.5 text-[0.625rem] font-semibold text-[#473821]" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
+            <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.625rem] font-semibold text-ink" title="Pancake sales on these days, made while working these lead days.">leads from {{ $leadsFrom }}</span>
         @endif
     </x-slot:badges>
     <x-slot:actions>
@@ -56,7 +56,7 @@
                         </td>
                         <td class="w-full min-w-24 py-2 pr-2">
                             <span class="relative block h-2 rounded-full bg-canvas" role="progressbar" aria-label="{{ $row['cra']->displayName() }} goal" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ round(min(1, $row['progress'] ?? 0) * 100) }}">
-                                <span @class(['absolute inset-y-0 left-0 rounded-full', 'bg-teal-700' => $hit, 'bg-brand-600' => ! $hit]) style="width: {{ min(100, ($row['progress'] ?? 0) * 100) }}%"></span>
+                                <span @class(['absolute inset-y-0 left-0 rounded-full', 'bg-teal' => $hit, 'bg-brand-500' => ! $hit]) style="width: {{ min(100, ($row['progress'] ?? 0) * 100) }}%"></span>
                             </span>
                         </td>
                         <td @class(['w-14 py-2 text-right font-semibold tabular-nums', 'text-teal-700' => $hit])>{{ $pct($row['progress']) }}</td>
@@ -67,7 +67,7 @@
                         <td @class(['py-2 pl-3 text-right text-xs font-semibold whitespace-nowrap tabular-nums', 'text-teal-700' => $left <= 0, 'text-coral-700' => $left > 0])>{{ $left > 0 ? $short($left).' left' : 'Goal hit' }}</td>
                         <td class="w-full min-w-20 py-2 pr-2 pl-6" title="{{ number_format($t['orders']) }} orders ÷ {{ number_format($t['reach']) }} engagements + leads">
                             <span class="relative block h-2 rounded-full bg-canvas">
-                                <span class="absolute inset-y-0 left-0 rounded-full bg-[#1f8fb8]" style="width: {{ min(100, ($t['total_rate'] ?? 0) / $topRate * 100) }}%"></span>
+                                <span class="absolute inset-y-0 left-0 rounded-full bg-teal" style="width: {{ min(100, ($t['total_rate'] ?? 0) / $topRate * 100) }}%"></span>
                             </span>
                         </td>
                         <td class="w-16 py-2 text-right font-semibold tabular-nums">{{ $pct($t['total_rate'], 2) }}</td>

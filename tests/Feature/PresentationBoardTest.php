@@ -572,23 +572,27 @@ class PresentationBoardTest extends TestCase
         $this->assertEquals(1, $products[PresentationBoard::OTHERS]['upsell_value']);
     }
 
-    public function test_the_page_shows_what_was_upsold_on_a_products_orders(): void
+    public function test_top_products_compares_main_with_the_tsd_upsold_and_keeps_other_products_added_apart(): void
     {
+        Product::create(['name' => 'Haplunas', 'keywords' => 'Haplunas', 'consumption_days' => 30, 'srp' => 500, 'is_tsd' => true]);
         Product::create(['name' => 'Lumicare', 'keywords' => 'Lumicare', 'consumption_days' => 30, 'srp' => 250]);
         $this->order('0961', '2026-07-10', ['Sinuxyl' => 1]);
+        // A product new to the customer (Lumicare) and a TSD add-on (Haplunas), each on its own Sinuxyl order.
         $this->order('0961', '2026-08-03', ['Sinuxyl' => 2, 'Lumicare' => 2], total: 1500);
+        $this->order('0961', '2026-08-05', ['Sinuxyl' => 1, 'Haplunas' => 1], total: 1000);
         app(PresentationBoard::class)->refresh();
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
             ->assertOk()
-            ->assertSee('+₱500 upsold')
-            // Main % and Upsold % split everything on Sinuxyl's orders: 1,000 + 500.
-            ->assertSeeInOrder(['66.7% main', '33.3% upsold'])
-            ->assertSeeInOrder(['Upsold on Sinuxyl orders', 'Lumicare', 'Total upsold', '₱500', '33.3%'])
-            ->assertSee("Value = the upsell's Pancake price. % = value ÷ everything on Sinuxyl orders (₱1,500).", false)
-            // By upsell %, the month-by-month table shows each month's upsell %: July 0%, August 33.3% (+33.3 pts), Overall
+            // The bar: Sinuxyl's own ₱1,500 against the ₱500 of TSD upsold on its orders; Lumicare isn't in it.
+            ->assertSee('+₱500 TSD')
+            ->assertSeeInOrder(['75.0% main', '25.0% TSD'])
+            // Its breakdown: main vs TSD (TSD on 1 of its 2 orders), the TSD added, then the other products added apart.
+            ->assertSeeInOrder(['Main vs TSD on Sinuxyl orders', 'TSD added on 50.0% of orders', '₱1,500', '₱500'])
+            ->assertSeeInOrder(['TSD products added', 'Haplunas', 'Other products added on Sinuxyl orders', '₱500', 'Lumicare'])
+            // By upsell %, the month-by-month table shows each month's TSD %: July 0%, August 25% (+25 pts), Overall
             // over the months picked (August; one month, so no Best).
-            ->assertSeeInOrder(['data-upsell-by-month', 'Sinuxyl', '0.0%', '33.3%', '₱500 upsold', '▲ +33.3 pts', '33.3%', '₱500 of ₱1,500'], false);
+            ->assertSeeInOrder(['data-upsell-by-month', 'Sinuxyl', '0.0%', '25.0%', '₱500 TSD', '▲ +25.0 pts', '25.0%', '₱500 of ₱2,000'], false);
     }
 
     public function test_a_tsd_product_counts_as_upsell_in_its_own_row_also_bought_alone(): void
@@ -605,8 +609,8 @@ class PresentationBoardTest extends TestCase
             // Listed in the TSD row, not ranked with the products.
             ->assertSeeInOrder(['data-product-rows', 'Sinuxyl', 'TSD Product', 'Haplunas'], false)
             ->assertSee('0.0% main')
-            // By upsell %, the donut is main vs upsell and the legend ranks the products by upsell %.
-            ->assertSeeInOrder(['Donut: main vs upsell of these dates; the legend ranks the products by upsell %', '33.3%', 'Sinuxyl', '0.0%']);
+            // By upsell %, the donut is the products' main vs TSD upsold and the legend ranks them by TSD %.
+            ->assertSeeInOrder(['Donut: main vs TSD upsold of these dates; the legend ranks the products by TSD %', '0.0%', 'Sinuxyl', '0.0%']);
     }
 
     public function test_totals_add_the_months_and_weeks_add_up_to_their_month(): void

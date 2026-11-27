@@ -39,7 +39,7 @@
                     <div class="flex flex-col items-center justify-center gap-0.5 text-center" style="padding: 6px 4px; {{ $rowLine }}; background: {{ $gridBest ? 'var(--pb-best)' : ($column['before'] ? 'var(--pb-cell)' : 'transparent') }}">
                         @if ($gridValue['rate'] !== null)
                             <strong style="font-size: 14px">{{ number_format($gridValue['rate'] * 100, 1) }}%</strong>
-                            <span style="font-size: 11px; {{ $muted }}" title="{{ $peso($gridValue['upsold']) }}">{{ $pesoShort($gridValue['upsold']) }} upsold</span>
+                            <span style="font-size: 11px; {{ $muted }}" title="{{ $peso($gridValue['upsold']) }}">{{ $pesoShort($gridValue['upsold']) }} TSD</span>
                             <span class="flex flex-wrap justify-center gap-1">
                                 @if ($gridChip)
                                     <span style="{{ $gridChip['style'] }}; font-size: 10px; padding: 1px 6px">{{ $gridChip['text'] }}</span>
