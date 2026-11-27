@@ -53,7 +53,7 @@ export function initPresentationBoard() {
 
 /**
  * Top products: sort by sales or by upsold % (the section's data-sort shows that view's bars, pills and lines; Others
- * stays after the products, TSD sold alone goes last by sales and first by upsold %), a product with nothing to show
+ * stays after the products, TSD Product goes last by sales and first by upsold %), a product with nothing to show
  * doesn't open, and Breakdown opens the main vs upsell popup.
  */
 function initProductSort(board) {
