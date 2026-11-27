@@ -356,16 +356,27 @@ class SegmentationProductivityTest extends TestCase
         $this->assertDatabaseMissing('pancake_engagements', ['staff_name' => 'LHEA GATDULA']);
     }
 
-    public function test_orders_use_the_access_token_when_set_and_ask_only_for_needed_fields(): void
+    public function test_orders_use_the_api_key_before_an_access_token_and_ask_only_for_needed_fields(): void
     {
-        config(['services.pancake.access_token' => 'user-token']);
+        config(['services.pancake.key' => 'shop-key', 'services.pancake.access_token' => 'user-token']);
+
+        app(PancakeSync::class)->sync(Lead::today());
+
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm')
+            && str_contains($request->url(), 'api_key=shop-key')
+            && ! str_contains($request->url(), 'access_token=')
+            && str_contains(urldecode($request->url()), 'fields[]=total_price'));
+    }
+
+    public function test_orders_fall_back_to_the_access_token_without_an_api_key(): void
+    {
+        config(['services.pancake.key' => null, 'services.pancake.access_token' => 'user-token']);
 
         app(PancakeSync::class)->sync(Lead::today());
 
         Http::assertSent(fn (Request $request) => str_contains($request->url(), 'pos.pages.fm')
             && str_contains($request->url(), 'access_token=user-token')
-            && ! str_contains($request->url(), 'api_key=')
-            && str_contains(urldecode($request->url()), 'fields[]=total_price'));
+            && ! str_contains($request->url(), 'api_key='));
     }
 
     public function test_connection_check_reports_a_refused_pancake_credential(): void
