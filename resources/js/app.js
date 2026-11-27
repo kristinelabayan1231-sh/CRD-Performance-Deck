@@ -19,6 +19,7 @@ import { initReportSummaryShot } from './report-summary-shot';
 import { initResultsFlip } from './results-flip';
 import { initSchedulePeek } from './schedule-peek';
 import { initSegmentation } from './segmentation';
+import { initShell } from './shell';
 import { initSpiels } from './spiels';
 import { initTabs } from './tabs';
 import { initTheme } from './theme';
@@ -26,6 +27,7 @@ import { initTooltips } from './tooltip';
 
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
+    initShell();
     initPageLoader();
     initTabs();
     initTooltips();

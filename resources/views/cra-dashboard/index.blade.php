@@ -39,7 +39,7 @@
                 @enderror
                 <div class="max-h-[28rem] overflow-auto border-t border-line">
                     <table class="w-full text-left text-sm">
-                        <thead class="sticky top-0 bg-[#fff7f7] text-xs whitespace-nowrap text-muted">
+                        <thead class="sticky top-0 bg-canvas text-xs whitespace-nowrap text-muted">
                             <tr>
                                 <th scope="col" class="px-4 py-2.5 font-semibold">Customer</th>
                                 <th scope="col" class="px-4 py-2.5 font-semibold">Contact #</th>
@@ -90,16 +90,15 @@
 
         {{-- Today --}}
         <section aria-label="Today" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <a href="{{ $pending['url'] }}" class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-600 to-brand-700 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                <span aria-hidden="true" class="absolute -top-8 -right-8 size-28 rounded-full bg-white/15"></span>
+            <a href="{{ $pending['url'] }}" class="relative flex flex-col justify-between gap-3 overflow-hidden rounded-2xl bg-brand-600 p-4 text-white transition hover:-translate-y-0.5 hover:shadow-lg">
                 <p class="relative text-xs font-medium text-white/90">Pending today</p>
-                <p class="relative text-3xl font-bold tabular-nums">{{ number_format($pending['unprocessed']) }}</p>
+                <p class="relative font-display text-3xl font-bold tabular-nums">{{ number_format($pending['unprocessed']) }}</p>
                 <p class="relative text-xs text-white/90">of {{ number_format($pending['total']) }} leads · open {{ $pending['tracker'] }} →</p>
             </a>
 
-            <article class="flex flex-col justify-between gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
+            <article class="flex flex-col justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-line">
                 <p class="text-xs font-medium text-muted">Running sales today</p>
-                <p class="text-3xl font-bold text-ink tabular-nums">{{ $peso($sales['today']) }}</p>
+                <p class="font-display text-3xl font-bold text-ink tabular-nums">{{ $peso($sales['today']) }}</p>
                 <div>
                     <div class="h-2 overflow-hidden rounded-full bg-brand-50" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ (int) round(min($sales['progress'] ?? 0, 1) * 100) }}" aria-label="Daily goal progress">
                         <div class="h-full rounded-full bg-teal" style="width: {{ min($sales['progress'] ?? 0, 1) * 100 }}%"></div>
@@ -116,22 +115,22 @@
                 </div>
             </article>
 
-            <article class="flex flex-col justify-between gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
+            <article class="flex flex-col justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-line">
                 <p class="text-xs font-medium text-muted">Net income</p>
-                <p @class(['text-3xl font-bold tabular-nums', 'text-ink' => $netIncome['today'] >= 0, 'text-coral-700' => $netIncome['today'] < 0])>{{ $peso($netIncome['today']) }}</p>
+                <p @class(['font-display text-3xl font-bold tabular-nums', 'text-ink' => $netIncome['today'] >= 0, 'text-coral-700' => $netIncome['today'] < 0])>{{ $peso($netIncome['today']) }}</p>
                 <p class="text-xs text-muted">today · {{ $peso($netIncome['month']) }} this month</p>
             </article>
 
-            <article class="flex flex-col justify-between gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
+            <article class="flex flex-col justify-between gap-3 rounded-2xl bg-white p-4 ring-1 ring-line">
                 <p class="text-xs font-medium text-muted">Sales this month</p>
-                <p class="text-3xl font-bold text-ink tabular-nums">{{ $peso($sales['month']) }}</p>
+                <p class="font-display text-3xl font-bold text-ink tabular-nums">{{ $peso($sales['month']) }}</p>
                 <p class="text-xs text-muted">{{ $pct($sales['month_progress']) }} of {{ $peso($sales['month_goal']) }} goal so far</p>
             </article>
         </section>
 
         @if ($salesSplit)
             {{-- Exclusive CRA: sales from her exclusive leads and from her Pancake (normal) leads, then the overall --}}
-            <section aria-labelledby="sales-split-heading" class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-line">
+            <section aria-labelledby="sales-split-heading" class="rounded-2xl bg-white p-4 ring-1 ring-line">
                 <h2 id="sales-split-heading" class="text-sm font-semibold text-ink">Sales by lead source</h2>
                 <p class="text-xs text-muted">Exclusive = {{ $isOwn ? 'your' : $first.'\'s' }} assigned leads or tagged CRD - ANNA (EXCLUSIVE LEADS) · Normal = catered on Pancake</p>
                 <div class="mt-3 overflow-x-auto">
@@ -163,15 +162,15 @@
         @endif
 
         <section aria-label="Your customers" class="grid gap-3 sm:grid-cols-3">
-            <a href="{{ route('customers.high-value', ['list' => 'high_aov', 'cra' => $cra->id]) }}" class="relative flex items-center justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 p-4 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                <span class="text-[0.6875rem] font-semibold tracking-wide uppercase">High AOV customers</span>
-                <span class="text-2xl font-bold tabular-nums">{{ number_format($highValue['high_aov']) }}</span>
+            <a href="{{ route('customers.high-value', ['list' => 'high_aov', 'cra' => $cra->id]) }}" class="relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-white p-4 text-ink ring-1 ring-line transition hover:-translate-y-0.5 hover:ring-brand-500">
+                <span class="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-wide uppercase"><span class="size-2 rounded-full bg-brand-500" aria-hidden="true"></span>High AOV customers</span>
+                <span class="font-display text-2xl font-bold tabular-nums">{{ number_format($highValue['high_aov']) }}</span>
             </a>
-            <a href="{{ route('customers.high-value', ['list' => 'vip', 'cra' => $cra->id]) }}" class="relative flex items-center justify-between gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#2a2723] to-[#121110] p-4 text-[#f3dca3] shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg">
-                <span class="text-[0.6875rem] font-semibold tracking-wide uppercase">VIP customers</span>
-                <span class="text-2xl font-bold tabular-nums">{{ number_format($highValue['vip']) }}</span>
+            <a href="{{ route('customers.high-value', ['list' => 'vip', 'cra' => $cra->id]) }}" class="relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-white p-4 text-ink ring-1 ring-line transition hover:-translate-y-0.5 hover:ring-brand-500">
+                <span class="flex items-center gap-2 text-[0.6875rem] font-semibold tracking-wide uppercase"><span class="size-2 rounded-full bg-ink" aria-hidden="true"></span>VIP customers</span>
+                <span class="font-display text-2xl font-bold tabular-nums">{{ number_format($highValue['vip']) }}</span>
             </a>
-            <article @class(['flex items-center justify-between gap-3 rounded-xl p-4 shadow-sm ring-1', 'bg-[#fff7f7] ring-[#f8c9ca]' => $atRisk['open'] + $atRisk['soon'] > 0, 'bg-white ring-line' => $atRisk['open'] + $atRisk['soon'] === 0])>
+            <article @class(['flex items-center justify-between gap-3 rounded-2xl p-4 ring-1', 'bg-coral/5 ring-coral/40' => $atRisk['open'] + $atRisk['soon'] > 0, 'bg-white ring-line' => $atRisk['open'] + $atRisk['soon'] === 0])>
                 <span>
                     <span class="block text-[0.6875rem] font-semibold tracking-wide text-muted uppercase">Your customers at risk</span>
                     <span class="block text-xs text-muted">{{ number_format($atRisk['open']) }} open to other CRAs · {{ number_format($atRisk['soon']) }} within {{ \App\Services\CustomerReassignment::SOON_DAYS }} days</span>

@@ -6,7 +6,7 @@
     <div class="space-y-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="flex items-center gap-3">
-                <h1 class="text-xl font-semibold">Performance Deck</h1>
+                <h1 class="text-[1.75rem] font-bold">Performance Deck</h1>
                 <x-dashboard.poster />
                 {{-- Checks every minute and reloads when a sync has saved new data (resources/js/live.js). --}}
                 <span data-live-url="{{ route('dashboard.live') }}" data-live-version="{{ $version }}"
@@ -49,7 +49,7 @@
         </div>
 
         @if ($qtyUnknown->isNotEmpty())
-            <details role="alert" class="rounded-xl border border-[#e0b400]/60 bg-[#fff6d6] px-4 py-3 text-sm text-[#473821]">
+            <details role="alert" class="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-ink">
                 <summary class="cursor-pointer font-semibold">
                     {{ number_format($qtyUnknownCount) }} FSD {{ Str::plural('lead', $qtyUnknownCount) }} with no quantity in Pancake: qty 1 assumed, so the out-of-stock date may be early.
                 </summary>
@@ -69,6 +69,8 @@
         @endif
 
         @if ($results)
+            <x-dashboard.hero :results="$results" :segmentation="$segmentation" :customers="$customers" />
+
             <x-panel title="Results" icon="target" title-id="results-title">
                 <x-slot:badges>
                     <span class="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-brand-700 shadow-sm">{{ $range->label() }}{{ ! $range->custom && $range->month->isSameMonth($realToday) ? ' · month to date' : '' }}</span>

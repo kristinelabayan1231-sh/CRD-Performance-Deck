@@ -5,27 +5,118 @@
 @source '../../config/segmentation.php';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Hanken Grotesk', 'Segoe UI', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-display: 'Bricolage Grotesque', 'Segoe UI', ui-sans-serif, system-ui, sans-serif;
 
-    /* Palette from the "Purple" reference: primary A05AFF / 1BCFB4, supporting 4BCBEB / FE9496 / 9E58FF */
-    --color-brand-50: #f6efff;
-    --color-brand-100: #ecdeff;
-    --color-brand-200: #d9bdff;
-    --color-brand-400: #b47fff;
-    --color-brand-500: #a05aff;
-    --color-brand-600: #8b3ff0;
-    --color-brand-700: #7429d6;
-    --color-violet: #9e58ff;
-    --color-teal: #1bcfb4;
-    --color-teal-700: #0e8f7c;
-    --color-sky: #4bcbeb;
-    --color-coral: #fe9496;
-    --color-coral-700: #c4484c;
-    --color-canvas: #f2edf3;
-    --color-ink: #343a40;
-    --color-muted: #4f5563;
-    --color-line: #ebe6ee;
+    /* Company palette, black + gold on warm neutrals: black for actions (brand-600/700), gold for progress and
+       highlights (brand-500, tints 50–400). Teal / coral only where a figure is good or bad. */
+    --color-brand-50: #fffaeb;
+    --color-brand-100: #fff4cc;
+    --color-brand-200: #ffe08a;
+    --color-brand-400: #ffd95c;
+    --color-brand-500: #ffc21a;
+    --color-brand-600: #111111;
+    --color-brand-700: #000000;
+    --color-gold-text: #8a6100;
+    --color-violet: #8b5cf6;
+    --color-teal: #14b8a6;
+    --color-teal-700: #0f766e;
+    --color-sky: #38bdf8;
+    --color-coral: #f97362;
+    --color-coral-700: #b93a24;
+    --color-canvas: #f4f4f3;
+    --color-ink: #111111;
+    --color-muted: #5f5d58;
+    --color-line: #e6e6e4;
+}
+
+/* The app shell (components/layouts/app.blade.php): a black icon rail with gold for the open module, flyouts listing each
+   module's pages, the top bar and the row of the module's pages. Plain CSS so the generated dark theme leaves it alone. */
+.rail {
+    background: #111111;
+    scrollbar-width: none;
+}
+.rail-btn {
+    color: #b8b8b4;
+}
+.rail-btn:hover,
+.rail-btn[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.07);
+    color: #ffffff;
+}
+.rail-btn[aria-current] {
+    background: rgb(242 182 48 / 0.14);
+    color: #ffd95c;
+}
+.rail-btn[aria-current] svg {
+    color: #ffc21a;
+}
+.rail-fly {
+    position: fixed;
+    inset: 0 auto 0 68px;
+    margin: 0;
+    width: 15rem;
+    height: 100dvh;
+    max-height: none;
+    border: 0;
+    padding: 1rem 0.75rem;
+    background: #ffffff;
+    color: #111111;
+    box-shadow: 0 10px 28px -18px rgb(23 21 15 / 0.45), 1px 0 0 #e6e6e4;
+}
+.rail-fly:popover-open {
+    animation: rail-fly-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rail-fly::backdrop {
+    background: rgb(17 17 17 / 0.25);
+}
+.rail-fly a[aria-current] {
+    background: #111111;
+    color: #ffffff;
+}
+@keyframes rail-fly-in {
+    from {
+        opacity: 0;
+        transform: translateX(-16px);
+    }
+}
+html[data-theme='dark'] .rail-fly {
+    background: #1a1a1a;
+    color: #f4efe3;
+    box-shadow: 0 18px 40px rgb(0 0 0 / 0.55), 1px 0 0 #2c2c2c;
+}
+html[data-theme='dark'] .rail-fly a[aria-current] {
+    background: #ffc21a;
+    color: #111111;
+}
+@media (max-width: 1023px) {
+    .rail-fly {
+        inset: auto 0 calc(4.25rem + env(safe-area-inset-bottom, 0px)) 0;
+        width: auto;
+        height: auto;
+        max-height: 70dvh;
+        border-radius: 1.5rem 1.5rem 0 0;
+    }
+}
+/* Page headings in the display face. */
+main h1 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+}
+main h1:where(.text-xl) {
+    font-size: 1.75rem;
+    line-height: 1.15;
+    font-weight: 700;
+}
+main h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+}
+/* A black header or total row in a table keeps white text in both themes. */
+:is(table tr.bg-ink, table tr.bg-ink > *, table :is(th, td).bg-ink) {
+    background: #111111;
+    color: #ffffff;
 }
 
 /* A 14px root, like the Shecom dashboard: every rem-based size (text, spacing, widths) scales down together. */
@@ -147,5 +238,277 @@ html[data-page-loading] main {
     [data-tab-panel],
     [data-pp-ranking] {
         animation: none;
+    }
+}
+
+/* Sign in (auth/login.blade.php): black with glowing gold waves, the CRD wordmark and a glass card with a gold edge. */
+.login-page {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow-x: hidden;
+    padding: 2.5rem 1.25rem;
+    background: #050505;
+    color: #ffffff;
+}
+.login-wave {
+    position: fixed;
+    width: min(62vw, 900px);
+    height: auto;
+    pointer-events: none;
+}
+.login-wave-top-left {
+    top: 0;
+    left: 0;
+}
+.login-wave-bottom-right {
+    right: 0;
+    bottom: 0;
+    transform: rotate(180deg);
+}
+.login-drift {
+    transform-origin: 0 0;
+    animation: login-drift 14s ease-in-out infinite alternate;
+}
+.login-sheen {
+    stroke-dashoffset: 100;
+    animation: login-sheen 7s linear infinite;
+}
+.login-sheen-slow {
+    animation-duration: 9s;
+    animation-delay: -3s;
+}
+@keyframes login-drift {
+    to {
+        transform: translate(-18px, 12px) rotate(-1.6deg) scale(1.03);
+    }
+}
+@keyframes login-sheen {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+.login-main {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    width: min(40rem, 100%);
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.login-logo {
+    width: 12rem;
+    overflow: visible;
+    filter: drop-shadow(0 0 18px rgb(255 194 26 / 0.35));
+}
+.login-title {
+    margin-top: 1.75rem;
+    padding-left: 0.32em;
+    font: 700 clamp(1.5rem, 2.6vw, 2.25rem) / 1 var(--font-sans);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+}
+.login-title b {
+    color: #ffc21a;
+}
+.login-department {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 0.85rem;
+    font: 500 clamp(1.25rem, 2vw, 1.75rem) / 1 var(--font-sans);
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    color: #a8a8a4;
+}
+.login-department span {
+    padding-left: 0.42em;
+}
+.login-department i,
+.login-internal i {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #ffc21a 70%, transparent);
+}
+.login-department i:last-child {
+    background: linear-gradient(90deg, transparent, #ffc21a 30%, transparent);
+}
+.login-tagline {
+    margin-top: 1.25rem;
+    font-size: 1.2rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    color: #d9d9d6;
+}
+.login-card {
+    margin-top: 2.25rem;
+    width: min(36rem, 100%);
+    padding: 2.75rem 3.25rem 2rem;
+    border: 1.5px solid rgb(255 194 26 / 0.75);
+    border-radius: 1.75rem;
+    background: linear-gradient(180deg, rgb(40 32 10 / 0.55), rgb(12 12 12 / 0.85));
+    backdrop-filter: blur(10px);
+    animation: login-glow 5s ease-in-out infinite;
+}
+@keyframes login-glow {
+    0%,
+    100% {
+        box-shadow: 0 0 30px -8px rgb(255 194 26 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.06);
+    }
+    50% {
+        box-shadow: 0 0 46px -4px rgb(255 194 26 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.06);
+    }
+}
+.login-card h1 {
+    font: 700 2.4rem / 1.1 var(--font-display);
+    color: #ececea;
+}
+.login-card h1 b {
+    color: #ffc21a;
+}
+.login-sub {
+    margin-top: 0.7rem;
+    font-size: 1.05rem;
+    color: #d9d9d6;
+}
+.login-error {
+    margin-top: 1.25rem;
+    border: 1px solid rgb(249 115 98 / 0.6);
+    border-radius: 0.75rem;
+    background: rgb(249 115 98 / 0.12);
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+    color: #ffb4a8;
+}
+.login-button {
+    margin-top: 2rem;
+    display: flex;
+    width: 100%;
+    min-height: 3.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+    border-radius: 999px;
+    background: #ffc21a;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #111111;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.login-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px -14px rgb(255 194 26 / 0.8);
+}
+.login-button:focus-visible {
+    outline: 3px solid #ffffff;
+    outline-offset: 3px;
+}
+.login-google {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 50%;
+    background: #ffffff;
+}
+.login-google svg {
+    width: 1.2rem;
+    height: 1.2rem;
+}
+.login-arrow {
+    width: 1.4rem;
+    height: 1.4rem;
+    fill: none;
+    stroke: #111111;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.2s;
+}
+.login-button:hover .login-arrow {
+    transform: translateX(3px);
+}
+.login-remember {
+    margin-top: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    font-size: 1rem;
+    color: #d9d9d6;
+}
+.login-remember input {
+    width: 1.1rem;
+    height: 1.1rem;
+    accent-color: #ffc21a;
+}
+.login-internal {
+    margin-top: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    font-size: 1rem;
+    color: #d9d9d6;
+}
+.login-internal i {
+    background: #3a3a3a;
+}
+.login-internal span {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.login-internal svg {
+    width: 1.4rem;
+    height: 1.4rem;
+    fill: none;
+    stroke: #ffc21a;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.login-note {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: #a8a8a4;
+}
+.login-links {
+    margin-top: 1.5rem;
+    display: flex;
+    gap: 1.25rem;
+    font-size: 0.95rem;
+}
+.login-links a {
+    color: #a8a8a4;
+}
+.login-links a:hover {
+    color: #ffc21a;
+}
+@media (max-width: 640px) {
+    .login-wave {
+        width: 110vw;
+    }
+    .login-card {
+        padding: 2rem 1.5rem 1.5rem;
+    }
+    .login-title {
+        letter-spacing: 0.2em;
+    }
+    .login-department {
+        gap: 0.75rem;
+        letter-spacing: 0.28em;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .login-drift,
+    .login-sheen,
+    .login-card {
+        animation: none;
+    }
+    .login-shine {
+        display: none;
     }
 }

@@ -7,6 +7,16 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-27 · App shell + colours (every page) · New look in the company palette, black + gold: a black icon rail on the left (one button per module, Overview first and Settings at the foot; it opens that module's pages, on a phone it's a bar along the bottom), a top bar with Search screens, CRAs on duty (opens who logged in and who is off), order issues, the theme switch and the user, and the open module's pages as a row above the content. Section headers are plain white, buttons black (gold in Dark), new fonts · shots: all
+
+- 2026-11-27 · Dashboard · Opens on the CRD goal, large, with gold progress and the pace mark, beside four rings (Monthly goal, Leads catered, Repeat customers, Segmentation CVR); the Results tiles, Segmentation Tracker tiles, Live from Logistics and Customer churn are quiet white cards · shots: dashboard
+
+- 2026-11-27 · CRA Dashboard + Report Summary · Restyled in black + gold (Pending today stays black; High AOV and VIP are white cards) · shots: cra-dashboard, report-summary
+
+- 2026-11-27 · Presentation Board → Top products · Main vs TSD: the green part of each product (bar, %, By upsell % ranking, donut, sparklines, month-by-month table) is now the TSD products upsold on its orders; other products new to the customer added to its orders are kept apart in its breakdown. The breakdown opens on main vs TSD with how often a TSD product was added (TSD added on x% of orders), then TSD products added and How it itself sold, other products added folded underneath, and By month · shots: presentation-board
+
+- 2026-11-27 · Sign in · New sign-in page: black with gold waves, the CRD wordmark and a glass card; still Sign in with Google, Remember me · shots: login
+
 - 2026-11-27 · Presentation Board + Product Performance · "TSD sold alone" renamed "TSD Product" (Sales breakdown, product lists, Upsell legend) so it reads as the CRA's upsell, not a TSD sale · shots: none
 
 - 2026-11-26 · Presentation Board → Top products by month · By upsell % now switches the month-by-month table too: each month shows the product's upsell % and ₱ upsold, chips in points vs the month before, ★ Best = its highest upsell % month, Overall = the months' upsell %; the top 10 by upsell % · shots: none

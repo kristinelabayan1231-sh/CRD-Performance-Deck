@@ -1,7 +1,7 @@
 @can('daily_is.view_all')
     {{-- Board button (beside the page title) --}}
     <button type="button" data-poster-open aria-haspopup="dialog"
-            class="group inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+            class="group inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
             title="Open the CRD Board">
         <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h18M5 4v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4M12 16v4m-3 0h6M8 9h3m-3 3h5"/>

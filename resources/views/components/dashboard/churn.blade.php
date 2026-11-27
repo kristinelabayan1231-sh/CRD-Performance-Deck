@@ -11,10 +11,10 @@
 @php($reorderDates = $reorderFrom->equalTo($reorderTo) ? $reorderFrom->format('M j') : $reorderFrom->format('M j').'–'.$reorderTo->format($reorderFrom->isSameMonth($reorderTo) ? 'j' : 'M j'))
 @php($monthLabel = fn (string $month) => \Carbon\CarbonImmutable::parse($month.'-01')->format($range->from->isSameYear($month.'-01') ? 'M' : 'M Y'))
 @php($churnTeams = ['all' => 'Overall', 'crd' => 'CRD', 'fsd' => 'FSD'])
-<section {{ $attributes->class('flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-xl bg-[#fdeeee] px-3 py-2 text-[#8f3236] ring-1 ring-[#f6d3d4]') }} aria-labelledby="churn-title">
+<section {{ $attributes->class('flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-2xl bg-white px-3 py-2 text-ink ring-1 ring-line') }} aria-labelledby="churn-title">
     <h3 id="churn-title" class="flex items-center gap-2 text-sm font-bold">
         Customer churn
-        <span class="rounded-full bg-white px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
+        <span class="rounded-full bg-coral/10 px-2 py-0.5 text-[0.6875rem] font-semibold text-coral-700">Deadline {{ $deadlines }}</span>
     </h3>
 
     <ul class="flex flex-1 flex-wrap gap-1.5 tabular-nums">
@@ -22,11 +22,11 @@
             @php($teamChurn = $churn[$team])
             <li>
                 <button type="button" onclick="document.getElementById('churn-dialog').showModal()" aria-haspopup="dialog"
-                        class="inline-flex items-baseline gap-1.5 rounded-lg bg-white/70 px-2.5 py-1 transition hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-coral"
+                        class="inline-flex items-baseline gap-1.5 rounded-lg bg-canvas px-2.5 py-1 transition hover:bg-brand-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-coral"
                         title="{{ $team === 'all' ? 'CRD and FSD' : $teamLabel }}-delivered customers from earlier months whose {{ $churn['grace_days'] }} days to reorder ended {{ $deadlines }}. Click for the breakdown.">
                     <span class="text-[0.625rem] font-bold tracking-wide uppercase">{{ $teamLabel }}</span>
-                    <span class="text-[0.9375rem] font-bold">{{ $pct($teamChurn['rate'], 2) }}</span>
-                    <span class="text-[0.6875rem] text-[#8f3236]/80">{{ number_format($teamChurn['lost']) }} churned of {{ number_format($teamChurn['customers']) }}</span>
+                    <span class="text-[0.9375rem] font-bold text-coral-700">{{ $pct($teamChurn['rate'], 2) }}</span>
+                    <span class="text-[0.6875rem] text-muted">{{ number_format($teamChurn['lost']) }} churned of {{ number_format($teamChurn['customers']) }}</span>
                 </button>
             </li>
         @endforeach

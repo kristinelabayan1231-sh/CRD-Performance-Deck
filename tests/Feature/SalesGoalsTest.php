@@ -286,7 +286,9 @@ class SalesGoalsTest extends TestCase
         $this->actingAs($this->owner)->get(route('dashboard'))
             ->assertOk()
             ->assertSee('CRD monthly goal (Gross Sales) · October 2026')
-            ->assertSeeTextInOrder(['₱38,500', 'Target ₱1,000,000'])
+            ->assertSeeTextInOrder(['₱38,500', '3.9% of goal', 'Target ₱1,000,000'])
+            // The hero's rings: the goal first, each out of 100%.
+            ->assertSeeTextInOrder(['3.9%', 'Monthly goal'])
             ->assertSeeTextInOrder(['Total confirmed orders', '1', 'Conversion rate', 'AOV', '₱38,500', 'Churn rate'])
             ->assertSee(route('conversion.orders'))
             ->assertSee('Goal &amp; conversion per CRA', false)
