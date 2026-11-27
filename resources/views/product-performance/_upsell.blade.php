@@ -44,7 +44,7 @@
         </div>
         <div class="flex flex-wrap gap-3.5 text-xs text-muted">
             <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-brand-700" aria-hidden="true"></span>Main product</span>
-            <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-(--pp-upsell)" aria-hidden="true"></span>Upsell (incl. TSD sold alone)</span>
+            <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-(--pp-upsell)" aria-hidden="true"></span>Upsell (incl. TSD Product)</span>
         </div>
     </div>
 
@@ -133,7 +133,7 @@
                 <tr class="border-t border-line"><th scope="row" class="py-2.5 text-left font-bold"><span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-sm bg-brand-700" aria-hidden="true"></span>Main product</span></th><td class="py-2.5 text-right font-bold" data-f="main"></td><td class="py-2.5 text-right font-bold" data-f="mainShare"></td></tr>
                 <tr class="border-t border-line"><th scope="row" class="pt-2.5 pb-1 text-left font-bold"><span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-sm bg-(--pp-upsell)" aria-hidden="true"></span>Upsell</span></th><td class="pt-2.5 pb-1 text-right font-bold" data-f="upsell"></td><td class="pt-2.5 pb-1 text-right"><span class="rounded-full border border-(--pp-upsell) bg-(--pp-upsell-bg) px-2.5 py-0.5 font-bold" data-f="upsellShare"></span></td></tr>
                 <tr><th scope="row" class="py-1 pl-5 text-left font-medium text-muted">Added to a main product</th><td class="py-1 text-right text-muted" data-f="upsold"></td><td class="py-1 text-right text-muted" data-f="upsoldShare"></td></tr>
-                <tr><th scope="row" class="pt-1 pb-2.5 pl-5 text-left font-medium text-muted"><span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-sm bg-(--pp-upsell-soft)" aria-hidden="true"></span>TSD sold alone</span></th><td class="pt-1 pb-2.5 text-right text-muted" data-f="tsd"></td><td class="pt-1 pb-2.5 text-right text-muted" data-f="tsdShare"></td></tr>
+                <tr><th scope="row" class="pt-1 pb-2.5 pl-5 text-left font-medium text-muted"><span class="inline-flex items-center gap-1.5"><span class="size-2 rounded-sm bg-(--pp-upsell-soft)" aria-hidden="true"></span>TSD Product</span></th><td class="pt-1 pb-2.5 text-right text-muted" data-f="tsd"></td><td class="pt-1 pb-2.5 text-right text-muted" data-f="tsdShare"></td></tr>
                 <tr class="border-t-2 border-ink"><th scope="row" class="pt-2.5 text-left font-bold">Total</th><td class="pt-2.5 text-right font-bold" data-f="total"></td><td class="pt-2.5 text-right font-bold">100%</td></tr>
             </tbody>
         </table>
@@ -147,7 +147,7 @@
     $previousPlaces = $upsell['previous_places'];
     $tsdProducts = $split['tsd_products'];
     $tsdRow = $tsdProducts ? [
-        'name' => 'TSD sold alone', 'tsd' => true, 'sales' => 0.0, 'upsold_value' => $split['tsd'],
+        'name' => 'TSD Product', 'tsd' => true, 'sales' => 0.0, 'upsold_value' => $split['tsd'],
         'orders' => array_sum(array_column($tsdProducts, 'orders')),
         'upsold' => array_map(fn (array $product) => ['name' => $product['name'], 'value' => $product['value'], 'orders' => $product['orders'], 'qty' => $product['qty']], $tsdProducts),
     ] : null;

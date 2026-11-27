@@ -601,9 +601,9 @@ class PresentationBoardTest extends TestCase
 
         $this->actingAs($this->supervisor)->get(route('presentation-board.index', ['from' => '2026-08', 'to' => '2026-08']))
             ->assertOk()
-            ->assertSeeInOrder(['Sales breakdown', 'Main product', '₱1,000', '66.7%', 'Upsell', '₱500', '33.3%', 'TSD sold alone', '₱500', 'Total', '₱1,500', '100%'])
+            ->assertSeeInOrder(['Sales breakdown', 'Main product', '₱1,000', '66.7%', 'Upsell', '₱500', '33.3%', 'TSD Product', '₱500', 'Total', '₱1,500', '100%'])
             // Listed in the TSD row, not ranked with the products.
-            ->assertSeeInOrder(['data-product-rows', 'Sinuxyl', 'TSD sold alone', 'Haplunas'], false)
+            ->assertSeeInOrder(['data-product-rows', 'Sinuxyl', 'TSD Product', 'Haplunas'], false)
             ->assertSee('0.0% main')
             // By upsell %, the donut is main vs upsell and the legend ranks the products by upsell %.
             ->assertSeeInOrder(['Donut: main vs upsell of these dates; the legend ranks the products by upsell %', '33.3%', 'Sinuxyl', '0.0%']);
