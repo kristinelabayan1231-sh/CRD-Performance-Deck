@@ -191,8 +191,11 @@ Route::middleware(['auth', EnsureUserIsActive::class])->group(function () {
         ])))->name('replies.index');
         Route::get('/conversations', [SmsConversationController::class, 'index'])->name('conversations.index');
         Route::prefix('/conversations/{phoneKey}')->name('conversations.')->where(['phoneKey' => '[0-9]+'])->group(function () {
+            Route::get('/chat', [SmsConversationController::class, 'chat'])->name('chat');
             Route::post('/text', [SmsConversationController::class, 'text'])->middleware('throttle:30,1')->name('text');
             Route::post('/reordered', [SmsConversationController::class, 'reordered'])->name('reordered');
+            Route::delete('/reordered', [SmsConversationController::class, 'undoReordered'])->name('reordered.undo');
+            Route::post('/allow', [SmsConversationController::class, 'allow'])->name('allow');
             Route::post('/answered', [SmsConversationController::class, 'answered'])->name('answered');
             Route::post('/call', [SmsConversationController::class, 'call'])->middleware('throttle:20,1')->name('call');
         });

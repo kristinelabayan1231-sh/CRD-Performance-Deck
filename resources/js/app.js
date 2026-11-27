@@ -20,6 +20,7 @@ import { initResultsFlip } from './results-flip';
 import { initSchedulePeek } from './schedule-peek';
 import { initSegmentation } from './segmentation';
 import { initShell } from './shell';
+import { initSmsPanel } from './sms-panel';
 import { initSpiels } from './spiels';
 import { initTabs } from './tabs';
 import { initTheme } from './theme';
@@ -35,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initDutySchedule();
     initSchedulePeek();
     initSpiels();
+    initSmsPanel();
     initPoster();
     initPresentationBoard();
     initDailyIsShot();

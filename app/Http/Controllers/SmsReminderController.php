@@ -48,7 +48,6 @@ class SmsReminderController extends Controller
         // The day's customers, and those from earlier days still to send (carried over until sent).
         $base = RestockReminder::shownOn($day)
             ->when($craId, fn (Builder $query) => $query->where('user_id', $craId));
-        $counts = (clone $base)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
 
         $rows = (clone $base)
             ->when(($filters['status'] ?? null) === 'send', fn (Builder $query) => $query->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED]))
@@ -88,17 +87,8 @@ class SmsReminderController extends Controller
             'perPage' => $perPage,
             'perPageOptions' => self::PER_PAGE,
             'lastTexted' => $lastTexted,
-            'counts' => [
-                'toSend' => (int) (($counts[RestockReminder::PENDING] ?? 0) + ($counts[RestockReminder::QUEUED] ?? 0)),
-                'queued' => (int) ($counts[RestockReminder::QUEUED] ?? 0),
-                'sent' => (int) ($counts[RestockReminder::SENT] ?? 0),
-                'excluded' => (int) ($counts[RestockReminder::EXCLUDED] ?? 0),
-                'skipped' => (int) ($counts[RestockReminder::SKIPPED] ?? 0),
-                'failed' => (int) ($counts[RestockReminder::FAILED] ?? 0),
-                'all' => (int) $counts->sum(),
-                'followUps' => (clone $base)->where('kind', RestockReminder::FOLLOW_UP)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])->count(),
-            ],
-            'replies' => SmsReply::whereNull('handled_at')->where('kind', '!=', SmsReply::STOP)
+            'counts' => $reminders->dayCounts($day, $craId),
+            'replies' => SmsReply::needsAnswer()
                 ->when($craId, fn (Builder $query) => $query->where('user_id', $craId))->count(),
             'enabled' => SmsSettings::enabled(),
             // Ready once the phone link is set and the phone has confirmed a text went out.

@@ -6,6 +6,8 @@
     // The modules: each a button on the black rail that opens its pages (a flyout), and the row of its pages above the
     // content when one of them is open. A page is [label, url, active, allowed, icon]; pages the user can't open, and
     // modules left empty, aren't shown.
+    // The texting pages belong to the tracker the user works on today.
+    $smsOnExclusive = $user->can('exclusive_leads.view') && $user->isExclusiveOn(\App\Models\Lead::today());
     $navGroups = collect([
         'overview' => ['name' => 'Overview', 'icon' => 'overview', 'items' => [
             ['CRA Dashboard', route('cra-dashboard'), request()->routeIs('cra-dashboard'), $user->role?->slug === \App\Models\Role::CRA || $user->can('segmentation.view_all'), 'user'],
@@ -14,16 +16,17 @@
             ['Presentation Board', route('presentation-board.index'), request()->routeIs('presentation-board.*'), $user->can('presentation_board.view'), 'board'],
         ]],
         'segmentation' => ['name' => 'Segmentation', 'icon' => 'segmentation', 'items' => [
-            ['Segmentation Tracker', route('segmentation.index'), request()->routeIs('segmentation.*'), $user->can('segmentation.view'), 'list'],
+            ['Segmentation Tracker', route('segmentation.index'), request()->routeIs('segmentation.*') || ($user->can('segmentation.view') && ! $smsOnExclusive && request()->routeIs('sms-reminders.*')), $user->can('segmentation.view'), 'list'],
             ['Segmentation Summary', route('segmentation-summary.index'), request()->routeIs('segmentation-summary.*'), $user->can('product_performance.view'), 'report'],
             ['Segmentation Productivity', route('productivity.index'), request()->routeIs('productivity.*'), $user->can('productivity.view'), 'gauge'],
             ['Conversion Breakdown', route('conversion.index'), request()->routeIs('conversion.*'), $user->can('conversion.view'), 'funnel'],
             ['Call Recordings', route('call-recordings.index'), request()->routeIs('call-recordings.*'), $user->can('call_recordings.view'), 'mic'],
-            ['SMS Reminders', route('sms-reminders.index'), request()->routeIs('sms-reminders.*'), $user->can('sms_reminders.view'), 'send'],
+            // Its pages are tabs of the Segmentation Tracker; here only for users without the tracker.
+            ['SMS Reminders', route('sms-reminders.index'), request()->routeIs('sms-reminders.*'), $user->can('sms_reminders.view') && ! $user->can('segmentation.view'), 'send'],
             ['CRA Schedule', route('cra-schedule.index'), request()->routeIs('cra-schedule.*'), $user->can('on_duty.view'), 'calendar'],
         ]],
         'exclusive' => ['name' => 'Exclusive Leads', 'icon' => 'exclusive', 'items' => [
-            ['Exclusive Lead Tracker', route('exclusive-leads.index'), request()->routeIs('exclusive-leads.*') && ! request()->routeIs('exclusive-leads.dashboard'), $user->can('exclusive_leads.view'), 'star'],
+            ['Exclusive Lead Tracker', route('exclusive-leads.index'), (request()->routeIs('exclusive-leads.*') && ! request()->routeIs('exclusive-leads.dashboard')) || ($smsOnExclusive && request()->routeIs('sms-reminders.*')), $user->can('exclusive_leads.view'), 'star'],
             ['Exclusive Leads Dashboard', route('exclusive-leads.dashboard'), request()->routeIs('exclusive-leads.dashboard'), $user->can('exclusive_leads.view_all'), 'grid'],
         ]],
         'orders' => ['name' => 'Orders & Tracking', 'icon' => 'orders', 'items' => [
@@ -170,7 +173,7 @@
         <main @class(['float-in flex-1 px-4 pt-4 pb-8 sm:px-6', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden' => $fit])>
             {{-- Only the Segmentation Tracker runs on the working date; the Exclusive Lead Tracker is by real date with paired lead days. --}}
             @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && ($workingDate = \App\Support\WorkingDate::get()))
-                <div role="note" class="mb-4 flex flex-wrap items-center gap-x-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-ink">
+                <div role="note" class="mb-2 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
                     <span class="font-semibold">Working date: {{ $workingDate->format('M j, Y') }}</span>
                     @if (request()->routeIs('exclusive-leads.*'))
                         <span>· This page goes by the real date (today is {{ \App\Support\WorkingDate::realToday()->format('M j') }}). Each day's leads come from the lead day paired with it.</span>

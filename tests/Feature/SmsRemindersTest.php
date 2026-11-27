@@ -675,6 +675,40 @@ class SmsRemindersTest extends TestCase
         Http::assertSent(fn (Request $request) => str_starts_with($request->url(), self::SMS_LINK) && str_contains($request['message'], 'Hindi ka na makakatanggap'));
     }
 
+    public function test_ticking_a_customer_who_replied_stop_lets_them_be_texted_again(): void
+    {
+        $token = $this->anna->issueRecordingToken();
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $text = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $text->update(['status' => RestockReminder::SENT, 'sent_at' => now()]);
+        $followUp = fn (string $day) => RestockReminder::create([...$text->only(['phone_key', 'phone_number', 'customer_name', 'product_id', 'products', 'covers', 'customer_type', 'run_out_on', 'user_id']),
+            'remind_on' => $day, 'kind' => RestockReminder::FOLLOW_UP, 'follow_up_number' => 1, 'status' => RestockReminder::PENDING]);
+        $next = $followUp('2026-11-27');
+        Http::fake(['trigger.macrodroid.com/*' => Http::response('ok')]);
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639170000001', 'message' => 'STOP'])->assertCreated();
+        $this->assertSame(RestockReminder::SKIPPED, $next->refresh()->status);
+
+        $allow = route('sms-reminders.conversations.allow', $phoneKey);
+        $this->actingAs($this->anna)->get(route('segmentation.index'))->assertOk()->assertSee('Replied STOP')->assertDontSee($allow, false);
+        $this->get(route('sms-reminders.conversations.chat', $phoneKey))->assertOk()->assertSee($allow, false);
+        $this->get(route('sms-reminders.index'))->assertOk()->assertSee($allow, false);
+        $this->actingAs($this->mika)->post($allow)->assertForbidden();
+        $this->assertTrue(DoNotText::has($phoneKey));
+
+        $this->actingAs($this->anna)->post($allow)->assertSessionHas('status');
+        $this->assertFalse(DoNotText::has($phoneKey));
+        $this->assertSame(RestockReminder::PENDING, $next->refresh()->status);
+        $this->get(route('segmentation.index'))->assertDontSee('Replied STOP')->assertSee('Texted Nov 20');
+
+        // A second STOP stops them again; a text whose product was reordered meanwhile stays cancelled.
+        $this->withToken($token)->postJson(route('api.sms-replies.store'), ['number' => '+639170000001', 'message' => 'stop'])->assertCreated();
+        $this->assertTrue(DoNotText::has($phoneKey));
+        $this->delivered('09170000001', deliveredOn: '2026-11-20');
+        $this->actingAs($this->anna)->post($allow);
+        $this->assertSame([RestockReminder::SKIPPED, 'Already reordered'], [$next->refresh()->status, $next->error]);
+    }
+
     public function test_a_cra_opens_her_own_templates_and_only_managers_open_settings(): void
     {
         $this->actingAs($this->anna)->get(route('sms-reminders.templates.index'))->assertOk()->assertSee('Your name in texts');
@@ -735,6 +769,29 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($this->anna)->getJson(route('sms-reminders.reorder-alerts'))->assertOk()->assertJson(['count' => 1]);
         $this->actingAs($this->anna)->get(route('sms-reminders.conversations.index', ['show' => 'reorder']))
             ->assertOk()->assertSee('Maria Santos 1')->assertDontSee('Maria Santos 2')->assertDontSee('Magkano po?')->assertDontSee('Maria Santos 4');
+    }
+
+    public function test_a_reply_to_a_test_text_never_counts_as_a_customer_waiting(): void
+    {
+        SmsReply::create(['user_id' => $this->anna->id, 'phone_key' => '9170000009', 'phone_number' => '09170000009',
+            'body' => 'Yes', 'kind' => SmsReply::YES, 'received_at' => now()]);
+
+        $this->actingAs($this->anna)->get(route('dashboard'))->assertSee('data-reorder-alert data-count="0"', false);
+        $this->actingAs($this->anna)->getJson(route('sms-reminders.reorder-alerts'))->assertOk()->assertJson(['count' => 0]);
+        $this->actingAs($this->anna)->get(route('sms-reminders.index'))->assertOk()->assertViewHas('replies', 0);
+        $this->actingAs($this->anna)->get(route('sms-reminders.conversations.index', ['show' => 'reorder']))
+            ->assertOk()->assertViewHas('counts', fn (array $counts) => $counts['reply'] === 0 && $counts['reorder'] === 0)->assertSee('Nobody is waiting for a reorder call.');
+    }
+
+    public function test_an_unanswered_reply_stays_listed_and_counted_after_30_days(): void
+    {
+        $this->reply($this->anna, '09170000001', SmsReply::YES, 'Yes')->update(['received_at' => now()->subDays(31)]);
+
+        foreach (['reply', 'reorder'] as $show) {
+            $this->actingAs($this->anna)->get(route('sms-reminders.conversations.index', ['show' => $show]))
+                ->assertOk()->assertViewHas('counts', fn (array $counts) => $counts['reply'] === 1 && $counts['reorder'] === 1)
+                ->assertViewHas('threads', fn ($threads) => $threads->total() === 1);
+        }
     }
 
     public function test_the_call_button_dials_a_reply_from_the_cras_own_phone(): void
@@ -1011,6 +1068,64 @@ class SmsRemindersTest extends TestCase
         $this->assertSame('Replied YES', $badges()[$lead->id]['label']);
 
         $this->actingAs($this->anna)->get(route('segmentation.index', ['date' => '2026-11-20']))->assertOk()->assertSee('Replied YES');
+    }
+
+    public function test_the_tracker_shows_each_text_and_its_conversation_and_leaves_sending_to_todays_texts(): void
+    {
+        $this->turnOn();
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $update = route('sms-reminders.update', RestockReminder::firstWhere('phone_key', $phoneKey));
+        $chat = route('sms-reminders.conversations.chat', $phoneKey);
+
+        $this->actingAs($this->anna)->get(route('segmentation.index'))->assertOk()
+            ->assertSeeInOrder(['Leads', 'Conversations', "Today's texts", 'Text settings', 'Daily', 'Weekly Segmentation'], false)
+            ->assertSee('To be texted')->assertSee($chat, false)->assertDontSee($update, false)->assertDontSee('aria-label="Sending"', false);
+        $this->get(route('sms-reminders.index'))->assertOk()->assertSee($update, false)->assertSee('aria-label="Sending"', false);
+        $this->get($chat)->assertOk()->assertSee('Mark reordered');
+
+        // Another CRA sees the text's state but can't open its conversation.
+        $this->actingAs($this->mika)->get(route('segmentation.index', ['cra' => $this->anna->id]))->assertOk()->assertSee('To be texted')->assertDontSee($chat, false);
+        $this->get($chat)->assertForbidden();
+    }
+
+    public function test_mark_reordered_cancels_the_waiting_texts_and_can_be_undone(): void
+    {
+        $phoneKey = $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+        $text = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $cancelled = fn () => [$text->refresh()->status, $text->error];
+
+        $this->actingAs($this->anna)->post(route('sms-reminders.conversations.reordered', $phoneKey));
+        $this->assertSame([RestockReminder::SKIPPED, RestockReminder::MARKED_REORDERED], $cancelled());
+        $this->get(route('sms-reminders.conversations.chat', $phoneKey))->assertSee('Undo reordered')->assertDontSee('Mark reordered');
+
+        $undo = route('sms-reminders.conversations.reordered.undo', $phoneKey);
+        $this->actingAs($this->mika)->delete($undo)->assertForbidden();
+        $this->actingAs($this->anna)->delete($undo)->assertSessionHas('status');
+        $this->assertSame([RestockReminder::PENDING, null], $cancelled());
+        $this->assertNull($text->reordered_at);
+        $this->delete($undo)->assertSessionHasErrors('reordered');
+
+        // A customer who replied STOP meanwhile stays off the texts.
+        $this->post(route('sms-reminders.conversations.reordered', $phoneKey));
+        DoNotText::create(['phone_key' => $phoneKey, 'reason' => 'Replied STOP']);
+        $this->delete($undo);
+        $this->assertSame(RestockReminder::SKIPPED, $cancelled()[0]);
+    }
+
+    public function test_an_exclusive_cra_reaches_the_sms_pages_from_her_tracker(): void
+    {
+        $this->anna->forceFill(['exclusive_from' => '2026-11-01'])->save();
+
+        $this->actingAs($this->anna)->get(route('exclusive-leads.index'))->assertOk()
+            ->assertSee('Leads and goals')->assertSee(route('sms-reminders.conversations.index'), false)->assertSee(route('sms-reminders.templates.index'), false);
+        $this->get(route('sms-reminders.schedule.index'))->assertOk()->assertSee(route('exclusive-leads.index'), false);
+
+        // A supervisor opens her texts from her list; another CRA, view only, doesn't.
+        $this->actingAs($this->supervisor())->get(route('exclusive-leads.index', ['cra' => $this->anna->id]))->assertOk()
+            ->assertSee(route('sms-reminders.conversations.index', ['cra' => $this->anna->id]), false);
+        $this->actingAs($this->mika)->get(route('exclusive-leads.index'))->assertOk()->assertSee('View only.')->assertDontSee(route('sms-reminders.templates.index'), false);
     }
 
     public function test_a_phone_marked_ready_by_hand_sends_without_the_confirm_step(): void

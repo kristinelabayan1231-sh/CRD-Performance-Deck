@@ -40,8 +40,15 @@ never needs to re-read the whole PDF. Newest first.
 
 - 2026-11-25 · Segmentation Tracker + reports · A carried-over lead counts on the day it was catered (by hand or by the CRA's own POS sale); its old day keeps its figures. Uncatering it returns it to its old day; it doesn't use up the daily 100 or cause a text. From Nov 26 orders, a CRA's sale outside their list (another CRA's or an unassigned lead, or their own already catered) is added to their day as catered · shots: 04-daily-table
 
+- 2026-11-25 · Segmentation Tracker + Exclusive Lead Tracker + SMS Reminders + Sidebar · One module with four tabs: Leads (Daily / Weekly; on the Exclusive Lead Tracker "Leads and goals" with Day / Month), Conversations (Replies, Follow-ups and No response beside the chat), Today's texts and Text settings (Templates, Schedule); SMS Reminders leaves the sidebar. Leads shows Pending or Catered one at a time, a Follow-up lists dropdown, day arrows, a Filters pop-up, "Main only" columns, and a Text column (state + Conversation panel) with Status beside it; the exclusive day's goals and mix are a strip above the list; the Working date note is one small line · shots: 03-daily-overview, 04-daily-table, 04b-daily-fields, 06-column-picker, 11-weekly
+
+- 2026-11-25 · SMS Reminders · A customer who replied STOP (or asked not to be texted) is unticked; their CRA can tick them again in Today's texts or the chat (after a confirm) to text them again; their cancelled upcoming texts come back unless they reordered · shots: none
+
+- 2026-11-25 · SMS Reminders · Mark reordered also cancels a restock text still waiting (was follow-ups only), and Undo reordered in the chat brings the cancelled texts back · shots: none
 
 - 2026-11-25 · Daily I.S. + sales modules · An order with a CRA's mother item and another department's child item (e.g. a Telesales upsell) always takes the CRA's own item for sales and Product Cost, even when Shecom's sales feed sends the child's · shots: none
+
+- 2026-11-25 · SMS Reminders · "Wants to reorder" and reply counts (tabs, top bar alert) now match the list: replies to test texts no longer count, and unanswered replies stay listed after 30 days · shots: none
 
 - 2026-11-24 · Floating CRA schedule (every page, "See who is on duty": Supervisors, Team Leads, admins) · A "CRA schedule" button at the bottom right of every page (not on the CRA Schedule page itself) opens a floating panel over the page: Week view (each CRA per day: log-in time, Rest Day / leave / Absent tag, Working ahead, Not in yet today; per-day on duty / off counts) or Month view (each day a colored letter R/V/S/P/E/A, teal dot = logged in); previous/next, Today, legend, "Open CRA Schedule →"; × or Esc closes; remembers Week/Month. Absent is now grey with a dashed coral border when the CRA didn't log in · shots: schedule-peek (new), cra-schedule
 

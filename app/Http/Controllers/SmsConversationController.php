@@ -9,8 +9,8 @@ use App\Models\SmsMessage;
 use App\Models\SmsReply;
 use App\Models\SmsTemplate;
 use App\Models\User;
-use App\Services\LeadGenerator;
 use App\Services\PhoneDialer;
+use App\Services\RestockReminders;
 use App\Services\SmsConversations;
 use App\Services\SmsSender;
 use App\Support\SmsSettings;
@@ -18,6 +18,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -42,28 +43,30 @@ class SmsConversationController extends Controller
         $show = $filters['show'] ?? 'reply';
 
         $threads = $conversations->threads($craId, $show, $filters['q'] ?? null, max(1, $request->integer('page', 1)));
-        $phone = $filters['phone'] ?? $threads->first()['phone_key'] ?? null;
-        $thread = $phone ? $conversations->thread($phone, (bool) ($filters['all'] ?? false)) : null;
-
-        if ($thread && ! $this->mayOpen($user, $thread['latest'])) {
-            $thread = null;
-        }
 
         return view('sms-reminders.conversations', [
+            ...$conversations->page($user, $craId, $filters['phone'] ?? $threads->first()['phone_key'] ?? null, (bool) ($filters['all'] ?? false)),
+            'box' => 'replies',
             'threads' => $threads,
-            'thread' => $thread,
-            'phone' => $thread ? $phone : null,
             'show' => $show,
-            'craId' => $craId,
-            'cras' => LeadGenerator::cras(),
-            'canDial' => (bool) $user->call_webhook_url,
-            'optedOut' => $thread && DoNotText::has($phone),
-            'templates' => $thread ? SmsTemplate::where('user_id', $thread['latest']->user_id)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'body']) : collect(),
-            'counts' => [
-                'reply' => SmsReply::whereNotNull('restock_reminder_id')->whereNull('handled_at')->where('kind', '!=', SmsReply::STOP)
-                    ->when($craId, fn ($q) => $q->where('user_id', $craId))->distinct()->count('phone_key'),
-                'reorder' => SmsReply::wantsToReorder()->when($craId, fn ($q) => $q->where('user_id', $craId))->distinct()->count('phone_key'),
-            ],
+        ]);
+    }
+
+    /**
+     * One customer's chat on its own, for the tracker's conversation panel.
+     */
+    public function chat(Request $request, string $phoneKey, SmsConversations $conversations): View
+    {
+        $latest = $this->latestFor($request->user(), $phoneKey);
+        $filters = $request->validate(['all' => ['nullable', 'boolean']]);
+
+        return view('sms-reminders.chat', [
+            'thread' => $conversations->thread($phoneKey, (bool) ($filters['all'] ?? false)),
+            'phone' => $phoneKey,
+            'canDial' => (bool) $request->user()->call_webhook_url,
+            'optedOut' => DoNotText::has($phoneKey),
+            'templates' => SmsTemplate::where('user_id', $latest->user_id)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'body']),
+            'counts' => ['reply' => SmsReply::needsAnswer()->where('phone_key', $phoneKey)->count()],
         ]);
     }
 
@@ -111,19 +114,46 @@ class SmsConversationController extends Controller
     }
 
     /**
-     * The customer reordered: follow-ups still waiting are cancelled, they leave No response, their replies are answered.
+     * The customer reordered: texts and follow-ups still waiting are cancelled, they leave No response, their replies are answered.
      */
     public function reordered(Request $request, string $phoneKey): RedirectResponse
     {
         $latest = $this->latestFor($request->user(), $phoneKey);
 
         $latest->update(['reordered_at' => now()]);
-        RestockReminder::where('phone_key', $phoneKey)->where('kind', RestockReminder::FOLLOW_UP)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])
-            ->update(['status' => RestockReminder::SKIPPED, 'error' => 'Reordered', 'status_updated_by' => $request->user()->id]);
+        RestockReminder::where('phone_key', $phoneKey)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])->whereNull('handed_at')
+            ->update(['status' => RestockReminder::SKIPPED, 'error' => RestockReminder::MARKED_REORDERED, 'status_updated_by' => $request->user()->id]);
         RestockReminder::where('phone_key', $phoneKey)->noResponse()->update(['resolved_at' => now()]);
         $this->answerReplies($phoneKey, $request->user());
 
-        return back()->with('status', ($latest->customer_name ?: 'The customer').' is marked reordered. No more follow-ups.');
+        return back()->with('status', ($latest->customer_name ?: 'The customer').' is marked reordered. Their waiting texts are cancelled.');
+    }
+
+    /**
+     * Undo Mark reordered (a wrong click, or the order was cancelled).
+     */
+    public function undoReordered(Request $request, string $phoneKey, RestockReminders $reminders): RedirectResponse
+    {
+        $latest = $this->latestFor($request->user(), $phoneKey);
+        if (! $latest->reordered_at) {
+            return back()->withErrors(['reordered' => 'This customer isn\'t marked reordered.']);
+        }
+        $restored = $reminders->undoReordered($latest, $request->user());
+
+        return back()->with('status', ($latest->customer_name ?: 'The customer').' is no longer marked reordered.'
+            .($restored ? ' '.$restored.' cancelled '.Str::plural('text', $restored).' back on the list.' : ''));
+    }
+
+    /**
+     * Text a customer who replied STOP (or asked not to be texted) again.
+     */
+    public function allow(Request $request, string $phoneKey, RestockReminders $reminders): RedirectResponse
+    {
+        $latest = $this->latestFor($request->user(), $phoneKey);
+        $restored = $reminders->allowAgain($phoneKey, $request->user());
+
+        return back()->with('status', ($latest->customer_name ?: 'The customer').' can be texted again.'
+            .($restored ? ' '.$restored.' cancelled '.Str::plural('text', $restored).' back on the list.' : ''));
     }
 
     /**

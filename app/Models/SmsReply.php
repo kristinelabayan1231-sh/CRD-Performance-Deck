@@ -58,11 +58,19 @@ class SmsReply extends Model
     }
 
     /**
+     * Customers' replies not answered yet. Replies to test texts (no reminder) and opt-outs never count.
+     */
+    public function scopeNeedsAnswer(Builder $query): void
+    {
+        $query->whereNotNull('restock_reminder_id')->whereNull('handled_at')->where('kind', '!=', self::STOP);
+    }
+
+    /**
      * Customers who replied YES and haven't been handled yet (the CRA still has to call them).
      */
     public function scopeWantsToReorder(Builder $query): void
     {
-        $query->where('kind', self::YES)->whereNull('handled_at');
+        $query->needsAnswer()->where('kind', self::YES);
     }
 
     public function cra(): BelongsTo

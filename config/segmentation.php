@@ -263,6 +263,8 @@ return [
         'qty' => ['label' => 'Qty'],
         'product' => ['label' => 'Product'],
         'contact_number' => ['label' => 'Contact #'],
+        // Only for users with SMS Reminders (sms_reminders.view).
+        'sms' => ['label' => 'Text'],
         'delivered_date' => ['label' => 'Delivered Date'],
         'days_since_delivered' => ['label' => 'Days since Delivered'],
         'est_out_of_stock' => ['label' => 'Est. Out of Stock'],

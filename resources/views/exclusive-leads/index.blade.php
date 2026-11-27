@@ -22,8 +22,10 @@
         </div>
 
         @if ($cra)
+            @php($goalView = request('goals') === 'month' && ! $search ? 'month' : 'day')
+            @include('segmentation._tabs', ['exclusiveCra' => $cra])
             {{-- Same search and filters as the Segmentation Tracker --}}
-            <div class="mb-3 shrink-0">@include('segmentation._filters', ['filtersRoute' => 'exclusive-leads.index', 'oneCraAtATime' => true, 'rangeHint' => "Leads on the lists of every day in this range."])</div>
+            <div class="mb-3 shrink-0" data-goal-panel="day" @if ($goalView !== 'day') hidden @endif>@include('segmentation._filters', ['filtersRoute' => 'exclusive-leads.index', 'oneCraAtATime' => true, 'dayLinks' => 'exclusive-leads._day-links', 'rangeHint' => "Leads on the lists of every day in this range."])</div>
         @endif
 
         @if ($readOnly)
@@ -61,18 +63,18 @@
                     <a href="{{ request()->fullUrlWithQuery(['q' => null, 'page' => null, 'processed_page' => null]) }}" class="ml-1 font-semibold text-brand-600 hover:underline">Clear search</a>
                 </p>
             @else
-            <div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div class="mb-3 gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] [&:not([hidden])]:grid" data-goal-panel="month" @if ($goalView !== 'month') hidden @endif>
                 {{-- Month calendar: pick the day --}}
                 <x-panel :title="$month->format('F Y').' · pick a day'" accent="brand" icon="calendar" title-id="exclusive-calendar-title" :tinted="false" body-class="">
                     <x-slot:actions>
                         <nav class="flex items-center gap-1" aria-label="Month">
                             @if ($canPrev)
-                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $prevMonth]) }}" aria-label="Previous month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
+                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $prevMonth, 'goals' => 'month']) }}" aria-label="Previous month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
                                     <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m15 6-6 6 6 6"/></svg>
                                 </a>
                             @endif
                             @if ($nextMonth)
-                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $nextMonth]) }}" aria-label="Next month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
+                                <a href="{{ route('exclusive-leads.index', [...$kept, 'month' => $nextMonth, 'goals' => 'month']) }}" aria-label="Next month" class="grid size-8 place-items-center rounded-lg bg-white/70 text-muted hover:bg-white hover:text-brand-600">
                                     <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
                                 </a>
                             @endif
@@ -167,14 +169,7 @@
                 </x-panel>
             </div>
 
-            {{-- This day or the whole month's list --}}
-            <nav aria-label="Leads shown" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                <a href="{{ route('exclusive-leads.index', [...$kept, 'date' => $day->toDateString()]) }}" @if (! $wholeMonth && ! $range) aria-current="page" @endif
-                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => ! $wholeMonth && ! $range, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => $wholeMonth || $range])>{{ $day->format('M j') }} only</a>
-                <a href="{{ route('exclusive-leads.index', [...$kept, 'date' => $day->toDateString(), 'view' => 'month']) }}" @if ($wholeMonth) aria-current="page" @endif
-                   @class(['flex h-9 items-center rounded-lg border px-3 font-semibold', 'border-brand-500 bg-brand-50 text-brand-700' => $wholeMonth, 'border-line bg-white hover:border-brand-400 hover:text-brand-600' => ! $wholeMonth])>Whole month</a>
-            </nav>
-
+            <div data-goal-panel="day" @if ($goalView !== 'day') hidden @endif>
             @if ($range)
                 <p class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm">
                     <strong>{{ number_format(count($listedDays)) }} different {{ \Illuminate\Support\Str::plural('lead', count($listedDays)) }}</strong> on {{ $cra->is(auth()->user()) ? 'your' : $cra->displayName()."'s" }} lists {{ \App\Http\Controllers\SegmentationController::periodLabel(...$range) }}, each listed once below.
@@ -188,42 +183,46 @@
             {{-- The selected day --}}
             @php($quota = $dayMetrics['quota'])
             @php($dayAov = $dayMetrics['aov'])
-            <x-panel :title="$day->format('l, M j').' · '.number_format($dayMetrics['listed']).' '.\Illuminate\Support\Str::plural('lead', $dayMetrics['listed']).($leadDay ? ' from '.$leadDay->format('M j') : '')" accent="sky" icon="chart" title-id="exclusive-day-title" :tinted="false" body-class="" class="mb-3">
-                <x-slot:badges>
-                    @if ($dayMetrics['is_history'])
-                        <span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-muted shadow-sm">History · leads she already had</span>
-                    @endif
-                </x-slot:badges>
-                <x-slot:actions>
-                    <span class="text-xs text-muted">Daily goal: {{ number_format($dayMetrics['repeat_goal']) }} repeat purchases ({{ $targets['repeat_percent'] }}% of {{ number_format($quota) }}) · {{ $dayMetrics['is_day_off'] ? 'Day off, no order target' : number_format($dayMetrics['confirmed_goal']).' confirmed orders' }} · AOV ₱{{ number_format($targets['high_aov_min']) }}</span>
-                </x-slot:actions>
-                <div class="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
-                    @foreach ([
-                        ['Repeat purchases', number_format($dayMetrics['repeat'] + $dayMetrics['retained']), '/ '.number_format($dayMetrics['repeat_goal']), number_format($dayMetrics['repeat']).' repeat · '.number_format($dayMetrics['retained']).' retained · goal '.$targets['repeat_percent'].'% of the day\'s '.number_format($quota)],
-                        ['Confirmed orders', number_format($dayMetrics['confirmed']), $dayMetrics['confirmed_goal'] > 0 ? '/ '.number_format($dayMetrics['confirmed_goal']).($day->isSameDay($today) ? ' today' : '') : null, ($dayMetrics['is_day_off'] ? 'Day off, no target · ' : '').'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders'])],
-                        ['AOV', $dayAov !== null ? '₱'.number_format($dayAov) : '—', null, $dayAov === null ? 'No orders yet' : ($dayAov >= $targets['high_aov_min'] ? 'Meets ₱'.number_format($targets['high_aov_min']) : '₱'.number_format($targets['high_aov_min'] - $dayAov).' below ₱'.number_format($targets['high_aov_min']))],
-                        ['Leads worked', number_format($dayMetrics['worked']), '/ '.number_format($dayMetrics['listed']), $dayMetrics['left'] > 0 ? number_format($dayMetrics['left']).' left'.($day->isSameDay($today) ? ' for tomorrow' : '') : ($dayMetrics['listed'] > 0 ? 'All handled' : 'Nothing listed')],
-                    ] as [$label, $value, $of, $note])
-                        <div class="rounded-xl border border-line bg-white px-4 py-3">
-                            <p class="text-xs font-semibold text-muted">{{ $label }}</p>
-                            <p class="text-2xl font-bold tabular-nums">{{ $value }} @if ($of)<small class="text-sm font-semibold text-muted">{{ $of }}</small>@endif</p>
-                            <p class="text-xs text-muted">{{ $note }}</p>
-                        </div>
-                    @endforeach
+            <section aria-label="The day's goals" class="mb-3 rounded-2xl border border-line bg-white px-4 py-3 shadow-sm">
+                <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="text-sm font-semibold">{{ $day->format('l, M j') }} <span class="font-normal text-muted">· {{ number_format($dayMetrics['listed']) }} {{ \Illuminate\Support\Str::plural('lead', $dayMetrics['listed']) }}{{ $leadDay ? ' from '.$leadDay->format('M j') : '' }}</span>
+                        @if ($dayMetrics['is_history'])
+                            <span class="ml-1 rounded-full bg-canvas px-2 py-0.5 text-xs font-semibold text-muted">History · leads she already had</span>
+                        @endif
+                    </h2>
                 </div>
-                <div class="border-t border-line px-4 py-3">
-                    <p class="mb-1.5 text-xs font-semibold text-muted">Daily mix by priority</p>
-                    @include('exclusive-leads._mix', ['mix' => $dayMetrics['mix']])
-                    @if ($dayMetrics['pos'] > 0)
-                        <p class="mt-1.5 text-xs text-muted">Plus {{ number_format($dayMetrics['pos']) }} of her own POS {{ \Illuminate\Support\Str::plural('sale', $dayMetrics['pos']) }}, not counted in the quota.</p>
-                    @endif
+                <div class="grid gap-x-8 gap-y-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                    <dl class="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
+                        @foreach ([
+                            ['Leads worked', number_format($dayMetrics['worked']), '/ '.number_format($dayMetrics['listed']), $dayMetrics['left'] > 0 ? number_format($dayMetrics['left']).' left'.($day->isSameDay($today) ? ' for tomorrow' : '') : ($dayMetrics['listed'] > 0 ? 'All handled' : 'Nothing listed'), $dayMetrics['worked'], $dayMetrics['listed'], 'bg-[#1f8fb8]'],
+                            ['Repeat purchases', number_format($dayMetrics['repeat'] + $dayMetrics['retained']), '/ '.number_format($dayMetrics['repeat_goal']), number_format($dayMetrics['repeat']).' repeat · '.number_format($dayMetrics['retained']).' retained · goal '.$targets['repeat_percent'].'% of '.number_format($quota), $dayMetrics['repeat'] + $dayMetrics['retained'], $dayMetrics['repeat_goal'], 'bg-teal-700'],
+                            ['Confirmed orders', number_format($dayMetrics['confirmed']), $dayMetrics['confirmed_goal'] > 0 ? '/ '.number_format($dayMetrics['confirmed_goal']).($day->isSameDay($today) ? ' today' : '') : null, ($dayMetrics['is_day_off'] ? 'Day off, no target · ' : '').'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders']), $dayMetrics['confirmed'], $dayMetrics['confirmed_goal'], 'bg-coral-700'],
+                            ['AOV', $dayAov !== null ? '₱'.number_format($dayAov) : '—', '/ ₱'.number_format($targets['high_aov_min']), $dayAov === null ? 'No orders yet' : ($dayAov >= $targets['high_aov_min'] ? 'Meets ₱'.number_format($targets['high_aov_min']) : '₱'.number_format($targets['high_aov_min'] - $dayAov).' below ₱'.number_format($targets['high_aov_min'])), $dayAov ?? 0, $targets['high_aov_min'], 'bg-brand-600'],
+                        ] as [$label, $value, $of, $note, $done, $goal, $bar])
+                            <div>
+                                <dt class="text-xs text-muted">{{ $label }}</dt>
+                                <dd class="text-base font-bold tabular-nums">{{ $value }} @if ($of)<small class="text-sm font-semibold text-muted">{{ $of }}</small>@endif</dd>
+                                <dd class="my-1 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden="true"><span class="block h-full rounded-full {{ $bar }}" style="width: {{ $goal > 0 ? min(100, $done / $goal * 100) : 0 }}%"></span></dd>
+                                <dd class="text-xs text-muted">{{ $note }}</dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                    <div>
+                        <p class="mb-1.5 text-xs text-muted">Daily mix by priority</p>
+                        @include('exclusive-leads._mix', ['mix' => $dayMetrics['mix']])
+                        @if ($dayMetrics['pos'] > 0)
+                            <p class="mt-1.5 text-xs text-muted">Plus {{ number_format($dayMetrics['pos']) }} of her own POS {{ \Illuminate\Support\Str::plural('sale', $dayMetrics['pos']) }}, not counted in the quota.</p>
+                        @endif
+                    </div>
                 </div>
-            </x-panel>
+            </section>
             @endif
+            </div>
             @endif
 
             @php($lockAssignee = true)
-            <div class="flex flex-col gap-3">
+            @php($switch = $unprocessed && $processed ? ['unprocessed' => $unprocessed->total(), 'processed' => $processed->total()] : null)
+            <div class="flex-col gap-3 [&:not([hidden])]:flex" data-goal-panel="day" @if ($goalView !== 'day') hidden @endif>
                 @if ($unprocessed)
                     @include('segmentation._section', [
                         'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
@@ -255,6 +254,7 @@
             </div>
         </dialog>
         @include('segmentation._spiels-panel')
+        @include('segmentation._conversation-panel')
         @include('segmentation._note-dialog')
         @include('segmentation._recording-dialog')
     @endif

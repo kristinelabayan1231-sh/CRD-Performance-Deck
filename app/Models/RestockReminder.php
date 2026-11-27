@@ -60,6 +60,11 @@ class RestockReminder extends Model
     ];
 
     /** Reasons a CRA can pick when leaving a customer out. */
+    /** The error of a text cancelled by Mark reordered. */
+    public const MARKED_REORDERED = 'Reordered';
+
+    public const ASKED_NOT_TO_BE_TEXTED = 'Asked not to be texted';
+
     /** The reason of a customer unticked with no other reason. */
     public const UNTICKED = 'Other';
 
