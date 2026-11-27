@@ -1013,9 +1013,12 @@
                 @if ($donutTotal > 0)
                     <div class="pb-by-sales flex flex-wrap items-center gap-4" style="padding: 12px 16px 0">
                         {!! $donut($donutParts, $millions($donutTotal), 'sales', 'Donut: each top product\'s share of these dates\' product sales') !!}
-                        <ul class="grid gap-x-4 gap-y-1.5" style="flex: 1 1 260px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); font-size: 12px">
+                        <ul class="grid gap-x-8 gap-y-2" style="flex: 0 1 34rem; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); font-size: 13px">
+                            @php
+                                $legendPeak = max(1, max(array_column($donutParts, 1)));
+                            @endphp
                             @foreach ($donutParts as [$name, $value, $color])
-                                <li class="flex items-center gap-1.5"><span aria-hidden="true" style="{{ $swatch }}; flex: none; background: {{ $color }}"></span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere">{{ $name }}</span><strong>{{ number_format($value / $donutTotal * 100, 1) }}%</strong></li>
+                                <li style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 3.25rem; align-items: center; column-gap: 8px"><span aria-hidden="true" style="{{ $swatch }}; justify-self: center; background: {{ $color }}"></span><span style="min-width: 0; overflow-wrap: anywhere; font-weight: 600">{{ $name }}</span><strong style="text-align: right">{{ number_format($value / $donutTotal * 100, 1) }}%</strong><span aria-hidden="true" style="grid-column: 2; display: block; height: 4px; margin-top: 3px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 4px; border-radius: 999px; width: {{ round($value / $legendPeak * 100, 2) }}%; background: {{ $color }}"></span></span></li>
                             @endforeach
                         </ul>
                     </div>
@@ -1023,12 +1026,15 @@
                 @if ($split['total'] > 0)
                     <div class="pb-by-upsell flex flex-wrap items-center gap-4" style="padding: 12px 16px 0">
                         {!! $donut($upsellParts, $rateText($averageUpsold), 'TSD', 'Donut: main vs TSD upsold of these dates; the legend ranks the products by TSD %') !!}
-                        <ul class="grid gap-x-4 gap-y-1.5" style="flex: 1 1 260px; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); font-size: 12px">
+                        <ul class="grid gap-x-8 gap-y-2" style="flex: 0 1 34rem; margin: 0; padding: 0; list-style: none; grid-template-columns: repeat(auto-fill, minmax(13rem, 16rem)); font-size: 13px">
+                            @php
+                                $legendPeak = max(0.0001, (float) $upsellRanked->take(6)->max(fn (array $product) => $rates($product)['upsold']));
+                            @endphp
                             @foreach ($upsellRanked->take(6) as $index => $product)
-                                <li class="flex items-center gap-1.5"><span style="display: inline-flex; flex: none; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; {{ $medal($index + 1) }}">{{ $index + 1 }}</span><span style="flex: 1; min-width: 0; overflow-wrap: anywhere">{{ $product['name'] }}</span><strong>{{ $rateText($rates($product)['upsold']) }}</strong></li>
+                                <li style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 3.25rem; align-items: center; column-gap: 8px"><span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 11px; font-weight: 700; {{ $medal($index + 1) }}">{{ $index + 1 }}</span><span style="min-width: 0; overflow-wrap: anywhere; font-weight: 600">{{ $product['name'] }}</span><strong style="text-align: right; color: var(--pb-added-text)">{{ $rateText($rates($product)['upsold']) }}</strong><span aria-hidden="true" style="grid-column: 2; display: block; height: 4px; margin-top: 3px; border-radius: 999px; background: var(--pb-track)"><span style="display: block; height: 4px; border-radius: 999px; width: {{ round($rates($product)['upsold'] / $legendPeak * 100, 2) }}%; background: {{ $upsell }}"></span></span></li>
                             @endforeach
                             @if ($upsellRanked->count() > 6)
-                                <li class="flex items-center gap-1.5" style="{{ $muted }}">Next {{ $upsellRanked->count() - 6 }} {{ Str::plural('product', $upsellRanked->count() - 6) }} in the list below</li>
+                                <li style="grid-column: 1 / -1; {{ $muted }}">Next {{ $upsellRanked->count() - 6 }} {{ Str::plural('product', $upsellRanked->count() - 6) }} in the list below</li>
                             @endif
                         </ul>
                     </div>
