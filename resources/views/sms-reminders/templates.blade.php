@@ -10,11 +10,11 @@
     <div class="space-y-4">
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <h1 class="text-xl font-semibold">SMS Reminders <span class="text-sm font-normal text-muted">· Templates</span></h1>
+                <h1 class="text-xl font-semibold">{{ auth()->user()->isExclusiveOn(\App\Models\Lead::today()) ? 'Exclusive Lead Tracker' : 'Segmentation Tracker' }} <span class="text-sm font-normal text-muted">· SMS Templates</span></h1>
                 <p class="text-sm text-muted">{{ $isOwn ? 'Your own texts: no one else sees or changes them.' : ($owner ? $owner->displayName()."'s own texts." : 'No CRA yet.') }} Reminders: each customer gets the closest fit (product + customer type, then product, then customer type, then "Any"); with no template, the built-in default is sent. A customer whose product already ran out (most of the tracker list, which runs about a month behind) gets the general text from Settings → SMS Reminders instead. Follow-ups are only for the Text button.</p>
             </div>
-            @include('sms-reminders._tabs')
         </header>
+        @include('segmentation._tabs')
 
         @if ($errors->any())
             <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>

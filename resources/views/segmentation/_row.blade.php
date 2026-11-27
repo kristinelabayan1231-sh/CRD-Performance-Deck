@@ -35,8 +35,8 @@
             @elseif ($isHighAov)
                 <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
             @endif
-            {{-- Its SMS Reminders text: to be texted, texted (no reply yet), replied YES or STOP --}}
-            @if ($smsBadge ?? null)
+            {{-- Its SMS Reminders text (users with SMS Reminders see it in the SMS column instead) --}}
+            @if (($smsBadge ?? null) && ! auth()->user()->can('sms_reminders.view'))
                 <span title="{{ $smsBadge['title'] }}" class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold whitespace-nowrap {{ $smsBadge['classes'] }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="size-3"><path stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></svg>{{ $smsBadge['label'] }}</span>
             @endif
             {{-- Hover: the customer's order history (order date · product), loaded on first hover (segmentation.js) --}}
@@ -86,6 +86,15 @@
             @endif
         </span>
     </td>
+    @can('sms_reminders.view')
+        @include('segmentation._sms-cell')
+    @endcan
+    <td class="px-4 py-3">
+        <span class="flex items-center gap-2">
+            <x-lead-select :lead="$lead" field="status" list="statuses" :editable="$canEdit" placeholder="— Set status —" aria-label="Status for {{ $lead->customer_name }}" />
+            @include('segmentation._attempt', ['lead' => $lead])
+        </span>
+    </td>
     <td data-col="delivered_date" class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
     <td data-col="days_since_delivered" class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
     <td data-col="est_out_of_stock" class="px-4 py-3 whitespace-nowrap">{{ $lead->est_out_of_stock_date->format('M j, Y') }}</td>
@@ -124,12 +133,6 @@
         @else
             <span class="text-xs text-muted">Unassigned</span>
         @endif
-    </td>
-    <td class="px-4 py-3">
-        <span class="flex items-center gap-2">
-            <x-lead-select :lead="$lead" field="status" list="statuses" :editable="$canEdit" placeholder="— Set status —" aria-label="Status for {{ $lead->customer_name }}" />
-            @include('segmentation._attempt', ['lead' => $lead])
-        </span>
     </td>
     @isset($sources)
         {{-- Exclusive Lead Tracker: why the lead is on the list --}}

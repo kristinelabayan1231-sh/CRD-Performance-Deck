@@ -104,6 +104,7 @@
         @endif
 
         {{-- The selected day's leads: what's left to do first, what's done below. --}}
+        @php($switch = $unprocessed && $processed ? ['unprocessed' => $unprocessed->total(), 'processed' => $processed->total()] : null)
         <div class="flex flex-col gap-3">
             @if ($unprocessed)
                 @include('segmentation._section', [
@@ -164,6 +165,7 @@
     @endisset
 
     @include('segmentation._spiels-panel')
+    @include('segmentation._conversation-panel')
 
     {{-- Full view of one list (opened from a section's expand arrows) --}}
     <dialog id="expand-dialog" aria-labelledby="expand-title" class="m-auto h-[90dvh] w-[min(96rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">

@@ -3,9 +3,40 @@
 @php($pending = $id === 'unprocessed')
 {{-- A Call button on the rows this user may edit, when their phone is linked (Settings → Call Recordings) --}}
 @php($canDial = filled(auth()->user()->call_webhook_url))
+{{-- $switch (both lists' totals): Pending and Catered one at a time, with the buttons that switch them (segmentation.js) --}}
+@php($switch = request()->boolean('full') ? null : ($switch ?? null))
+@php($shownList = request()->has('processed_page') ? 'processed' : 'unprocessed')
 
 <x-panel :title="$title" :accent="$accent ?? ($pending ? 'coral' : 'teal')" :icon="$icon ?? ($pending ? 'clock' : 'check')" :title-id="$id.'-title'"
-         :tinted="false" body-class="" data-lead-section="{{ $id }}" class="flex flex-col">
+         :tinted="false" body-class="" data-lead-section="{{ $id }}" :hidden="$switch !== null && $shownList !== $id" class="flex-col [&:not([hidden])]:flex">
+    @if ($switch)
+        <x-slot:header>
+            <header class="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+                <h2 id="{{ $id }}-title" class="sr-only">{{ $title }}</h2>
+                <div class="flex flex-wrap items-center gap-1.5">
+                    @foreach (['unprocessed' => 'Pending', 'processed' => 'Catered'] as $listId => $listLabel)
+                        <button type="button" data-show-list="{{ $listId }}" aria-pressed="{{ $listId === $id ? 'true' : 'false' }}"
+                                class="h-9 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-muted tabular-nums hover:border-brand-400 hover:text-brand-600 aria-pressed:border-brand-500 aria-pressed:bg-brand-50 aria-pressed:text-brand-700">{{ $listLabel }} · {{ number_format($switch[$listId]) }}</button>
+                    @endforeach
+                    {{-- The follow-up lists open in Pending's full view --}}
+                    <select data-expand-select aria-label="Follow-up lists" class="h-9 rounded-lg border border-line bg-white px-2.5 text-sm font-semibold text-muted focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        <option value="">Follow-up lists</option>
+                        @foreach (['callback' => 'Call back for today', 'reactivation' => 'Reactivation', 'reserved' => 'Reserved', 'reserved_pancake' => 'Reserved - Pancake'] as $listKey => $listLabel)
+                            <option value="{{ request()->fullUrlWithQuery(['show' => 'unprocessed', 'full' => 1, 'list' => $listKey, 'page' => null, 'processed_page' => null]) }}">{{ $listLabel }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex items-center gap-3">
+                    <p class="hidden text-xs text-muted xl:block">{{ $hint }}</p>
+                    <button type="button" title="Full view" aria-label="Open {{ $title }} in full view"
+                            data-expand-title="{{ $title }}" data-expand-src="{{ request()->fullUrlWithQuery(['show' => $id, 'full' => 1, 'page' => null, 'processed_page' => null]) }}"
+                            class="grid size-9 place-items-center rounded-lg border border-line text-muted hover:border-brand-400 hover:text-brand-600">
+                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg>
+                    </button>
+                </div>
+            </header>
+        </x-slot:header>
+    @endif
     <x-slot:badges>
         <span @class(['rounded-full bg-white px-2 py-0.5 text-xs font-bold tabular-nums shadow-sm', 'text-coral-700' => $pending, 'text-teal-700' => ! $pending && ! isset($accent), 'text-ink' => isset($accent)])>{{ number_format($leads->total()) }}</span>
         <p class="hidden text-xs text-muted sm:block">{{ $hint }}</p>
@@ -57,13 +88,16 @@
                                 @endisset
                             </span>
                         </th>
+                        @can('sms_reminders.view')
+                            <th data-col="sms" class="bg-brand-100 px-4 py-3 font-semibold text-brand-700">Text</th>
+                        @endcan
+                        <th class="px-4 py-3 font-semibold">Status</th>
                         <th data-col="delivered_date" class="px-4 py-3 font-semibold">Delivered Date</th>
                         <th data-col="days_since_delivered" class="bg-[#fff4d6] px-4 py-3 text-center font-semibold text-[#7a5a00]">Days since Delivered</th>
                         <th data-col="est_out_of_stock" class="px-4 py-3 font-semibold">Est. Out of Stock</th>
                         <th data-col="replenishment_day" class="px-4 py-3 font-semibold">Recommended Replenishment Day</th>
                         <th data-col="type" class="px-4 py-3 font-semibold">Type</th>
                         <th data-col="assigned_to" class="px-4 py-3 font-semibold">Assigned to</th>
-                        <th class="px-4 py-3 font-semibold">Status</th>
                         @isset($sources)
                             <th data-col="listed_as" class="px-4 py-3 font-semibold">Listed as</th>
                         @endisset

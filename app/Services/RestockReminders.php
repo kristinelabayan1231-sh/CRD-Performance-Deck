@@ -29,6 +29,9 @@ use Throwable;
  */
 class RestockReminders
 {
+    /** The error of a text cancelled because the customer is on the do-not-text list. */
+    public const OPTED_OUT = 'Opted out';
+
     /** How far back a reorder of the product is looked for. */
     private const LOOKBACK_DAYS = 400;
 
@@ -90,7 +93,7 @@ class RestockReminders
             $first = $customerLeads->sortByDesc('delivered_date')->first();
 
             $reason = match (true) {
-                $opted => 'Opted out',
+                $opted => self::OPTED_OUT,
                 $stillDue->isEmpty() => 'Already reordered',
                 $toText->isEmpty() => 'Already texted on '.CarbonImmutable::parse($textedOn[$stillDue->first()->id])->format('M j'),
                 default => null,
@@ -169,10 +172,10 @@ class RestockReminders
 
     /**
      * The SMS badge of each tracker row: its text's latest state (to be texted, sending, texted on a day, failed) or the
-     * customer's reply to it (YES, STOP). Rows with no text are left out.
+     * customer's reply (YES, or STOP until they're allowed texts again). Rows with no text are left out.
      *
      * @param  iterable<Lead>  $leads
-     * @return array<int, array{label: string, classes: string, title: string}> lead id => badge
+     * @return array<int, array{label: string, classes: string, title: string, reminder_id: int, phone_key: string, cra_id: ?int}> lead id => badge
      */
     public function badgesFor(iterable $leads): array
     {
@@ -183,31 +186,147 @@ class RestockReminders
 
         $primaries = array_values(array_unique($this->primaries($leads->map(fn (Lead $lead) => LeadGenerator::normalizePhone((string) $lead->phone_number))->unique()->values()->all())));
         $wanted = $leads->pluck('id')->flip();
+        $optedOut = DoNotText::whereIn('phone_key', $primaries)->pluck('reason', 'phone_key');
         $texts = RestockReminder::whereIn('phone_key', $primaries)->whereNotNull('lead_ids')
-            ->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::SENT, RestockReminder::FAILED])
-            ->orderBy('remind_on')->orderBy('id')->get(['id', 'lead_ids', 'status', 'sent_at']);
-        $replies = SmsReply::whereIn('restock_reminder_id', $texts->modelKeys())->whereIn('kind', [SmsReply::YES, SmsReply::STOP])
-            ->orderBy('id')->pluck('kind', 'restock_reminder_id');
+            ->where(fn ($q) => $q->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::SENT, RestockReminder::FAILED, RestockReminder::EXCLUDED])
+                ->orWhere(fn ($q) => $q->where('status', RestockReminder::SKIPPED)->where('error', self::OPTED_OUT)->whereIn('phone_key', $optedOut->keys())))
+            ->orderBy('remind_on')->orderBy('id')->get(['id', 'lead_ids', 'status', 'sent_at', 'phone_key', 'user_id']);
+        $replies = SmsReply::whereIn('restock_reminder_id', $texts->modelKeys())->where('kind', SmsReply::YES)
+            ->pluck('kind', 'restock_reminder_id');
         $tz = config('segmentation.timezone');
 
         $badges = [];
         foreach ($texts as $text) {
             $badge = match (true) {
-                ($replies[$text->id] ?? null) === SmsReply::YES => ['Replied YES', 'bg-[#d4edbc] text-[#11734b]', 'Replied YES to the text: wants to reorder'],
-                ($replies[$text->id] ?? null) === SmsReply::STOP => ['Replied STOP', 'bg-[#fde0e0] text-[#a3271f]', 'Asked not to be texted again'],
+                isset($optedOut[$text->phone_key]) => [str_starts_with((string) $optedOut[$text->phone_key], 'Replied') ? 'Replied STOP' : 'Asked not to be texted',
+                    'bg-[#fde0e0] text-[#a3271f]', 'Gets no texts until ticked again in their conversation or Today\'s texts'],
+                isset($replies[$text->id]) => ['Replied YES', 'bg-[#d4edbc] text-[#11734b]', 'Replied YES to the text: wants to reorder'],
                 $text->status === RestockReminder::SENT => ['Texted '.$text->sent_at?->timezone($tz)->format('M j'), 'bg-[#dde9f7] text-[#1a4f8c]', 'Texted '.$text->sent_at?->timezone($tz)->format('M j, g:i A').', no reply yet'],
                 $text->status === RestockReminder::FAILED => ['Text failed', 'bg-[#fde0e0] text-[#a3271f]', 'The text didn\'t go out'],
                 $text->status === RestockReminder::QUEUED => ['Sending text', 'bg-[#fbeccd] text-[#7a4d00]', 'Queued on the CRA\'s phone'],
+                $text->status === RestockReminder::EXCLUDED => ['Left out', 'bg-[#e6e6e6] text-[#3d3d3d]', 'Left out of the text; stays on the call list'],
                 default => ['To be texted', 'bg-[#fbeccd] text-[#7a4d00]', 'On SMS Reminders, not sent yet'],
             };
             foreach ($text->lead_ids ?? [] as $leadId) {
                 if (isset($wanted[$leadId])) {
-                    $badges[$leadId] = ['label' => $badge[0], 'classes' => $badge[1], 'title' => $badge[2]];
+                    $badges[$leadId] = [
+                        'label' => $badge[0], 'classes' => $badge[1], 'title' => $badge[2],
+                        'reminder_id' => $text->id, 'phone_key' => $text->phone_key, 'cra_id' => $text->user_id,
+                    ];
                 }
             }
         }
 
         return $badges;
+    }
+
+    /**
+     * Undo a STOP (or "Asked not to be texted"): the customer may be texted again. Their texts it cancelled that are for
+     * today or later, or were cancelled today, go back on the list unless one of their products was reordered since.
+     *
+     * @return int texts back on the list
+     */
+    public function allowAgain(string $phoneKey, User $by): int
+    {
+        $today = WorkingDate::realToday();
+        $numbers = $this->members([$phoneKey])[$phoneKey] ?? [$phoneKey];
+        DoNotText::whereIn('phone_key', array_unique([$phoneKey, ...$numbers]))->delete();
+
+        $texts = RestockReminder::where('phone_key', $phoneKey)
+            ->where(fn (Builder $q) => $q->where(fn (Builder $q) => $q->where('status', RestockReminder::SKIPPED)->where('error', self::OPTED_OUT))
+                ->orWhere(fn (Builder $q) => $q->where('status', RestockReminder::EXCLUDED)->where('excluded_reason', RestockReminder::ASKED_NOT_TO_BE_TEXTED)))
+            ->where(fn (Builder $q) => $q->whereDate('remind_on', '>=', $today->toDateString())
+                ->orWhere('updated_at', '>=', CarbonImmutable::parse($today->toDateString(), config('segmentation.timezone'))->utc()))
+            ->get();
+
+        return $this->restore($texts, $numbers, $by);
+    }
+
+    /**
+     * Undo Mark reordered: the follow-ups and texts it cancelled that are for today or later, or were cancelled today, go
+     * back on the list, and the customer is back on No response if it took them off.
+     *
+     * @return int texts back on the list
+     */
+    public function undoReordered(RestockReminder $latest, User $by): int
+    {
+        $today = WorkingDate::realToday();
+        $phoneKey = $latest->phone_key;
+        $markedAt = CarbonImmutable::parse($latest->reordered_at);
+        $latest->update(['reordered_at' => null]);
+        RestockReminder::where('phone_key', $phoneKey)->whereNotNull('no_response_at')
+            ->whereBetween('resolved_at', [$markedAt, $markedAt->addMinute()])->update(['resolved_at' => null]);
+
+        $numbers = $this->members([$phoneKey])[$phoneKey] ?? [$phoneKey];
+        if (DoNotText::whereIn('phone_key', [$phoneKey, ...$numbers])->exists()) {
+            return 0;
+        }
+
+        $texts = RestockReminder::where('phone_key', $phoneKey)->where('status', RestockReminder::SKIPPED)->where('error', RestockReminder::MARKED_REORDERED)
+            ->where('updated_at', '>=', $markedAt)
+            ->where(fn (Builder $q) => $q->whereDate('remind_on', '>=', $today->toDateString())
+                ->orWhere('updated_at', '>=', CarbonImmutable::parse($today->toDateString(), config('segmentation.timezone'))->utc()))
+            ->get();
+
+        return $this->restore($texts, $numbers, $by);
+    }
+
+    /**
+     * Put cancelled texts back on the list, except those whose product was reordered since.
+     *
+     * @param  Collection<int, RestockReminder>  $texts
+     * @param  list<string>  $numbers  the customer's numbers
+     */
+    private function restore(Collection $texts, array $numbers, User $by): int
+    {
+        if ($texts->isEmpty()) {
+            return 0;
+        }
+
+        $since = WorkingDate::realToday()->subDays(self::LOOKBACK_DAYS);
+        $ordered = $this->lastPancakeOrder($numbers, $since);
+        $delivered = $this->latestDeliveries($numbers, $since);
+        $deliveredOn = Lead::whereIn('id', $texts->flatMap(fn (RestockReminder $text) => $text->lead_ids ?? [])->unique())->pluck('delivered_date', 'id');
+        $restored = 0;
+
+        foreach ($texts as $text) {
+            // A list text: after its leads' deliveries; a follow-up: from the text it follows.
+            $after = $text->isFollowUp()
+                ? $text->remind_on->subDays(RestockReminder::FOLLOW_UP_DAYS + 1)->toDateString()
+                : (string) collect($text->lead_ids ?? [])->map(fn (int $id) => $deliveredOn[$id] ?? null)->filter()->max()?->toDateString();
+            $products = collect($text->coveredItems())->pluck('product_id')->filter();
+            $reordered = $after !== '' && collect($numbers)->contains(fn (string $number) => $products->contains(
+                fn (int $id) => ($ordered[$number][$id] ?? '') > $after || ($delivered[$number][$id] ?? '') > $after));
+
+            $text->update($reordered
+                ? ['status' => RestockReminder::SKIPPED, 'error' => 'Already reordered']
+                : ['status' => RestockReminder::PENDING, 'error' => null, 'excluded_reason' => null, 'queued_at' => null, 'status_updated_by' => $by->id]);
+            $restored += $reordered ? 0 : 1;
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A real day's texts by state, for one CRA or all (null).
+     *
+     * @return array{toSend: int, queued: int, sent: int, excluded: int, skipped: int, failed: int, all: int, followUps: int}
+     */
+    public function dayCounts(CarbonImmutable $day, ?int $craId): array
+    {
+        $base = RestockReminder::shownOn($day)->when($craId, fn (Builder $query) => $query->where('user_id', $craId));
+        $counts = (clone $base)->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
+
+        return [
+            'toSend' => (int) (($counts[RestockReminder::PENDING] ?? 0) + ($counts[RestockReminder::QUEUED] ?? 0)),
+            'queued' => (int) ($counts[RestockReminder::QUEUED] ?? 0),
+            'sent' => (int) ($counts[RestockReminder::SENT] ?? 0),
+            'excluded' => (int) ($counts[RestockReminder::EXCLUDED] ?? 0),
+            'skipped' => (int) ($counts[RestockReminder::SKIPPED] ?? 0),
+            'failed' => (int) ($counts[RestockReminder::FAILED] ?? 0),
+            'all' => (int) $counts->sum(),
+            'followUps' => (clone $base)->where('kind', RestockReminder::FOLLOW_UP)->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED])->count(),
+        ];
     }
 
     /**
@@ -413,7 +532,7 @@ class RestockReminders
             $reason = match (true) {
                 // A queued one isn't combined into today's text (earlierTexts), so it stays.
                 $reminder->status !== RestockReminder::QUEUED && isset($onToday[$reminder->phone_key]) && ! $reminder->remind_on->isSameDay($remindOn) => 'In a later reminder',
-                collect($numbers)->contains(fn (string $number) => isset($optedOut[$number])) => 'Opted out',
+                collect($numbers)->contains(fn (string $number) => isset($optedOut[$number])) => self::OPTED_OUT,
                 collect($numbers)->contains(fn (string $number) => $products->contains(fn (int $id) => ($ordered[$number][$id] ?? '') >= $after
                     || ($delivered[$number][$id] ?? '') >= $after)) => 'Already reordered',
                 default => null,

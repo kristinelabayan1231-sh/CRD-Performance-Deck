@@ -50,9 +50,10 @@ function initColumns() {
 
     picker.querySelectorAll('[data-columns-all]').forEach((button) =>
         button.addEventListener('click', () => {
-            const keys = button.dataset.columnsAll === 'hide'
-                ? [...picker.querySelectorAll('[data-column-toggle]:not(:disabled)')].map((box) => box.dataset.columnToggle)
-                : [];
+            // main: only the columns used while calling and texting (Status always shows).
+            const main = ['customer_name', 'qty', 'product', 'contact_number', 'sms'];
+            const all = [...picker.querySelectorAll('[data-column-toggle]:not(:disabled)')].map((box) => box.dataset.columnToggle);
+            const keys = { hide: all, main: all.filter((key) => !main.includes(key)) }[button.dataset.columnsAll] ?? [];
             writeHidden(keys);
             applyHidden(keys);
         }),
@@ -550,7 +551,11 @@ async function refreshSections() {
     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
     document.querySelectorAll('[data-lead-section]').forEach((section) => {
         const fresh = page.querySelector(`[data-lead-section="${CSS.escape(section.dataset.leadSection)}"]`);
-        if (fresh) section.replaceWith(document.importNode(fresh, true));
+        if (!fresh) return;
+        const next = document.importNode(fresh, true);
+        // The list on screen stays on screen.
+        next.hidden = section.hidden;
+        section.replaceWith(next);
     });
     fitVisibleRows();
 }
@@ -558,6 +563,8 @@ async function refreshSections() {
 // Pending and Catered: as tall as their first rows (data-visible-rows), the rest by scrolling inside the list.
 function fitVisibleRows() {
     document.querySelectorAll('[data-visible-rows]').forEach((box) => {
+        // The list not on screen is measured when it's shown.
+        if (!box.offsetParent) return;
         const visible = Number(box.dataset.visibleRows);
         const rows = box.querySelectorAll('tbody > tr');
         if (rows.length <= visible) {
@@ -565,8 +572,11 @@ function fitVisibleRows() {
             return;
         }
         // Down to the last visible row's bottom, plus the horizontal scrollbar's height.
-        const bottom = rows[visible - 1].getBoundingClientRect().bottom - box.getBoundingClientRect().top + box.scrollTop;
-        box.style.maxHeight = `${Math.ceil(bottom + box.offsetHeight - box.clientHeight)}px`;
+        const top = box.getBoundingClientRect().top;
+        const upTo = (row) => row.getBoundingClientRect().bottom - top + box.scrollTop + box.offsetHeight - box.clientHeight;
+        // Shorter (6 rows at least) when that keeps the horizontal scrollbar on the screen.
+        const room = window.innerHeight - (top + window.scrollY) - 24;
+        box.style.maxHeight = `${Math.ceil(Math.max(upTo(rows[Math.min(5, visible - 1)]), Math.min(upTo(rows[visible - 1]), room)))}px`;
     });
 }
 
@@ -825,14 +835,23 @@ function initExpand() {
     const frame = dialog.querySelector('iframe');
     let opened = false;
 
+    const open = (title, src) => {
+        dialog.querySelector('[data-expand-title]').textContent = title;
+        frame.src = src;
+        opened = true;
+        dialog.showModal();
+    };
+
     // Delegated: the lists are swapped in place after Mark as processed.
     document.addEventListener('click', (event) => {
         const button = event.target.closest('[data-expand-src]');
-        if (!button) return;
-        dialog.querySelector('[data-expand-title]').textContent = button.dataset.expandTitle;
-        frame.src = button.dataset.expandSrc;
-        opened = true;
-        dialog.showModal();
+        if (button) open(button.dataset.expandTitle, button.dataset.expandSrc);
+    });
+    document.addEventListener('change', (event) => {
+        const select = event.target instanceof Element ? event.target.closest('[data-expand-select]') : null;
+        if (!select?.value) return;
+        open(select.selectedOptions[0].text, select.value);
+        select.value = '';
     });
 
     dialog.querySelector('[data-expand-close]').addEventListener('click', () => dialog.close());
@@ -840,6 +859,24 @@ function initExpand() {
         frame.src = 'about:blank';
         // Changes made in the pop-up move customers between the lists.
         if (opened) window.location.reload();
+    });
+}
+
+// Pending and Catered one at a time, and the Exclusive Lead Tracker's Day / Month views. Delegated: the lists are swapped in place.
+function initViews() {
+    document.addEventListener('click', (event) => {
+        if (!(event.target instanceof Element)) return;
+        const list = event.target.closest('[data-show-list]')?.dataset.showList;
+        if (list) {
+            document.querySelectorAll('[data-lead-section]').forEach((section) => (section.hidden = section.dataset.leadSection !== list));
+            fitVisibleRows();
+        }
+        const view = event.target.closest('[data-goal-view]')?.dataset.goalView;
+        if (view) {
+            document.querySelectorAll('[data-goal-view]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.goalView === view)));
+            document.querySelectorAll('[data-goal-panel]').forEach((panel) => (panel.hidden = panel.dataset.goalPanel !== view));
+            fitVisibleRows();
+        }
     });
 }
 
@@ -1092,6 +1129,7 @@ function renderAttempt(button, { left, today, history }) {
 
 export function initSegmentation() {
     initExpand();
+    initViews();
     initFlip();
     initGreeting();
     initScrollSlider();

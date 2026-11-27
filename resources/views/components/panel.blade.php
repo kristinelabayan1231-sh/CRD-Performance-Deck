@@ -24,8 +24,11 @@
     ];
 @endphp
 
-{{-- A page section: a header (icon, title, badges, actions) over the body, on a white card. --}}
+{{-- A page section: a header (icon, title, badges, actions; or its own $header) over the body, on a white card. --}}
 <section {{ $attributes->merge(['class' => 'rounded-2xl border border-line bg-white shadow-sm']) }} @if ($titleId) aria-labelledby="{{ $titleId }}" @endif>
+    @isset($header)
+        {{ $header }}
+    @else
     {{-- Header above the body (z-20) so pop-overs opened from it, like the "i" info, aren't clipped --}}
     <header class="relative z-20 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-t-2xl border-b bg-gradient-to-r px-4 py-2.5 {{ $style['header'] }}">
         <div class="flex min-w-0 flex-wrap items-center gap-2.5">
@@ -41,5 +44,6 @@
             <div class="flex flex-wrap items-center gap-3 text-xs">{{ $actions }}</div>
         @endisset
     </header>
+    @endisset
     <div @class(['overflow-hidden rounded-b-2xl', $style['body'] => $tinted, $bodyClass])>{{ $slot }}</div>
 </section>

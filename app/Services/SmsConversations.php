@@ -2,9 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\DoNotText;
 use App\Models\RestockReminder;
 use App\Models\SmsMessage;
 use App\Models\SmsReply;
+use App\Models\SmsTemplate;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -17,10 +20,40 @@ use Illuminate\Support\Collection;
  */
 class SmsConversations
 {
-    /** How far back the threads list goes. */
+    /** How far back the threads list goes (unanswered replies are listed however old). */
     public const DAYS = 30;
 
     public const PER_PAGE = 50;
+
+    /**
+     * What the Conversations page shows whichever list is open: the chat of $phone (when $user may open it) and the counts.
+     *
+     * @return array<string, mixed>
+     */
+    public function page(User $user, ?int $craId, ?string $phone, bool $all = false): array
+    {
+        $thread = $phone ? $this->thread($phone, $all) : null;
+        if ($thread && $thread['latest']->user_id !== $user->id && ! $user->can('sms_reminders.view_all')) {
+            $thread = null;
+        }
+        $forCra = fn (Builder $query) => $query->when($craId, fn (Builder $q) => $q->where('user_id', $craId));
+
+        return [
+            'thread' => $thread,
+            'phone' => $thread ? $phone : null,
+            'craId' => $craId,
+            'cras' => LeadGenerator::cras(),
+            'canDial' => (bool) $user->call_webhook_url,
+            'optedOut' => $thread && DoNotText::has($phone),
+            'templates' => $thread ? SmsTemplate::where('user_id', $thread['latest']->user_id)->where('is_active', true)->orderBy('name')->get(['id', 'name', 'body']) : collect(),
+            'counts' => [
+                'reply' => $forCra(SmsReply::needsAnswer())->distinct()->count('phone_key'),
+                'reorder' => $forCra(SmsReply::wantsToReorder())->distinct()->count('phone_key'),
+                'follow_ups' => $forCra(RestockReminder::followUpsToSend())->count(),
+                'no_response' => $forCra(RestockReminder::noResponse())->count(),
+            ],
+        ];
+    }
 
     /**
      * The threads for $craId (null = every CRA), latest activity first. $show: reply (replies not answered yet),
@@ -34,10 +67,11 @@ class SmsConversations
         $forCra = fn (Builder $query, string $column = 'user_id') => $query->when($craId, fn (Builder $q) => $q->where($column, $craId));
 
         $replies = $forCra(SmsReply::whereNotNull('restock_reminder_id')->where('received_at', '>=', $since));
-        $open = (clone $replies)->whereNull('handled_at')->where('kind', '!=', SmsReply::STOP);
+        // Unanswered replies stay listed however old, so the list always matches its count.
+        $open = $forCra(SmsReply::needsAnswer());
         $last = match ($show) {
             'reply' => (clone $open)->selectRaw('phone_key, max(received_at) as last_at')->groupBy('phone_key')->pluck('last_at', 'phone_key'),
-            'reorder' => (clone $replies)->wantsToReorder()->selectRaw('phone_key, max(received_at) as last_at')->groupBy('phone_key')->pluck('last_at', 'phone_key'),
+            'reorder' => $forCra(SmsReply::wantsToReorder())->selectRaw('phone_key, max(received_at) as last_at')->groupBy('phone_key')->pluck('last_at', 'phone_key'),
             default => $this->lastActivity($forCra, $replies),
         };
 

@@ -6,13 +6,12 @@ use App\Models\RestockReminder;
 use App\Models\SmsReply;
 use App\Models\SmsTemplate;
 use App\Models\User;
-use App\Services\LeadGenerator;
+use App\Services\SmsConversations;
 use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -23,7 +22,7 @@ use Illuminate\View\View;
  */
 class SmsFollowUpController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, SmsConversations $conversations): View
     {
         $craId = $this->craId($request);
         $today = WorkingDate::realToday();
@@ -37,10 +36,11 @@ class SmsFollowUpController extends Controller
             default => 'Later',
         });
 
-        return view('sms-reminders.follow-ups', [...$this->shared($craId), 'groups' => $groups, 'today' => $today]);
+        return view('sms-reminders.conversations', [...$this->chat($request, $conversations, $craId, $followUps->first()?->phone_key),
+            'box' => 'follow-ups', 'groups' => $groups, 'today' => $today]);
     }
 
-    public function noResponse(Request $request): View
+    public function noResponse(Request $request, SmsConversations $conversations): View
     {
         $craId = $this->craId($request);
         $rows = RestockReminder::noResponse()->when($craId, fn (Builder $q) => $q->where('user_id', $craId))
@@ -49,8 +49,8 @@ class SmsFollowUpController extends Controller
         $sent = RestockReminder::whereIn('phone_key', $keys)->where('status', RestockReminder::SENT)->selectRaw('phone_key, count(*) as n')->groupBy('phone_key')->pluck('n', 'phone_key');
         $lastReply = SmsReply::whereIn('phone_key', $keys)->latest('received_at')->get(['phone_key', 'body'])->unique('phone_key')->pluck('body', 'phone_key');
 
-        return view('sms-reminders.no-response', [...$this->shared($craId), 'rows' => $rows, 'sent' => $sent, 'lastReply' => $lastReply,
-            'canDial' => (bool) $request->user()->call_webhook_url]);
+        return view('sms-reminders.conversations', [...$this->chat($request, $conversations, $craId, $rows->first()?->phone_key),
+            'box' => 'no-response', 'rows' => $rows, 'sent' => $sent, 'lastReply' => $lastReply]);
     }
 
     /**
@@ -123,18 +123,15 @@ class SmsFollowUpController extends Controller
     }
 
     /**
-     * @return array{cras: Collection<int, User>, craId: ?int, counts: array{follow_ups: int, no_response: int}}
+     * The chat beside the list: the customer picked, else the list's first.
+     *
+     * @return array<string, mixed>
      */
-    private function shared(?int $craId): array
+    private function chat(Request $request, SmsConversations $conversations, ?int $craId, ?string $first): array
     {
-        return [
-            'cras' => LeadGenerator::cras(),
-            'craId' => $craId,
-            'counts' => [
-                'follow_ups' => RestockReminder::followUpsToSend()->when($craId, fn (Builder $q) => $q->where('user_id', $craId))->count(),
-                'no_response' => RestockReminder::noResponse()->when($craId, fn (Builder $q) => $q->where('user_id', $craId))->count(),
-            ],
-        ];
+        $filters = $request->validate(['phone' => ['nullable', 'string', 'max:20'], 'all' => ['nullable', 'boolean']]);
+
+        return $conversations->page($request->user(), $craId, $filters['phone'] ?? $first, (bool) ($filters['all'] ?? false));
     }
 
     private function craId(Request $request): ?int

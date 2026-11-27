@@ -8,11 +8,11 @@
     <div class="space-y-4">
         <header class="flex flex-wrap items-end justify-between gap-4">
             <div>
-                <h1 class="text-xl font-semibold">SMS Reminders <span class="text-sm font-normal text-muted">· Schedule</span></h1>
+                <h1 class="text-xl font-semibold">{{ auth()->user()->isExclusiveOn(\App\Models\Lead::today()) ? 'Exclusive Lead Tracker' : 'Segmentation Tracker' }} <span class="text-sm font-normal text-muted">· SMS Schedule</span></h1>
                 <p class="text-sm text-muted">{{ $isOwn ? 'When your' : ($cra ? 'When '.$cra->displayName()."'s" : 'When a CRA\'s') }} restock texts and follow-ups go out by themselves. Send now still sends right away, inside the sending windows.</p>
             </div>
-            @include('sms-reminders._tabs')
         </header>
+        @include('segmentation._tabs')
 
         @if ($errors->any())
             <div role="alert" class="rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
