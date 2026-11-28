@@ -55,7 +55,7 @@
                             @foreach ($orders as $order)
                                 @php($status = $statuses[$order->status] ?? null)
                                 @php($flags = $highValue[$order->phone_key] ?? [])
-                                <tr @class(['bg-[#fbf1d6]' => $flags['vip'] ?? false, 'bg-brand-50' => ! ($flags['vip'] ?? false) && ($flags['high_aov'] ?? false)])>
+                                <tr @class(['bg-brand-50' => $flags['vip'] ?? false, 'bg-brand-50' => ! ($flags['vip'] ?? false) && ($flags['high_aov'] ?? false)])>
                                     <td class="px-4 py-3 whitespace-nowrap tabular-nums">{{ ($order->ordered_at?->timezone(config('segmentation.timezone')) ?? $order->ordered_on)->format($order->ordered_at ? 'M j, g:i A' : 'M j') }}</td>
                                     <td class="px-4 py-3 tabular-nums">{{ $order->pancake_order_id }}</td>
                                     <td class="px-4 py-3">{{ $craFor($order)?->displayName() ?? '—' }}</td>
@@ -67,7 +67,7 @@
                                         @endif
                                     </td>
                                     <td class="px-4 py-3">
-                                        <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-[#e3f3f9] text-[#0c5a7d]' => $order->counted_type === 'broadcast', 'bg-brand-100 text-brand-700' => $order->counted_type !== 'broadcast'])>
+                                        <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-canvas text-ink' => $order->counted_type === 'broadcast', 'bg-brand-100 text-brand-700' => $order->counted_type !== 'broadcast'])>
                                             {{ match ($order->counted_type) { 'broadcast' => 'Broadcast', \App\Models\PancakeOrder::UNTAGGED => 'Not tagged', default => 'Segmentation' } }}
                                         </span>
                                     </td>

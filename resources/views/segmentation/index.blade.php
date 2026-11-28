@@ -3,12 +3,12 @@
 
     <div class="flex flex-col">
         <div class="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Segmentation Tracker <span class="text-sm font-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
+            <h1 class="text-xl font-semibold">Segmentation Tracker <span class="font-sans text-sm font-normal tracking-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
 
             <div class="flex items-center gap-3 text-sm text-muted">
                 @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
                     {{-- Opens the on-duty pop-up's calendar to set days off ahead --}}
-                    <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600">
+                    <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 font-medium text-ink hover:border-ink">
                         <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
                         My schedule
                     </button>
@@ -25,7 +25,7 @@
                     <form method="POST" action="{{ route('segmentation.sync') }}">
                         @csrf
                         <input type="hidden" name="date" value="{{ $filters['date'] ?? $today->toDateString() }}">
-                        <button type="submit" class="h-9 rounded-lg border border-line bg-white px-3 font-medium text-ink hover:border-brand-400 hover:text-brand-600"
+                        <button type="submit" class="h-9 rounded-full border border-line bg-white px-3.5 font-medium text-ink hover:border-ink"
                                 onclick="this.disabled=true; this.textContent='Syncing…'; this.form.submit()">
                             Sync now
                         </button>
@@ -41,7 +41,7 @@
                 Automatic sync couldn't reach the retention API ({{ $syncError }}). Showing the last synced leads.
             </div>
         @elseif (($lastSyncResult['source'] ?? null) === 'fallback')
-            <div role="status" class="mb-3 shrink-0 rounded-lg border border-[#c9970e]/50 bg-[#ffe5a0]/40 px-4 py-2 text-sm text-[#473821]">
+            <div role="status" class="mb-3 shrink-0 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm text-ink">
                 <strong>Backup mode:</strong> the retention API is down, so this day's new leads were worked out from saved delivered orders (retention API + Pancake)
                 and Settings → Product Consumption days. Leads that already existed were left as they are.
             </div>
@@ -55,33 +55,38 @@
             <div role="alert" class="mb-3 shrink-0 rounded-lg border border-coral/60 bg-coral/10 px-4 py-2 text-sm text-coral-700">{{ $message }}</div>
         @enderror
 
-        {{-- Summary tiles (refreshed live from segmentation.summary) --}}
+        {{-- Summary (refreshed live from segmentation.summary): one strip of figures --}}
         @php($tileStyles = [
-            'total' => ['Leads', 'from-brand-600 to-brand-700'],
-            'crd' => ['CRD Leads', 'from-[#0e8f7c] to-[#0b7d6c]'],
-            'fsd' => ['FSD Leads', 'from-[#1f8fb8] to-[#1a7fa6]'],
-            'per_cra' => ['Per CRA', 'from-[#e05a5f] to-[#d1494e]'],
-            'updated' => ['Status Updated', 'from-[#7429d6] to-brand-600'],
-            'converted' => ['Conversion', 'from-[#11734b] to-[#0e8f7c]'],
+            'total' => ['Leads', 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'],
+            'crd' => ['CRD Leads', 'M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z'],
+            'fsd' => ['FSD Leads', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 8v8M8 12h8'],
+            'per_cra' => ['Per CRA', 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4.5 20c1-4 4-5.5 7.5-5.5s6.5 1.5 7.5 5.5'],
+            'updated' => ['Status Updated', 'm5 13 4 4L19 7'],
+            'converted' => ['Conversion', 'M3 17l6-6 4 4 8-8M15 7h6v6'],
         ])
         <div data-live-summary data-url="{{ route('segmentation.summary', request()->query()) }}"
-             @class(['mb-3 grid shrink-0 gap-3 sm:grid-cols-2 lg:grid-cols-3', 'xl:grid-cols-6' => count($tiles) === 6, 'xl:grid-cols-5' => count($tiles) === 5])>
+             class="mb-3 grid shrink-0 divide-line rounded-2xl border border-line bg-white sm:grid-cols-3 sm:divide-x xl:flex xl:divide-x">
             @foreach ($tiles as $key => $tile)
                 @php($pressable = $key === 'per_cra')
-                <{{ $pressable ? 'button' : 'div' }} @if ($pressable) type="button" data-per-cra-open aria-haspopup="dialog" @endif
-                    class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $tileStyles[$key][1] }} px-4 py-2 text-left text-white shadow-sm {{ $pressable ? 'cursor-pointer transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-coral' : '' }}">
-                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <span class="relative flex items-center justify-between text-xs font-medium">
-                        {{ $tileStyles[$key][0] }}
-                        @if ($pressable)
-                            <svg class="size-4 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>
-                        @endif
+                <{{ $pressable ? 'button' : 'div' }} @if ($pressable) type="button" data-per-cra-open aria-haspopup="dialog" title="Assigned per CRA" @endif
+                    class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left {{ $pressable ? 'cursor-pointer rounded-2xl transition hover:bg-canvas' : '' }}">
+                    <span aria-hidden="true" class="grid size-10 shrink-0 place-items-center rounded-full border border-line text-ink">
+                        <svg class="size-[1.15rem]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ $tileStyles[$key][1] }}"/></svg>
                     </span>
-                    <span class="relative block text-xl font-bold tabular-nums" data-tile-value="{{ $key }}">{{ $tile['value'] }}</span>
-                    <span class="relative block min-h-4 text-[0.6875rem] font-medium text-white/90" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
+                    <span class="font-display text-2xl leading-none font-bold tabular-nums" data-tile-value="{{ $key }}">{{ $tile['value'] }}</span>
+                    <span class="min-w-0 leading-tight">
+                        <span class="flex items-center gap-1 text-sm font-semibold">{{ $tileStyles[$key][0] }}@if ($pressable)<svg class="size-3.5 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m9 6 6 6-6 6"/></svg>@endif</span>
+                        <span class="block truncate text-xs text-muted" data-tile-note="{{ $key }}">{{ $tile['note'] }}</span>
+                    </span>
                 </{{ $pressable ? 'button' : 'div' }}>
             @endforeach
         </div>
+
+        {{-- The CRA's texts today: the same sending as Today's texts --}}
+        @php($sendBar = \App\Support\SmsSendBar::for(auth()->user(), ctype_digit((string) $filters['cra']) ? $cras->firstWhere('id', (int) $filters['cra']) : null))
+        @if ($sendBar)
+            @include('segmentation._send-bar')
+        @endif
 
         @if ($canViewAll && $cras->isEmpty())
             <p class="mb-3 shrink-0 rounded-lg border border-sky/50 bg-sky/10 px-4 py-2 text-sm text-sky-900">
@@ -165,7 +170,6 @@
     @endisset
 
     @include('segmentation._spiels-panel')
-    @include('segmentation._conversation-panel')
 
     {{-- Full view of one list (opened from a section's expand arrows) --}}
     <dialog id="expand-dialog" aria-labelledby="expand-title" class="m-auto h-[90dvh] w-[min(96rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
@@ -183,7 +187,7 @@
     {{-- A CRA's hello on their first visit of the day --}}
     @if ($greeting)
         <dialog id="greeting-dialog" data-open-on-load aria-labelledby="greeting-title" class="m-auto w-[min(24rem,calc(100%-2rem))] overflow-hidden rounded-2xl p-0 shadow-2xl backdrop:bg-ink/40">
-            <div class="bg-gradient-to-br from-brand-600 to-brand-700 px-6 pt-6 pb-5 text-white">
+            <div class="bg-brand-600 px-6 pt-6 pb-5 text-white">
                 <p class="text-sm font-medium text-white/80">{{ $greeting['day']->format('l, M j') }} leads</p>
                 <h2 id="greeting-title" class="mt-1 text-2xl font-bold">Hey {{ $greeting['name'] }}!</h2>
             </div>

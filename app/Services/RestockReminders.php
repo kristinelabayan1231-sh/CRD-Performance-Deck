@@ -175,7 +175,7 @@ class RestockReminders
      * customer's reply (YES, or STOP until they're allowed texts again). Rows with no text are left out.
      *
      * @param  iterable<Lead>  $leads
-     * @return array<int, array{label: string, classes: string, title: string, reminder_id: int, phone_key: string, cra_id: ?int}> lead id => badge
+     * @return array<int, array{label: string, classes: string, title: string, state: string, short: string, reminder_id: int, phone_key: string, cra_id: ?int, ticked: bool, changeable: bool}> lead id => badge
      */
     public function badgesFor(iterable $leads): array
     {
@@ -191,27 +191,34 @@ class RestockReminders
             ->where(fn ($q) => $q->whereIn('status', [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::SENT, RestockReminder::FAILED, RestockReminder::EXCLUDED])
                 ->orWhere(fn ($q) => $q->where('status', RestockReminder::SKIPPED)->where('error', self::OPTED_OUT)->whereIn('phone_key', $optedOut->keys())))
             ->orderBy('remind_on')->orderBy('id')->get(['id', 'lead_ids', 'status', 'sent_at', 'phone_key', 'user_id']);
-        $replies = SmsReply::whereIn('restock_reminder_id', $texts->modelKeys())->where('kind', SmsReply::YES)
-            ->pluck('kind', 'restock_reminder_id');
+        // A YES wins over any other reply to the same text.
+        $replies = SmsReply::whereIn('restock_reminder_id', $texts->modelKeys())->whereIn('kind', [SmsReply::YES, SmsReply::OTHER])
+            ->orderByRaw('case when kind = ? then 0 else 1 end', [SmsReply::YES])->get(['restock_reminder_id', 'kind'])
+            ->unique('restock_reminder_id')->pluck('kind', 'restock_reminder_id');
         $tz = config('segmentation.timezone');
 
         $badges = [];
         foreach ($texts as $text) {
+            // [label, classes, title, state, short label for the tracker's pill]
             $badge = match (true) {
                 isset($optedOut[$text->phone_key]) => [str_starts_with((string) $optedOut[$text->phone_key], 'Replied') ? 'Replied STOP' : 'Asked not to be texted',
-                    'bg-[#fde0e0] text-[#a3271f]', 'Gets no texts until ticked again in their conversation or Today\'s texts'],
-                isset($replies[$text->id]) => ['Replied YES', 'bg-[#d4edbc] text-[#11734b]', 'Replied YES to the text: wants to reorder'],
-                $text->status === RestockReminder::SENT => ['Texted '.$text->sent_at?->timezone($tz)->format('M j'), 'bg-[#dde9f7] text-[#1a4f8c]', 'Texted '.$text->sent_at?->timezone($tz)->format('M j, g:i A').', no reply yet'],
-                $text->status === RestockReminder::FAILED => ['Text failed', 'bg-[#fde0e0] text-[#a3271f]', 'The text didn\'t go out'],
-                $text->status === RestockReminder::QUEUED => ['Sending text', 'bg-[#fbeccd] text-[#7a4d00]', 'Queued on the CRA\'s phone'],
-                $text->status === RestockReminder::EXCLUDED => ['Left out', 'bg-[#e6e6e6] text-[#3d3d3d]', 'Left out of the text; stays on the call list'],
-                default => ['To be texted', 'bg-[#fbeccd] text-[#7a4d00]', 'On SMS Reminders, not sent yet'],
+                    'bg-[#fde0e0] text-[#a3271f]', 'Gets no texts until ticked again in their conversation or Today\'s texts', 'stop', 'STOP'],
+                ($replies[$text->id] ?? null) === SmsReply::YES => ['Replied YES', 'bg-[#d4edbc] text-[#11734b]', 'Replied YES to the text: wants to reorder', 'yes', 'YES'],
+                isset($replies[$text->id]) => ['Replied', 'bg-[#fff4cc] text-[#5c4100]', 'Replied to the text: answer them in the conversation', 'replied', 'Replied'],
+                $text->status === RestockReminder::SENT => ['Texted '.$text->sent_at?->timezone($tz)->format('M j'), 'bg-[#dde9f7] text-[#1a4f8c]', 'Texted '.$text->sent_at?->timezone($tz)->format('M j, g:i A').', no reply yet', 'sent', 'Sent'],
+                $text->status === RestockReminder::FAILED => ['Text failed', 'bg-[#fde0e0] text-[#a3271f]', 'The text didn\'t go out', 'failed', 'Failed'],
+                $text->status === RestockReminder::QUEUED => ['Sending text', 'bg-[#fbeccd] text-[#7a4d00]', 'Queued on the CRA\'s phone', 'sending', 'Sending'],
+                $text->status === RestockReminder::EXCLUDED => ['Left out', 'bg-[#e6e6e6] text-[#3d3d3d]', 'Left out of the text; stays on the call list', 'unticked', 'Unticked'],
+                default => ['To be texted', 'bg-[#fbeccd] text-[#7a4d00]', 'On SMS Reminders, not sent yet', 'to-text', 'To text'],
             };
             foreach ($text->lead_ids ?? [] as $leadId) {
                 if (isset($wanted[$leadId])) {
                     $badges[$leadId] = [
-                        'label' => $badge[0], 'classes' => $badge[1], 'title' => $badge[2],
+                        'label' => $badge[0], 'classes' => $badge[1], 'title' => $badge[2], 'state' => $badge[3], 'short' => $badge[4],
                         'reminder_id' => $text->id, 'phone_key' => $text->phone_key, 'cra_id' => $text->user_id,
+                        // Ticked = goes out (or went); changeable = the CRA can still tick or untick it.
+                        'ticked' => in_array($text->status, [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::SENT], true),
+                        'changeable' => in_array($text->status, [RestockReminder::PENDING, RestockReminder::QUEUED, RestockReminder::EXCLUDED, RestockReminder::FAILED], true),
                     ];
                 }
             }

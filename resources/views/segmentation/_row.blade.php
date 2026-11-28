@@ -9,20 +9,45 @@
 {{-- A High AOV / VIP customer's row looks like theirs in Customer Database: VIP gold, High AOV purple, with its pill --}}
 @php($isVip = (bool) ($highValue['vip'] ?? false))
 @php($isHighAov = ! $isVip && ($highValue['high_aov'] ?? false))
-<tr @class(['align-middle', 'cursor-pointer' => ! $readOnly, 'bg-[#fbf3e0] hover:bg-[#f7ebcd]' => $isVip, 'bg-brand-50/60 hover:bg-brand-50' => $isHighAov, 'hover:bg-canvas/30' => ! $isVip && ! $isHighAov])
+<tr @class(['align-middle', 'cursor-pointer' => ! $readOnly, 'bg-brand-50 hover:bg-brand-100' => $isVip, 'bg-[#f7f4ff] hover:bg-[#efeaff]' => $isHighAov, 'hover:bg-canvas/50' => ! $isVip && ! $isHighAov])
+    data-sms-state="{{ ($smsBadge ?? null)['state'] ?? 'none' }}"
     @if ($readOnly) data-copy-row data-phone="{{ $lead->phone_number }}"
-    @else data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}"
+    @else data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}" data-orders-url="{{ route('segmentation.orders', $lead) }}"
+        @if (($smsBadge ?? null) && (auth()->user()->can('sms_reminders.view_all') || $smsBadge['cra_id'] === auth()->id())) data-sms-chat="{{ route('sms-reminders.conversations.chat', $smsBadge['phone_key']) }}" @endif
         data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
         data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}" @endif
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}"
         @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
-    <td data-col="customer_name" @class(['group sticky left-0 z-10 px-4 py-3 font-medium whitespace-nowrap', 'bg-[#fbf3e0]' => $isVip, 'bg-brand-50' => $isHighAov, 'bg-white' => ! $isVip && ! $isHighAov]) data-note-cell
+    <td data-col="customer_name" @class(['group sticky left-0 z-10 px-4 py-3 font-medium whitespace-nowrap', 'bg-brand-50' => $isVip, 'bg-[#f7f4ff]' => $isHighAov, 'bg-white' => ! $isVip && ! $isHighAov]) data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
         <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"
               class="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-ink border-l-transparent"></span>
         <span class="flex items-center gap-2">
+            @can('sms_reminders.view')
+                @php($tickBadge = $smsBadge ?? null)
+                @if ($tickBadge && ! $readOnly && (auth()->user()->can('sms_reminders.view_all') || $tickBadge['cra_id'] === auth()->id()))
+                    @if ($tickBadge['state'] === 'stop')
+                        {{-- Replied STOP: unticked; ticking (after a confirm) lets them be texted again --}}
+                        <form method="POST" action="{{ route('sms-reminders.conversations.allow', $tickBadge['phone_key']) }}" class="flex">
+                            @csrf
+                            <input type="checkbox" data-sms-allow="{{ $lead->customer_name }}" aria-label="Text {{ $lead->customer_name }} again" title="Asked not to be texted: tick to text them again"
+                                   class="size-4.5 cursor-pointer rounded accent-brand-600">
+                        </form>
+                    @else
+                        <form method="POST" action="{{ route('sms-reminders.update', $tickBadge['reminder_id']) }}" class="flex">
+                            @csrf @method('PATCH')
+                            <input type="hidden" name="include" value="{{ $tickBadge['ticked'] ? 0 : 1 }}">
+                            <input type="checkbox" @checked($tickBadge['ticked']) @disabled(! $tickBadge['changeable']) onchange="this.form.submit()"
+                                   aria-label="Text {{ $lead->customer_name }} today" title="{{ $tickBadge['changeable'] ? ($tickBadge['ticked'] ? 'In today\'s texts: untick to leave them out (they stay on the call list)' : 'Left out: tick to text them') : 'Already texted' }}"
+                                   class="size-4.5 cursor-pointer rounded accent-brand-600 disabled:cursor-not-allowed disabled:opacity-40">
+                        </form>
+                    @endif
+                @else
+                    <span class="inline-block size-4.5 shrink-0" aria-hidden="true"></span>
+                @endif
+            @endcan
             @if ($transferable)
                 <input type="checkbox" value="{{ $lead->id }}" data-backlog-select data-from="{{ $lead->assigned_to }}" data-from-name="{{ $lead->assignee?->displayName() }}"
                        aria-label="Select {{ $lead->customer_name }} for transfer" class="size-4 accent-brand-500">
@@ -30,7 +55,7 @@
             {{ $lead->customer_name }}
             {{-- Same pills as Customer Database → High AOV CVR & VIP; a VIP shows only VIP --}}
             @if ($isVip)
-                <span class="inline-flex items-center gap-1 rounded-full bg-[#1a1814] px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
+                <span class="inline-flex items-center gap-1 rounded-full bg-[#111111] px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
                       title="VIP in {{ implode(', ', $highValue['vip_products']) }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
             @elseif ($isHighAov)
                 <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
@@ -71,23 +96,10 @@
             @endif
         @endif
     </td>
-    <td data-col="qty" class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
-    <td data-col="product" class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
-    <td data-col="contact_number" class="px-4 py-3 tabular-nums">
-        <span class="flex items-center gap-2 whitespace-nowrap">
-            <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
-            @if ($canEdit && ($canDial ?? false))
-                {{-- Dials on the CRA's own phone (MacroDroid), so the call and its recording come back to this lead --}}
-                <button type="button" data-call-url="{{ route('segmentation.call', $lead) }}" aria-label="Call {{ $lead->customer_name }} from your phone"
-                        class="flex h-7 items-center gap-1 rounded-full bg-teal/15 px-2.5 text-xs font-semibold text-teal-700 select-none transition hover:bg-teal/25 disabled:opacity-60">
-                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
-                    <span data-call-label>Call</span>
-                </button>
-            @endif
-        </span>
-    </td>
     @can('sms_reminders.view')
-        @include('segmentation._sms-cell')
+        @include('segmentation._sms-cell', ['canEditRow' => $canEdit])
+    @else
+        @include('segmentation._sms-cell', ['canEditRow' => $canEdit, 'smsBadge' => null])
     @endcan
     <td class="px-4 py-3">
         <span class="flex items-center gap-2">
@@ -95,8 +107,15 @@
             @include('segmentation._attempt', ['lead' => $lead])
         </span>
     </td>
+    <td data-col="qty" class="px-4 py-3 text-right tabular-nums">{{ $lead->qty }}</td>
+    <td data-col="product" class="px-4 py-3 whitespace-nowrap">{{ $lead->product_name }}</td>
+    <td data-col="contact_number" class="px-4 py-3 tabular-nums">
+        <span class="flex items-center gap-2 whitespace-nowrap">
+            <a href="tel:{{ $lead->phone_number }}" draggable="false" class="hover:text-brand-600 hover:underline">{{ $lead->phone_number }}</a>
+        </span>
+    </td>
     <td data-col="delivered_date" class="px-4 py-3 whitespace-nowrap">{{ $lead->delivered_date->format('M j, Y') }}</td>
-    <td data-col="days_since_delivered" class="bg-[#fff4d6]/60 px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
+    <td data-col="days_since_delivered" class="px-4 py-3 text-center font-semibold tabular-nums">{{ $lead->daysSinceDelivered() }}</td>
     <td data-col="est_out_of_stock" class="px-4 py-3 whitespace-nowrap">{{ $lead->est_out_of_stock_date->format('M j, Y') }}</td>
     <td data-col="replenishment_day" class="px-4 py-3 whitespace-nowrap">{{ $lead->recommendedReplenishmentDay()->format('M j, Y') }}</td>
     <td data-col="type" class="px-4 py-3">
@@ -111,7 +130,7 @@
             <form method="POST" action="{{ route('segmentation.update', $lead) }}" data-autosave>
                 @csrf @method('PATCH')
                 <select name="assigned_to" aria-label="Assign {{ $lead->customer_name }}"
-                        class="h-9 max-w-40 rounded-full border-0 bg-[#dbe7fb] px-3 text-xs font-semibold text-[#0b57d0] focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                        class="h-9 max-w-40 rounded-full border-0 bg-canvas px-3 text-xs font-semibold text-ink focus:ring-2 focus:ring-brand-200 focus:outline-none">
                     <option value="">Unassigned</option>
                     @foreach ($cras as $cra)
                         <option value="{{ $cra->id }}" @selected($lead->assigned_to === $cra->id)>{{ $cra->displayName() }}</option>
@@ -123,7 +142,7 @@
             </form>
         @elseif ($lead->assignee)
             <span class="flex items-center gap-2">
-                <span class="rounded-full bg-[#dbe7fb] px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-[#0b57d0]">{{ $lead->assignee->displayName() }}</span>
+                <span class="rounded-full bg-canvas px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-ink">{{ $lead->assignee->displayName() }}</span>
                 @if ($transferable)
                     <button type="button" data-transfer-open data-lead-ids="[{{ $lead->id }}]" data-from="{{ $lead->assigned_to }}"
                             data-from-name="{{ $lead->assignee->displayName() }}" data-label="{{ $lead->customer_name }}"

@@ -31,7 +31,7 @@
             </div>
         @endunless
 
-        <form method="GET" action="{{ route('sms-reminders.index') }}" class="flex flex-wrap items-end gap-3 rounded-xl border border-brand-200 bg-gradient-to-r from-brand-100 to-brand-50 p-4 shadow-sm" aria-label="Day and CRA">
+        <form method="GET" action="{{ route('sms-reminders.index') }}" class="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-white p-4" aria-label="Day and CRA">
             <label class="flex flex-col gap-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
                 Reminder day
                 <input type="date" name="date" value="{{ $day->toDateString() }}" onchange="{{ $submit }}" class="{{ $control }} text-ink normal-case">
@@ -148,7 +148,7 @@
                                     <td class="px-2 py-3">{{ $reminder->products }}</td>
                                     @php([$whyLabel, $whyDetail] = $reminder->why())
                                     <td class="px-2 py-3">
-                                        <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-[#dde9f7] text-[#1a4f8c]' => ! $reminder->isFollowUp(), 'bg-brand-50 text-brand-700' => $reminder->isFollowUp()])>{{ $whyLabel }}</span>
+                                        <span @class(['rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', 'bg-canvas text-ink' => ! $reminder->isFollowUp(), 'bg-brand-50 text-brand-700' => $reminder->isFollowUp()])>{{ $whyLabel }}</span>
                                         <p class="mt-1 text-xs text-muted">{{ $whyDetail }}</p>
                                         @if ($reminder->note)<p class="text-xs text-muted">Note: {{ $reminder->note }}</p>@endif
                                     </td>

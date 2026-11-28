@@ -43,7 +43,7 @@
             @else
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[51.25rem] text-left text-sm">
-                        <thead class="bg-[#ecfaf6] text-xs tracking-wide text-muted uppercase">
+                        <thead class="bg-white text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-3 font-semibold">Bought</th>
                                 <th class="px-4 py-3 font-semibold">Customer</th>
@@ -71,9 +71,9 @@
                                     @endif
                                     <td class="px-4 py-3">
                                         @if ($fromPos)
-                                            <span class="rounded-full bg-[#bfe1f6] px-2 py-0.5 text-xs font-semibold text-[#0a53a8]">POS order #{{ substr($lead->order_id, strlen(\App\Models\Lead::POS_PREFIX)) }}</span>
+                                            <span class="rounded-full bg-canvas px-2 py-0.5 text-xs font-semibold text-ink">POS order #{{ substr($lead->order_id, strlen(\App\Models\Lead::POS_PREFIX)) }}</span>
                                         @else
-                                            <span class="rounded-full bg-[#d4edbc] px-2 py-0.5 text-xs font-semibold text-[#11734b]">Tracker lead</span>
+                                            <span class="rounded-full bg-teal/15 px-2 py-0.5 text-xs font-semibold text-teal-700">Tracker lead</span>
                                         @endif
                                     </td>
                                 </tr>

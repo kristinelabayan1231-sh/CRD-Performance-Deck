@@ -38,7 +38,7 @@
     @else
         <div class="overflow-x-auto rounded-lg border border-line">
             <table class="w-full min-w-[48.75rem] text-left text-sm">
-                <thead class="bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                <thead class="bg-white text-xs tracking-wide text-muted uppercase">
                     <tr>
                         <th class="px-3 py-2 font-semibold">Created</th>
                         <th class="px-3 py-2 font-semibold">Order ID</th>

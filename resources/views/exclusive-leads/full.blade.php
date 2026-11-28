@@ -9,7 +9,7 @@
 
     @include('segmentation._note-dialog')
     @include('segmentation._recording-dialog')
-    @include('segmentation._conversation-panel')
+    @include('segmentation._spiels-panel', ['rowOpen' => false])
 
     <div data-x-scrollbar hidden class="x-scrollbar fixed bottom-0 z-30 overflow-x-auto overflow-y-hidden border-t border-line bg-white">
         <div data-x-scrollbar-width class="h-px"></div>

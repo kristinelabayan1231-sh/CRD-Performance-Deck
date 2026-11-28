@@ -341,9 +341,10 @@ class HighValueCustomersTest extends TestCase
         $page = $this->actingAs($this->owner)->get(route('segmentation.index', ['date' => '2026-10-10']))->assertOk()
             ->assertSeeInOrder(['Dina Lim', 'VIP', 'VIP in Pterygium'])->getContent();
         $row = fn (string $name) => substr($page, strrpos(substr($page, 0, strpos($page, $name)), '<tr'), 600);
-        $this->assertStringContainsString('bg-[#fbf3e0]', $row('Dina Lim'));
-        $this->assertStringContainsString('bg-brand-50/60', $row('Ana Cruz'));
-        $this->assertStringNotContainsString('bg-brand-50/60', $row('Ben Reyes'));
+        $this->assertStringContainsString('bg-brand-50', $row('Dina Lim'));
+        $this->assertStringContainsString('bg-[#f7f4ff]', $row('Ana Cruz'));
+        $this->assertStringNotContainsString('bg-brand-50', $row('Ben Reyes'));
+        $this->assertStringNotContainsString('bg-[#f7f4ff]', $row('Ben Reyes'));
         $this->assertStringContainsString('HIGH AOV', substr($page, strpos($page, 'Ana Cruz'), 2500));
     }
 
