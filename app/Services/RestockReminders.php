@@ -32,6 +32,9 @@ class RestockReminders
     /** The error of a text cancelled because the customer is on the do-not-text list. */
     public const OPTED_OUT = 'Opted out';
 
+    /** Why a list text is skipped when its customer is on no CRA's tracker list. */
+    public const NOT_ON_A_LIST = 'Not on a list any more';
+
     /** How far back a reorder of the product is looked for. */
     private const LOOKBACK_DAYS = 400;
 
@@ -161,7 +164,7 @@ class RestockReminders
         RestockReminder::whereDate('remind_on', $remindOn->toDateString())->where('status', RestockReminder::PENDING)
             ->where('kind', RestockReminder::REMINDER)->whereNotIn('phone_key', $saved ?: [''])
             ->when($craIds !== null, fn (Builder $query) => $query->whereIn('user_id', $craIds))
-            ->update(['status' => RestockReminder::SKIPPED, 'error' => 'Not on a list any more']);
+            ->update(['status' => RestockReminder::SKIPPED, 'error' => self::NOT_ON_A_LIST]);
 
         if ($craIds === null) {
             $this->refreshCarriedOver($remindOn, $saved);
@@ -497,7 +500,7 @@ class RestockReminders
 
     /**
      * Earlier days' texts still to send on $remindOn (queued ones not handed to a phone too), unticked or failed, and follow-ups due on it (RestockReminder::scopeToSendOn),
-     * are checked again: skipped when the customer has since reordered the product (for a follow-up: since the text before it),
+     * are checked again: skipped when it's a list text with no tracker lead (built before Nov 24), the customer has since reordered the product (for a follow-up: since the text before it),
      * opted out or is on $remindOn's own list (one text a customer), and otherwise given the customer's CRA now (none
      * when nobody has them). A queued one whose customer is another CRA's now leaves the queue: it goes out only when that
      * CRA sends it.
@@ -537,6 +540,9 @@ class RestockReminders
             $after = $afterOf($reminder)->toDateString();
             $products = collect($reminder->coveredItems())->pluck('product_id')->filter();
             $reason = match (true) {
+                // A list text with no tracker lead was built before the texts followed the tracker lists (Nov 24): it's on
+                // nobody's list, so it isn't sent. Follow-ups are scheduled from a conversation and keep going.
+                $reminder->kind === RestockReminder::REMINDER && empty($reminder->lead_ids) => self::NOT_ON_A_LIST,
                 // A queued one isn't combined into today's text (earlierTexts), so it stays.
                 $reminder->status !== RestockReminder::QUEUED && isset($onToday[$reminder->phone_key]) && ! $reminder->remind_on->isSameDay($remindOn) => 'In a later reminder',
                 collect($numbers)->contains(fn (string $number) => isset($optedOut[$number])) => self::OPTED_OUT,
