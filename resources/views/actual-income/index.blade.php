@@ -38,12 +38,24 @@
                 @endif
             @else
             <span class="font-semibold">How it works:</span>
-            @if ($canEdit)
+            @if (\App\Services\ActualIncome::isFilled($month))
+                each CRA card's Orders, Gross, Cancelled, Fulfilled (on the way), Returns/Returning, Delivered and Product Cost come from the CRA's orders by their status now, as the Daily I.S. counts them;
+                @if ($canEdit)
+                    type in a box to replace one (empty goes back to the orders), and type the other amounts; each saves when you leave the box. Click Done when finished.
+                @elseif ($canManage)
+                    click Edit to replace one or type the other amounts.
+                @else
+                    the other amounts are typed in by the CRA Supervisor or Team Lead.
+                @endif
+            @elseif ($canEdit)
                 type the amounts in the boxes; each saves when you leave the box and the cards update. Click Done when finished.
             @elseif ($canManage)
                 click Edit to type the amounts.
             @else
                 the amounts are typed in by the CRA Supervisor or Team Lead.
+            @endif
+            @if ($data['staff']->isNotEmpty())
+                {{ $data['staff']->map(fn ($row) => $row->position)->implode(', ') }}: own card, Salaries from CRD - MC (not shared into the CRAs' salaries here), other lines typed in; not on the Daily I.S. or CRA Gross Sales & IBSC.
             @endif
             On a CRA card: Unfulfilled Sales = Gross − Cancelled − Fulfilled − Returns/Returning − Delivered; Conversion Rate = Orders ÷ Target Leads; AOV = Gross Sales ÷ Orders;
             Shipping Fee = Orders × ₱75, COD Fee = Delivered × 2%, Fulfillment Fee = Orders × ₱25; Product Research = the CRD's ÷ 3;

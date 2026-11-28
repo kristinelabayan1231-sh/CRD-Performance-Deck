@@ -3,8 +3,10 @@
     (X-Actual-Income-Cards). Money lines show their % of the card's Gross Sales.
 --}}
 @php
-    $cards = collect([['title' => 'Customer Retention Department', 'sub' => 'All CRAs', 'cra' => null, 'figures' => $data['department'], 'typed' => $data['typed']['department'], 'department' => true]])
-        ->concat($cras->map(fn ($cra) => ['title' => $cra->displayName(), 'sub' => 'CRA', 'cra' => $cra->id, 'figures' => $data['cras'][$cra->id], 'typed' => $data['typed']['cras'][$cra->id] ?? [], 'department' => false]));
+    $cards = collect([['title' => 'Customer Retention Department', 'sub' => 'All CRAs', 'cra' => null, 'staff' => null, 'figures' => $data['department'], 'typed' => $data['typed']['department'], 'filled' => [], 'department' => true]])
+        ->concat($cras->map(fn ($cra) => ['title' => $cra->displayName(), 'sub' => 'CRA', 'cra' => $cra->id, 'staff' => null, 'figures' => $data['cras'][$cra->id], 'typed' => $data['typed']['cras'][$cra->id] ?? [], 'filled' => $data['fromOrders'][$cra->id] ?? [], 'department' => false]))
+        // Staff cards (config actual_income.staff): their CRD - MC name and position
+        ->concat($data['staff']->map(fn ($row) => ['title' => $row->name ?: $row->position, 'sub' => $row->position, 'cra' => null, 'staff' => $row->id, 'figures' => $data['staffCards'][$row->id], 'typed' => $data['typed']['staff'][$row->id] ?? [], 'filled' => [], 'department' => false]));
     $box = 'h-7 w-full rounded-md border border-line bg-white px-1.5 text-right text-[0.8125rem] font-semibold tabular-nums placeholder:font-normal placeholder:text-muted/60 focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-200 focus:outline-none';
 @endphp
 
@@ -21,7 +23,7 @@
             ])>
                 <span class="flex min-w-0 items-center gap-2">
                     <span aria-hidden="true" @class(['size-3 shrink-0 rounded', 'bg-white' => $card['department'], 'bg-gradient-to-br from-brand-500 to-brand-700' => ! $card['department']])></span>
-                    <span class="truncate uppercase" title="{{ $card['title'] }}">{{ $card['title'] }}</span>
+                    <span class="truncate uppercase" title="{{ $card['title'] }}{{ $card['staff'] ? ' · '.$card['sub'] : '' }}">{{ $card['title'] }}</span>
                 </span>
                 <span @class(['shrink-0 text-xs font-medium', 'text-white/80' => $card['department'], 'text-muted' => ! $card['department']])>{{ $month->format('M Y') }}</span>
             </header>
@@ -47,6 +49,8 @@
                             // A sheet month's lines are typed over as they are; a typed month's boxes hold what was typed.
                             $typable = $canEdit && ($data['fromSheet'] ? in_array($key, $sheetInputs, true) : $source === 'input');
                             $boxValue = $data['fromSheet'] ? ($value ? number_format($value, 2) : '') : (isset($card['typed'][$key]) ? number_format($card['typed'][$key], 2) : '');
+                            // A line filled from the CRA's orders shows that amount until one is typed (empty goes back to it).
+                            $fromOrders = $card['filled'][$key] ?? null;
                         @endphp
                         <tr @class([
                             'font-semibold text-ink' => $isKpi || $key === 'gross',
@@ -58,8 +62,9 @@
                             <td class="truncate py-0.5 pr-1.5 pl-3" title="{{ $label }}">{{ $label }}</td>
                             @if ($typable)
                                 <td class="py-0.5 pr-1.5">
-                                    <input type="text" inputmode="decimal" data-actual-income-input data-cra="{{ $card['cra'] }}" data-field="{{ $key }}"
-                                           value="{{ $boxValue }}" placeholder="0.00"
+                                    <input type="text" inputmode="decimal" data-actual-income-input data-cra="{{ $card['cra'] }}" data-staff="{{ $card['staff'] }}" data-field="{{ $key }}"
+                                           value="{{ $boxValue }}" placeholder="{{ $fromOrders !== null ? number_format($fromOrders, 2) : '0.00' }}"
+                                           @if ($fromOrders !== null) title="From the orders: {{ number_format($fromOrders, 2) }}. Type to replace it; empty goes back to it." @endif
                                            aria-label="{{ $label }} for {{ $card['title'] }}" class="{{ $box }}">
                                 </td>
                             @else

@@ -144,7 +144,7 @@ class WeeklySegmentationTest extends TestCase
         $this->lead($bob, '2026-10-08');
 
         $this->actingAs($alice)->get('/segmentation/weekly?cra=all')->assertOk()
-            ->assertSee('Alice')->assertDontSee('Bob')->assertDontSee('Transfer selected');
+            ->assertSee('Alice')->assertDontSeeText('Bob')->assertDontSee('Transfer selected');
     }
 
     public function test_supervisor_transfers_backlog_after_seeing_workload(): void

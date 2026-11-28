@@ -26,6 +26,12 @@ class PancakeOrder extends Model
 
     public const CANCELLED_OR_WAITING_STATUSES = [self::CANCELED, self::WAITING];
 
+    /** Delivered to the customer. */
+    public const DELIVERED = 3;
+
+    /** Returning (4) or Returned (5). */
+    public const RETURN_STATUSES = [4, 5];
+
     /** conversion_type values: orders tagged "CRD - BROADCAST" or "CRD - SEGMENTATION". */
     public const BROADCAST = 'broadcast';
 

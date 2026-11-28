@@ -496,6 +496,59 @@ class DailyIncomeStatement
     }
 
     /**
+     * Each CRA's orders over $from–$to as day() counts them, every product added up, split by each order's status now
+     * (Actual Income): orders (canceled included), Gross Sales, Cancelled (Canceled or Waiting for goods), Returns/Returning
+     * (Returning or Returned), Delivered, Fulfilled (the rest: on their way, not delivered yet) and Product Cost (a day
+     * set from the CRD Sales Report sheet takes the sheet's). A CRA disabled on or before a day doesn't count that day.
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array{orders: int, gross: float, cancelled: float, returns: float, delivered: float, fulfilled: float, product_cost: float}> cra id => figures
+     */
+    public function orderFigures(Collection $cras, CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $figures = $cras->mapWithKeys(fn (User $cra) => [$cra->id => [
+            'orders' => 0, 'gross' => 0.0, 'cancelled' => 0.0, 'returns' => 0.0, 'delivered' => 0.0, 'fulfilled' => 0.0, 'product_cost' => 0.0,
+        ]])->all();
+
+        for ($day = $from; $day->lte($to); $day = $day->addDay()) {
+            $active = $cras->filter(fn (User $cra) => $cra->wasActiveOn($day))->values();
+            if ($active->isEmpty()) {
+                continue;
+            }
+            $groups = self::inProductOrder(ProductGroups::on($day));
+            $groupOf = collect($groups)->flatMap(fn (array $group) => array_fill_keys($group['pages'], $group['slug']));
+            $groupNames = collect($groups)->pluck('name', 'slug');
+            $orders = $this->pageOrders->forDay($active, $groupOf->keys()->all(), $day)['orders'];
+            $sheet = self::productCostOverrides()[$day->toDateString()] ?? null;
+            $costs = $sheet !== null || $orders->isEmpty() ? [] : $this->productCosts($orders->mapWithKeys(fn (array $order) => [$order['id'] => $groupNames[$groupOf[$order['page']]]])->all(), $day);
+
+            foreach ($orders as $order) {
+                $card = &$figures[$order['cra']];
+                $card['orders']++;
+                $card['gross'] += $order['sales'];
+                $card[match (true) {
+                    in_array($order['status'], PancakeOrder::CANCELLED_OR_WAITING_STATUSES, true) => 'cancelled',
+                    in_array($order['status'], PancakeOrder::RETURN_STATUSES, true) => 'returns',
+                    $order['status'] === PancakeOrder::DELIVERED => 'delivered',
+                    default => 'fulfilled',
+                }] += $order['sales'];
+                $card['product_cost'] += $costs[$order['id']] ?? 0;
+                unset($card);
+            }
+
+            if ($sheet !== null) {
+                foreach ($active as $cra) {
+                    foreach ($groups as $group) {
+                        $figures[$cra->id]['product_cost'] += (float) ($sheet[(string) $cra->display_name][self::productKey($group['name']) ?? $group['slug']] ?? 0);
+                    }
+                }
+            }
+        }
+
+        return $figures;
+    }
+
+    /**
      * Each CRA's total leads/inquiries and engagements over $from–$to, every product added up (Report Summary).
      *
      * @param  Collection<int, User>  $cras

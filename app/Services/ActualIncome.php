@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Models\ActualIncomeInput;
 use App\Models\ActualIncomeStatement;
+use App\Models\MonthlyCostRow;
 use App\Models\User;
+use App\Support\WorkingDate;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Actual Income: the month's real income statement, as in the CRD sheet: the overall CRD card and a card per CRA.
@@ -23,6 +26,15 @@ use Illuminate\Support\Collection;
  *
  * Gross Profit = Delivered − Tax Allocation − Product Cost. Total Selling Costs = Advertising Cost to Packaging Costs.
  * Total Operating Costs = Salaries to HMO Expense. NET INCOME = Gross Profit − Total Selling Costs − Total Operating Costs.
+ *
+ * From config actual_income.filled_from (September 2026) a CRA card's Number of Orders, Gross / Cancelled / Fulfilled
+ * Sales, Returns/Returning, Delivered Sales and Product Cost come from the CRA's orders (DailyIncomeStatement::orderFigures,
+ * by each order's status now); an amount typed on one of those lines takes its place.
+ *
+ * Staff cards (config actual_income.staff, e.g. the Junior AI Engineer): a CRD - MC row's own card from the month they were
+ * onboarded. Its lines are typed in like a CRA card's, the CRD's shared costs aren't split onto it, and its Salaries are
+ * its CRD - MC salary (13th Month = ÷ 12, SIL = × 12 ÷ 313). Its row is left out of the CRAs' shared salaries here, so the
+ * salary isn't counted twice. The CRD card adds up the CRA and staff cards.
  *
  * A month taken from the CRD Sales Report sheet (actual_income_statements: January to August 2026) shows the sheet's cards
  * as they are, every line, nothing worked out. A supervisor can type over its lines in edit mode (editSheetLine). Its cards are the CRAs on the sheet, inactive
@@ -102,10 +114,48 @@ class ActualIncome
         'electricity' => ['Other Company Car Expenses', 'other_car_expenses'],
     ];
 
+    /** A CRA card's lines filled from their orders (from config actual_income.filled_from) unless typed. */
+    public const FILLED = ['orders', 'gross', 'cancelled', 'fulfilled', 'returns', 'delivered', 'product_cost'];
+
     /** Selling costs, Advertising Cost to Packaging Costs. */
     private const SELLING = ['advertising', 'ads_vat', 'shipping', 'cod', 'fulfillment', 'product_research', 'packaging'];
 
-    public function __construct(private MonthlyMni $mni) {}
+    public function __construct(private MonthlyMni $mni, private DailyIncomeStatement $dailyIs) {}
+
+    /**
+     * Every CRD - MC row that is a staff card (config actual_income.staff, by position), deleted ones too, with the month
+     * its card starts.
+     *
+     * @return Collection<int, MonthlyCostRow>
+     */
+    public static function staffRows(): Collection
+    {
+        $starts = collect(config('actual_income.staff'))->mapWithKeys(fn (array $staff) => [mb_strtolower(trim($staff['position'])) => $staff['from']]);
+
+        return MonthlyCostRow::withTrashed()->orderBy('sort_order')->orderBy('id')->get()
+            ->filter(fn (MonthlyCostRow $row) => $starts->has(mb_strtolower(trim((string) $row->position))))
+            ->each(fn (MonthlyCostRow $row) => $row->setAttribute('card_from', $starts[mb_strtolower(trim((string) $row->position))]))
+            ->values();
+    }
+
+    /**
+     * The staff cards shown in $month: onboarded by then and still counting on its last day.
+     *
+     * @return Collection<int, MonthlyCostRow>
+     */
+    public static function staffOf(CarbonImmutable $month): Collection
+    {
+        return self::staffRows()->filter(fn (MonthlyCostRow $row) => $month->startOfMonth()->toDateString() >= $row->card_from
+            && $row->countsOn($month->endOfMonth()->startOfDay()))->values();
+    }
+
+    /**
+     * Whether $month's CRA cards are filled from their orders.
+     */
+    public static function isFilled(CarbonImmutable $month): bool
+    {
+        return $month->startOfMonth()->toDateString() >= config('actual_income.filled_from');
+    }
 
     /**
      * The lines typed in on a card: key => label.
@@ -194,11 +244,11 @@ class ActualIncome
     }
 
     /**
-     * The month's cards. $cras are the CRAs shown (and the number the CRD's costs are shared by), except in a month taken
+     * The month's cards (staff cards from their month on). $cras are the CRAs shown (and the number the CRD's costs are shared by), except in a month taken
      * from the sheet, whose cards are the CRAs on it.
      *
      * @param  Collection<int, User>  $cras
-     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, filled: array<int, bool>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>}}
+     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, staff: Collection<int, MonthlyCostRow>, staffCards: array<int, array<string, float|null>>, filled: array<int, bool>, fromOrders: array<int, array<string, float|int>>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>, staff: array<int, array<string, float>>}}
      */
     public function month(Collection $cras, CarbonImmutable $month): array
     {
@@ -207,32 +257,73 @@ class ActualIncome
             return self::fromSheet($sheet);
         }
 
+        $staff = self::staffOf($month);
         $typed = ActualIncomeInput::whereDate('month', $month->startOfMonth())
-            ->where(fn ($query) => $query->whereNull('user_id')->orWhereIn('user_id', $cras->pluck('id')))
-            ->get(['user_id', 'field', 'amount']);
-        $department = $typed->whereNull('user_id')->pluck('amount', 'field')->all();
+            ->where(fn ($query) => $query->where(fn ($query) => $query->whereNull('user_id')->whereNull('monthly_cost_row_id'))
+                ->orWhereIn('user_id', $cras->pluck('id'))->orWhereIn('monthly_cost_row_id', $staff->pluck('id')))
+            ->get(['user_id', 'monthly_cost_row_id', 'field', 'amount']);
+        $department = $typed->whereNull('user_id')->whereNull('monthly_cost_row_id')->pluck('amount', 'field')->all();
         $craTyped = $cras->mapWithKeys(fn (User $cra) => [$cra->id => $typed->where('user_id', $cra->id)->pluck('amount', 'field')->all()])->all();
+        $staffTyped = $staff->mapWithKeys(fn (MonthlyCostRow $row) => [$row->id => $typed->where('monthly_cost_row_id', $row->id)->pluck('amount', 'field')->all()])->all();
         $craCount = max($cras->count(), 1);
-        $mni = $this->mni->for($cras, $month->startOfMonth(), '1m')['cras'];
 
-        $cards = $cras->mapWithKeys(fn (User $cra) => [$cra->id => self::craCard($craTyped[$cra->id], $department, $mni[$cra->id] ?? [], $craCount)])->all();
+        // The CRAs' salaries: CRD - MC without the staff cards' rows (each has its own card).
+        $staffIds = self::staffRows()->pluck('id')->all();
+        $costRows = MonthlyCostRow::countingOn($month->endOfMonth()->startOfDay())->reject(fn (MonthlyCostRow $row) => in_array($row->id, $staffIds, true))->values();
+        $mni = $this->mni->for($cras, $month->startOfMonth(), '1m', $costRows)['cras'];
+        $filled = self::isFilled($month) ? $this->filled($cras, $month) : [];
+
+        $cards = $cras->mapWithKeys(fn (User $cra) => [$cra->id => self::craCard([...($filled[$cra->id] ?? []), ...$craTyped[$cra->id]], $department, $mni[$cra->id] ?? [], $craCount)])->all();
+        $staffCards = $staff->mapWithKeys(fn (MonthlyCostRow $row) => [$row->id => self::craCard($staffTyped[$row->id], [], self::staffPay($row), $craCount)])->all();
 
         return [
             'shown' => $cras,
             'fromSheet' => false,
             'lines' => self::LINES,
-            'department' => self::departmentCard($cards, $department),
+            'department' => self::departmentCard([...array_values($cards), ...array_values($staffCards)], $department),
             'cras' => $cards,
+            'staff' => $staff,
+            'staffCards' => $staffCards,
             'filled' => array_map(fn (array $amounts) => $amounts !== [], $craTyped),
-            'typed' => ['department' => $department, 'cras' => $craTyped],
+            'fromOrders' => $filled,
+            'typed' => ['department' => $department, 'cras' => $craTyped, 'staff' => $staffTyped],
         ];
+    }
+
+    /**
+     * Each CRA's order lines for $month up to today, kept for ten minutes (the page re-draws after every typed amount).
+     *
+     * @param  Collection<int, User>  $cras
+     * @return array<int, array<string, float|int>>
+     */
+    private function filled(Collection $cras, CarbonImmutable $month): array
+    {
+        $to = min($month->endOfMonth()->startOfDay(), WorkingDate::realToday());
+        if ($to->lt($month->startOfMonth())) {
+            return [];
+        }
+        $key = 'actual_income.orders.'.$month->format('Y-m').'.'.$to->toDateString().'.'.md5($cras->pluck('id')->sort()->implode(','));
+
+        return Cache::remember($key, now()->addMinutes(10), fn () => $this->dailyIs->orderFigures($cras, $month->startOfMonth(), $to));
+    }
+
+    /**
+     * A staff card's Salaries, 13th Month and SIL from their CRD - MC salary, as the Monthly MNI works them out.
+     *
+     * @return array<string, float>
+     */
+    private static function staffPay(MonthlyCostRow $row): array
+    {
+        $salary = $row->monthlySalary();
+
+        return ['salaries' => $salary, 'thirteenth_month' => $salary / 12, 'sil' => $salary * MonthlyMni::SIL_DAYS_A_YEAR / MonthlyMni::SIL_WORKING_DAYS, 'gov_benefits' => 0.0];
     }
 
     /**
      * A month taken from the sheet: its cards as they are, every line; the sheet-only lines a card has an amount on.
      *
      * @param  Collection<int, ActualIncomeStatement>  $sheet
-     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, filled: array<int, bool>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>}}
+     * @return array{shown: Collection<int, User>, fromSheet: bool, lines: list<array{0: string, 1: ?string, 2: string, 3: ?string, 4: ?string}>, department: array<string, float|null>, cras: array<int, array<string, float|null>>, staff: Collection<int, MonthlyCostRow>, staffCards: array<int, array<string, float|null>>, filled: array<int, bool>, fromOrders: array<int, array<string, float|int>>, typed: array{department: array<string, float>, cras: array<int, array<string, float>>, staff: array<int, array<string, float>>}}
      */
     private static function fromSheet(Collection $sheet): array
     {
@@ -267,15 +358,18 @@ class ActualIncome
             'lines' => $lines,
             'department' => $department,
             'cras' => $cards,
+            'staff' => collect(),
+            'staffCards' => [],
             'filled' => array_fill_keys($shown->pluck('id')->all(), true),
-            'typed' => ['department' => [], 'cras' => []],
+            'fromOrders' => [],
+            'typed' => ['department' => [], 'cras' => [], 'staff' => []],
         ];
     }
 
     /**
-     * @param  array<string, float>  $typed  the CRA's typed-in amounts
-     * @param  array<string, float>  $department  the CRD card's typed-in amounts
-     * @param  array<string, float|int|null>  $mni  the CRA's 1M Monthly MNI statement
+     * @param  array<string, float|int>  $typed  the card's amounts: typed in, or filled from the CRA's orders
+     * @param  array<string, float>  $department  the CRD card's typed-in amounts (none for a staff card: nothing shared onto it)
+     * @param  array<string, float|int|null>  $mni  the CRA's 1M Monthly MNI statement (a staff card's pay)
      * @return array<string, float|null>
      */
     private static function craCard(array $typed, array $department, array $mni, int $craCount): array
@@ -301,7 +395,7 @@ class ActualIncome
     }
 
     /**
-     * @param  array<int, array<string, float|null>>  $cards  the CRA cards
+     * @param  list<array<string, float|null>>  $cards  the CRA and staff cards
      * @param  array<string, float>  $typed  the CRD card's typed-in amounts
      * @return array<string, float|null>
      */

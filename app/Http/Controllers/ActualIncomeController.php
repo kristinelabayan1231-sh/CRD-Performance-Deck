@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 /**
- * Actual Income: the month's overall CRD card and each CRA's card. Every month opens read-only; anyone with
+ * Actual Income: the month's overall CRD card, each CRA's card and the staff cards (config actual_income.staff). Every month opens read-only; anyone with
  * actual_income.manage (CRA Supervisor, Team Lead) clicks Edit (?edit=1) to type the amounts, which save as they change.
  * A month taken from the CRD Sales Report sheet is shown as it is, and in edit mode its lines can be typed over.
  */
@@ -42,30 +42,38 @@ class ActualIncomeController extends Controller
     }
 
     /**
-     * Save one typed-in amount: a CRA card's (cra set) or the CRD card's. Empty clears it.
+     * Save one typed-in amount: a CRA card's (cra set), a staff card's (staff: its CRD - MC row) or the CRD card's.
+     * Empty clears it (a line filled from the CRA's orders goes back to that).
      */
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
             'month' => ['required', 'date_format:Y-m'],
             'cra' => ['nullable', 'integer'],
+            'staff' => ['nullable', 'integer'],
             'field' => ['required', 'string'],
             'value' => ['present', 'nullable', 'numeric', 'min:0', 'max:1000000000'],
         ]);
+        $month = CarbonImmutable::parse($data['month'].'-01');
 
-        if (ActualIncomeStatement::whereDate('month', $data['month'].'-01')->exists()) {
+        if (ActualIncomeStatement::whereDate('month', $month)->exists()) {
             return $this->updateSheetLine($data);
         }
 
-        abort_unless(blank($data['cra'] ?? null) || LeadGenerator::crasOfMonth(CarbonImmutable::parse($data['month'].'-01'))->contains('id', (int) $data['cra']), 422, 'Amounts can only be typed in for the month\'s CRAs.');
+        $craId = blank($data['cra'] ?? null) ? null : (int) $data['cra'];
+        $staffId = blank($data['staff'] ?? null) ? null : (int) $data['staff'];
+        abort_if($craId !== null && $staffId !== null, 422, 'Pick one card.');
+        abort_unless($craId === null || LeadGenerator::crasOfMonth($month)->contains('id', $craId), 422, 'Amounts can only be typed in for the month\'s CRAs.');
+        abort_unless($staffId === null || ActualIncome::staffOf($month)->contains('id', $staffId), 422, 'This card isn\'t on this month.');
 
-        $isDepartment = blank($data['cra'] ?? null);
+        $isDepartment = $craId === null && $staffId === null;
         abort_unless(array_key_exists($data['field'], ActualIncome::inputs($isDepartment)), 422, $isDepartment
             ? 'This amount is typed in on the CRA cards.' : 'This amount is typed in on the CRD card.');
 
-        $key = ['month' => $data['month'].'-01', 'user_id' => $isDepartment ? null : (int) $data['cra'], 'field' => $data['field']];
+        $key = ['month' => $month->toDateString(), 'user_id' => $craId, 'monthly_cost_row_id' => $staffId, 'field' => $data['field']];
         $existing = ActualIncomeInput::whereDate('month', $key['month'])->where('field', $key['field'])
-            ->when($isDepartment, fn ($query) => $query->whereNull('user_id'), fn ($query) => $query->where('user_id', $key['user_id']));
+            ->when($craId, fn ($query) => $query->where('user_id', $craId), fn ($query) => $query->whereNull('user_id'))
+            ->when($staffId, fn ($query) => $query->where('monthly_cost_row_id', $staffId), fn ($query) => $query->whereNull('monthly_cost_row_id'));
 
         if ($data['value'] === null) {
             $existing->delete();
