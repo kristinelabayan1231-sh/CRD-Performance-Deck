@@ -23,7 +23,7 @@
         @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
     @can('sms_reminders.view')
         {{-- Text: the tick that puts the customer in today's texts --}}
-        <td data-col="sms" class="py-3 pr-1 pl-4">
+        <td data-col="sms" class="sticky left-0 z-10 w-12 min-w-12 bg-white py-3 pr-1 pl-4">
                 @php($tickBadge = $smsBadge ?? null)
                 @if ($tickBadge && ! $readOnly && (auth()->user()->can('sms_reminders.view_all') || $tickBadge['cra_id'] === auth()->id()))
                     @if ($tickBadge['state'] === 'stop')
@@ -53,7 +53,7 @@
                 @endif
         </td>
     @endcan
-    <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-semibold whitespace-nowrap shadow-[6px_0_8px_-8px_rgb(22_19_31/0.25)]" data-note-cell
+    <td data-col="customer_name" @class(['group sticky z-10 bg-white px-4 py-3 font-semibold whitespace-nowrap shadow-[6px_0_8px_-8px_rgb(22_19_31/0.25)]', 'left-12' => auth()->user()->can('sms_reminders.view'), 'left-0' => ! auth()->user()->can('sms_reminders.view')]) data-note-cell
         data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
         {{-- Sheets-style note marker in the top-right corner --}}
         <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"

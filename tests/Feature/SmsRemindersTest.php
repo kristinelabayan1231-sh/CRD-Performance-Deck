@@ -1120,6 +1120,19 @@ class SmsRemindersTest extends TestCase
         $this->get($chat)->assertForbidden();
     }
 
+    public function test_with_every_cra_the_tracker_shows_the_teams_texts_and_asks_for_a_cra_to_send(): void
+    {
+        $this->turnOn();
+        $this->delivered('09170000001', cra: $this->anna);
+        $this->artisan('reminders:build');
+
+        $this->actingAs($this->owner())->get(route('segmentation.index', ['cra' => 'all']))->assertOk()
+            ->assertSee('aria-label="Texts today"', false)->assertSeeText('Pick a CRA to send their texts')
+            ->assertDontSee(route('sms-reminders.send-now'), false);
+        $this->get(route('segmentation.index', ['cra' => $this->anna->id]))->assertOk()
+            ->assertSee(route('sms-reminders.send-now'), false)->assertDontSeeText('Pick a CRA to send their texts');
+    }
+
     public function test_mark_reordered_cancels_the_waiting_texts_and_can_be_undone(): void
     {
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);

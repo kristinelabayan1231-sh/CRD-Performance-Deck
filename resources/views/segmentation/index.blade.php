@@ -109,6 +109,19 @@
         @php $sendBar = \App\Support\SmsSendBar::for(auth()->user(), ctype_digit((string) $filters['cra']) ? $cras->firstWhere('id', (int) $filters['cra']) : null); @endphp
         @if ($sendBar)
             @include('segmentation._send-bar')
+        @elseif (! ctype_digit((string) $filters['cra']) && auth()->user()->can('sms_reminders.view_all'))
+            {{-- Every CRA: the team's texts today; sending is per CRA --}}
+            @php $teamCounts = app(\App\Services\RestockReminders::class)->dayCounts(\App\Support\WorkingDate::realToday(), null); @endphp
+            <section aria-label="Texts today" class="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white px-3 py-2.5">
+                <dl class="flex flex-wrap items-center gap-1.5">
+                    @foreach (['To text' => $teamCounts['toSend'], 'Sent' => $teamCounts['sent'], 'Unticked' => $teamCounts['excluded'], 'Failed' => $teamCounts['failed']] as $countLabel => $count)
+                        <div class="flex h-10 items-center gap-1.5 rounded-full border border-[#d9d9d6] bg-white px-3.5 text-[0.8125rem] font-medium tabular-nums">
+                            <dt>{{ $countLabel }}</dt><dd class="font-display text-[0.9375rem] font-bold">{{ number_format($count) }}</dd>
+                        </div>
+                    @endforeach
+                </dl>
+                <p class="text-sm text-muted">Pick a CRA to send their texts, tick them and see their conversations.</p>
+            </section>
         @endif
 
         @if ($canViewAll && $cras->isEmpty())
