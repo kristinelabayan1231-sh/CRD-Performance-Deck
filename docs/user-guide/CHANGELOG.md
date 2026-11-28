@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-28 · Segmentation Tracker · The Text tick column stays pinned beside the name when the table scrolls sideways; with All CRAs a bar shows the team's texts today (To text, Sent, Unticked, Failed) and asks to pick a CRA to send · shots: segmentation-tracker
+
 - 2026-11-28 · Actual Income · From September 2026 each CRA card's Orders, Gross, Cancelled, Fulfilled, Returns/Returning, Delivered and Product Cost come from their orders (typing replaces one, empty goes back); from October 2026 the Junior AI Engineer (CRD - MC) has her own card, salary from CRD - MC, other lines typed by the CRA Supervisor / Team Lead; not on the Daily I.S. or CRA Gross Sales & IBSC · shots: actual-income
 
 - 2026-11-28 · SMS Reminders · A waiting text whose customer is on no CRA's tracker list (made before Nov 24) is no longer sent: it shows as skipped, Not on a list any more · shots: none

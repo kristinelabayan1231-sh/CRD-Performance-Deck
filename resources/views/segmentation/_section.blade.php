@@ -133,9 +133,10 @@
                 <thead class="sticky top-0 z-20 border-b border-line bg-canvas text-[0.6875rem] tracking-wide text-ink uppercase">
                     <tr>
                         @can('sms_reminders.view')
-                            <th data-col="sms" class="w-12 py-3 pr-1 pl-4 font-semibold">Text</th>
+                            <th data-col="sms" class="sticky left-0 z-10 w-12 min-w-12 bg-canvas py-3 pr-1 pl-4 font-semibold">Text</th>
                         @endcan
-                        <th data-col="customer_name" class="sticky left-0 z-10 bg-canvas px-4 py-3 font-semibold">Customer Name</th>
+                        {{-- With the Text column pinned first, the name sticks right after it --}}
+                        <th data-col="customer_name" @class(['sticky z-10 bg-canvas px-4 py-3 font-semibold', 'left-12' => auth()->user()->can('sms_reminders.view'), 'left-0' => ! auth()->user()->can('sms_reminders.view')])>Customer Name</th>
                         @can('sms_reminders.view')
                             <th data-col="sms" class="px-3 py-3 font-semibold">SMS</th>
                         @endcan
