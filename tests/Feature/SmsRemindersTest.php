@@ -1016,6 +1016,28 @@ class SmsRemindersTest extends TestCase
         $this->assertNull(RestockReminder::firstWhere('phone_key', $todays)->handed_at);
     }
 
+    public function test_a_carried_over_text_on_no_tracker_list_is_skipped_but_a_follow_up_keeps_going(): void
+    {
+        $this->turnOn();
+        // Texts built before they followed the tracker lists: no tracker lead, waiting (to send, queued or unticked).
+        $old = fn (string $number, string $status) => RestockReminder::create(['phone_key' => substr($number, 1), 'phone_number' => $number, 'customer_name' => 'Old '.$status,
+            'products' => 'Clear Sight 3.0', 'run_out_on' => '2026-11-23', 'remind_on' => '2026-11-18', 'user_id' => $this->anna->id, 'kind' => RestockReminder::REMINDER,
+            'customer_type' => 'first', 'status' => $status, 'queued_at' => $status === RestockReminder::QUEUED ? now() : null]);
+        $waiting = [$old('09170000005', RestockReminder::PENDING), $old('09170000006', RestockReminder::QUEUED), $old('09170000007', RestockReminder::EXCLUDED)];
+        $followUp = RestockReminder::create(['phone_key' => '9170000009', 'phone_number' => '09170000009', 'customer_name' => 'Follow Up', 'products' => 'Clear Sight 3.0',
+            'run_out_on' => '2026-11-27', 'remind_on' => '2026-11-18', 'user_id' => $this->anna->id, 'kind' => RestockReminder::FOLLOW_UP, 'follow_up_number' => 1,
+            'customer_type' => 'first', 'status' => RestockReminder::PENDING]);
+        $listed = $this->delivered('09170000001', cra: $this->anna);
+
+        $this->artisan('reminders:build');
+
+        foreach ($waiting as $text) {
+            $this->assertSame([RestockReminder::SKIPPED, RestockReminders::NOT_ON_A_LIST], [$text->fresh()->status, $text->fresh()->error]);
+        }
+        $this->assertSame(RestockReminder::PENDING, $followUp->fresh()->status);
+        $this->assertSame(RestockReminder::PENDING, RestockReminder::firstWhere('phone_key', $listed)->status);
+    }
+
     public function test_each_window_sends_half_list_texts_and_half_follow_ups_and_a_kind_with_none_waiting_leaves_its_half(): void
     {
         $this->turnOn();

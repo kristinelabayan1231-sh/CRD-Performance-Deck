@@ -7,6 +7,8 @@ never needs to re-read the whole PDF. Newest first.
 
 <!-- Add one line per user-facing change: `- YYYY-MM-DD · <Module> · <what changed> · shots: <screenshot names>` -->
 
+- 2026-11-28 · SMS Reminders · A waiting text whose customer is on no CRA's tracker list (made before Nov 24) is no longer sent: it shows as skipped, Not on a list any more · shots: none
+
 - 2026-11-27 · App shell + colours (every page) · New look in the company palette, black + gold: a black icon rail on the left (one button per module, Overview first and Settings at the foot; it opens that module's pages, on a phone it's a bar along the bottom), a top bar with Search screens, CRAs on duty (opens who logged in and who is off), order issues, the theme switch and the user, and the open module's pages as a row above the content. Section headers are plain white, buttons black (gold in Dark), new fonts · shots: all
 
 - 2026-11-27 · Dashboard · Opens on the CRD goal, large, with gold progress and the pace mark, beside four rings (Monthly goal, Leads catered, Repeat customers, Segmentation CVR); the Results tiles, Segmentation Tracker tiles, Live from Logistics and Customer churn are quiet white cards · shots: dashboard
