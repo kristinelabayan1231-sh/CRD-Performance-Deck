@@ -1,5 +1,5 @@
-{{-- The tracker's tabs: Leads (with goals on the Exclusive Lead Tracker), Conversations (replies, follow-ups, no response),
-     Today's texts and Text settings; the views of a tab (Daily / Weekly, Day / Month, Templates / Schedule) are pills under it.
+{{-- The tracker's tabs, one row of icons: Daily and Weekly (Leads and goals with Day / Month on the Exclusive Lead Tracker),
+     Conversations (replies, follow-ups, no response), Today's texts, and the text settings' Templates and Schedule.
      On the Exclusive Lead Tracker's page pass $exclusiveCra (its CRA) and $readOnly. --}}
 @php
     $tabUser = auth()->user();
@@ -38,43 +38,70 @@
         default => [],
     };
 @endphp
-<div @class(['shrink-0', 'mb-3' => ! isset($toolbar), 'mb-2' => isset($toolbar)])>
-    <nav class="flex gap-1 overflow-x-auto border-b border-line" aria-label="Tracker sections">
-        @foreach ($tabs as [$label, $href, $active, $badge])
-            <a href="{{ $href }}" @if ($active) aria-current="page" @endif
+@php
+    // One row of icon tabs: the open one shows its label, the others their icon (label on hover and for screen readers).
+    $tabIcons = [
+        'Leads' => 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+        'Leads and goals' => 'M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z',
+        'Daily' => 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+        'Weekly Segmentation' => 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+        'Conversations' => 'M4 5h16v11H9l-5 4z',
+        "Today's texts" => 'M4 12 20 4l-6 16-2-6z',
+        'Text settings' => 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M8 15v4',
+        'Templates' => 'M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6',
+        'Schedule' => 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18',
+    ];
+    // The Leads tab splits into its views (Daily / Weekly) and Text settings into Templates / Schedule, all in one row.
+    $flat = [];
+    foreach ($tabs as [$label, $href, $active, $badge]) {
+        $split = match (true) {
+            $label === 'Leads' && $active && $views => $views,
+            $label === 'Text settings' && $active && $views => $views,
+            $label === 'Leads' && ! $exclusive && $tabUser->can('segmentation.view') => [['Daily', $href, false], ['Weekly Segmentation', route('segmentation.weekly'), false]],
+            $label === 'Text settings' => [['Templates', route('sms-reminders.templates.index', $smsCra), false], ['Schedule', route('sms-reminders.schedule.index', $smsCra), false]],
+            default => null,
+        };
+        if ($split) {
+            foreach ($split as [$viewLabel, $viewHref, $viewActive]) {
+                $flat[] = [$viewLabel, $viewHref, $viewActive, null];
+            }
+        } else {
+            $flat[] = [$label, $href, $active, $badge];
+        }
+    }
+@endphp
+<div class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+    <nav class="flex flex-wrap items-center gap-1" aria-label="Tracker sections">
+        @foreach ($flat as [$label, $href, $active, $badge])
+            <a href="{{ $href }}" @if ($active) aria-current="page" @endif title="{{ $label }}"
                @class([
-                   'flex shrink-0 items-center gap-2 border-b-[3px] px-5 py-3 text-base font-semibold transition',
-                   'border-brand-600 text-brand-700' => $active,
-                   'border-transparent text-muted hover:text-brand-600' => ! $active,
+                   'flex h-10 shrink-0 items-center gap-2 rounded-full text-sm font-semibold transition',
+                   'border border-line bg-white px-4 text-ink shadow-sm' => $active,
+                   'px-3 text-muted hover:bg-white hover:text-ink' => ! $active,
                ])>
-                {{ $label }}
+                <svg @class(['size-[1.15rem]', 'text-[#c99400]' => $active]) fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $tabIcons[$label] ?? $tabIcons['Leads'] }}"/></svg>
+                <span @class(['sr-only' => ! $active])>{{ $label }}</span>
                 @if ($badge)
-                    <span title="Replies to answer" class="rounded-full bg-coral-700 px-1.5 text-xs text-white tabular-nums">{{ number_format($badge) }}</span>
+                    <span title="Replies to answer" class="grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-xs font-bold text-ink tabular-nums">{{ number_format($badge) }}</span>
                 @endif
             </a>
         @endforeach
     </nav>
-    @if ($views || $exclusiveCra)
-        @php($pill = fn (bool $active) => 'flex h-9 items-center rounded-lg border px-3.5 text-sm font-semibold '.($active ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-line bg-white hover:border-brand-400 hover:text-brand-600'))
-        <nav class="mt-3 flex flex-wrap gap-1.5" aria-label="Views">
-            @foreach ($views as [$label, $href, $active])
-                <a href="{{ $href }}" @if ($active) aria-current="page" @endif class="{{ $pill($active) }}">{{ $label }}</a>
+    @if ($exclusiveCra)
+        {{-- Day: the day's goals and leads; Month: the calendar and month goals (switched on the page, segmentation.js) --}}
+        <div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Goals">
+            @foreach (['day' => 'Day', 'month' => 'Month'] as $key => $label)
+                <button type="button" data-goal-view="{{ $key }}" aria-pressed="{{ ($goalView ?? 'day') === $key ? 'true' : 'false' }}"
+                        class="flex h-9 items-center rounded-full border border-line bg-white px-3.5 text-sm font-semibold text-muted hover:text-ink aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $label }}</button>
             @endforeach
-            @if ($exclusiveCra)
-                {{-- Day: the day's goals and leads; Month: the calendar and month goals (switched on the page, segmentation.js) --}}
-                @foreach (['day' => 'Day', 'month' => 'Month'] as $key => $label)
-                    <button type="button" data-goal-view="{{ $key }}" aria-pressed="{{ ($goalView ?? 'day') === $key ? 'true' : 'false' }}"
-                            class="flex h-9 items-center rounded-lg border border-line bg-white px-3.5 text-sm font-semibold hover:border-brand-400 hover:text-brand-600 aria-pressed:border-brand-500 aria-pressed:bg-brand-50 aria-pressed:text-brand-700">{{ $label }}</button>
-                @endforeach
-                @if ($exclusiveCra->is($tabUser) && $tabUser->can('segmentation.view'))
-                    <a href="{{ route('segmentation.weekly') }}" class="{{ $pill(false) }}">Weekly Segmentation</a>
-                @endif
+            @if ($exclusiveCra->is($tabUser) && $tabUser->can('segmentation.view'))
+                <a href="{{ route('segmentation.weekly') }}" class="flex h-9 items-center rounded-full border border-line bg-white px-3.5 text-sm font-semibold text-muted hover:text-ink">Weekly Segmentation</a>
             @endif
-        </nav>
+        </div>
     @endif
 </div>
 
 @isset($toolbar)
     {{-- Filters on their own row under the tabs, starting at the left --}}
-    <div class="mb-3 shrink-0">@include($toolbar)</div>
+    <div class="mb-3 shrink-0 rounded-2xl border border-line bg-white p-2">@include($toolbar)</div>
 @endisset

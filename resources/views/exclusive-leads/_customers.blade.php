@@ -25,7 +25,7 @@
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-line px-4 py-2 text-xs">
         <span class="font-semibold text-muted">Est. out of stock:</span>
         <span class="flex items-center gap-1.5"><span class="rounded-full bg-coral/25 px-2 py-0.5 font-semibold text-coral-700">Red</span> out of stock or within {{ \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS }} days · call now</span>
-        <span class="flex items-center gap-1.5"><span class="rounded-full bg-[#fdecc0] px-2 py-0.5 font-semibold text-[#7a4f00]">Amber</span> in {{ \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS + 1 }}–{{ \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS }} days · call soon</span>
+        <span class="flex items-center gap-1.5"><span class="rounded-full bg-brand-100 px-2 py-0.5 font-semibold text-ink">Amber</span> in {{ \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS + 1 }}–{{ \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS }} days · call soon</span>
         <span class="flex items-center gap-1.5"><span class="rounded-full bg-teal-700/15 px-2 py-0.5 font-semibold text-teal-700">Green</span> more than {{ \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS }} days · no need to call yet</span>
     </div>
     <div class="overflow-x-auto">
@@ -69,7 +69,7 @@
                         <td class="px-2 py-1.5 whitespace-nowrap">
                             <span @class(['rounded-full px-2 py-0.5',
                                 'bg-coral/25 font-semibold text-coral-700' => $daysLeft <= \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS,
-                                'bg-[#fdecc0] font-semibold text-[#7a4f00]' => $daysLeft > \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS && $daysLeft <= \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS,
+                                'bg-brand-100 font-semibold text-ink' => $daysLeft > \App\Http\Controllers\ExclusiveLeadDashboardController::URGENT_DAYS && $daysLeft <= \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS,
                                 'bg-teal-700/15 font-semibold text-teal-700' => $daysLeft > \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS])>
                                 {{ $lead->est_out_of_stock_date->format('M j') }}{{ $daysLeft > 0 && $daysLeft <= \App\Http\Controllers\ExclusiveLeadDashboardController::SOON_DAYS ? ' · in '.$daysLeft.' '.\Illuminate\Support\Str::plural('day', $daysLeft) : '' }}
                             </span>

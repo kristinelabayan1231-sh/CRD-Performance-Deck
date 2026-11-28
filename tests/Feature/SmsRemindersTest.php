@@ -690,7 +690,7 @@ class SmsRemindersTest extends TestCase
         $this->assertSame(RestockReminder::SKIPPED, $next->refresh()->status);
 
         $allow = route('sms-reminders.conversations.allow', $phoneKey);
-        $this->actingAs($this->anna)->get(route('segmentation.index'))->assertOk()->assertSee('Replied STOP')->assertDontSee($allow, false);
+        $this->actingAs($this->anna)->get(route('segmentation.index'))->assertOk()->assertSee('Replied STOP')->assertSee($allow, false);
         $this->get(route('sms-reminders.conversations.chat', $phoneKey))->assertOk()->assertSee($allow, false);
         $this->get(route('sms-reminders.index'))->assertOk()->assertSee($allow, false);
         $this->actingAs($this->mika)->post($allow)->assertForbidden();
@@ -1070,22 +1070,31 @@ class SmsRemindersTest extends TestCase
         $this->actingAs($this->anna)->get(route('segmentation.index', ['date' => '2026-11-20']))->assertOk()->assertSee('Replied YES');
     }
 
-    public function test_the_tracker_shows_each_text_and_its_conversation_and_leaves_sending_to_todays_texts(): void
+    public function test_the_tracker_ticks_and_sends_each_text_and_opens_its_conversation(): void
     {
         $this->turnOn();
         $phoneKey = $this->delivered('09170000001', cra: $this->anna);
         $this->artisan('reminders:build');
-        $update = route('sms-reminders.update', RestockReminder::firstWhere('phone_key', $phoneKey));
+        $text = RestockReminder::firstWhere('phone_key', $phoneKey);
+        $update = route('sms-reminders.update', $text);
         $chat = route('sms-reminders.conversations.chat', $phoneKey);
 
+        // Her tracker: one row of tabs, the sending bar, the text chips and each row's tick and conversation.
         $this->actingAs($this->anna)->get(route('segmentation.index'))->assertOk()
-            ->assertSeeInOrder(['Leads', 'Conversations', "Today's texts", 'Text settings', 'Daily', 'Weekly Segmentation'], false)
-            ->assertSee('To be texted')->assertSee($chat, false)->assertDontSee($update, false)->assertDontSee('aria-label="Sending"', false);
-        $this->get(route('sms-reminders.index'))->assertOk()->assertSee($update, false)->assertSee('aria-label="Sending"', false);
+            ->assertSeeInOrder(['Daily', 'Weekly Segmentation', 'Conversations', "Today's texts", 'Templates', 'Schedule'], false)
+            ->assertSee('aria-label="Sending"', false)->assertSee(route('sms-reminders.send-now'), false)
+            ->assertSee('data-sms-filter="to-text"', false)->assertSee('data-sms-state="to-text"', false)
+            ->assertSee($update, false)->assertSee('data-conversation-open="'.$chat.'"', false);
         $this->get($chat)->assertOk()->assertSee('Mark reordered');
 
-        // Another CRA sees the text's state but can't open its conversation.
-        $this->actingAs($this->mika)->get(route('segmentation.index', ['cra' => $this->anna->id]))->assertOk()->assertSee('To be texted')->assertDontSee($chat, false);
+        // Unticking from the tracker leaves them out of today's texts.
+        $this->patch($update, ['include' => 0]);
+        $this->assertSame(RestockReminder::EXCLUDED, $text->refresh()->status);
+        $this->get(route('segmentation.index'))->assertSee('data-sms-state="unticked"', false);
+
+        // Another CRA sees the text's state but can't tick it, send it or open its conversation.
+        $this->actingAs($this->mika)->get(route('segmentation.index', ['cra' => $this->anna->id]))->assertOk()
+            ->assertSee('Unticked')->assertDontSee($chat, false)->assertDontSee($update, false)->assertDontSee('aria-label="Sending"', false);
         $this->get($chat)->assertForbidden();
     }
 

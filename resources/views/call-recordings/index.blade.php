@@ -25,20 +25,19 @@
 
         <section aria-label="Totals" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
             @foreach ([
-                ['Calls', number_format($team['calls']), 'from-brand-600 to-brand-700'],
-                ['AHT', CallRecording::formatDuration($team['aht']), 'from-[#0e8f7c] to-[#0b6b5d]'],
-                ['Talk time', CallRecording::formatDuration($team['talk']), 'from-[#1f8fb8] to-[#156c8c]'],
-                ['No matching lead', number_format($team['unmatched']), 'from-[#d99a0b] to-[#a8740a]'],
+                ['Calls', number_format($team['calls']), 'bg-ink'],
+                ['AHT', CallRecording::formatDuration($team['aht']), 'bg-teal'],
+                ['Talk time', CallRecording::formatDuration($team['talk']), 'bg-violet'],
+                ['No matching lead', number_format($team['unmatched']), 'bg-brand-500'],
             ] as [$title, $value, $colors])
-                <div class="relative overflow-hidden rounded-xl bg-gradient-to-br p-4 text-white shadow-sm {{ $colors }}">
-                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <p class="relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase">{{ $title }}</p>
-                    <p class="relative text-2xl font-bold tabular-nums">{{ $value }}</p>
+                <div class="relative overflow-hidden rounded-xl p-4 border border-line bg-white text-ink">
+                    <p class="relative flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase"><span aria-hidden="true" class="size-2 rounded-full {{ $colors }}"></span>{{ $title }}</p>
+                    <p class="relative font-display text-2xl font-bold tabular-nums">{{ $value }}</p>
                 </div>
             @endforeach
         </section>
 
-        <form method="GET" action="{{ route('call-recordings.index') }}" class="flex flex-wrap items-end gap-3 rounded-xl border border-brand-200 bg-gradient-to-r from-brand-100 to-brand-50 p-4 shadow-sm" aria-label="Dates and filters">
+        <form method="GET" action="{{ route('call-recordings.index') }}" class="flex flex-wrap items-end gap-3 rounded-2xl border border-line bg-white p-4" aria-label="Dates and filters">
             <div class="flex flex-col gap-1.5">
                 <span class="text-xs font-semibold tracking-wide text-muted uppercase">From – to</span>
                 <div class="flex items-center gap-1.5">
@@ -101,13 +100,13 @@
                                     <td @class(['px-2 py-2 text-right tabular-nums', 'font-semibold' => $row['calls'], 'text-muted/60' => ! $row['calls']])>{{ number_format($row['calls']) }}</td>
                                     <td class="px-2 py-2 text-right text-muted tabular-nums">{{ number_format($row['incoming']) }}</td>
                                     <td class="px-2 py-2 text-right text-muted tabular-nums">{{ number_format($row['outgoing']) }}</td>
-                                    <td @class(['px-2 py-2 text-right tabular-nums', 'font-semibold text-[#8a6008]' => $row['unmatched'], 'text-muted/60' => ! $row['unmatched']])>{{ number_format($row['unmatched']) }}</td>
+                                    <td @class(['px-2 py-2 text-right tabular-nums', 'font-semibold text-ink' => $row['unmatched'], 'text-muted/60' => ! $row['unmatched']])>{{ number_format($row['unmatched']) }}</td>
                                     <td class="px-2 py-2 text-right tabular-nums">{{ CallRecording::formatDuration($row['talk']) }}</td>
                                     <td class="px-4 py-2">
                                         <div class="flex items-center gap-2">
                                             <span class="w-14 font-semibold tabular-nums">{{ CallRecording::formatDuration($row['aht']) }}</span>
                                             @if ($row['aht'])
-                                                <span aria-hidden="true" class="h-2 rounded-full bg-[#0e8f7c]" style="width: {{ round($row['aht'] / $longestAht * 100) }}%"></span>
+                                                <span aria-hidden="true" class="h-2 rounded-full bg-teal" style="width: {{ round($row['aht'] / $longestAht * 100) }}%"></span>
                                             @endif
                                         </div>
                                     </td>
@@ -154,7 +153,7 @@
                                             <span class="font-medium">{{ $call->lead->customer_name }}</span>
                                             <span class="block text-xs text-muted">{{ $call->lead->product_name }} · {{ $call->lead->order_id }}</span>
                                         @else
-                                            <span class="rounded-full bg-[#fdecc0] px-2 py-0.5 text-xs font-semibold text-[#8a6008]">No matching lead</span>
+                                            <span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs font-semibold text-ink">No matching lead</span>
                                         @endif
                                     </td>
                                     <td class="px-2 py-2 whitespace-nowrap tabular-nums">{{ $call->phone_number }}</td>

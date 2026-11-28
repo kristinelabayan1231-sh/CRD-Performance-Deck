@@ -102,17 +102,16 @@
         {{-- Headline numbers --}}
         <section aria-label="Totals" class="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             @foreach ([
-                ['Leads', number_format($summary['leads']), $period, 'from-brand-500 to-brand-700'],
-                ['Catered', $pct($summary['catered_rate']), number_format($summary['catered']).' leads', 'from-[#0e8f7c] to-[#0b6b5d]'],
-                ['Pending', number_format($summary['pending']), 'no status or contact yet', 'from-[#e05a5f] to-[#c4484c]'],
-                ['Converted', $pct($summary['converted_rate']), number_format($summary['converted']).' leads', 'from-[#1f8fb8] to-[#156c8c]'],
-                ['Feedback recorded', $pct($summary['feedback_rate']), number_format($summary['with_feedback']).' of '.number_format($summary['catered']).' catered', 'from-[#d99a0b] to-[#a8740a]'],
+                ['Leads', number_format($summary['leads']), $period, 'bg-brand-500'],
+                ['Catered', $pct($summary['catered_rate']), number_format($summary['catered']).' leads', 'bg-teal'],
+                ['Pending', number_format($summary['pending']), 'no status or contact yet', 'bg-coral'],
+                ['Converted', $pct($summary['converted_rate']), number_format($summary['converted']).' leads', 'bg-violet'],
+                ['Feedback recorded', $pct($summary['feedback_rate']), number_format($summary['with_feedback']).' of '.number_format($summary['catered']).' catered', 'bg-brand-500'],
             ] as [$label, $value, $note, $gradient])
-                <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} p-4 text-white shadow-sm">
-                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                    <p class="relative text-[0.6875rem] font-semibold tracking-wide uppercase">{{ $label }}</p>
-                    <p class="relative text-3xl font-bold tabular-nums">{{ $value }}</p>
-                    <p class="relative text-xs text-white/90">{{ $note }}</p>
+                <div class="relative overflow-hidden rounded-xl p-4 border border-line bg-white text-ink">
+                    <p class="relative flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase"><span aria-hidden="true" class="size-2 rounded-full {{ $gradient }}"></span>{{ $label }}</p>
+                    <p class="relative font-display text-3xl font-bold tabular-nums">{{ $value }}</p>
+                    <p class="relative text-xs text-muted">{{ $note }}</p>
                 </div>
             @endforeach
         </section>
@@ -229,8 +228,8 @@
             <x-panel title="Time of contact" icon="clock" class="xl:col-span-12" body-class="p-4">
                 <x-slot:actions>
                     <span class="flex gap-3 text-muted">
-                        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-[#86b6ef]"></span>Contacted</span>
-                        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-[#1c5cab]"></span>Converted</span>
+                        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-brand-200"></span>Contacted</span>
+                        <span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-teal"></span>Converted</span>
                     </span>
                 </x-slot:actions>
                 <div class="overflow-x-auto rounded-xl bg-white p-4 shadow-sm">
@@ -240,8 +239,8 @@
                                 @if ($hour['contacts'] > 0)
                                     <span class="mb-1 text-center text-[0.625rem] font-semibold text-muted tabular-nums">{{ $hour['contacts'] }}</span>
                                 @endif
-                                <span class="relative block rounded-t bg-[#86b6ef] group-hover:bg-[#6da7ec]" style="height: {{ $hour['contacts'] / $peak * 85 }}%; min-height: {{ $hour['contacts'] ? '4px' : '0' }}">
-                                    <span class="absolute inset-x-0 bottom-0 block bg-[#1c5cab]" style="height: {{ $hour['contacts'] ? $hour['converted'] / $hour['contacts'] * 100 : 0 }}%"></span>
+                                <span class="relative block rounded-t bg-brand-200 group-hover:bg-brand-400" style="height: {{ $hour['contacts'] / $peak * 85 }}%; min-height: {{ $hour['contacts'] ? '4px' : '0' }}">
+                                    <span class="absolute inset-x-0 bottom-0 block bg-teal" style="height: {{ $hour['contacts'] ? $hour['converted'] / $hour['contacts'] * 100 : 0 }}%"></span>
                                 </span>
                             </div>
                         @endforeach
@@ -262,7 +261,7 @@
                 <x-panel :title="$title" :icon="$icon" class="xl:col-span-6" :tinted="false" body-class="">
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[32.5rem] text-sm">
-                            <thead class="bg-[#f7f4f8] text-[0.6875rem] tracking-wide text-muted uppercase">
+                            <thead class="bg-white text-[0.6875rem] tracking-wide text-muted uppercase">
                                 <tr>
                                     <th class="px-4 py-2.5 text-left font-semibold">{{ $first }}</th>
                                     <th class="px-3 py-2.5 text-right font-semibold">Leads</th>

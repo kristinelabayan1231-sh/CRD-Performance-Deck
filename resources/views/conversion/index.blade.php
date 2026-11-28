@@ -122,25 +122,24 @@
         {{-- Team scorecard: teal = Broadcast, purple = Segmentation, sky = total conversion, amber = gross sales --}}
         <section aria-label="Team totals" class="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
             @foreach ([
-                ['Orders BC', 'bc_orders', 'count', 'from-[#0e8f7c] to-[#0b6b5d]'],
-                ['Engagements', 'engagements', 'count', 'from-[#0e8f7c] to-[#0b6b5d]'],
-                ['BC conv %', 'bc_rate', 'percent', 'from-[#0b7d6c] to-[#08594d]'],
-                ['Orders SC', 'sc_orders', 'count', 'from-brand-500 to-brand-700'],
-                ['Leads', 'leads', 'count', 'from-brand-500 to-brand-700'],
-                ['SC conv %', 'sc_rate', 'percent', 'from-brand-600 to-[#5b21b6]'],
-                ['Total conv %', 'total_rate', 'percent', 'from-[#1f8fb8] to-[#156c8c]'],
-                ['Gross sales', 'gross', 'money', 'from-[#d99a0b] to-[#a8740a]'],
+                ['Orders BC', 'bc_orders', 'count', 'bg-teal'],
+                ['Engagements', 'engagements', 'count', 'bg-teal'],
+                ['BC conv %', 'bc_rate', 'percent', 'bg-teal'],
+                ['Orders SC', 'sc_orders', 'count', 'bg-brand-500'],
+                ['Leads', 'leads', 'count', 'bg-brand-500'],
+                ['SC conv %', 'sc_rate', 'percent', 'bg-brand-500'],
+                ['Total conv %', 'total_rate', 'percent', 'bg-violet'],
+                ['Gross sales', 'gross', 'money', 'bg-brand-500'],
             ] as [$label, $key, $type, $gradient])
                 @php($d = $delta($total[$key], $totalBefore[$key], $type))
-                <div class="relative flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-xl bg-gradient-to-br p-3.5 text-white shadow-sm {{ $gradient }}">
-                    <span aria-hidden="true" class="absolute -top-6 -right-6 size-16 rounded-full bg-white/15"></span>
-                    <span class="relative text-[0.6875rem] font-semibold tracking-wide text-white/95 uppercase">{{ $label }}</span>
-                    <span class="relative text-xl font-bold tabular-nums" title="{{ $fmt($total[$key], $type) }}">{{ $type === 'money' ? '₱'.number_format($total[$key]) : $fmt($total[$key], $type) }}</span>
+                <div class="relative flex min-w-0 flex-col gap-0.5 overflow-hidden rounded-xl p-3.5 border border-line bg-white text-ink">
+                    <span class="relative flex items-center gap-1.5 text-[0.6875rem] font-semibold tracking-wide text-muted uppercase"><span aria-hidden="true" class="size-2 rounded-full {{ $gradient }}"></span>{{ $label }}</span>
+                    <span class="relative font-display text-xl font-bold tabular-nums" title="{{ $fmt($total[$key], $type) }}">{{ $type === 'money' ? '₱'.number_format($total[$key]) : $fmt($total[$key], $type) }}</span>
                     <span @class([
                         'relative w-fit rounded-full px-1.5 text-[0.6875rem] font-semibold tabular-nums',
                         'bg-white text-teal-700' => $d['dir'] === 'up',
                         'bg-white text-coral-700' => $d['dir'] === 'down',
-                        'bg-white/20 text-white' => $d['dir'] === 'flat',
+                        'bg-canvas text-ink' => $d['dir'] === 'flat',
                     ]) title="Change from {{ $prevName }}">{{ $arrow($d) }} {{ $d['text'] }}</span>
                 </div>
             @endforeach
@@ -273,7 +272,7 @@
     {{-- A CRA's orders behind their gross sales, loaded when the amount is clicked --}}
     <dialog id="cra-orders-dialog" aria-labelledby="cra-orders-title" class="m-auto max-h-[90dvh] w-[min(64rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">
         <div class="flex max-h-[90dvh] flex-col">
-            <div class="flex shrink-0 items-center justify-between gap-4 bg-gradient-to-r from-brand-600 to-brand-700 px-5 py-3 text-white">
+            <div class="flex shrink-0 items-center justify-between gap-4 bg-[#111111] px-5 py-3 text-white">
                 <h2 id="cra-orders-title" class="text-base font-bold">Orders in gross sales</h2>
                 <button type="button" data-cra-orders-close aria-label="Close" class="rounded-lg p-1.5 text-white/80 hover:bg-white/15 hover:text-white">
                     <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6 6 18"/></svg>

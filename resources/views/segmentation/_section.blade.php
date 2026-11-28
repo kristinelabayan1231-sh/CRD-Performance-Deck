@@ -6,6 +6,10 @@
 {{-- $switch (both lists' totals): Pending and Catered one at a time, with the buttons that switch them (segmentation.js) --}}
 @php($switch = request()->boolean('full') ? null : ($switch ?? null))
 @php($shownList = request()->has('processed_page') ? 'processed' : 'unprocessed')
+{{-- Each row's SMS Reminders text (to be texted, texted, replied), looked up once for the section --}}
+@php($smsBadges = rescue(fn () => app(\App\Services\RestockReminders::class)->badgesFor(
+    $leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads), [], false))
+@php($smsStates = collect($smsBadges)->countBy('state'))
 
 <x-panel :title="$title" :accent="$accent ?? ($pending ? 'coral' : 'teal')" :icon="$icon ?? ($pending ? 'clock' : 'check')" :title-id="$id.'-title'"
          :tinted="false" body-class="" data-lead-section="{{ $id }}" :hidden="$switch !== null && $shownList !== $id" class="flex-col [&:not([hidden])]:flex">
@@ -16,7 +20,7 @@
                 <div class="flex flex-wrap items-center gap-1.5">
                     @foreach (['unprocessed' => 'Pending', 'processed' => 'Catered'] as $listId => $listLabel)
                         <button type="button" data-show-list="{{ $listId }}" aria-pressed="{{ $listId === $id ? 'true' : 'false' }}"
-                                class="h-9 rounded-lg border border-line bg-white px-3 text-sm font-semibold text-muted tabular-nums hover:border-brand-400 hover:text-brand-600 aria-pressed:border-brand-500 aria-pressed:bg-brand-50 aria-pressed:text-brand-700">{{ $listLabel }} · {{ number_format($switch[$listId]) }}</button>
+                                class="h-9 rounded-full border border-line bg-white px-3.5 text-sm font-semibold text-muted tabular-nums hover:text-ink aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">{{ $listLabel }} · {{ number_format($switch[$listId]) }}</button>
                     @endforeach
                     {{-- The follow-up lists open in Pending's full view --}}
                     <select data-expand-select aria-label="Follow-up lists" class="h-9 rounded-lg border border-line bg-white px-2.5 text-sm font-semibold text-muted focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
@@ -51,14 +55,44 @@
         </x-slot:actions>
     @endif
 
+
+    {{-- Pending: jump to the customers by their text (this page's rows; sms-panel.js shows only the picked ones) --}}
+    @if ($pending && $leads->isNotEmpty() && auth()->user()->can('sms_reminders.view') && $smsStates->isNotEmpty())
+        @php($stateChips = collect([
+            'yes' => ['Wants to order', 'M3 4h2l2.4 10.4a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6M10 20h.01M17 20h.01'],
+            'replied' => ['Needs reply', 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 6 6v5'],
+            'to-text' => ['To text', 'M4 12 20 4l-6 16-2-6z'],
+            'sending' => ['Sending', 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'],
+            'sent' => ['Sent', 'm5 13 4 4L19 7'],
+            'failed' => ['Failed', 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z'],
+            'unticked' => ['Unticked', 'M8 12h8M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'],
+            'stop' => ['STOP', 'M5.6 5.6l12.8 12.8M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18'],
+        ])->filter(fn ($chip, $state) => $smsStates[$state] ?? 0))
+        <div data-sms-chips class="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label="Show by text">
+            <button type="button" data-sms-filter="" aria-pressed="true"
+                    class="flex h-8 items-center gap-1.5 rounded-full border border-line bg-white px-3 text-xs font-semibold tabular-nums aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">All on this page · {{ $leads->count() }}</button>
+            @foreach ($stateChips as $state => [$chipLabel, $chipIcon])
+                <button type="button" data-sms-filter="{{ $state }}" aria-pressed="false" title="{{ $chipLabel }}"
+                        class="flex h-8 items-center gap-1.5 rounded-full border border-line bg-white px-3 text-xs font-semibold tabular-nums aria-pressed:border-brand-600 aria-pressed:bg-brand-600 aria-pressed:text-white">
+                    <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $chipIcon }}"/></svg>
+                    {{ $chipLabel }} · {{ $smsStates[$state] }}
+                </button>
+            @endforeach
+        </div>
+    @endif
     @if ($leads->isEmpty())
         <p class="px-4 py-10 text-center text-sm text-muted">{{ $empty }}</p>
     @else
         <div class="overflow-x-auto" @unless (request()->boolean('full')) data-visible-rows="10" @endunless>
             <table class="w-max min-w-full text-left text-sm">
-                <thead class="sticky top-0 z-20 bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                <thead class="sticky top-0 z-20 border-b border-line bg-white text-xs tracking-wide text-muted uppercase">
                     <tr>
-                        <th data-col="customer_name" class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 font-semibold">Customer Name</th>
+                        <th data-col="customer_name" class="sticky left-0 z-10 bg-white px-4 py-3 font-semibold">Customer Name</th>
+                        @can('sms_reminders.view')
+                            <th data-col="sms" class="px-3 py-3 font-semibold">Text</th>
+                        @endcan
+                        <th data-col="actions" class="px-3 py-3 font-semibold">Actions</th>
+                        <th class="px-4 py-3 font-semibold">Status</th>
                         <th data-col="qty" class="px-4 py-3 text-right font-semibold">Qty</th>
                         <th data-col="product" class="px-4 py-3 font-semibold">Product</th>
                         <th data-col="contact_number" class="px-4 py-3 font-semibold">
@@ -88,12 +122,8 @@
                                 @endisset
                             </span>
                         </th>
-                        @can('sms_reminders.view')
-                            <th data-col="sms" class="bg-brand-100 px-4 py-3 font-semibold text-brand-700">Text</th>
-                        @endcan
-                        <th class="px-4 py-3 font-semibold">Status</th>
                         <th data-col="delivered_date" class="px-4 py-3 font-semibold">Delivered Date</th>
-                        <th data-col="days_since_delivered" class="bg-[#fff4d6] px-4 py-3 text-center font-semibold text-[#7a5a00]">Days since Delivered</th>
+                        <th data-col="days_since_delivered" class="px-4 py-3 text-center font-semibold">Days since Delivered</th>
                         <th data-col="est_out_of_stock" class="px-4 py-3 font-semibold">Est. Out of Stock</th>
                         <th data-col="replenishment_day" class="px-4 py-3 font-semibold">Recommended Replenishment Day</th>
                         <th data-col="type" class="px-4 py-3 font-semibold">Type</th>
@@ -108,7 +138,7 @@
                             <th data-col="order_tag" class="px-4 py-3 font-semibold">Tag</th>
                         @endisset
                         @foreach ($visibleOptional as $key => $column)
-                            <th data-col="{{ $key }}" class="bg-[#e3f1ea] px-4 py-3 font-semibold text-[#1d5b45]">{{ $column['label'] }}</th>
+                            <th data-col="{{ $key }}" class="px-4 py-3 font-semibold">{{ $column['label'] }}</th>
                         @endforeach
                     </tr>
                 </thead>
@@ -117,9 +147,6 @@
                     @php($highValueFlags = rescue(fn () => app(\App\Services\HighValueCustomers::class)->flagsForNumbers(
                         collect($leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads)
                             ->map(fn ($lead) => \App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number))->unique()->values()->all()), [], false))
-                    {{-- Each row's SMS Reminders text (to be texted, texted, replied), looked up once for the section --}}
-                    @php($smsBadges = rescue(fn () => app(\App\Services\RestockReminders::class)->badgesFor(
-                        $leads instanceof \Illuminate\Contracts\Pagination\Paginator ? $leads->items() : $leads), [], false))
                     @foreach ($leads as $lead)
                         @include('segmentation._row', ['lead' => $lead, 'backlogRow' => $backlogRows ?? false,
                             'highValue' => $highValueFlags[\App\Services\LeadGenerator::normalizePhone((string) $lead->phone_number)] ?? null,

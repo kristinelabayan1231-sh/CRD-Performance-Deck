@@ -1,4 +1,4 @@
-{{-- One customer's conversation on its own, shown in the tracker's conversation panel (segmentation._conversation-panel). --}}
+{{-- One customer's conversation on its own, shown in the tracker's customer panel, Conversation tab (segmentation._spiels-panel). --}}
 <x-layouts.bare title="SMS Conversation">
     @if (session('status'))
         <div role="status" class="m-3 rounded-lg border border-teal/50 bg-teal/10 px-4 py-3 text-sm text-teal-700">{{ session('status') }}</div>

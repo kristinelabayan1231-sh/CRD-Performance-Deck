@@ -183,7 +183,7 @@
             {{-- The selected day --}}
             @php($quota = $dayMetrics['quota'])
             @php($dayAov = $dayMetrics['aov'])
-            <section aria-label="The day's goals" class="mb-3 rounded-2xl border border-line bg-white px-4 py-3 shadow-sm">
+            <section aria-label="The day's goals" class="mb-3 rounded-2xl border border-line bg-white px-4 py-3">
                 <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <h2 class="text-sm font-semibold">{{ $day->format('l, M j') }} <span class="font-normal text-muted">· {{ number_format($dayMetrics['listed']) }} {{ \Illuminate\Support\Str::plural('lead', $dayMetrics['listed']) }}{{ $leadDay ? ' from '.$leadDay->format('M j') : '' }}</span>
                         @if ($dayMetrics['is_history'])
@@ -194,14 +194,14 @@
                 <div class="grid gap-x-8 gap-y-3 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
                     <dl class="grid grid-cols-2 gap-x-6 gap-y-3 lg:grid-cols-4">
                         @foreach ([
-                            ['Leads worked', number_format($dayMetrics['worked']), '/ '.number_format($dayMetrics['listed']), $dayMetrics['left'] > 0 ? number_format($dayMetrics['left']).' left'.($day->isSameDay($today) ? ' for tomorrow' : '') : ($dayMetrics['listed'] > 0 ? 'All handled' : 'Nothing listed'), $dayMetrics['worked'], $dayMetrics['listed'], 'bg-[#1f8fb8]'],
-                            ['Repeat purchases', number_format($dayMetrics['repeat'] + $dayMetrics['retained']), '/ '.number_format($dayMetrics['repeat_goal']), number_format($dayMetrics['repeat']).' repeat · '.number_format($dayMetrics['retained']).' retained · goal '.$targets['repeat_percent'].'% of '.number_format($quota), $dayMetrics['repeat'] + $dayMetrics['retained'], $dayMetrics['repeat_goal'], 'bg-teal-700'],
-                            ['Confirmed orders', number_format($dayMetrics['confirmed']), $dayMetrics['confirmed_goal'] > 0 ? '/ '.number_format($dayMetrics['confirmed_goal']).($day->isSameDay($today) ? ' today' : '') : null, ($dayMetrics['is_day_off'] ? 'Day off, no target · ' : '').'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders']), $dayMetrics['confirmed'], $dayMetrics['confirmed_goal'], 'bg-coral-700'],
-                            ['AOV', $dayAov !== null ? '₱'.number_format($dayAov) : '—', '/ ₱'.number_format($targets['high_aov_min']), $dayAov === null ? 'No orders yet' : ($dayAov >= $targets['high_aov_min'] ? 'Meets ₱'.number_format($targets['high_aov_min']) : '₱'.number_format($targets['high_aov_min'] - $dayAov).' below ₱'.number_format($targets['high_aov_min'])), $dayAov ?? 0, $targets['high_aov_min'], 'bg-brand-600'],
+                            ['Leads worked', number_format($dayMetrics['worked']), '/ '.number_format($dayMetrics['listed']), $dayMetrics['left'] > 0 ? number_format($dayMetrics['left']).' left'.($day->isSameDay($today) ? ' for tomorrow' : '') : ($dayMetrics['listed'] > 0 ? 'All handled' : 'Nothing listed'), $dayMetrics['worked'], $dayMetrics['listed'], 'bg-brand-500'],
+                            ['Repeat purchases', number_format($dayMetrics['repeat'] + $dayMetrics['retained']), '/ '.number_format($dayMetrics['repeat_goal']), number_format($dayMetrics['repeat']).' repeat · '.number_format($dayMetrics['retained']).' retained · goal '.$targets['repeat_percent'].'% of '.number_format($quota), $dayMetrics['repeat'] + $dayMetrics['retained'], $dayMetrics['repeat_goal'], 'bg-teal'],
+                            ['Confirmed orders', number_format($dayMetrics['confirmed']), $dayMetrics['confirmed_goal'] > 0 ? '/ '.number_format($dayMetrics['confirmed_goal']).($day->isSameDay($today) ? ' today' : '') : null, ($dayMetrics['is_day_off'] ? 'Day off, no target · ' : '').'Month: '.number_format($actual['confirmed']).' of '.number_format($targets['confirmed_orders']), $dayMetrics['confirmed'], $dayMetrics['confirmed_goal'], 'bg-coral'],
+                            ['AOV', $dayAov !== null ? '₱'.number_format($dayAov) : '—', '/ ₱'.number_format($targets['high_aov_min']), $dayAov === null ? 'No orders yet' : ($dayAov >= $targets['high_aov_min'] ? 'Meets ₱'.number_format($targets['high_aov_min']) : '₱'.number_format($targets['high_aov_min'] - $dayAov).' below ₱'.number_format($targets['high_aov_min'])), $dayAov ?? 0, $targets['high_aov_min'], 'bg-violet'],
                         ] as [$label, $value, $of, $note, $done, $goal, $bar])
                             <div>
                                 <dt class="text-xs text-muted">{{ $label }}</dt>
-                                <dd class="text-base font-bold tabular-nums">{{ $value }} @if ($of)<small class="text-sm font-semibold text-muted">{{ $of }}</small>@endif</dd>
+                                <dd class="font-display text-xl font-bold tabular-nums">{{ $value }} @if ($of)<small class="text-sm font-semibold text-muted">{{ $of }}</small>@endif</dd>
                                 <dd class="my-1 h-1.5 overflow-hidden rounded-full bg-line" aria-hidden="true"><span class="block h-full rounded-full {{ $bar }}" style="width: {{ $goal > 0 ? min(100, $done / $goal * 100) : 0 }}%"></span></dd>
                                 <dd class="text-xs text-muted">{{ $note }}</dd>
                             </div>
@@ -218,6 +218,12 @@
             </section>
             @endif
             </div>
+            @endif
+
+            {{-- The CRA's texts today: the same sending as Today's texts --}}
+            @php($sendBar = $readOnly ? null : \App\Support\SmsSendBar::for(auth()->user(), $cra))
+            @if ($sendBar)
+                <div data-goal-panel="day" @if ($goalView !== 'day') hidden @endif>@include('segmentation._send-bar')</div>
             @endif
 
             @php($lockAssignee = true)
@@ -254,7 +260,6 @@
             </div>
         </dialog>
         @include('segmentation._spiels-panel')
-        @include('segmentation._conversation-panel')
         @include('segmentation._note-dialog')
         @include('segmentation._recording-dialog')
     @endif

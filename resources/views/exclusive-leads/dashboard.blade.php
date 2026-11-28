@@ -95,9 +95,9 @@
                                                            @class(['flex min-h-8 items-center justify-center rounded-md font-semibold transition hover:ring-2 hover:ring-brand-400',
                                                                'ring-2 ring-ink' => $isPicked,
                                                                'bg-brand-700 text-white' => $share > 0.66,
-                                                               'bg-brand-400 text-[#1b1530]' => $share > 0.33 && $share <= 0.66,
-                                                               'bg-brand-200 text-[#1b1530]' => $share > 0.12 && $share <= 0.33,
-                                                               'bg-brand-50 text-[#1b1530]' => $share <= 0.12])>{{ number_format($count) }}</a>
+                                                               'bg-brand-400 text-ink' => $share > 0.33 && $share <= 0.66,
+                                                               'bg-brand-200 text-ink' => $share > 0.12 && $share <= 0.33,
+                                                               'bg-brand-50 text-ink' => $share <= 0.12])>{{ number_format($count) }}</a>
                                                     @else
                                                         <span class="text-muted">–</span>
                                                     @endif
@@ -140,8 +140,8 @@
                     </span>
                     <span class="text-sm font-semibold whitespace-nowrap">Open call backs ›</span>
                 </button>
-                <p class="flex min-h-14 items-center gap-3 rounded-2xl border-2 border-[#f2c94c] bg-[#fff8dc] px-5 py-2.5 text-sm">
-                    <strong class="text-xl text-[#7a4f00] tabular-nums">{{ number_format($reactivation) }}</strong>
+                <p class="flex min-h-14 items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-5 py-2.5 text-sm">
+                    <strong class="font-display text-xl text-ink tabular-nums">{{ number_format($reactivation) }}</strong>
                     <span>{{ \Illuminate\Support\Str::plural('customer', $reactivation) }} for <strong>Reactivation</strong>. Remind {{ $cra->displayName() }} to reach them.</span>
                 </p>
             </div>

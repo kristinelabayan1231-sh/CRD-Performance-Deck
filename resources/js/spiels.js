@@ -1,5 +1,5 @@
 // Spiels: clicking a Segmentation Tracker row opens the customer's Pancake chat in its own window on the left of the
-// screen and the Spiels panel on the right, with the user's spiels (rich text) filled in for the customer to copy into
+// screen and the customer panel on the right (Conversation / Order / Spiels tabs, sms-panel.js shows them), with the user's spiels (rich text) filled in for the customer to copy into
 // the chat. Copy puts both the formatted text and a plain one (• bullets, line breaks) on the clipboard, so a box that
 // takes only plain text still gets it tidy.
 // Settings → My Spiels: the rich-text editor, Insert {name}/{product} at the cursor, and drag spiels into order.
@@ -118,7 +118,8 @@ function initPanel() {
         row = null;
     }
 
-    async function open(clicked) {
+    // tab: the tab to show (sms-panel.js); withChat: open the Pancake chat window too (a row click, not a text button).
+    async function open(clicked, { tab = null, withChat = true } = {}) {
         const id = ++request;
         row?.classList.remove(...PICKED);
         row = clicked;
@@ -137,11 +138,23 @@ function initPanel() {
         part('chat').hidden = true;
         part('no-chat').hidden = true;
         part('copy-phone').textContent = 'Copy number';
+        // The row's conversation, order history and call button, for the panel's tabs and its Call.
+        panel.dataset.smsChat = row.dataset.smsChat || '';
+        panel.dataset.ordersUrl = row.dataset.ordersUrl || '';
+        const call = panel.querySelector('[data-panel-call]');
+        const rowCall = row.querySelector('[data-call-url]');
+        call.hidden = !rowCall;
+        if (rowCall) call.dataset.callUrl = rowCall.dataset.callUrl;
+        else delete call.dataset.callUrl;
         panel.hidden = false;
         renderSpiels();
+        const state = row.dataset.smsState;
+        panel.dispatchEvent(new CustomEvent('customer-panel:open', {
+            detail: { tab: tab || (row.dataset.smsChat && (state === 'yes' || state === 'replied') ? 'conversation' : 'spiels') },
+        }));
 
         // Opened now, while the click still counts as the user's, so the browser doesn't block it; the chat loads into it.
-        const chatWindow = openChatWindow();
+        const chatWindow = withChat ? openChatWindow() : null;
 
         try {
             const response = await fetch(row.dataset.chatUrl, { headers: { Accept: 'application/json' } });
@@ -167,12 +180,23 @@ function initPanel() {
     // Capture phase: a click that only closes the row's right-click menu (still open here) doesn't open a chat.
     document.addEventListener('click', (event) => {
         const clicked = event.target.closest('tr[data-spiel-row]');
-        if (!clicked || event.target.closest(INTERACTIVE) || window.getSelection()?.toString()
+        if (!clicked || panel.dataset.rowOpen === 'off' || event.target.closest(INTERACTIVE) || window.getSelection()?.toString()
             || document.querySelector('[role="menu"]:not([hidden])')) return;
         open(clicked);
     }, true);
 
+    // A row's text button: the panel on its Conversation or Order, without the Pancake window.
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-conversation-open]');
+        const clicked = button?.closest('tr[data-spiel-row]');
+        if (!clicked) return;
+        open(clicked, { tab: button.dataset.panelTab || 'conversation', withChat: false });
+    });
+
     part('close').addEventListener('click', close);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !panel.hidden && !document.querySelector('dialog[open]')) close();
+    });
     part('open-chat').addEventListener('click', () => chatUrl && openChatWindow(chatUrl)?.focus());
     part('copy-phone').addEventListener('click', (event) => {
         navigator.clipboard?.writeText(lead?.phone || '');

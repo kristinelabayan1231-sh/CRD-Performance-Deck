@@ -50,16 +50,15 @@
     {{-- Week totals --}}
     <div class="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         @foreach ([
-            ['Assigned', number_format($totals['assigned']), $week['label'], 'from-brand-600 to-brand-700'],
-            ['Catered', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'from-[#0e8f7c] to-[#0b7d6c]'],
-            ['Pending', number_format($totals['unprocessed']), 'from past days this week', 'from-[#e05a5f] to-[#d1494e]'],
-            ['Backlog now', number_format($totals['backlog']), 'all pending, any week', 'from-[#7429d6] to-brand-600'],
+            ['Assigned', number_format($totals['assigned']), $week['label'], 'bg-ink'],
+            ['Catered', number_format($totals['handled']), $totals['assigned'] ? round($totals['handled'] / $totals['assigned'] * 100).'% of assigned' : '—', 'bg-teal'],
+            ['Pending', number_format($totals['unprocessed']), 'from past days this week', 'bg-coral'],
+            ['Backlog now', number_format($totals['backlog']), 'all pending, any week', 'bg-violet'],
         ] as [$label, $value, $note, $gradient])
-            <div class="relative overflow-hidden rounded-xl bg-gradient-to-br {{ $gradient }} px-4 py-3 text-white shadow-sm">
-                <span aria-hidden="true" class="absolute -top-6 -right-6 size-20 rounded-full bg-white/15"></span>
-                <span class="relative block text-xs font-medium">{{ $label }}</span>
-                <span class="relative mt-0.5 block text-2xl font-bold tabular-nums">{{ $value }}</span>
-                <span class="relative block text-[0.6875rem] font-medium text-white/90">{{ $note }}</span>
+            <div class="relative overflow-hidden rounded-xl px-4 py-3 border border-line bg-white text-ink">
+                <span class="relative flex items-center gap-1.5 text-xs font-semibold text-muted"><span aria-hidden="true" class="size-2 rounded-full {{ $gradient }}"></span>{{ $label }}</span>
+                <span class="relative mt-0.5 block font-display text-2xl font-bold tabular-nums">{{ $value }}</span>
+                <span class="relative block text-[0.6875rem] font-medium text-muted">{{ $note }}</span>
             </div>
         @endforeach
     </div>
@@ -82,7 +81,7 @@
                 <table class="w-max min-w-full text-sm">
                     <thead class="bg-canvas/60 text-xs tracking-wide text-muted uppercase">
                         <tr>
-                            <th class="sticky left-0 z-10 bg-[#f7f4f8] px-4 py-3 text-left font-semibold">CRA</th>
+                            <th class="sticky left-0 z-10 bg-white px-4 py-3 text-left font-semibold">CRA</th>
                             @foreach ($days as $day)
                                 <th @class(['px-3 py-3 text-center font-semibold', 'text-brand-600' => $day->equalTo($today)])>
                                     {{ $day->format('D') }}<br><span class="font-normal normal-case">{{ $day->format('M j') }}</span>
@@ -159,7 +158,7 @@
                 {{-- About 10 rows tall, then scrolls; the header stays put --}}
                 <div class="max-h-[37rem] overflow-auto">
                     <table class="w-full min-w-[45rem] text-left text-sm">
-                        <thead class="sticky top-0 z-10 bg-[#f7f4f8] text-xs tracking-wide text-muted uppercase">
+                        <thead class="sticky top-0 z-10 bg-white text-xs tracking-wide text-muted uppercase">
                             <tr>
                                 <th class="px-4 py-2.5 font-semibold">Customer</th>
                                 <th class="px-4 py-2.5 font-semibold">Product</th>
