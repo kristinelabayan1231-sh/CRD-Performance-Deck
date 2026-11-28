@@ -4,9 +4,15 @@ namespace Tests\Feature;
 
 use App\Models\ActualIncomeInput;
 use App\Models\ActualIncomeStatement;
+use App\Models\MonthlyCostRow;
+use App\Models\PancakeOrder;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
+use App\Services\ActualIncome;
+use App\Services\DailyIncomeStatement;
 use App\Services\MonthlyMni;
+use App\Support\ProductGroups;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -51,7 +57,9 @@ class ActualIncomeTest extends TestCase
 
     public function test_cards_follow_the_crd_sheets_formulas(): void
     {
-        // The CRD sheet: Joanna's typed figures and the CRD's typed amounts, shared over 5 CRAs.
+        // The CRD sheet: Joanna's typed figures and the CRD's typed amounts, shared over 5 CRAs. (Without the Nov 1–2
+        // sheet product costs, which would fill the other CRAs' Product Cost as on the Daily I.S.)
+        Setting::where('key', DailyIncomeStatement::PRODUCT_COST_OVERRIDES_KEY)->delete();
         $cras = $this->fiveCras();
         $joanna = $cras[2];
         $this->type($joanna, ['orders' => 510, 'gross' => 429688, 'cancelled' => 28186, 'returns' => 35476, 'delivered' => 366026, 'product_cost' => 50827]);
@@ -205,5 +213,68 @@ class ActualIncomeTest extends TestCase
         $this->assertContains('VAT on COD Fee', $labels);
         $this->assertNotContains('AI Expense', $labels);
         $this->assertFalse($response->viewData('canEdit'));
+    }
+
+    public function test_from_september_a_cras_order_lines_come_from_their_orders_and_a_typed_amount_replaces_one(): void
+    {
+        $regina = User::create(['email' => 'regina@example.com', 'display_name' => 'Regina', 'pancake_name' => 'CRD Rej Vergara',
+            'role_id' => Role::firstWhere('slug', Role::CRA)->id, 'is_active' => true]);
+        ProductGroups::save([['name' => 'Sinuxyl', 'pages' => ['Sinuxyl Nasal Spray']]]);
+        // Her November orders by status now: delivered, returned, canceled, shipped (on the way); a deleted one is left out.
+        foreach ([[3, 1000], [5, 300], [6, 200], [2, 500], [7, 900]] as $n => [$status, $amount]) {
+            PancakeOrder::create(['pancake_order_id' => (string) (1390000 + $n), 'ordered_on' => '2026-11-0'.($n + 2), 'ordered_at' => '2026-11-02 02:00:00',
+                'seller_name' => 'CRD REJ VERGARA', 'customer_name' => 'Buyer', 'status' => $status, 'total_price' => $amount,
+                'page_name' => 'Sinuxyl Nasal Spray', 'tags' => [], 'non_crd' => false]);
+        }
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $card = fn () => $this->actingAs($supervisor)->get(route('actual-income.index', ['month' => '2026-11']))->viewData('data')['cras'][$regina->id];
+
+        $figures = $card();
+        $this->assertSame([4.0, 2000.0, 200.0, 300.0, 1000.0, 500.0, 0.0],
+            array_map(fn (string $key) => (float) $figures[$key], ['orders', 'gross', 'cancelled', 'returns', 'delivered', 'fulfilled', 'unfulfilled']));
+
+        // A typed amount replaces the orders' one; clearing it goes back.
+        $this->putJson(route('actual-income.update'), ['month' => '2026-11', 'cra' => $regina->id, 'field' => 'delivered', 'value' => 900])->assertOk();
+        $this->assertSame(900.0, $card()['delivered']);
+        $this->putJson(route('actual-income.update'), ['month' => '2026-11', 'cra' => $regina->id, 'field' => 'delivered', 'value' => null])->assertOk();
+        $this->assertSame(1000.0, $card()['delivered']);
+
+        // Before September the cards are only what was typed.
+        $this->assertFalse(ActualIncome::isFilled(CarbonImmutable::parse('2026-08-01')));
+        $this->assertTrue(ActualIncome::isFilled(CarbonImmutable::parse('2026-09-01')));
+    }
+
+    public function test_the_junior_ai_engineer_has_her_own_card_from_october_and_leaves_the_cras_shared_salaries(): void
+    {
+        $cras = $this->fiveCras();
+        MonthlyCostRow::factory()->fixed(19500)->create(['user_id' => $cras[0]->id]);
+        MonthlyCostRow::factory()->fixed(60000)->create(['position' => 'Customer Retention Manager']);
+        $engineer = MonthlyCostRow::factory()->fixed(30000)->create(['position' => 'Junior AI Engineer - for Automation', 'name' => 'Kristine Labayan']);
+        $supervisor = $this->user('Sup', Role::CRA_SUPERVISOR);
+        $data = fn (string $month) => $this->actingAs($supervisor)->get(route('actual-income.index', ['month' => $month]))->viewData('data');
+        // The CRAs' salaries as the Monthly MNI shares them without her row.
+        $withoutHer = fn (string $month) => app(MonthlyMni::class)->for($cras, CarbonImmutable::parse($month.'-01'), '1m',
+            MonthlyCostRow::countingOn(CarbonImmutable::parse($month.'-01')->endOfMonth()->startOfDay())->reject(fn ($row) => $row->is($engineer)))['cras'];
+
+        // September: not onboarded yet, no card, and her salary isn't in the CRAs'.
+        $september = $data('2026-09');
+        $this->assertTrue($september['staff']->isEmpty());
+        $this->assertEqualsWithDelta($withoutHer('2026-09')[$cras[0]->id]['salaries'], $september['cras'][$cras[0]->id]['salaries'], 0.01);
+
+        // October on: her card, Salaries from CRD - MC; the CRD card adds it to the CRAs'.
+        $this->actingAs($supervisor)->get(route('actual-income.index', ['month' => '2026-10']))->assertSee('Kristine Labayan')->assertSee('Junior AI Engineer - for Automation');
+        $october = $data('2026-10');
+        $card = $october['staffCards'][$engineer->id];
+        $this->assertSame([30000.0, 2500.0, 0.0, 0.0], [$card['salaries'], $card['thirteenth_month'], $card['tax'], $card['advertising']]);
+        $this->assertEqualsWithDelta($withoutHer('2026-10')[$cras[0]->id]['salaries'], $october['cras'][$cras[0]->id]['salaries'], 0.01);
+        $this->assertEqualsWithDelta(collect($october['cras'])->sum('salaries') + 30000, $october['department']['salaries'], 0.01);
+
+        // The Supervisor (or Team Lead) types her other lines; a CRA can't, and not for a month before October.
+        $this->putJson(route('actual-income.update'), ['month' => '2026-10', 'staff' => $engineer->id, 'field' => 'gross', 'value' => 5000])->assertOk();
+        $this->assertDatabaseHas('actual_income_inputs', ['monthly_cost_row_id' => $engineer->id, 'user_id' => null, 'field' => 'gross', 'amount' => 5000]);
+        $this->assertSame(5000.0, $data('2026-10')['staffCards'][$engineer->id]['gross']);
+        $this->assertSame(0.0, $data('2026-10')['department']['tax']);
+        $this->putJson(route('actual-income.update'), ['month' => '2026-09', 'staff' => $engineer->id, 'field' => 'gross', 'value' => 1])->assertStatus(422);
+        $this->actingAs($cras[0])->putJson(route('actual-income.update'), ['month' => '2026-10', 'staff' => $engineer->id, 'field' => 'gross', 'value' => 1])->assertForbidden();
     }
 }

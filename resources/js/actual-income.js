@@ -22,7 +22,7 @@ export function initActualIncome() {
         if (!response.ok) return;
         // Keep the box the user tabbed into focused after the cards are redrawn.
         const focused = document.activeElement?.closest?.('[data-actual-income-input]');
-        const selector = focused ? `[data-actual-income-input][data-cra="${focused.dataset.cra}"][data-field="${focused.dataset.field}"]` : null;
+        const selector = focused ? `[data-actual-income-input][data-cra="${focused.dataset.cra}"][data-staff="${focused.dataset.staff}"][data-field="${focused.dataset.field}"]` : null;
         // ...and the row of cards where it was scrolled to.
         const scrolled = host.firstElementChild?.scrollLeft ?? 0;
         host.innerHTML = await response.text();
@@ -41,7 +41,7 @@ export function initActualIncome() {
             return;
         }
         try {
-            await send(root.dataset.url, { month: root.dataset.month, cra: input.dataset.cra || null, field: input.dataset.field, value });
+            await send(root.dataset.url, { month: root.dataset.month, cra: input.dataset.cra || null, staff: input.dataset.staff || null, field: input.dataset.field, value });
             input.classList.remove('border-coral');
             input.title = '';
             await redraw();
