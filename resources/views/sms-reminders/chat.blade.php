@@ -6,5 +6,5 @@
     @if ($errors->any())
         <div role="alert" class="m-3 rounded-lg border border-coral/60 bg-coral/10 px-4 py-3 text-sm text-coral-700">{{ $errors->first() }}</div>
     @endif
-    @include('sms-reminders._chat', ['earlierUrl' => route('sms-reminders.conversations.chat', ['phoneKey' => $phone, 'all' => 1])])
+    @include('sms-reminders._chat', ['compact' => true, 'earlierUrl' => route('sms-reminders.conversations.chat', ['phoneKey' => $phone, 'all' => 1])])
 </x-layouts.bare>

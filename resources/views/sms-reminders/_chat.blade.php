@@ -1,11 +1,15 @@
 {{-- One customer's chat: header actions, steps, messages and the reply box. Conversations and the tracker's conversation panel.
      Needs: $thread, $phone, $optedOut, $canDial, $templates, $counts, $earlierUrl. --}}
 @php($tz = config('segmentation.timezone'))
-<section aria-label="Conversation" class="flex min-w-0 flex-col">
+{{-- $compact (the tracker's customer panel, whose header already has the customer and Call): small steps, and Follow-up /
+     Answered / Mark reordered under the reply box --}}
+@php($compact = $compact ?? false)
+<section aria-label="Conversation" @class(['flex min-w-0 flex-col', 'h-dvh' => $compact])>
     @if (! $thread)
         <p class="px-4 py-16 text-center text-sm text-muted">Pick a customer to see their texts.</p>
     @else
         @php($latest = $thread['latest'])
+        @unless ($compact)
         <div class="flex flex-wrap items-start justify-between gap-3 border-b border-line px-4 py-3">
             <div class="min-w-0">
                 <h2 class="text-base font-semibold">{{ $latest->customer_name ?: 'Customer' }}</h2>
@@ -35,9 +39,21 @@
                 @endunless
             </div>
         </div>
+        @endunless
 
         {{-- The reminder and its follow-ups, each with why it didn't bring a reorder --}}
-        @if ($thread['steps'])
+        @if ($thread['steps'] && $compact)
+            <ol class="grid grid-cols-2 gap-2 border-b border-line bg-white px-3 py-2.5 text-xs">
+                @foreach ($thread['steps'] as $step)
+                    <li @class(['flex items-start gap-2', 'hidden' => $loop->index > 1])>
+                        <span aria-hidden="true" class="grid size-7 shrink-0 place-items-center rounded-full bg-canvas">
+                            <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ $loop->first ? 'M4 12 20 4l-6 16-2-6z' : 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3' }}"/></svg>
+                        </span>
+                        <span class="min-w-0 leading-tight"><b class="block font-semibold">{{ $step['label'] }} <span class="tabular-nums">{{ $step['day'] }}</span></b><span class="text-muted">{{ $step['state'] }}</span></span>
+                    </li>
+                @endforeach
+            </ol>
+        @elseif ($thread['steps'])
             <dl class="grid gap-2 border-b border-line bg-canvas/50 px-4 py-3 text-xs sm:grid-cols-2 xl:grid-cols-4">
                 @foreach ($thread['steps'] as $step)
                     <div class="rounded-lg bg-white px-3 py-2 shadow-sm">
@@ -62,7 +78,7 @@
             </dl>
         @endif
 
-        <div class="flex max-h-[28rem] min-h-64 flex-col gap-2.5 overflow-y-auto bg-canvas/60 px-4 py-4" data-chat-scroll>
+        <div @class(['flex flex-col gap-2.5 overflow-y-auto bg-canvas/60 px-4 py-4', 'max-h-[28rem] min-h-64' => ! $compact, 'min-h-0 flex-1' => $compact]) data-chat-scroll>
             @if ($thread['earlier'])
                 <a href="{{ $earlierUrl }}" class="self-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-700 shadow-sm hover:underline">Show earlier messages ({{ $thread['earlier'] }})</a>
             @endif
@@ -76,15 +92,15 @@
                 @if ($item['type'] === 'event')
                     <p class="self-center text-center text-xs text-muted">● {{ $item['body'] }}</p>
                 @else
-                    <div @class(['max-w-[78%] rounded-2xl px-3 py-2 text-sm', 'self-start rounded-bl-sm bg-white shadow-sm' => $item['type'] === 'in', 'self-end rounded-br-sm bg-brand-600 text-white' => $item['type'] === 'out'])>
+                    <div @class(['max-w-[78%] rounded-2xl px-3 py-2 text-sm', 'self-start rounded-bl-sm bg-ink font-semibold text-white' => $item['type'] === 'in', 'self-end rounded-br-sm bg-[#e4e4e1] text-ink' => $item['type'] === 'out'])>
                         <p class="whitespace-pre-line">{{ $item['body'] }}</p>
-                        <p @class(['mt-1 text-[0.6875rem]', 'text-muted' => $item['type'] === 'in', 'text-white/80' => $item['type'] === 'out'])>{{ $item['meta'] }}</p>
+                        <p @class(['mt-1 text-[0.6875rem] font-normal', 'text-white/75' => $item['type'] === 'in', 'text-muted' => $item['type'] === 'out'])>{{ $item['meta'] }}</p>
                     </div>
                 @endif
             @endforeach
         </div>
 
-        <div class="border-t border-line px-4 py-3">
+        <div @class(['border-t border-line', 'px-4 py-3' => ! $compact, 'shrink-0 px-3 py-2.5' => $compact])>
             @if ($optedOut)
                 <form method="POST" action="{{ route('sms-reminders.conversations.allow', $phone) }}" class="flex flex-wrap items-center justify-between gap-2">
                     @csrf
@@ -95,6 +111,46 @@
                     </label>
                 </form>
             @else
+                @if ($compact)
+                    <form method="POST" action="{{ route('sms-reminders.conversations.text', $phone) }}" class="grid gap-2">
+                        @csrf
+                        @if ($templates->isNotEmpty())
+                            {{-- A template fills the reply box (filled in for this customer); Write my own leaves it as typed --}}
+                            <select aria-label="Template" onchange="if (this.value) { this.form.message.value = this.selectedOptions[0].dataset.body; this.form.message.focus(); }"
+                                    class="h-10 w-full rounded-[0.625rem] border-0 bg-canvas px-3 text-sm focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                                <option value="">Write my own</option>
+                                @foreach ($templates as $template)
+                                    <option value="{{ $template->id }}" data-body="{{ app(\App\Services\RestockReminders::class)->fill($template->body, $latest, $latest->cra, false) }}">{{ $template->name }}</option>
+                                @endforeach
+                            </select>
+                        @endif
+                        <div class="flex items-end gap-2">
+                            <label for="chat-message" class="sr-only">Reply to {{ $latest->firstName() ?: 'the customer' }}</label>
+                            <textarea id="chat-message" name="message" rows="2" maxlength="480" required title="Enter sends · Shift+Enter for a new line · not counted in the daily limit"
+                                      placeholder="Reply from {{ $latest->cra?->displayName() ?? 'their CRA' }}'s phone"
+                                      onkeydown="if (event.key === 'Enter' && ! event.shiftKey) { event.preventDefault(); if (this.value.trim()) this.form.requestSubmit(); }"
+                                      class="min-w-0 flex-1 resize-y rounded-xl border border-[#d9d9d6] px-3 py-2 text-sm focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">{{ old('message') }}</textarea>
+                            <button type="submit" aria-label="Send reply" title="Send" class="grid size-10 shrink-0 place-items-center rounded-full bg-brand-500 text-ink hover:bg-brand-400">
+                                <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linejoin="round" d="M4 12 20 4l-6 16-2-6z"/></svg>
+                            </button>
+                        </div>
+                    </form>
+                    <div class="mt-2 flex flex-wrap items-center gap-1.5 [&_summary]:h-9 [&_summary]:rounded-full [&_summary]:border-[#d9d9d6] [&_summary]:bg-white [&_summary]:text-ink">
+                        @include('sms-reminders._schedule-follow-up', ['phoneKey' => $phone, 'templates' => $templates, 'idSuffix' => 'chat', 'label' => 'Follow-up'])
+                        @if ($counts['reply'])
+                            <button type="submit" form="answered-form" class="flex h-9 items-center gap-1.5 rounded-full border border-[#d9d9d6] px-3 text-xs font-semibold hover:border-ink">
+                                <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>Answered
+                            </button>
+                        @endif
+                        @if ($latest->reordered_at)
+                            <button type="submit" form="reordered-undo-form" title="Wrong click, or the order was cancelled: their cancelled texts come back" class="h-9 rounded-full border border-[#d9d9d6] px-3 text-xs font-semibold hover:border-ink">Undo reordered</button>
+                        @else
+                            <button type="submit" form="reordered-form" class="h-9 rounded-full border border-[#d9d9d6] px-3 text-xs font-semibold hover:border-ink">Mark reordered</button>
+                        @endif
+                    </div>
+                    <form id="reordered-form" method="POST" action="{{ route('sms-reminders.conversations.reordered', $phone) }}" hidden>@csrf</form>
+                    <form id="reordered-undo-form" method="POST" action="{{ route('sms-reminders.conversations.reordered.undo', $phone) }}" hidden>@csrf @method('DELETE')</form>
+                @else
                 <form method="POST" action="{{ route('sms-reminders.conversations.text', $phone) }}" class="grid gap-2">
                     @csrf
                     <label for="chat-message" class="sr-only">Reply to {{ $latest->firstName() ?: 'the customer' }}</label>
@@ -112,6 +168,7 @@
                         </div>
                     </div>
                 </form>
+                @endif
                 <form id="answered-form" method="POST" action="{{ route('sms-reminders.conversations.answered', $phone) }}" hidden>@csrf</form>
             @endif
         </div>

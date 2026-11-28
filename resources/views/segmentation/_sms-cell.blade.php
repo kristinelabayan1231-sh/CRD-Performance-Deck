@@ -8,8 +8,14 @@
     $pill = match ($state) {
         'yes' => 'bg-brand-600 text-white',
         'replied' => 'bg-brand-500 text-ink',
-        'failed', 'stop' => 'border border-coral/50 bg-white text-coral-700',
-        default => 'border border-line bg-white text-ink',
+        'failed', 'stop' => 'border border-[#d9d9d6] bg-white text-coral-700',
+        default => 'border border-[#d9d9d6] bg-white text-ink',
+    };
+    // The icon's colour on a white pill: gold to text / sent, grey unticked
+    $iconTone = match ($state) {
+        'to-text', 'sending', 'sent' => 'text-[#c99400]',
+        'unticked' => 'text-muted',
+        default => '',
     };
     $icons = [
         'yes' => 'M7 11v9H4v-9h3Zm0 0 4-7a2 2 0 0 1 2 2v4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7',
@@ -28,15 +34,21 @@
         'failed' => ['Open the conversation to text again', 'M4 4v6h6M20 20v-6h-6M5 15a7 7 0 0 0 12 2M19 9A7 7 0 0 0 7 7', 'conversation'],
         default => ['Text in the conversation', 'M4 12 20 4l-6 16-2-6z', 'conversation'],
     };
-    $iconButton = 'grid size-8 place-items-center rounded-full border border-line bg-white text-ink transition hover:border-ink';
+    $iconButton = 'grid size-8 place-items-center rounded-full border border-[#d9d9d6] bg-white text-ink transition hover:border-ink';
 @endphp
 <td data-col="sms" class="px-3 py-2.5">
     @if ($smsBadge)
-        <span title="{{ $smsBadge['label'] }}: {{ $smsBadge['title'] }}"
-              class="inline-flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs font-bold whitespace-nowrap {{ $pill }}">
-            <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $icons[$state] ?? $icons['to-text'] }}"/></svg>
-            {{ $smsBadge['short'] }}
-        </span>
+        @php $pillClass = 'inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-bold whitespace-nowrap '.$pill; @endphp
+        @php $pillIcon = '<svg class="size-3.5 '.$iconTone.'" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'.($icons[$state] ?? $icons['to-text']).'"/></svg>'; @endphp
+        @if ($mine)
+            {{-- Opens the customer panel on their conversation --}}
+            <button type="button" data-conversation-open="{{ route('sms-reminders.conversations.chat', $smsBadge['phone_key']) }}" data-panel-tab="{{ $state === 'yes' ? 'conversation' : $action[2] }}"
+                    title="{{ $smsBadge['label'] }}: {{ $smsBadge['title'] }}" aria-label="{{ $smsBadge['label'] }}: open the conversation with {{ $lead->customer_name }}" class="{{ $pillClass }} transition hover:brightness-95">
+                {!! $pillIcon !!}{{ $smsBadge['short'] }}
+            </button>
+        @else
+            <span title="{{ $smsBadge['label'] }}: {{ $smsBadge['title'] }}" class="{{ $pillClass }}">{!! $pillIcon !!}{{ $smsBadge['short'] }}</span>
+        @endif
     @else
         <span class="text-xs text-muted">—</span>
     @endif

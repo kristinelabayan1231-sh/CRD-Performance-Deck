@@ -157,22 +157,27 @@
         @if ($currentGroup && count($currentGroup['items']) > 1)
             <nav class="flex gap-1 overflow-x-auto px-4 pt-3 [scrollbar-width:none] sm:px-6" aria-label="{{ $currentGroup['name'] }} pages">
                 @foreach ($currentGroup['items'] as [$label, $href, $active, $allowed, $icon])
-                    <a href="{{ $href }}" @if ($active) aria-current="page" @endif
+                    {{-- Icons, the open page with its label; the others' labels slide open on hover or focus --}}
+                    <a href="{{ $href }}" @if ($active) aria-current="page" @endif title="{{ $label }}"
                        @class([
-                           'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.8125rem] font-semibold whitespace-nowrap transition',
+                           'group flex min-h-8 shrink-0 items-center rounded-full border px-2.5 text-[0.8125rem] font-semibold whitespace-nowrap transition-colors',
                            'border-line bg-white text-ink shadow-sm' => $active,
-                           'border-transparent text-muted hover:bg-white hover:text-ink' => ! $active,
+                           'border-transparent text-muted hover:bg-white hover:text-ink focus-visible:bg-white focus-visible:text-ink' => ! $active,
                        ])>
-                        <x-shell-icon :name="$icon" @class(['size-4', 'text-[#c99400]' => $active]) />
-                        {{ $label }}
+                        <x-shell-icon :name="$icon" @class(['size-4 shrink-0', 'text-[#c99400]' => $active]) />
+                        <span @class([
+                            'overflow-hidden transition-[max-width,opacity,margin] duration-300 ease-out',
+                            'ml-1.5 max-w-[14rem] opacity-100' => $active,
+                            'ml-0 max-w-0 opacity-0 group-hover:ml-1.5 group-hover:max-w-[14rem] group-hover:opacity-100 group-focus-visible:ml-1.5 group-focus-visible:max-w-[14rem] group-focus-visible:opacity-100' => ! $active,
+                        ])>{{ $label }}</span>
                     </a>
                 @endforeach
             </nav>
         @endif
 
         <main @class(['float-in flex-1 px-4 pt-4 pb-8 sm:px-6', 'lg:flex lg:min-h-0 lg:flex-col lg:overflow-hidden' => $fit])>
-            {{-- Only the Segmentation Tracker runs on the working date; the Exclusive Lead Tracker is by real date with paired lead days. --}}
-            @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && ($workingDate = \App\Support\WorkingDate::get()))
+            {{-- Only the Segmentation Tracker runs on the working date (its header shows it as a pill); the Exclusive Lead Tracker is by real date with paired lead days. --}}
+            @if (request()->routeIs('segmentation.*', 'exclusive-leads.*') && ! request()->routeIs('segmentation.index') && ($workingDate = \App\Support\WorkingDate::get()))
                 <div role="note" class="mb-2 flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
                     <span class="font-semibold">Working date: {{ $workingDate->format('M j, Y') }}</span>
                     @if (request()->routeIs('exclusive-leads.*'))

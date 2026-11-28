@@ -70,19 +70,25 @@
         }
     }
 @endphp
-<div class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+{{-- $tabsOnly: just the tabs, for a page header that puts them beside its title (the Segmentation Tracker) --}}
+<div @class(['flex flex-wrap items-center gap-2', 'mb-3 shrink-0' => ! ($tabsOnly ?? false)])>
     <nav class="flex flex-wrap items-center gap-1" aria-label="Tracker sections">
         @foreach ($flat as [$label, $href, $active, $badge])
-            <a href="{{ $href }}" @if ($active) aria-current="page" @endif title="{{ $label }}"
+            <a href="{{ $href }}" @if ($active) aria-current="page" @endif
                @class([
-                   'flex h-10 shrink-0 items-center gap-2 rounded-full text-sm font-semibold transition',
+                   'group flex h-10 shrink-0 items-center rounded-full text-sm font-semibold transition-colors',
                    'border border-line bg-white px-4 text-ink shadow-sm' => $active,
                    'px-3 text-muted hover:bg-white hover:text-ink' => ! $active,
                ])>
                 <svg @class(['size-[1.15rem]', 'text-[#c99400]' => $active]) fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ $tabIcons[$label] ?? $tabIcons['Leads'] }}"/></svg>
-                <span @class(['sr-only' => ! $active])>{{ $label }}</span>
+                {{-- The label slides open on hover or focus (always open on the current tab), as in the mockup --}}
+                <span @class([
+                    'overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-300 ease-out',
+                    'ml-2 max-w-[12rem] opacity-100' => $active,
+                    'ml-0 max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[12rem] group-hover:opacity-100 group-focus-visible:ml-2 group-focus-visible:max-w-[12rem] group-focus-visible:opacity-100' => ! $active,
+                ])>{{ $label }}</span>
                 @if ($badge)
-                    <span title="Replies to answer" class="grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-xs font-bold text-ink tabular-nums">{{ number_format($badge) }}</span>
+                    <span title="Replies to answer" class="ml-2 grid min-w-5 place-items-center rounded-full bg-brand-500 px-1.5 text-xs font-bold text-ink tabular-nums">{{ number_format($badge) }}</span>
                 @endif
             </a>
         @endforeach
