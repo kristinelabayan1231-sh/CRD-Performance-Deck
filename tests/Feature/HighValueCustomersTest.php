@@ -337,15 +337,14 @@ class HighValueCustomersTest extends TestCase
         $this->artisan('customers:assign-high-aov')->assertSuccessful();
         $this->assertSame(Lead::HIGH_VALUE_TAG, $old->fresh()->customer_tag);
 
-        // Dina's row is gold with the VIP pill; Ana's purple with HIGH AOV; Ben's plain.
+        // Dina has the VIP crown; Ana the High AOV gem; Ben neither.
         $page = $this->actingAs($this->owner)->get(route('segmentation.index', ['date' => '2026-10-10']))->assertOk()
-            ->assertSeeInOrder(['Dina Lim', 'VIP', 'VIP in Pterygium'])->getContent();
-        $row = fn (string $name) => substr($page, strrpos(substr($page, 0, strpos($page, $name)), '<tr'), 600);
-        $this->assertStringContainsString('bg-brand-50', $row('Dina Lim'));
-        $this->assertStringContainsString('bg-[#f7f4ff]', $row('Ana Cruz'));
-        $this->assertStringNotContainsString('bg-brand-50', $row('Ben Reyes'));
-        $this->assertStringNotContainsString('bg-[#f7f4ff]', $row('Ben Reyes'));
-        $this->assertStringContainsString('HIGH AOV', substr($page, strpos($page, 'Ana Cruz'), 2500));
+            ->assertSeeInOrder(['Dina Lim', 'VIP in Pterygium'])->getContent();
+        $row = fn (string $name) => substr($page, strrpos(substr($page, 0, strpos($page, $name)), '<tr'), 6000);
+        $this->assertStringContainsString('aria-label="VIP"', $row('Dina Lim'));
+        $this->assertStringContainsString('aria-label="High AOV"', $row('Ana Cruz'));
+        $this->assertStringNotContainsString('aria-label="VIP"', $row('Ben Reyes'));
+        $this->assertStringNotContainsString('aria-label="High AOV"', $row('Ben Reyes'));
     }
 
     public function test_orders_from_before_the_first_day_come_first(): void

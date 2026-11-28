@@ -3,7 +3,7 @@
 @php
     ['cra' => $barCra, 'counts' => $barCounts] = $sendBar;
     $canSend = $barCounts['toSend'] - $barCounts['queued'];
-    $chip = 'flex h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3 text-[0.8125rem] font-semibold whitespace-nowrap tabular-nums';
+    $chip = 'flex h-10 items-center gap-1.5 rounded-full border border-[#d9d9d6] bg-white px-3.5 text-[0.8125rem] font-medium whitespace-nowrap tabular-nums [&_strong]:font-display [&_strong]:text-[0.9375rem] hover:border-ink';
     $tracker = request()->routeIs('exclusive-leads.*') ? 'exclusive-leads.index' : 'segmentation.index';
     $viewAll = auth()->user()->can('sms_reminders.view_all');
     $schedule = \App\Support\SmsSettings::scheduleFor($barCra);
@@ -36,7 +36,7 @@
         {{-- Sending windows: on = black --}}
         @if (count($schedule['all_windows']) > 1)
             @foreach ($schedule['all_windows'] as $index => $window)
-                @php($windowOn = ! in_array($index, $schedule['windows_off'], true))
+                @php $windowOn = ! in_array($index, $schedule['windows_off'], true); @endphp
                 <form method="POST" action="{{ route('sms-reminders.window') }}">
                     @csrf @method('PUT')
                     <input type="hidden" name="cra" value="{{ $barCra->id }}">
@@ -71,13 +71,22 @@
         <form method="POST" action="{{ route('sms-reminders.daily-limit') }}" class="flex items-center gap-1.5 text-xs">
             @csrf @method('PUT')
             <input type="hidden" name="cra" value="{{ $barCra->id }}">
-            <label class="flex items-center gap-1.5 font-semibold text-muted">
+            <label class="flex items-center gap-1.5 font-semibold text-ink" title="Most texts this phone sends a day, up to {{ $cap }}">
+                <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 14l4-4M3.3 17a9 9 0 1 1 17.4 0"/></svg>
                 Limit
                 <input type="number" name="daily_limit" min="1" max="{{ $cap }}" value="{{ \App\Support\SmsSettings::ownDailyLimit($barCra) }}" placeholder="{{ $cap }}" onchange="this.form.submit()"
-                       class="h-9 w-[4.5rem] rounded-lg border border-line bg-white px-2 text-sm font-semibold text-ink tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                       class="h-10 w-[4.5rem] rounded-[0.625rem] border border-line bg-white px-2 text-sm font-semibold text-ink tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
             </label>
             <span class="text-muted tabular-nums" title="Sent from {{ $barCra->displayName() }}'s phone today">{{ number_format($sendBar['sentToday']) }} sent</span>
         </form>
+
+        @if ($barCounts['queued'])
+            <form method="POST" action="{{ route('sms-reminders.stop') }}">
+                @csrf
+                <input type="hidden" name="cra" value="{{ $barCra->id }}">
+                <button type="submit" class="flex h-10 items-center gap-1.5 rounded-full border border-coral/50 bg-coral/10 px-3.5 text-xs font-semibold text-coral-700 hover:bg-coral/20">Stop {{ number_format($barCounts['queued']) }} queued</button>
+            </form>
+        @endif
 
         {{-- Send now: how many, top of the list first --}}
         <form method="POST" action="{{ route('sms-reminders.send-now') }}" class="flex items-center">
@@ -85,21 +94,15 @@
             <input type="hidden" name="cra" value="{{ $barCra->id }}">
             <label class="sr-only" for="send-bar-limit">How many to send</label>
             <input id="send-bar-limit" type="number" name="limit" min="1" max="{{ max(1, $canSend) }}" value="{{ $canSend ?: '' }}" required @disabled(! $canSend)
-                   class="h-10 w-16 rounded-l-xl border border-r-0 border-line bg-white px-2.5 text-sm font-semibold tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
+                   oninput="this.form.querySelector('[data-send-n]').textContent = Math.min(this.value || 0, {{ $canSend }})"
+                   class="h-10 w-16 rounded-l-full border border-r-0 border-line pl-3.5 bg-white px-2.5 text-sm font-semibold tabular-nums focus:border-brand-500 focus:ring-2 focus:ring-brand-200 focus:outline-none">
             <button type="submit" @disabled(! $sendBar['enabled'] || ! $canSend || ! $sendBar['phoneReady'])
-                    class="inline-flex h-10 items-center gap-2 rounded-r-xl bg-brand-600 px-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="inline-flex h-10 items-center gap-2 rounded-r-full bg-brand-600 pr-5 pl-4 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                     title="Texts from {{ $barCra->displayName() }}'s phone, top of the list first">
                 <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linejoin="round" d="M4 12 20 4l-6 16-2-6z"/></svg>
-                Send {{ number_format($canSend) }}
+                Send <span data-send-n>{{ number_format($canSend) }}</span> of {{ number_format($canSend) }}
             </button>
         </form>
-        @if ($barCounts['queued'])
-            <form method="POST" action="{{ route('sms-reminders.stop') }}">
-                @csrf
-                <input type="hidden" name="cra" value="{{ $barCra->id }}">
-                <button type="submit" class="h-9 rounded-full border border-coral bg-coral/10 px-3 text-xs font-semibold text-coral-700 hover:bg-coral/20">Stop {{ number_format($barCounts['queued']) }} queued</button>
-            </form>
-        @endif
     </div>
 
     @if (! $sendBar['enabled'])

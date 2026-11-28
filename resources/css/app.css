@@ -37,6 +37,60 @@
     background: #111111;
     scrollbar-width: none;
 }
+/* A chip's label that slides open on hover or focus, and stays open when the chip is pressed or current (tracker chips). */
+.slide-label {
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: max-width 0.3s ease-out, opacity 0.2s, margin 0.3s;
+}
+:is(a, button, summary):is(:hover, :focus-visible, [aria-pressed='true'], [aria-current]) > .slide-label,
+.slide-label.is-open {
+    max-width: 14rem;
+    margin-left: 0.4rem;
+    opacity: 1;
+}
+
+/* Dark: the customer panel's header stays gold with black text (the generated dark theme would turn it dark gold), and the
+   tracker's open row (data-picked, spiels.js) and rows with a reply to answer get the dark gold tint on every cell (the sticky name cell too). */
+html[data-theme='dark'] [data-panel-head] {
+    background: #ffc21a !important;
+    color: #111111 !important;
+}
+html[data-theme='dark'] [data-panel-head] :is(.text-ink, h2, p, span, b, svg) {
+    color: #111111 !important;
+}
+html[data-theme='dark'] [data-panel-head] .bg-white {
+    background: #ffffff !important;
+}
+html[data-theme='dark'] [data-panel-head] .bg-white\/45,
+html[data-theme='dark'] [data-panel-head] .bg-white\/30 {
+    background: rgb(255 255 255 / 0.45) !important;
+}
+html[data-theme='dark'] [data-panel-head] .bg-ink\/10 {
+    background: rgb(17 17 17 / 0.12) !important;
+}
+html[data-theme='dark'] [data-panel-head] .bg-ink,
+html[data-theme='dark'] [data-panel-head] .bg-ink :is(span, svg) {
+    background-color: #111111 !important;
+    color: #ffffff !important;
+}
+html[data-theme='dark'] [data-panel-head] [aria-selected='true'],
+html[data-theme='dark'] [data-panel-head] [aria-selected='true'] :is(span, svg) {
+    background-color: #1a1a1a !important;
+    color: #f4efe3 !important;
+}
+tr[data-picked],
+tr[data-picked] > td {
+    background-color: #fff4cc;
+}
+html[data-theme='dark'] tr[data-picked],
+html[data-theme='dark'] tr[data-picked] > td,
+html[data-theme='dark'] tr[data-to-answer] > td.sticky {
+    background-color: #2b2512 !important;
+}
+
 .rail-btn {
     color: #b8b8b4;
 }

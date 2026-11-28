@@ -12,7 +12,8 @@ const INTERACTIVE = 'a, button, input, select, textarea, label, summary, audio, 
 const BLOCKS = ['P', 'DIV', 'UL', 'OL'];
 
 // The clicked row, every cell included (the sticky name cell has its own white background).
-const PICKED = ['bg-brand-50', '*:bg-brand-50!'];
+
+const initials = (name = '') => name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0].toUpperCase()).join('') || '?';
 
 const escapeHtml = (text) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -114,16 +115,47 @@ function initPanel() {
 
     function close() {
         panel.hidden = true;
-        row?.classList.remove(...PICKED);
+        row?.removeAttribute('data-picked');
         row = null;
+        showPeek();
+    }
+
+    // The page's customers with a reply to answer (Wants to order, Needs reply), in list order.
+    const toAnswer = () => [...document.querySelectorAll('tr[data-spiel-row]')].filter((tr) => !tr.hidden && ['yes', 'replied'].includes(tr.dataset.smsState));
+
+    // Header: what the customer needs, and (for one with a reply) their place among the page's replies.
+    function showPager() {
+        const state = row.dataset.smsState;
+        panel.querySelector('[data-panel-kick]').textContent = { yes: 'Wants to order', replied: 'Needs reply' }[state] || 'Customer';
+        const rows = toAnswer();
+        const at = rows.indexOf(row);
+        panel.querySelector('[data-panel-pager]').hidden = at < 0 || rows.length < 2;
+        panel.querySelector('[data-panel-pos]').textContent = `${at + 1}/${rows.length}`;
+        showPeek();
+    }
+
+    function step(by) {
+        const rows = toAnswer();
+        const at = rows.indexOf(row);
+        if (at < 0 || !rows.length) return;
+        open(rows[(at + by + rows.length) % rows.length], { withChat: false });
+    }
+
+    // The floating messages button: the replies to answer on this page, while the panel is closed.
+    const peek = document.querySelector('[data-panel-peek]');
+    function showPeek() {
+        if (!peek) return;
+        const count = toAnswer().length;
+        peek.hidden = !panel.hidden || count === 0;
+        peek.querySelector('[data-panel-peek-count]').textContent = count;
     }
 
     // tab: the tab to show (sms-panel.js); withChat: open the Pancake chat window too (a row click, not a text button).
     async function open(clicked, { tab = null, withChat = true } = {}) {
         const id = ++request;
-        row?.classList.remove(...PICKED);
+        row?.removeAttribute('data-picked');
         row = clicked;
-        row.classList.add(...PICKED);
+        row.dataset.picked = '';
         lead = {
             customer: row.dataset.spielCustomer,
             product: row.dataset.spielProduct,
@@ -133,7 +165,9 @@ function initPanel() {
         copiedId = null;
 
         part('customer').textContent = lead.customer;
-        part('lead').textContent = [row.dataset.spielQty, lead.product, `out of stock ${row.dataset.spielOos}`].filter(Boolean).join(' · ');
+        part('lead').textContent = [lead.phone, [row.dataset.spielQty, lead.product].filter(Boolean).join(' × ')].filter(Boolean).join(' · ');
+        panel.querySelector('[data-panel-cra]').textContent = row.dataset.spielCra ? `CRA ${row.dataset.spielCra}` : '';
+        panel.querySelector('[data-panel-initials]').textContent = initials(lead.customer);
         part('finding').hidden = false;
         part('chat').hidden = true;
         part('no-chat').hidden = true;
@@ -149,6 +183,7 @@ function initPanel() {
         panel.hidden = false;
         renderSpiels();
         const state = row.dataset.smsState;
+        showPager();
         panel.dispatchEvent(new CustomEvent('customer-panel:open', {
             detail: { tab: tab || (row.dataset.smsChat && (state === 'yes' || state === 'replied') ? 'conversation' : 'spiels') },
         }));
@@ -194,6 +229,11 @@ function initPanel() {
     });
 
     part('close').addEventListener('click', close);
+    panel.querySelector('[data-panel-prev]').addEventListener('click', () => step(-1));
+    panel.querySelector('[data-panel-next]').addEventListener('click', () => step(1));
+    panel.querySelector('[data-panel-order]').addEventListener('click', () => panel.querySelector('[data-panel-tab-button="order"]').click());
+    peek?.addEventListener('click', () => toAnswer()[0] && open(toAnswer()[0], { withChat: false }));
+    showPeek();
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !panel.hidden && !document.querySelector('dialog[open]')) close();
     });

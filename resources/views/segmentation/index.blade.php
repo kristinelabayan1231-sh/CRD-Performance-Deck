@@ -1,40 +1,63 @@
 <x-layouts.app title="Segmentation Tracker">
-    @php($quota = config('segmentation.leads_per_cra'))
-
+    @php $quota = config('segmentation.leads_per_cra'); @endphp
     <div class="flex flex-col">
-        <div class="mb-2 flex shrink-0 flex-wrap items-center justify-between gap-4">
-            <h1 class="text-xl font-semibold">Segmentation Tracker <span class="font-sans text-sm font-normal tracking-normal text-muted">· Customers whose product runs out on the lead day.</span></h1>
+        {{-- One row: the title, the tracker's tabs, then the working date, My schedule and Sync --}}
+        <div class="mb-3 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+            <h1 class="text-xl font-semibold" title="Customers whose product runs out on the lead day.">Segmentation Tracker</h1>
+            @include('segmentation._tabs', ['tabsOnly' => true])
 
-            <div class="flex items-center gap-3 text-sm text-muted">
+            <div class="ml-auto flex items-center gap-1.5">
+                @php
+                    $workingDate = \App\Support\WorkingDate::get();
+                    $realToday = \App\Support\WorkingDate::realToday();
+                    $dayTip = $workingDate
+                        ? 'Working date: '.$workingDate->format('M j, Y').' · The Segmentation Tracker shows this lead day as today (real date '.$realToday->format('M j').'). Sales and conversion follow the real date.'
+                        : 'Today';
+                    $dayPill = 'inline-flex h-10 items-center gap-1.5 rounded-full bg-brand-100 px-3.5 text-[0.8125rem] font-bold whitespace-nowrap text-ink';
+                    $roundButton = 'relative grid size-10 place-items-center rounded-full border border-line bg-white text-ink transition hover:border-ink';
+                @endphp
+                @if ($workingDate && auth()->user()->can('sales_goals.manage'))
+                    <a href="{{ route('settings.working-date.index') }}" title="{{ $dayTip }} Change it in Settings → Working Date." class="{{ $dayPill }} hover:bg-brand-200">
+                @else
+                    <span title="{{ $dayTip }}" class="{{ $dayPill }} cursor-help">
+                @endif
+                    <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
+                    {{ ($workingDate ? $today : $realToday)->format('M j') }}
+                    @if ($workingDate)
+                        <small class="text-[0.6875rem] font-medium text-ink/70">real {{ $realToday->format('M j') }}</small>
+                    @endif
+                @if ($workingDate && auth()->user()->can('sales_goals.manage'))
+                    </a>
+                @else
+                    </span>
+                @endif
+
                 @if (auth()->user()->role?->slug === \App\Models\Role::CRA)
                     {{-- Opens the on-duty pop-up's calendar to set days off ahead --}}
-                    <button type="button" data-schedule-open class="flex h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 font-medium text-ink hover:border-ink">
-                        <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18"/></svg>
-                        My schedule
+                    <button type="button" data-schedule-open title="My schedule" aria-label="My schedule" class="{{ $roundButton }}">
+                        <svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path stroke-linecap="round" d="M16 3v4M8 3v4M3 10h18M9 15l2 2 4-4"/></svg>
                     </button>
                 @endif
-                <span class="flex items-center gap-1.5">
-                    <span aria-hidden="true" class="size-2 rounded-full {{ $syncError ? 'bg-coral' : 'bg-teal' }}"></span>
-                    @if ($lastSync)
-                        Auto-synced {{ $lastSync->diffForHumans() }}
-                    @else
-                        Syncs automatically every hour
-                    @endif
-                </span>
+
+                {{-- Sync: the dot is teal when the last automatic sync worked, coral when it couldn't reach the API --}}
+                @php $syncTip = $lastSync ? 'Auto-synced '.$lastSync->diffForHumans() : 'Syncs automatically every hour'; @endphp
+                @php $syncIcon = '<svg class="size-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M20 11a8 8 0 0 0-14.8-4M4 4v4h4M4 13a8 8 0 0 0 14.8 4M20 20v-4h-4"/></svg>'; @endphp
+                @php $syncDot = '<i aria-hidden="true" class="absolute right-0.5 bottom-0.5 size-2.5 rounded-full border-2 border-white '.($syncError ? 'bg-coral' : 'bg-teal').'"></i>'; @endphp
                 @if ($canManage)
                     <form method="POST" action="{{ route('segmentation.sync') }}">
                         @csrf
                         <input type="hidden" name="date" value="{{ $filters['date'] ?? $today->toDateString() }}">
-                        <button type="submit" class="h-9 rounded-full border border-line bg-white px-3.5 font-medium text-ink hover:border-ink"
-                                onclick="this.disabled=true; this.textContent='Syncing…'; this.form.submit()">
-                            Sync now
-                        </button>
+                        <button type="submit" title="Sync now · {{ $syncTip }}" aria-label="Sync now, {{ $syncTip }}" class="{{ $roundButton }} disabled:opacity-60"
+                                onclick="this.disabled=true; this.classList.add('animate-spin'); this.form.submit()">{!! $syncIcon !!}{!! $syncDot !!}</button>
                     </form>
+                @else
+                    <span role="img" title="{{ $syncTip }}" aria-label="{{ $syncTip }}" class="{{ $roundButton }} text-muted hover:border-line">{!! $syncIcon !!}{!! $syncDot !!}</span>
                 @endif
             </div>
         </div>
 
-        @include('segmentation._tabs', ['toolbar' => 'segmentation._filters'])
+        {{-- Search and filters on their own bar --}}
+        <div class="mb-3 shrink-0 rounded-2xl border border-line bg-white p-2">@include('segmentation._filter-bar')</div>
 
         @if ($syncError)
             <div role="alert" class="mb-3 shrink-0 rounded-lg border border-coral/60 bg-coral/10 px-4 py-2 text-sm text-coral-700">
@@ -56,18 +79,18 @@
         @enderror
 
         {{-- Summary (refreshed live from segmentation.summary): one strip of figures --}}
-        @php($tileStyles = [
+        @php $tileStyles = [
             'total' => ['Leads', 'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8'],
             'crd' => ['CRD Leads', 'M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z'],
             'fsd' => ['FSD Leads', 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 8v8M8 12h8'],
             'per_cra' => ['Per CRA', 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8M4.5 20c1-4 4-5.5 7.5-5.5s6.5 1.5 7.5 5.5'],
             'updated' => ['Status Updated', 'm5 13 4 4L19 7'],
             'converted' => ['Conversion', 'M3 17l6-6 4 4 8-8M15 7h6v6'],
-        ])
+        ]; @endphp
         <div data-live-summary data-url="{{ route('segmentation.summary', request()->query()) }}"
              class="mb-3 grid shrink-0 divide-line rounded-2xl border border-line bg-white sm:grid-cols-3 sm:divide-x xl:flex xl:divide-x">
             @foreach ($tiles as $key => $tile)
-                @php($pressable = $key === 'per_cra')
+                @php $pressable = $key === 'per_cra'; @endphp
                 <{{ $pressable ? 'button' : 'div' }} @if ($pressable) type="button" data-per-cra-open aria-haspopup="dialog" title="Assigned per CRA" @endif
                     class="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left {{ $pressable ? 'cursor-pointer rounded-2xl transition hover:bg-canvas' : '' }}">
                     <span aria-hidden="true" class="grid size-10 shrink-0 place-items-center rounded-full border border-line text-ink">
@@ -83,7 +106,7 @@
         </div>
 
         {{-- The CRA's texts today: the same sending as Today's texts --}}
-        @php($sendBar = \App\Support\SmsSendBar::for(auth()->user(), ctype_digit((string) $filters['cra']) ? $cras->firstWhere('id', (int) $filters['cra']) : null))
+        @php $sendBar = \App\Support\SmsSendBar::for(auth()->user(), ctype_digit((string) $filters['cra']) ? $cras->firstWhere('id', (int) $filters['cra']) : null); @endphp
         @if ($sendBar)
             @include('segmentation._send-bar')
         @endif
@@ -109,8 +132,10 @@
         @endif
 
         {{-- The selected day's leads: what's left to do first, what's done below. --}}
-        @php($switch = $unprocessed && $processed ? ['unprocessed' => $unprocessed->total(), 'processed' => $processed->total()] : null)
-        <div class="flex flex-col gap-3">
+        @php $switch = $unprocessed && $processed ? ['unprocessed' => $unprocessed->total(), 'processed' => $processed->total()] : null; @endphp
+        {{-- The list, with the customer panel beside it once a customer is open (wide screens) --}}
+        <div class="flex flex-col gap-3 lg:grid lg:items-start lg:has-[>[data-spiels-panel]:not([hidden])]:grid-cols-[minmax(0,1fr)_22rem]">
+        <div class="flex min-w-0 flex-col gap-3">
             @if ($unprocessed)
                 @include('segmentation._section', [
                     'leads' => $unprocessed, 'id' => 'unprocessed', 'title' => 'Pending',
@@ -126,7 +151,16 @@
                 ])
             @endif
         </div>
+        @include('segmentation._spiels-panel', ['docked' => true])
+        </div>
     </div>
+
+    {{-- Messages: opens the first customer on the page with a reply to answer (spiels.js); hidden while the panel is open --}}
+    <button type="button" data-panel-peek hidden aria-label="Open the replies to answer" title="Replies to answer"
+            class="fixed right-4 bottom-20 z-30 grid size-14 place-items-center rounded-full bg-brand-600 text-white shadow-lg transition hover:scale-105">
+        <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linejoin="round" d="M4 5h16v11H9l-5 4z"/></svg>
+        <em data-panel-peek-count class="absolute -top-1 -right-1 min-w-5.5 rounded-full bg-coral-700 px-1.5 text-xs leading-5.5 font-bold not-italic tabular-nums"></em>
+    </button>
 
     @if ($canTransfer)
         @include('segmentation._transfer-dialog')
@@ -169,7 +203,6 @@
         </dialog>
     @endisset
 
-    @include('segmentation._spiels-panel')
 
     {{-- Full view of one list (opened from a section's expand arrows) --}}
     <dialog id="expand-dialog" aria-labelledby="expand-title" class="m-auto h-[90dvh] w-[min(96rem,calc(100%-2rem))] overflow-hidden rounded-xl p-0 shadow-2xl backdrop:bg-ink/40">

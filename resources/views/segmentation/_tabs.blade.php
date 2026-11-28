@@ -70,7 +70,8 @@
         }
     }
 @endphp
-<div class="mb-3 flex shrink-0 flex-wrap items-center gap-2">
+{{-- $tabsOnly: just the tabs, for a page header that puts them beside its title (the Segmentation Tracker) --}}
+<div @class(['flex flex-wrap items-center gap-2', 'mb-3 shrink-0' => ! ($tabsOnly ?? false)])>
     <nav class="flex flex-wrap items-center gap-1" aria-label="Tracker sections">
         @foreach ($flat as [$label, $href, $active, $badge])
             <a href="{{ $href }}" @if ($active) aria-current="page" @endif

@@ -6,26 +6,24 @@
      of the customer's latest order (segmentation.js) for leads this user can edit.
      Clicking the row opens the customer's Pancake chat and the Spiels panel (spiels.js). --}}
 {{-- View only (a CRA on another CRA's Exclusive Lead Tracker): no chat on click, and right-click offers Copy mobile number only. --}}
-{{-- A High AOV / VIP customer's row looks like theirs in Customer Database: VIP gold, High AOV purple, with its pill --}}
+{{-- A High AOV / VIP customer gets a crown (VIP) or a gem (High AOV) by their name --}}
 @php($isVip = (bool) ($highValue['vip'] ?? false))
 @php($isHighAov = ! $isVip && ($highValue['high_aov'] ?? false))
-<tr @class(['align-middle', 'cursor-pointer' => ! $readOnly, 'bg-brand-50 hover:bg-brand-100' => $isVip, 'bg-[#f7f4ff] hover:bg-[#efeaff]' => $isHighAov, 'hover:bg-canvas/50' => ! $isVip && ! $isHighAov])
-    data-sms-state="{{ ($smsBadge ?? null)['state'] ?? 'none' }}"
+{{-- A reply to answer (YES or another reply) tints the row gold; the row open in the customer panel is a deeper gold (spiels.js) --}}
+@php($toAnswer = in_array(($smsBadge ?? null)['state'] ?? null, ['yes', 'replied'], true))
+<tr @class(['align-middle', 'cursor-pointer' => ! $readOnly, 'bg-[#fff8e1] [&>td.sticky]:bg-[#fff8e1]' => $toAnswer, 'hover:bg-canvas/60' => ! $toAnswer])
+    data-sms-state="{{ ($smsBadge ?? null)['state'] ?? 'none' }}" @if ($toAnswer) data-to-answer @endif
     @if ($readOnly) data-copy-row data-phone="{{ $lead->phone_number }}"
     @else data-spiel-row data-chat-url="{{ route('segmentation.chat', $lead) }}" data-orders-url="{{ route('segmentation.orders', $lead) }}"
         @if (($smsBadge ?? null) && (auth()->user()->can('sms_reminders.view_all') || $smsBadge['cra_id'] === auth()->id())) data-sms-chat="{{ route('sms-reminders.conversations.chat', $smsBadge['phone_key']) }}" @endif
-        data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}"
+        data-spiel-customer="{{ $lead->customer_name }}" data-spiel-product="{{ $lead->product_name }}" data-spiel-qty="{{ $lead->qty }}" data-spiel-cra="{{ $lead->assignee?->displayName() }}"
         data-spiel-phone="{{ $lead->phone_number }}" data-spiel-oos="{{ $lead->est_out_of_stock_date->format('M j') }}" @endif
     @if ($canEdit) data-lead-row data-update-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}"
         data-phone="{{ $lead->phone_number }}" data-mark="{{ $lead->isProcessed() ? 'unprocessed' : 'processed' }}" data-clears="{{ $lead->unmarkClears() }}"
         @unless ($lead->isProcessed()) data-handover-url="{{ route('segmentation.handover.show', $lead) }}" @endunless @endif>
-    <td data-col="customer_name" @class(['group sticky left-0 z-10 px-4 py-3 font-medium whitespace-nowrap', 'bg-brand-50' => $isVip, 'bg-[#f7f4ff]' => $isHighAov, 'bg-white' => ! $isVip && ! $isHighAov]) data-note-cell
-        data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
-        {{-- Sheets-style note marker in the top-right corner --}}
-        <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"
-              class="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-ink border-l-transparent"></span>
-        <span class="flex items-center gap-2">
-            @can('sms_reminders.view')
+    @can('sms_reminders.view')
+        {{-- Text: the tick that puts the customer in today's texts --}}
+        <td data-col="sms" class="py-3 pr-1 pl-4">
                 @php($tickBadge = $smsBadge ?? null)
                 @if ($tickBadge && ! $readOnly && (auth()->user()->can('sms_reminders.view_all') || $tickBadge['cra_id'] === auth()->id()))
                     @if ($tickBadge['state'] === 'stop')
@@ -35,6 +33,12 @@
                             <input type="checkbox" data-sms-allow="{{ $lead->customer_name }}" aria-label="Text {{ $lead->customer_name }} again" title="Asked not to be texted: tick to text them again"
                                    class="size-4.5 cursor-pointer rounded accent-brand-600">
                         </form>
+                    @elseif (! $tickBadge['changeable'] && $tickBadge['ticked'])
+                        {{-- Already texted: nothing to tick --}}
+                        <span title="{{ $tickBadge['label'] }}" class="grid size-4.5 place-items-center text-muted">
+                            <svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7"/></svg>
+                            <span class="sr-only">{{ $tickBadge['label'] }}</span>
+                        </span>
                     @else
                         <form method="POST" action="{{ route('sms-reminders.update', $tickBadge['reminder_id']) }}" class="flex">
                             @csrf @method('PATCH')
@@ -45,20 +49,38 @@
                         </form>
                     @endif
                 @else
-                    <span class="inline-block size-4.5 shrink-0" aria-hidden="true"></span>
+                    <span class="inline-block size-4.5" aria-hidden="true"></span>
                 @endif
-            @endcan
+        </td>
+    @endcan
+    <td data-col="customer_name" class="group sticky left-0 z-10 bg-white px-4 py-3 font-semibold whitespace-nowrap shadow-[6px_0_8px_-8px_rgb(22_19_31/0.25)]" data-note-cell
+        data-note-url="{{ route('segmentation.update', $lead) }}" data-customer="{{ $lead->customer_name }}">
+        {{-- Sheets-style note marker in the top-right corner --}}
+        <span data-note-indicator @if (! $lead->notes) hidden @endif aria-label="Has a note"
+              class="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-ink border-l-transparent"></span>
+        <span class="flex items-center gap-2">
             @if ($transferable)
                 <input type="checkbox" value="{{ $lead->id }}" data-backlog-select data-from="{{ $lead->assigned_to }}" data-from-name="{{ $lead->assignee?->displayName() }}"
                        aria-label="Select {{ $lead->customer_name }} for transfer" class="size-4 accent-brand-500">
             @endif
+            {{-- Initials, with a dot when there's a reply to answer --}}
+            @php($initials = collect(preg_split('/\s+/', trim((string) $lead->customer_name)))->filter()->take(2)->map(fn ($word) => mb_strtoupper(mb_substr($word, 0, 1)))->implode(''))
+            <span aria-hidden="true" class="relative grid size-7 shrink-0 place-items-center rounded-full bg-brand-50 text-[0.625rem] font-bold text-ink ring-1 ring-brand-200">
+                {{ $initials ?: '?' }}
+                @if ($toAnswer)
+                    <i class="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-white bg-coral"></i>
+                @endif
+            </span>
             {{ $lead->customer_name }}
-            {{-- Same pills as Customer Database → High AOV CVR & VIP; a VIP shows only VIP --}}
+            {{-- VIP (crown) or High AOV (gem), as in Customer Database → High AOV CVR & VIP; a VIP shows only VIP --}}
             @if ($isVip)
-                <span class="inline-flex items-center gap-1 rounded-full bg-[#111111] px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-[#f3dca3]"
-                      title="VIP in {{ implode(', ', $highValue['vip_products']) }}"><svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3 text-[#c9a24a]"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>VIP</span>
+                <span role="img" aria-label="VIP" title="VIP in {{ implode(', ', $highValue['vip_products']) }}" class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-600 text-brand-500">
+                    <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" class="size-3.5"><path d="M3 18h18l-1.5-10-5 4L12 5l-2.5 7-5-4z"/></svg>
+                </span>
             @elseif ($isHighAov)
-                <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[0.6875rem] font-bold tracking-wide whitespace-nowrap text-brand-700">HIGH AOV</span>
+                <span role="img" aria-label="High AOV" title="High AOV" class="grid size-6 shrink-0 place-items-center rounded-full bg-brand-100 text-[#a37800]">
+                    <svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="size-3.5"><path d="M6 3h12l4 6-10 12L2 9zM2 9h20M12 21 8 9l4-6 4 6z"/></svg>
+                </span>
             @endif
             {{-- Its SMS Reminders text (users with SMS Reminders see it in the SMS column instead) --}}
             @if (($smsBadge ?? null) && ! auth()->user()->can('sms_reminders.view'))
@@ -82,9 +104,6 @@
             <p data-note-meta class="mt-2 text-xs text-muted">{{ \App\Http\Controllers\SegmentationController::notesMeta($lead) }}</p>
         </div>
         <template data-note-value>{{ $lead->notes }}</template>
-        @if ($isVip && $highValue['vip_products'])
-            <span class="mt-0.5 block text-[0.6875rem] font-normal text-[#6e5214]">VIP in {{ implode(', ', $highValue['vip_products']) }}</span>
-        @endif
         @if ($backlogRow ?? false)
             <span @class([
                 'mt-1 inline-block rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold',
